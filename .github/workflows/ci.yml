@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  OPENAPI_GENERATOR_VERSION: "7.25.0"
+
+jobs:
+  build:
+    name: Build, test, generate petstore
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Maven verify
+        run: ./mvnw -B --no-transfer-progress verify
+
+      - name: Download stock CLI jar
+        run: |
+          url="https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/${OPENAPI_GENERATOR_VERSION}/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar"
+          curl -fsSL -o "target/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar" "$url"
+          echo "$(curl -fsSL "${url}.sha1")  target/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar" | sha1sum -c -
+
+      - name: Generator is listed
+        run: |
+          java -cp "target/openapi-generator-timvw-rust-*.jar:target/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar" \
+            org.openapitools.codegen.OpenAPIGenerator list | grep -qx '    - timvw-rust'
+
+      - name: Docker build
+        run: docker build -t timvw-rust:ci .
+
+      - name: Generate petstore
+        run: |
+          docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" timvw-rust:ci generate \
+            -g timvw-rust \
+            -i /local/test-specs/petstore.yaml \
+            -o /local/target/petstore \
+            --additional-properties=packageName=petstore,library=reqwest,supportAsync=true,supportMiddleware=true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: target/petstore
+
+      - name: cargo build generated petstore
+        run: cargo build --manifest-path target/petstore/Cargo.toml

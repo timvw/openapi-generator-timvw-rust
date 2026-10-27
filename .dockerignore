@@ -1,0 +1,4 @@
+*
+!target/openapi-generator-timvw-rust-*.jar
+target/openapi-generator-timvw-rust-*-sources.jar
+target/openapi-generator-timvw-rust-*-javadoc.jar

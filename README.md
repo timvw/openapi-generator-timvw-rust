@@ -89,7 +89,7 @@ curl -fsSLo target/openapi-generator-cli-7.25.0.jar https://repo1.maven.org/mave
 ```
 
 ```bash
-java -cp "target/openapi-generator-timvw-rust-*.jar:target/openapi-generator-cli-7.25.0.jar" org.openapitools.codegen.OpenAPIGenerator list | grep timvw-rust
+java -cp target/openapi-generator-timvw-rust-0.1.0-SNAPSHOT.jar:target/openapi-generator-cli-7.25.0.jar org.openapitools.codegen.OpenAPIGenerator list | grep timvw-rust
 ```
 
 Build the image and smoke-test it on the bundled petstore spec:

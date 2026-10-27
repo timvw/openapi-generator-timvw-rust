@@ -39,7 +39,14 @@ jobs:
 
       - name: Generator is listed
         run: |
-          java -cp "target/openapi-generator-timvw-rust-*.jar:target/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar" \
+          # Java only expands a bare "dir/*" on the classpath, so resolve the plugin jar
+          # ourselves and skip the -sources/-javadoc jars that sit next to it.
+          jar=
+          for f in target/openapi-generator-timvw-rust-*.jar; do
+            case "$f" in *-sources.jar|*-javadoc.jar) ;; *) jar="$f" ;; esac
+          done
+          test -n "$jar"
+          java -cp "$jar:target/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar" \
             org.openapitools.codegen.OpenAPIGenerator list | grep -qx '    - timvw-rust'
 
       - name: Docker build

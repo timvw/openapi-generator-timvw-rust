@@ -27,11 +27,16 @@ same `/local` mount convention, same `JAVA_OPTS` environment variable.
 
 ## Usage in the client repos
 
+Images are published per openapi-generator version, tagged `<generator version>-og<openapi-generator version>`
+(for example `0.1.0-og7.15.0` and `0.1.0-og7.25.0`). The plain `<generator version>` and `latest` tags
+point at the newest supported openapi-generator (7.25.0). A client repo pins the openapi-generator
+version its pipeline is tuned for: openai-client-base uses `-og7.15.0`, langfuse-client-base `-og7.25.0`.
+
 Replace the image in `scripts/generate.sh`:
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.1.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:0.1.0-og7.25.0 generate \
   -g timvw-rust \
   -i /local/openapi.yml \
   -o /local \
@@ -90,8 +95,11 @@ java -cp "target/openapi-generator-timvw-rust-*.jar:target/openapi-generator-cli
 Build the image and smoke-test it on the bundled petstore spec:
 
 ```bash
-docker build -t timvw-rust:dev .
+docker build --build-arg OPENAPI_GENERATOR_VERSION=7.25.0 -t timvw-rust:dev .
 ```
+
+To build against another openapi-generator version, pass the same version to Maven first
+(`./mvnw -Dopenapi-generator.version=7.15.0 package`) and to `--build-arg`.
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" timvw-rust:dev generate -g timvw-rust -i /local/test-specs/petstore.yaml -o /local/target/petstore --additional-properties=packageName=petstore
@@ -111,8 +119,9 @@ CI (`.github/workflows/ci.yml`) runs the same steps on every push and pull reque
    - sets the pom version from the tag and runs `./mvnw -Prelease deploy`, which signs the jar,
      sources jar and javadoc jar with GPG and publishes them through the Sonatype Central Portal
      (`central-publishing-maven-plugin`, auto-publish);
-   - builds the Docker image with that jar and pushes
-     `ghcr.io/timvw/openapi-generator-timvw-rust:<version>` and `:latest`.
+   - builds one Docker image per supported openapi-generator version (jar compiled against that
+     version) and pushes `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator>`;
+     the default openapi-generator version also gets `:<version>` and `:latest`.
 
 Repository secrets required: `CENTRAL_USERNAME`, `CENTRAL_PASSWORD` (Central Portal user token),
 `GPG_PRIVATE_KEY` (ASCII-armoured private key), `GPG_PASSPHRASE`. The image push uses the

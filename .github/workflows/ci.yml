@@ -8,13 +8,17 @@ on:
 permissions:
   contents: read
 
-env:
-  OPENAPI_GENERATOR_VERSION: "7.25.0"
-
 jobs:
   build:
-    name: Build, test, generate petstore
+    name: Build, test, generate petstore (openapi-generator ${{ matrix.openapi-generator }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every version a client repo pins. openai-client-base: 7.15.0; langfuse-client-base: 7.25.0.
+        openapi-generator: ["7.15.0", "7.25.0"]
+    env:
+      OPENAPI_GENERATOR_VERSION: ${{ matrix.openapi-generator }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +29,7 @@ jobs:
           cache: maven
 
       - name: Maven verify
-        run: ./mvnw -B --no-transfer-progress verify
+        run: ./mvnw -B --no-transfer-progress -Dopenapi-generator.version="$OPENAPI_GENERATOR_VERSION" verify
 
       - name: Download stock CLI jar
         run: |
@@ -39,7 +43,7 @@ jobs:
             org.openapitools.codegen.OpenAPIGenerator list | grep -qx '    - timvw-rust'
 
       - name: Docker build
-        run: docker build -t timvw-rust:ci .
+        run: docker build --build-arg OPENAPI_GENERATOR_VERSION="$OPENAPI_GENERATOR_VERSION" -t timvw-rust:ci .
 
       - name: Generate petstore
         run: |

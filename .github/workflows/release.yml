@@ -50,16 +50,35 @@ jobs:
           if-no-files-found: error
 
   docker:
-    name: Push Docker image
+    name: Push Docker image (openapi-generator ${{ matrix.openapi-generator }})
     needs: maven-central
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # One image per openapi-generator version a client repo pins; the default
+        # (7.25.0) also gets the plain <version> and latest tags.
+        openapi-generator: ["7.15.0", "7.25.0"]
+        include:
+          - openapi-generator: "7.25.0"
+            default: true
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/setup-java@v4
         with:
-          name: generator-jar
-          path: target
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # Compile the generator against the same openapi-generator version the image bundles.
+      - name: Build jar against openapi-generator ${{ matrix.openapi-generator }}
+        run: |
+          ./mvnw -B --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          ./mvnw -B --no-transfer-progress -Dopenapi-generator.version="${{ matrix.openapi-generator }}" -DskipTests package
 
       - uses: docker/setup-buildx-action@v3
 
@@ -69,16 +88,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Version from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Image tags
+        run: |
+          tags="${IMAGE}:${VERSION}-og${{ matrix.openapi-generator }}"
+          if [ "${{ matrix.default }}" = "true" ]; then
+            tags="${tags}"$'\n'"${IMAGE}:${VERSION}"$'\n'"${IMAGE}:latest"
+          fi
+          {
+            echo "TAGS<<EOF"
+            echo "$tags"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
 
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ env.VERSION }}
-            ${{ env.IMAGE }}:latest
+          build-args: |
+            OPENAPI_GENERATOR_VERSION=${{ matrix.openapi-generator }}
+          tags: ${{ env.TAGS }}
           labels: |
             org.opencontainers.image.version=${{ env.VERSION }}
             org.opencontainers.image.revision=${{ github.sha }}

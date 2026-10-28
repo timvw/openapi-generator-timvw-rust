@@ -3,6 +3,17 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Re-run the release for an existing tag, e.g. to rebuild images after a
+  # workflow fix. Builds from refs/tags/v<version>, not from the branch.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (without the v), its tag must exist"
+        required: true
+      publish-maven:
+        description: "Also publish to Maven Central (skipped when the version is already there)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -10,13 +21,19 @@ permissions:
 
 env:
   IMAGE: ghcr.io/timvw/openapi-generator-timvw-rust
+  # Tag push: version from the tag. Dispatch: version from the input.
+  VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+  CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/v{0}', inputs.version) || github.ref }}
 
 jobs:
   maven-central:
     name: Publish to Maven Central
+    if: github.event_name == 'push' || inputs.publish-maven
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
 
       - uses: actions/setup-java@v4
         with:
@@ -32,11 +49,25 @@ jobs:
 
       - name: Version from tag
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${VERSION:-${GITHUB_REF_NAME#v}}"
           echo "VERSION=$version" >> "$GITHUB_ENV"
           ./mvnw -B --no-transfer-progress versions:set -DnewVersion="$version" -DgenerateBackupPoms=false
 
+      # Central rejects a second upload of the same version, so a re-run after a
+      # successful publish must not try again.
+      - name: Already on Maven Central?
+        id: central
+        run: |
+          url="https://repo1.maven.org/maven2/be/timvw/openapi-generator-timvw-rust/${VERSION}/openapi-generator-timvw-rust-${VERSION}.pom"
+          if curl -fsSI -o /dev/null "$url"; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::${VERSION} is already on Maven Central, skipping the deploy"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy
+        if: steps.central.outputs.published != 'true'
         run: ./mvnw -B --no-transfer-progress -Prelease deploy
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
@@ -44,14 +75,16 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - uses: actions/upload-artifact@v4
+        if: steps.central.outputs.published != 'true'
         with:
           name: generator-jar
           path: target/openapi-generator-timvw-rust-${{ env.VERSION }}.jar
           if-no-files-found: error
 
+  # Independent of the Maven Central job: each leg builds its own jar, and the
+  # client repos only need the images.
   docker:
     name: Push Docker image (openapi-generator ${{ matrix.openapi-generator }})
-    needs: maven-central
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -64,6 +97,8 @@ jobs:
             default: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
 
       - uses: actions/setup-java@v4
         with:
@@ -72,7 +107,10 @@ jobs:
           cache: maven
 
       - name: Version from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        run: |
+          echo "VERSION=${VERSION:-${GITHUB_REF_NAME#v}}" >> "$GITHUB_ENV"
+          # The checked-out commit, which on a dispatch is the tag's, not the branch's.
+          echo "REVISION=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       # Compile the generator against the same openapi-generator version the image bundles.
       - name: Build jar against openapi-generator ${{ matrix.openapi-generator }}
@@ -109,4 +147,4 @@ jobs:
           tags: ${{ env.TAGS }}
           labels: |
             org.opencontainers.image.version=${{ env.VERSION }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ env.REVISION }}

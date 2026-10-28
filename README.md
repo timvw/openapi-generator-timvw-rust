@@ -59,9 +59,10 @@ Options not listed below (`packageName`, `packageVersion`, `useChrono`, `reqwest
 | `parse_deep_object` returns `(prefix, value)` for non-object values instead of panicking | `patch_generated.rs.sh` |
 | `type: integer` with `format: float`/`double` is read as `type: number` (logged) | `normalize_openapi_schema.py` |
 
-Spec-level decisions stay in the client repos: an invalid spec (for example the 3.1 `const` keyword in
-a 3.0 document) fails spec validation and is fixed upstream, never patched locally; the Langfuse v3
-compatibility layer is composed into the generator input by `prepare_compatible_spec.py`.
+Spec-level decisions stay in the client repos. Spec validation runs in the CLI before any generator
+code, so a keyword the 3.0 validator rejects (Langfuse uses the 3.1 `const`) cannot be repaired here;
+langfuse-client-base drops it while composing the generator input (`prepare_compatible_spec.py`, which
+also adds the v3 compatibility layer). Any other invalid construct fails generation and is fixed upstream.
 
 ## Supported configuration
 

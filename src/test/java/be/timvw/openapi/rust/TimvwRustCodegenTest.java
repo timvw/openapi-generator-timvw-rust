@@ -113,6 +113,7 @@ class TimvwRustCodegenTest {
             "withAWSV4Signature",
             "supportTokenSource",
             "useBonBuilder",
+            "templateDir",
     })
     void rejectsOptionsWhenSet(String option) {
         for (String value : new String[]{"true", "false"}) {
@@ -142,6 +143,72 @@ class TimvwRustCodegenTest {
             assertTrue(!opts.contains(rejected), rejected + " should not be advertised");
         }
         assertTrue(opts.containsAll(TimvwRustCodegen.SUPPORTED_VALUES.keySet()), opts.toString());
+    }
+
+    @Test
+    void bonBuildersIsOnByDefaultAndAdvertised() {
+        TimvwRustCodegen c = codegen();
+        c.processOpts();
+        assertEquals(true, c.additionalProperties().get(TimvwRustCodegen.BON_BUILDERS));
+        org.openapitools.codegen.CliOption opt = c.cliOptions().stream()
+                .filter(o -> TimvwRustCodegen.BON_BUILDERS.equals(o.getOpt())).findFirst().orElseThrow();
+        assertEquals("true", opt.getDefault());
+    }
+
+    @Test
+    void bonBuildersCanBeSwitchedOff() {
+        for (Object value : new Object[]{"false", Boolean.FALSE}) {
+            TimvwRustCodegen c = codegen();
+            c.additionalProperties().put(TimvwRustCodegen.BON_BUILDERS, value);
+            c.processOpts();
+            assertEquals(false, c.additionalProperties().get(TimvwRustCodegen.BON_BUILDERS), String.valueOf(value));
+        }
+    }
+
+    @Test
+    void registersTheRustdocLambda() {
+        TimvwRustCodegen c = codegen();
+        c.processOpts();
+        assertInstanceOf(com.samskivert.mustache.Mustache.Lambda.class, c.additionalProperties().get(TimvwRustCodegen.RUSTDOC_LAMBDA));
+    }
+
+    @Test
+    void rejectsACustomTemplateDir() {
+        TimvwRustCodegen c = codegen();
+        c.additionalProperties().put(CodegenConstants.TEMPLATE_DIR, "/tmp/templates");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
+        assertTrue(e.getMessage().contains("'templateDir'"), e.getMessage());
+    }
+
+    @ParameterizedTest(name = "openapi-generator {0} uses {1}")
+    @CsvSource({
+            "7.15.0,og7.15.0",
+            "7.15.3,og7.15.0",
+            "7.25.0,og7.25.0",
+            "7.25.1,og7.25.0",
+    })
+    void picksTheTemplateSetOfTheRunningOpenApiGenerator(String version, String set) {
+        TimvwRustCodegen c = new TimvwRustCodegen(version);
+        assertEquals("timvw-rust/" + set, c.templateDir());
+        assertEquals("rust", c.embeddedTemplateDir());
+        c.processOpts();
+        assertEquals("timvw-rust/" + set, c.templateDir());
+    }
+
+    @ParameterizedTest(name = "openapi-generator {0} is rejected")
+    @ValueSource(strings = {"7.14.0", "7.26.0", "8.0.0", "unset"})
+    void failsOnAnOpenApiGeneratorWithoutTemplates(String version) {
+        TimvwRustCodegen c = new TimvwRustCodegen(version);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
+        assertTrue(e.getMessage().contains(version), e.getMessage());
+        assertTrue(e.getMessage().contains("7.25"), e.getMessage());
+    }
+
+    @Test
+    void theRunningOpenApiGeneratorIsSupported() {
+        // ImplementationVersion comes from the openapi-generator jar's manifest, so this is the CI matrix check.
+        assertTrue(TimvwRustCodegen.templateSetFor(org.openapitools.codegen.utils.ImplementationVersion.read()) != null,
+                org.openapitools.codegen.utils.ImplementationVersion.read());
     }
 
     /** Local aliases so the test reads the same names the CLI user types. */

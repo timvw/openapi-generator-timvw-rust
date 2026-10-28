@@ -1,0 +1,80 @@
+openapi: 3.0.1
+info:
+  title: Milestone 1 fixture
+  description: Exercises every Milestone 1 rendering rule. Spec at https://example.com/openapi.yml
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+paths:
+  /widgets:
+    get:
+      tags: [Widgets]
+      operationId: widgets_list
+      summary: List widgets. Docs at https://example.com/docs/widgets.
+      description: Filters use deepObject style; see https://example.com/docs/filters (and <https://example.com/wrapped>).
+      parameters:
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            $ref: '#/components/schemas/WidgetFilter'
+        - name: limit
+          in: query
+          description: Page size, documented at https://example.com/docs/paging.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Widget'
+    post:
+      tags: [Widgets]
+      operationId: widgets_create
+      deprecated: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Widget'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+components:
+  schemas:
+    Widget:
+      type: object
+      description: A widget. Reference https://example.com/docs/widget.
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: Human name, see https://example.com/docs/naming.
+        weight:
+          type: integer
+          format: float
+        kind:
+          $ref: '#/components/schemas/WidgetKind'
+    WidgetKind:
+      type: string
+      description: Kinds are listed at https://example.com/docs/kinds.
+      enum: [small, large]
+    WidgetFilter:
+      type: object
+      properties:
+        tags:
+          type: array
+          items:
+            type: string

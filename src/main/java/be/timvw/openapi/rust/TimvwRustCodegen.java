@@ -1,8 +1,13 @@
 package be.timvw.openapi.rust;
 
+import com.samskivert.mustache.Mustache;
+import io.swagger.v3.oas.models.OpenAPI;
 import org.openapitools.codegen.CliOption;
 import org.openapitools.codegen.CodegenConstants;
 import org.openapitools.codegen.languages.RustClientCodegen;
+import org.openapitools.codegen.utils.ImplementationVersion;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -12,14 +17,39 @@ import java.util.Map;
 /**
  * {@code timvw-rust}: a Rust client generator built on top of the stock {@link RustClientCodegen}.
  *
- * <p>Milestone 0 ("plumbing"): the generator renders exactly what {@code -g rust} renders, using the
- * stock templates, but it only accepts one configuration. Every option that would change the shape of the
- * generated crate is either pinned to a single supported value or rejected outright, so that the generated
- * public API is fully determined by the input spec and the generator version.</p>
+ * <p>The generator renders what {@code -g rust} renders, with these differences (Milestone 1):</p>
+ * <ul>
+ *   <li>it accepts exactly one configuration; every option that would change the shape of the generated crate
+ *       is pinned or rejected, so that the public API is fully determined by the spec and the generator version;</li>
+ *   <li>{@code bonBuilders} (default on) derives {@code bon::Builder} on model structs and puts
+ *       {@code #[bon::builder]} on every API function;</li>
+ *   <li>{@code src/lib.rs} includes {@code README.md} as the crate-level documentation;</li>
+ *   <li>bare URLs in doc comments are wrapped in {@code <...>}, which rustdoc requires;</li>
+ *   <li>{@code parse_deep_object} returns a plain key/value pair for non-object values instead of panicking;</li>
+ *   <li>{@code type: integer} with a float format is read as {@code type: number}.</li>
+ * </ul>
+ *
+ * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
+ * {@code timvw-rust/og<major.minor>.0/} and chosen at run time; files that are not overridden fall back to the stock
+ * {@code rust} templates of the running openapi-generator. {@code tools/sync-templates.py} regenerates the sets.</p>
  */
 public class TimvwRustCodegen extends RustClientCodegen {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(TimvwRustCodegen.class);
+
     public static final String GENERATOR_NAME = "timvw-rust";
+
+    /** Our own option: derive {@code bon::Builder} on model structs and {@code #[bon::builder]} on API functions. */
+    public static final String BON_BUILDERS = "bonBuilders";
+
+    /** Mustache lambda that templates wrap around doc-comment text. */
+    static final String RUSTDOC_LAMBDA = "rustdoc";
+
+    static final String STOCK_TEMPLATE_DIR = "rust";
+    static final String TEMPLATE_ROOT = "timvw-rust";
+
+    /** openapi-generator major.minor version to the template set compiled for it. */
+    static final Map<String, String> TEMPLATE_SETS = templateSets();
 
     /** Options that must have exactly one value. Applied as defaults when unset. */
     static final Map<String, String> SUPPORTED_VALUES = supportedValues();
@@ -31,7 +61,17 @@ public class TimvwRustCodegen extends RustClientCodegen {
             TOP_LEVEL_API_CLIENT,
             CodegenConstants.WITH_AWSV4_SIGNATURE_COMMENT,
             SUPPORT_TOKEN_SOURCE,
-            BON_BUILDER);
+            BON_BUILDER,
+            CodegenConstants.TEMPLATE_DIR);
+
+    private final String openApiGeneratorVersion;
+
+    private static Map<String, String> templateSets() {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("7.15", "og7.15.0");
+        m.put("7.25", "og7.25.0");
+        return m;
+    }
 
     private static Map<String, String> supportedValues() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -47,10 +87,19 @@ public class TimvwRustCodegen extends RustClientCodegen {
     }
 
     public TimvwRustCodegen() {
+        this(ImplementationVersion.read());
+    }
+
+    /** @param openApiGeneratorVersion the openapi-generator version the generator runs in, e.g. {@code 7.25.0} */
+    TimvwRustCodegen(String openApiGeneratorVersion) {
         super();
-        // Reuse the stock rust templates bundled in openapi-generator; nothing is overridden yet.
-        embeddedTemplateDir = templateDir = "rust";
+        this.openApiGeneratorVersion = openApiGeneratorVersion;
         outputFolder = "generated-code/" + GENERATOR_NAME;
+
+        // Our overrides first, then the stock rust templates of the running openapi-generator.
+        embeddedTemplateDir = STOCK_TEMPLATE_DIR;
+        String set = templateSetFor(openApiGeneratorVersion);
+        templateDir = set == null ? STOCK_TEMPLATE_DIR : TEMPLATE_ROOT + "/" + set;
 
         // Advertise only what we accept: drop rejected options from `config-help`, and show the pinned
         // value as the default of every option that has exactly one supported value.
@@ -66,6 +115,20 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 }
             }
         }
+        cliOptions.add(CliOption.newBoolean(BON_BUILDERS,
+                "Derive bon::Builder on model structs and put #[bon::builder] on API functions", true));
+    }
+
+    /** The template set for an openapi-generator version, or {@code null} when none was compiled for it. */
+    static String templateSetFor(String version) {
+        if (version == null) {
+            return null;
+        }
+        String[] parts = version.split("\\.");
+        if (parts.length < 2) {
+            return null;
+        }
+        return TEMPLATE_SETS.get(parts[0] + "." + parts[1]);
     }
 
     @Override
@@ -75,7 +138,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
 
     @Override
     public String getHelp() {
-        return "Generates a Rust client library (reqwest, async, middleware) with a single supported configuration.";
+        return "Generates a Rust client library (reqwest, async, middleware, bon builders) with a single supported configuration.";
     }
 
     /**
@@ -85,6 +148,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
      */
     @Override
     public void processOpts() {
+        if (templateSetFor(openApiGeneratorVersion) == null) {
+            throw new IllegalArgumentException(String.format(
+                    "%s: openapi-generator %s is not supported; templates exist for %s",
+                    GENERATOR_NAME, openApiGeneratorVersion, TEMPLATE_SETS.keySet()));
+        }
+
         // The CLI applies `library` through setLibrary() rather than additionalProperties, so look at both.
         if (!additionalProperties.containsKey(CodegenConstants.LIBRARY) && getLibrary() != null) {
             additionalProperties.put(CodegenConstants.LIBRARY, getLibrary());
@@ -116,5 +185,20 @@ public class TimvwRustCodegen extends RustClientCodegen {
 
         setLibrary(REQWEST_LIBRARY);
         super.processOpts();
+
+        boolean bonBuilders = !additionalProperties.containsKey(BON_BUILDERS)
+                || convertPropertyToBooleanAndWriteBack(BON_BUILDERS);
+        additionalProperties.put(BON_BUILDERS, bonBuilders);
+
+        additionalProperties.put(RUSTDOC_LAMBDA,
+                (Mustache.Lambda) (fragment, out) -> out.write(RustDoc.wrapBareUrls(fragment.execute())));
+    }
+
+    @Override
+    public void preprocessOpenAPI(OpenAPI openAPI) {
+        super.preprocessOpenAPI(openAPI);
+        for (String where : SpecNormalizer.integerWithFloatFormatToNumber(openAPI)) {
+            LOGGER.warn("{}: read 'type: integer' with a float format as 'type: number' at {}", GENERATOR_NAME, where);
+        }
     }
 }

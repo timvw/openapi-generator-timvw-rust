@@ -1,0 +1,71 @@
+openapi: 3.1.0
+info:
+  title: Task 2.0 fixture
+  version: "1"
+paths:
+  /messages:
+    get:
+      operationId: messages_list
+      tags: [messages]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+components:
+  schemas:
+    Message:
+      type: object
+      title: Message
+      required: [status, content]
+      properties:
+        status:
+          $ref: "#/components/schemas/BetaApplyPatchCallStatus"
+        legacy_status:
+          $ref: "#/components/schemas/ApplyPatchCallStatus"
+        content:
+          type: array
+          title: Array of content parts
+          items:
+            oneOf:
+              - $ref: "#/components/schemas/TextPart"
+              - $ref: "#/components/schemas/ImagePart"
+        extra:
+          type: object
+          title: Object 027
+          properties:
+            value:
+              type: string
+    # Two components with the same title and shape: openapi-generator 7.25 merges them.
+    ApplyPatchCallStatus:
+      type: string
+      title: Apply patch call status
+      description: Status values reported for apply_patch tool calls.
+      enum: [in_progress, completed]
+    BetaApplyPatchCallStatus:
+      type: string
+      title: Apply patch call status
+      description: Status values reported for apply_patch tool calls (beta).
+      enum: [in_progress, completed]
+    TextPart:
+      type: object
+      title: Text
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+    ImagePart:
+      type: object
+      title: Image
+      required: [type, url]
+      properties:
+        type:
+          type: string
+          enum: [image]
+        url:
+          type: string

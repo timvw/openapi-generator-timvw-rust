@@ -2,6 +2,7 @@ package be.timvw.openapi.rust;
 
 import com.samskivert.mustache.Mustache;
 import io.swagger.v3.oas.models.OpenAPI;
+import org.openapitools.codegen.InlineModelResolverAccess;
 import org.openapitools.codegen.CliOption;
 import org.openapitools.codegen.CodegenConstants;
 import org.openapitools.codegen.languages.RustClientCodegen;
@@ -26,7 +27,11 @@ import java.util.Map;
  *   <li>{@code src/lib.rs} includes {@code README.md} as the crate-level documentation;</li>
  *   <li>bare URLs in doc comments are wrapped in {@code <...>}, which rustdoc requires;</li>
  *   <li>{@code parse_deep_object} returns a plain key/value pair for non-object values instead of panicking;</li>
- *   <li>{@code type: integer} with a float format is read as {@code type: number}.</li>
+ *   <li>{@code type: integer} with a float format is read as {@code type: number};</li>
+ *   <li>{@code titleNaming=false} keeps schema titles out of type naming (task 2.0): openapi-generator 7.2x merges
+ *       titled component schemas of the same shape, replaces inline schemas by a titled twin and names inline array
+ *       items after the array's title; with the option off, names stay derived from schema keys and property paths.
+ *       The generator runs the inline-model resolver itself so that the titles can be removed first.</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -41,6 +46,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
 
     /** Our own option: derive {@code bon::Builder} on model structs and {@code #[bon::builder]} on API functions. */
     public static final String BON_BUILDERS = "bonBuilders";
+
+    /** Our own option: let schema titles name, merge and replace types (stock openapi-generator 7.2x behaviour). */
+    public static final String TITLE_NAMING = "titleNaming";
 
     /** Mustache lambda that templates wrap around doc-comment text. */
     static final String RUSTDOC_LAMBDA = "rustdoc";
@@ -65,6 +73,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
             CodegenConstants.TEMPLATE_DIR);
 
     private final String openApiGeneratorVersion;
+    private boolean titleNaming = true;
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -117,6 +126,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
         }
         cliOptions.add(CliOption.newBoolean(BON_BUILDERS,
                 "Derive bon::Builder on model structs and put #[bon::builder] on API functions", true));
+        cliOptions.add(CliOption.newBoolean(TITLE_NAMING,
+                "Let schema titles take part in type naming: titled component schemas of the same shape are merged, "
+                        + "inline schemas matching a titled component are replaced by it, and an inline array's title "
+                        + "names its item type. Set to false to derive names from schema keys and property paths only",
+                true));
     }
 
     /** The template set for an openapi-generator version, or {@code null} when none was compiled for it. */
@@ -190,12 +204,33 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 || convertPropertyToBooleanAndWriteBack(BON_BUILDERS);
         additionalProperties.put(BON_BUILDERS, bonBuilders);
 
+        titleNaming = !additionalProperties.containsKey(TITLE_NAMING)
+                || convertPropertyToBooleanAndWriteBack(TITLE_NAMING);
+        additionalProperties.put(TITLE_NAMING, titleNaming);
+
         additionalProperties.put(RUSTDOC_LAMBDA,
                 (Mustache.Lambda) (fragment, out) -> out.write(RustDoc.wrapBareUrls(fragment.execute())));
     }
 
+    /**
+     * The inline-model resolver is run by {@link #preprocessOpenAPI} instead of by the generator, so that the spec can
+     * be adjusted before inline schemas are named and merged.
+     */
+    @Override
+    public boolean getUseInlineModelResolver() {
+        return false;
+    }
+
     @Override
     public void preprocessOpenAPI(OpenAPI openAPI) {
+        if (!titleNaming) {
+            List<String> stripped = TitleNaming.stripNamingTitles(openAPI);
+            LOGGER.info("{}: {}=false, removed the title from {} component and array schemas before naming",
+                    GENERATOR_NAME, TITLE_NAMING, stripped.size());
+        }
+        if (super.getUseInlineModelResolver()) {
+            InlineModelResolverAccess.flatten(openAPI, inlineSchemaNameMapping(), inlineSchemaOption());
+        }
         super.preprocessOpenAPI(openAPI);
         for (String where : SpecNormalizer.integerWithFloatFormatToNumber(openAPI)) {
             LOGGER.warn("{}: read 'type: integer' with a float format as 'type: number' at {}", GENERATOR_NAME, where);

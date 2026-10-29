@@ -9,9 +9,10 @@ Its purpose is to replace the post-processing scripts that
 by moving every fix into the generator itself. The design, type rules and delivery plan live in the
 design doc: [Custom Rust generator: rendering design](https://claude.ai/artifact/ABar8Up91gjVMDHgHL1GE3).
 
-**Status: Milestone 1 (Langfuse without scripts).** The generator renders what stock `-g rust` renders
-plus the conventions below, which langfuse-client-base used to patch in after generation. The public
-API of that crate is byte-identical between the scripted pipeline and this generator.
+**Status: task 2.0 (OpenAI on openapi-generator 7.25.0).** The generator renders what stock `-g rust` renders
+plus the conventions below, which langfuse-client-base used to patch in after generation (its public API is
+byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that keeps
+openai-client-base's type names stable across the openapi-generator 7.15 to 7.25 upgrade.
 
 ## Artifacts
 
@@ -30,7 +31,8 @@ same `/local` mount convention, same `JAVA_OPTS` environment variable.
 Images are published per openapi-generator version, tagged `<generator version>-og<openapi-generator version>`
 (for example `0.2.0-og7.15.0` and `0.2.0-og7.25.0`). The plain `<generator version>` and `latest` tags
 point at the newest supported openapi-generator (7.25.0). A client repo pins the openapi-generator
-version its pipeline is tuned for: openai-client-base uses `-og7.15.0`, langfuse-client-base `-og7.25.0`.
+version its pipeline is tuned for; both client repos now use `-og7.25.0`, and `-og7.15.0` stays published
+for pipelines that have not upgraded yet.
 
 Replace the image in `scripts/generate.sh`:
 
@@ -58,6 +60,7 @@ Options not listed below (`packageName`, `packageVersion`, `useChrono`, `reqwest
 | Bare URLs in `///` doc comments are wrapped in `<...>` (rustdoc's `bare_urls` lint); markdown docs are untouched | `patch_generated.rs.sh` |
 | `parse_deep_object` returns `(prefix, value)` for non-object values instead of panicking | `patch_generated.rs.sh` |
 | `type: integer` with `format: float`/`double` is read as `type: number` (logged) | `normalize_openapi_schema.py` |
+| `titleNaming=false`: schema titles never name, merge or replace types. openapi-generator 7.2x merges titled component schemas of the same shape into one model, swaps an inline schema for a titled component that matches it, and names inline array items after the array's title (`ArrayOfItemsInner5`); with the option off, the generator removes component and array titles before running the inline-model resolver (which it therefore runs itself), so names come from schema keys and property paths as on 7.15. Default `true` (stock behaviour). | the openapi-generator 7.25 upgrade of openai-client-base (95 public types kept) |
 
 Spec-level decisions stay in the client repos. Spec validation runs in the CLI before any generator
 code, so a keyword the 3.0 validator rejects (Langfuse uses the 3.1 `const`) cannot be repaired here;

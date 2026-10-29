@@ -56,6 +56,34 @@ def replace_exactly(text: str, old: str, new: str, count: int, what: str) -> str
     return text.replace(old, new)
 
 
+# openapi-generator 7.25 JSON-encodes every non-primitive optional multipart text part, so a
+# referenced string enum arrives as "\"verbose_json\"" instead of verbose_json. Enums have a Display
+# impl that yields the wire value; use it. 7.15 renders every text part through Display and has
+# no such branch, so the edit is skipped where the anchor is absent.
+MULTIPART_JSON_TEXT = (
+    "    {{^isPrimitiveType}}\n"
+    '        multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);\n'
+    "    {{/isPrimitiveType}}\n"
+)
+MULTIPART_ENUM_TEXT = (
+    "    {{^isPrimitiveType}}\n"
+    "    {{#isEnumRef}}\n"
+    '        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());\n'
+    "    {{/isEnumRef}}\n"
+    "    {{^isEnumRef}}\n"
+    '        multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);\n'
+    "    {{/isEnumRef}}\n"
+    "    {{/isPrimitiveType}}\n"
+)
+
+
+def replace_at_most_once(text: str, old: str, new: str, what: str) -> str:
+    found = text.count(old)
+    if found > 1:
+        raise SystemExit(f"{what}: expected at most 1 occurrence of anchor, found {found}")
+    return text.replace(old, new)
+
+
 def wrap_doc_lines(text: str, what: str) -> str:
     text, n = DOC_LINE.subn(r"\g<indent>/// {{#rustdoc}}\g<body>{{/rustdoc}}", text)
     if n == 0:
@@ -68,7 +96,7 @@ EDITS = {
     "model.mustache": lambda t, w: wrap_doc_lines(
         replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), w
     ),
-    "reqwest/api.mustache": lambda t, w: wrap_doc_lines(
+    "reqwest/api.mustache": lambda t, w: replace_at_most_once(wrap_doc_lines(
         re.sub(
             r"^(?=pub \{\{#supportAsync\}\}async \{\{/supportAsync\}\}fn \{\{\{operationId\}\}\}\()",
             BON_BUILDER_FN,
@@ -77,7 +105,7 @@ EDITS = {
             flags=re.MULTILINE,
         ),
         w,
-    ),
+    ), MULTIPART_JSON_TEXT, MULTIPART_ENUM_TEXT, w),
     "reqwest/api_mod.mustache": lambda t, w: replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w),
     "Cargo.mustache": lambda t, w: replace_exactly(
         t, "[dependencies]\n", '[dependencies]\n{{#bonBuilders}}\nbon = "^3"\n{{/bonBuilders}}\n', 1, w

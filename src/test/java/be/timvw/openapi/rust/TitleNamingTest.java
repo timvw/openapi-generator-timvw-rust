@@ -106,6 +106,20 @@ class TitleNamingTest {
     }
 
     @Test
+    void optionalEnumMultipartPartsUseTheWireValueNotJson() throws IOException {
+        Path dir = output.resolve("multipart");
+        generate(dir, false);
+        String api = Files.readString(dir.resolve("src/apis/audio_api.rs"));
+        // A referenced string enum is a text part holding the enum's wire value; 7.25 would JSON-quote it.
+        assertTrue(api.contains("multipart_form.text(\"response_format\", param_value.to_string());"), api);
+        assertFalse(api.contains("multipart_form.text(\"response_format\", serde_json::to_string(&param_value)?);"), api);
+        // Objects still travel as JSON on 7.25 (7.15 had no JSON branch and uses Display for everything).
+        boolean jsonBranch = api.contains("serde_json::to_string(&param_value)?");
+        assertTrue(api.contains("multipart_form.text(\"chunking_strategy\", " + (jsonBranch ? "serde_json::to_string(&param_value)?" : "param_value.to_string()") + ");"), api);
+        assertTrue(api.contains("multipart_form.text(\"temperature\", param_value.to_string());"), api);
+    }
+
+    @Test
     void withTitleNamingOnTheStockBehaviourIsUnchanged() throws IOException {
         Path dir = output.resolve("on");
         generate(dir, true);

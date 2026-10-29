@@ -510,7 +510,12 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
     {{/isPrimitiveType}}
     {{^isPrimitiveType}}
+    {{#isEnumRef}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
+    {{/isEnumRef}}
+    {{^isEnumRef}}
         multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);
+    {{/isEnumRef}}
     {{/isPrimitiveType}}
     }
     {{/required}}

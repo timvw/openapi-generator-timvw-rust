@@ -2,6 +2,11 @@ package be.timvw.openapi.rust;
 
 import com.samskivert.mustache.Mustache;
 import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.media.Schema;
+import org.openapitools.codegen.CodegenModel;
+import org.openapitools.codegen.CodegenProperty;
+import org.openapitools.codegen.model.ModelMap;
+import org.openapitools.codegen.model.ModelsMap;
 import org.openapitools.codegen.InlineModelResolverAccess;
 import org.openapitools.codegen.CliOption;
 import org.openapitools.codegen.CodegenConstants;
@@ -10,10 +15,13 @@ import org.openapitools.codegen.utils.ImplementationVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code timvw-rust}: a Rust client generator built on top of the stock {@link RustClientCodegen}.
@@ -31,7 +39,10 @@ import java.util.Map;
  *   <li>{@code titleNaming=false} keeps schema titles out of type naming (task 2.0): openapi-generator 7.2x merges
  *       titled component schemas of the same shape, replaces inline schemas by a titled twin and names inline array
  *       items after the array's title; with the option off, names stay derived from schema keys and property paths.
- *       The generator runs the inline-model resolver itself so that the titles can be removed first.</li>
+ *       The generator runs the inline-model resolver itself so that the titles can be removed first;</li>
+ *   <li>a {@code oneOf} whose branches render to the same variant (two primitive branches with the same title) keeps
+ *       one variant, and an {@code anyOf} with no typed branch ({@code anyOf: [{}, null]}) is {@code serde_json::Value}
+ *       instead of a reference to a model that is never written (Milestone 2.1).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -150,9 +161,78 @@ public class TimvwRustCodegen extends RustClientCodegen {
         return GENERATOR_NAME;
     }
 
+    /** The model name the stock generator gives a composed schema without typed branches ({@code anyOf<>}). */
+    static final String UNTYPED_COMPOSED = "AnyOfLessThanGreaterThan";
+    static final String UNTYPED_COMPOSED_TYPE = "models::" + UNTYPED_COMPOSED;
+    static final String JSON_VALUE = "serde_json::Value";
+
+    /**
+     * Drops {@code oneOf} variants that duplicate an earlier one in name and type. The stock generator names a
+     * primitive branch after its title, so {@code oneOf: [{type: string, title: Text}, {type: string, enum: [..],
+     * title: Text}]} renders two {@code Text(String)} variants, which does not compile.
+     */
     @Override
-    public String getHelp() {
-        return "Generates a Rust client library (reqwest, async, middleware, bon builders) with a single supported configuration.";
+    @SuppressWarnings("rawtypes")
+    public CodegenModel fromModel(String name, Schema model) {
+        CodegenModel mdl = super.fromModel(name, model);
+        if (mdl.getComposedSchemas() != null && mdl.getComposedSchemas().getOneOf() != null) {
+            List<CodegenProperty> kept = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            for (CodegenProperty variant : mdl.getComposedSchemas().getOneOf()) {
+                if (seen.add(variant.name + "(" + variant.dataType + ")")) {
+                    kept.add(variant);
+                } else {
+                    LOGGER.warn("{}: {}: dropped duplicate oneOf variant {}({})", GENERATOR_NAME, mdl.classname,
+                            variant.name, variant.dataType);
+                }
+            }
+            if (kept.size() != mdl.getComposedSchemas().getOneOf().size()) {
+                mdl.getComposedSchemas().setOneOf(kept);
+            }
+        }
+        return mdl;
+    }
+
+    /**
+     * Types a property whose schema is a composed schema without typed branches ({@code anyOf: [{}, null]}) as
+     * {@code serde_json::Value}. The stock generator derives the model name {@code AnyOfLessThanGreaterThan} from
+     * {@code anyOf<>} and references it, but never writes it. The property keeps its other flags, so a required
+     * nullable field stays {@code Option<Box<serde_json::Value>>} as before. Every property list of the model holds
+     * its own copies, so all of them are visited.
+     */
+    @Override
+    public ModelsMap postProcessModels(ModelsMap objs) {
+        objs = super.postProcessModels(objs);
+        for (ModelMap model : objs.getModels()) {
+            CodegenModel cm = model.getModel();
+            for (List<CodegenProperty> vars : Arrays.asList(cm.vars, cm.allVars, cm.requiredVars, cm.optionalVars,
+                    cm.readOnlyVars, cm.readWriteVars, cm.parentVars, cm.nonNullableVars)) {
+                if (vars == null) {
+                    continue;
+                }
+                for (CodegenProperty property : vars) {
+                    if (retypeUntypedComposed(property) && vars == cm.vars) {
+                        LOGGER.warn("{}: {}.{}: untyped anyOf is rendered as {}", GENERATOR_NAME, cm.classname,
+                                property.baseName, JSON_VALUE);
+                    }
+                }
+            }
+        }
+        return objs;
+    }
+
+    private static boolean retypeUntypedComposed(CodegenProperty property) {
+        if (property.dataType == null || !property.dataType.contains(UNTYPED_COMPOSED_TYPE)) {
+            return false;
+        }
+        property.dataType = property.dataType.replace(UNTYPED_COMPOSED_TYPE, JSON_VALUE);
+        if (property.datatypeWithEnum != null) {
+            property.datatypeWithEnum = property.datatypeWithEnum.replace(UNTYPED_COMPOSED_TYPE, JSON_VALUE);
+        }
+        if (UNTYPED_COMPOSED.equals(property.complexType)) {
+            property.complexType = null;
+        }
+        return true;
     }
 
     /**

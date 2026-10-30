@@ -9,7 +9,7 @@ Its purpose is to replace the post-processing scripts that
 by moving every fix into the generator itself. The design, type rules and delivery plan live in the
 design doc: [Custom Rust generator: rendering design](https://claude.ai/artifact/ABar8Up91gjVMDHgHL1GE3).
 
-**Status: task 2.0 (OpenAI on openapi-generator 7.25.0).** The generator renders what stock `-g rust` renders
+**Status: Milestone 2 (OpenAI without scripts), group 2.1.** The generator renders what stock `-g rust` renders
 plus the conventions below, which langfuse-client-base used to patch in after generation (its public API is
 byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that keeps
 openai-client-base's type names stable across the openapi-generator 7.15 to 7.25 upgrade.
@@ -62,6 +62,8 @@ Options not listed below (`packageName`, `packageVersion`, `useChrono`, `reqwest
 | `type: integer` with `format: float`/`double` is read as `type: number` (logged) | `normalize_openapi_schema.py` |
 | `titleNaming=false`: schema titles never name, merge or replace types. openapi-generator 7.2x merges titled component schemas of the same shape into one model, swaps an inline schema for a titled component that matches it, and names inline array items after the array's title (`ArrayOfItemsInner5`); with the option off, the generator removes component and array titles before running the inline-model resolver (which it therefore runs itself), so names come from schema keys and property paths as on 7.15. Default `true` (stock behaviour). | the openapi-generator 7.25 upgrade of openai-client-base (95 public types kept) |
 | An optional multipart text part whose schema is a referenced string enum carries the enum's wire value (`param_value.to_string()`); stock 7.25 JSON-encodes every non-primitive part, so `verbose_json` arrived as `"verbose_json"`. Objects still travel as JSON. | the openapi-generator 7.25 upgrade of openai-client-base |
+| A `oneOf` whose branches render to the same variant (two primitive branches with the same `title` give two `Text(String)`) keeps one variant; the drop is logged. | `fix_generator_artifacts.py` (openai-client-base) |
+| An `anyOf` with no typed branch (`anyOf: [{}, {type: null}]`) is `serde_json::Value`; the stock generator references a model named `AnyOfLessThanGreaterThan` that it never writes. | `fix_generator_artifacts.py` (openai-client-base) |
 
 Spec-level decisions stay in the client repos. Spec validation runs in the CLI before any generator
 code, so a keyword the 3.0 validator rejects (Langfuse uses the 3.1 `const`) cannot be repaired here;

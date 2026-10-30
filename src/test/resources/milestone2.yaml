@@ -1,0 +1,53 @@
+openapi: 3.1.0
+info:
+  title: Milestone 2 fixture
+  version: "1"
+paths:
+  /calls:
+    get:
+      operationId: calls_list
+      tags: [calls]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallItem"
+components:
+  schemas:
+    CallItem:
+      type: object
+      required: [id, output, conversation]
+      properties:
+        id:
+          type: string
+        # anyOf of an unconstrained schema and null: the stock generator names a model
+        # "AnyOfLessThanGreaterThan" (anyOf<>) that is never written.
+        output:
+          anyOf:
+            - {}
+            - type: "null"
+        error:
+          anyOf:
+            - {}
+            - type: "null"
+        # Two primitive branches with the same title: the stock generator emits two
+        # variants named Text(String).
+        conversation:
+          oneOf:
+            - type: string
+              title: Text
+            - type: string
+              enum: [auto, none]
+              title: Text
+        closed_reason:
+          oneOf:
+            - type: string
+              title: Text
+            - type: string
+              enum: [done, cancelled]
+              title: Text
+            - type: string
+              enum: [error]
+              title: Text

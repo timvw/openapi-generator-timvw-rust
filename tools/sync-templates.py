@@ -77,6 +77,12 @@ MULTIPART_ENUM_TEXT = (
 )
 
 
+# A required nullable model field is built with `if let Some(x) = f {Some(Box::new(x))} else {None}`;
+# `f.map(Box::new)` is the same value and is what clippy's manual_map asks for.
+CTOR_IF_LET = "if let Some(x) = {{{name}}} {Some(Box::new(x))} else {None}"
+CTOR_MAP = "{{{name}}}.map(Box::new)"
+
+
 def replace_at_most_once(text: str, old: str, new: str, what: str) -> str:
     found = text.count(old)
     if found > 1:
@@ -94,7 +100,10 @@ def wrap_doc_lines(text: str, what: str) -> str:
 EDITS = {
     "lib.mustache": lambda t, w: CRATE_DOCS + t,
     "model.mustache": lambda t, w: wrap_doc_lines(
-        replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), w
+        replace_exactly(
+            replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), CTOR_IF_LET, CTOR_MAP, 1, w
+        ),
+        w,
     ),
     "reqwest/api.mustache": lambda t, w: replace_at_most_once(wrap_doc_lines(
         re.sub(

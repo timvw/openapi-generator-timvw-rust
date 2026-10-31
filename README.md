@@ -9,7 +9,7 @@ Its purpose is to replace the post-processing scripts that
 by moving every fix into the generator itself. The design, type rules and delivery plan live in the
 design doc: [Custom Rust generator: rendering design](https://claude.ai/artifact/ABar8Up91gjVMDHgHL1GE3).
 
-**Status: Milestone 2 (OpenAI without scripts), group 2.1.** The generator renders what stock `-g rust` renders
+**Status: Milestone 2 (OpenAI without scripts), group 2.2.** The generator renders what stock `-g rust` renders
 plus the conventions below, which langfuse-client-base used to patch in after generation (its public API is
 byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that keeps
 openai-client-base's type names stable across the openapi-generator 7.15 to 7.25 upgrade.
@@ -64,6 +64,7 @@ Options not listed below (`packageName`, `packageVersion`, `useChrono`, `reqwest
 | An optional multipart text part whose schema is a referenced string enum carries the enum's wire value (`param_value.to_string()`); stock 7.25 JSON-encodes every non-primitive part, so `verbose_json` arrived as `"verbose_json"`. Objects still travel as JSON. | the openapi-generator 7.25 upgrade of openai-client-base |
 | A `oneOf` whose branches render to the same variant (two primitive branches with the same `title` give two `Text(String)`) keeps one variant; the drop is logged. | `fix_generator_artifacts.py` (openai-client-base) |
 | An `anyOf` with no typed branch (`anyOf: [{}, {type: null}]`) is `serde_json::Value`; the stock generator references a model named `AnyOfLessThanGreaterThan` that it never writes. | `fix_generator_artifacts.py` (openai-client-base) |
+| A required nullable model field is built with `name.map(Box::new)` in `new()`; stock renders `if let Some(x) = name {Some(Box::new(x))} else {None}` (clippy `manual_map`). | `fix_generated_code.py` (openai-client-base) |
 
 Spec-level decisions stay in the client repos. Spec validation runs in the CLI before any generator
 code, so a keyword the 3.0 validator rejects (Langfuse uses the 3.1 `const`) cannot be repaired here;

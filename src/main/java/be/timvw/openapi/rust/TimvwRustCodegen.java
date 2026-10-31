@@ -42,7 +42,9 @@ import java.util.Set;
  *       The generator runs the inline-model resolver itself so that the titles can be removed first;</li>
  *   <li>a {@code oneOf} whose branches render to the same variant (two primitive branches with the same title) keeps
  *       one variant, and an {@code anyOf} with no typed branch ({@code anyOf: [{}, null]}) is {@code serde_json::Value}
- *       instead of a reference to a model that is never written (Milestone 2.1).</li>
+ *       instead of a reference to a model that is never written (Milestone 2.1);</li>
+ *   <li>a required nullable model field is built with {@code name.map(Box::new)} in {@code new()} rather than an
+ *       if-let/else expression (Milestone 2.2).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under

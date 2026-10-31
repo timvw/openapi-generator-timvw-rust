@@ -51,6 +51,9 @@ class Milestone2Test {
         assertTrue(item.contains("pub output: Option<Box<serde_json::Value>>,"), item);
         assertTrue(item.contains("pub error: Option<Option<Box<serde_json::Value>>>,"), item);
         assertTrue(item.contains("output: Option<serde_json::Value>,"), item);
+        // Milestone 2.2: a required nullable model field is built with map(Box::new), not if-let/else.
+        assertTrue(item.contains("output: output.map(Box::new),"), item);
+        assertFalse(item.contains("if let Some(x) = output"), item);
         assertFalse(Files.exists(output.resolve("src/models/any_of_less_than_greater_than.rs")));
         String mod = read("src/models/mod.rs");
         assertFalse(mod.contains("any_of_less_than_greater_than"), mod);

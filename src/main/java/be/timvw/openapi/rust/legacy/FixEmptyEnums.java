@@ -334,25 +334,32 @@ public final class FixEmptyEnums implements Rewrite {
         if (!m.find()) {
             return null;
         }
-        int end = closingBrace(content, m.end() - 1);
+        int end = Utils.closingBrace(content, m.end() - 1);
         if (end < 0) {
             return null;
         }
         return content.substring(0, m.start()) + newEnumSrc + content.substring(end + 1);
     }
 
-    /** The index of the brace that closes the one at {@code open}, or -1. */
-    static int closingBrace(String content, int open) {
-        int depth = 0;
-        for (int i = open; i < content.length(); i++) {
-            char c = content.charAt(i);
-            if (c == '{') {
-                depth++;
-            } else if (c == '}' && --depth == 0) {
-                return i;
-            }
+    /**
+     * The stock {@code impl Default} of a discriminated enum with struct variants builds the first variant with a
+     * struct literal ({@code Self::A { id: Default::default(), .. }}); once the variants are rebuilt as tuple
+     * variants that impl does not compile, and it goes, like the impls of the enums that were rendered empty.
+     */
+    static String dropStructVariantDefault(String enumName, String content) {
+        Matcher header = Pattern.compile("impl Default for " + Pattern.quote(enumName) + " \\{", PY).matcher(content);
+        if (!header.find()) {
+            return content;
         }
-        return -1;
+        int end = Utils.closingBrace(content, header.end() - 1);
+        if (end < 0 || !Pattern.compile("Self::\\w+ \\{", PY).matcher(content.substring(header.end(), end)).find()) {
+            return content;
+        }
+        int from = end + 1;
+        while (from < content.length() && Character.isWhitespace(content.charAt(from))) {
+            from++;
+        }
+        return content.substring(0, header.start()) + content.substring(from);
     }
 
     /** The variant lines both branches of {@code fix_empty_enum} build; only the empty case upper-cases a lower first letter. */
@@ -399,7 +406,7 @@ public final class FixEmptyEnums implements Rewrite {
                 String newEnum = buildEnum(enumName, enumInfo, buildVariants(enumName, enumInfo, false));
                 String replaced = replaceEnumBlock(enumName, content, newEnum);
                 if (replaced != null) {
-                    Files.writeString(enumFile, replaced);
+                    Files.writeString(enumFile, dropStructVariantDefault(enumName, replaced));
                     return true;
                 }
             }

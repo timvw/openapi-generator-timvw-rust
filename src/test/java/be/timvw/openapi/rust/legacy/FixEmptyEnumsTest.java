@@ -36,7 +36,29 @@ class FixEmptyEnumsTest {
 
     @Test
     void closingBraceSkipsNestedBlocks() {
-        assertEquals(8, FixEmptyEnums.closingBrace("{a{b}{c}}d", 0));
-        assertEquals(-1, FixEmptyEnums.closingBrace("{a{b}", 0));
+        assertEquals(8, Utils.closingBrace("{a{b}{c}}d", 0));
+        assertEquals(-1, Utils.closingBrace("{a{b}", 0));
+    }
+
+    @Test
+    void removeBlocksTakesNestedBodiesWhole() {
+        java.util.regex.Pattern header = java.util.regex.Pattern.compile("impl Default for (\\w+) \\{");
+        String impl = "impl Default for Item {\n    fn default() -> Self {\n        Self::A {\n            id: Default::default(),\n        }\n    }\n}\n";
+        assertEquals("pub enum Item {}\n\n\n\ntail\n",
+                Utils.removeBlocks("pub enum Item {}\n\n" + impl + "\ntail\n", header, false));
+        assertEquals("a\ntail\n", Utils.removeBlocks("a\n" + impl + "\n  tail\n", header, true));
+        assertEquals("impl Default for Item {\n", Utils.removeBlocks("impl Default for Item {\n", header, true));
+    }
+
+    @Test
+    void dropsTheStockDefaultOfStructVariantsOnly() {
+        String structDefault = "pub enum Item {\n    A(Box<models::A>),\n}\n\nimpl Default for Item {\n"
+                + "    fn default() -> Self {\n        Self::A {\n            id: Default::default(),\n        }\n"
+                + "    }\n}\n\nrest\n";
+        assertEquals("pub enum Item {\n    A(Box<models::A>),\n}\n\nrest\n",
+                FixEmptyEnums.dropStructVariantDefault("Item", structDefault));
+        String tupleDefault = "impl Default for Item {\n    fn default() -> Self {\n        Self::A(Default::default())\n"
+                + "    }\n}\n";
+        assertEquals(tupleDefault, FixEmptyEnums.dropStructVariantDefault("Item", tupleDefault));
     }
 }

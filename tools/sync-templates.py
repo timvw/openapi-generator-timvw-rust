@@ -288,14 +288,29 @@ def api_template(t: str, w: str) -> str:
     return t
 
 
+# Milestone 3.1. Every model reference is boxed unless the stock avoidBoxedModels flag is set (which timvw-rust
+# rejects); the generator decides per property instead and sets x-rust-box (TimvwRustCodegen, BoxRules).
+BOX_OPEN = "{{^avoidBoxedModels}}"
+BOX_CLOSE = "{{/avoidBoxedModels}}"
+PER_PROPERTY_BOX_OPEN = "{{#vendorExtensions.x-rust-box}}"
+PER_PROPERTY_BOX_CLOSE = "{{/vendorExtensions.x-rust-box}}"
+
+
+def per_property_box(text: str, what: str) -> str:
+    opens, closes = text.count(BOX_OPEN), text.count(BOX_CLOSE)
+    if opens == 0 or opens != closes or "{{#avoidBoxedModels}}" in text:
+        raise SystemExit(f"{what}: expected matching {BOX_OPEN} sections, found {opens} open / {closes} close")
+    return text.replace(BOX_OPEN, PER_PROPERTY_BOX_OPEN).replace(BOX_CLOSE, PER_PROPERTY_BOX_CLOSE)
+
+
 EDITS = {
     "lib.mustache": lambda t, w: CRATE_DOCS + t,
-    "model.mustache": lambda t, w: wrap_doc_lines(
+    "model.mustache": lambda t, w: per_property_box(wrap_doc_lines(
         replace_exactly(
             replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), CTOR_IF_LET, CTOR_MAP, 1, w
         ),
         w,
-    ),
+    ), w),
     "reqwest/api.mustache": lambda t, w: api_template(t, w),
     "reqwest/api_mod.mustache": lambda t, w: replace_exactly(replace_exactly(
         replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w), API_MOD_CONFIGURATION,

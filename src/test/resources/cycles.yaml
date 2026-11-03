@@ -1,0 +1,79 @@
+openapi: 3.0.3
+info:
+  title: cycles
+  version: 1.0.0
+paths:
+  /trees:
+    get:
+      operationId: getTree
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tree"
+components:
+  schemas:
+    Tree:
+      type: object
+      required: [root, leaf]
+      properties:
+        root:
+          $ref: "#/components/schemas/Node"
+        leaf:
+          $ref: "#/components/schemas/Leaf"
+        maybe_leaf:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Leaf"
+        expr:
+          $ref: "#/components/schemas/Expr"
+    Leaf:
+      type: object
+      properties:
+        label:
+          type: string
+    Node:
+      type: object
+      required: [next]
+      properties:
+        parent:
+          $ref: "#/components/schemas/Node"
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/Node"
+        next:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Node"
+        leaf:
+          $ref: "#/components/schemas/Leaf"
+    Ping:
+      type: object
+      properties:
+        pong:
+          $ref: "#/components/schemas/Pong"
+    Pong:
+      type: object
+      properties:
+        ping:
+          $ref: "#/components/schemas/Ping"
+        leaf:
+          $ref: "#/components/schemas/Leaf"
+    Expr:
+      oneOf:
+        - $ref: "#/components/schemas/Literal"
+        - $ref: "#/components/schemas/Neg"
+    Literal:
+      type: object
+      properties:
+        value:
+          type: integer
+    Neg:
+      type: object
+      required: [inner]
+      properties:
+        inner:
+          $ref: "#/components/schemas/Expr"

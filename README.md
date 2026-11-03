@@ -9,7 +9,7 @@ Its purpose is to replace the post-processing scripts that
 by moving every fix into the generator itself. The design, type rules and delivery plan live in the
 design doc: [Custom Rust generator: rendering design](https://claude.ai/artifact/ABar8Up91gjVMDHgHL1GE3).
 
-**Status: Milestone 2 (OpenAI without scripts), group 2.3.** The generator renders what stock `-g rust` renders
+**Status: Milestone 2 (OpenAI without scripts), group 2.6.** The generator renders what stock `-g rust` renders
 plus the conventions below, which langfuse-client-base used to patch in after generation (its public API is
 byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that keeps
 openai-client-base's type names stable across the openapi-generator 7.15 to 7.25 upgrade.
@@ -69,6 +69,7 @@ Options not listed below (`packageName`, `packageVersion`, `useChrono`, `reqwest
 | `webhookModule=<Tag>`: webhook operations are tagged `<Tag>` and generated into their own API module, declared in `src/apis/mod.rs`; a path operation already carrying the tag fails generation. `webhookModuleReexport=true`: `default_api` re-exports that module (stock writes webhooks into `default_api`, where a webhook replaces the untagged path operations). | `route_webhook_apis.py`, `preserve_webhook_api.py` (openai-client-base) |
 | `stringIdSchemas`: component schemas rendered as `String`. `stringIdProperties`: property names (`name` or `name=fallback_description`) rendered as `String` wherever they reference one of those schemas or are a union, directly or inherited through `allOf`. `stringProperties`: `Schema.property` entries rendered as a bare `String`. `jsonValueSchemas`: component schemas rendered as `serde_json::Value`. | `fix_model_fields.py`, `simplified_schemas.py`, `patch_spec_rust_compat.py` (openai-client-base) |
 | Object-typed query parameters (inline or a reference to an object schema) are sent as strings, except those listed in `deepObjectQueryParameters` (`<path>?<name>`), which are sent in deepObject style. `resetQueryParameterStyle=true` gives the other query parameters the default style (`form`, exploded), so arrays go as repeated parameters whatever the spec says (openai-client-base's current wire format). | `patch_spec_rust_compat.py` (openai-client-base) |
+| `boxResponseError=true`: `Error::ResponseError` holds `Box<ResponseContent<T>>` and every API function builds it with `Box::new` (clippy `result_large_err`). `apiLintAllows=<lints>`: API modules and `configuration.rs` start with `#![allow(<lints>)]`. `userAgentFromPackage=true`: the default user agent is `<packageName>/<crate version>` (`env!("CARGO_PKG_VERSION")`) instead of `OpenAPI-Generator/<spec version>/rust`. | `box_response_errors.py`, `fix_clippy_warnings.py`, the user-agent edit of `patch_generated.rs.sh` (openai-client-base) |
 | `preprocessedSpecFile=<output-relative path>`: the spec as it stands after the rules above is written there as JSON, for scripts that still read it and for debugging. | the `target/specs/l2_rust_compatible.*` files the scripts produced |
 
 Spec-level decisions stay in the client repos. Spec validation runs in the CLI before any generator
@@ -102,6 +103,9 @@ Our own options:
 | `webhookModuleReexport` | `false` | `default_api` re-exports the webhook module |
 | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `jsonValueSchemas`, `deepObjectQueryParameters` | empty | lists; entries separated by `\|`, `;` or whitespace on the command line (a comma ends an `--additional-properties` value), or a JSON array in a `-c` config file |
 | `resetQueryParameterStyle` | `false` | query parameters not listed in `deepObjectQueryParameters` get the default style (`form`, exploded) |
+| `boxResponseError` | `false` | box the `ResponseError` payload |
+| `apiLintAllows` | unset | `#![allow(..)]` contents for API modules and `configuration.rs` |
+| `userAgentFromPackage` | `false` | default user agent from `packageName` and the crate version |
 | `preprocessedSpecFile` | unset | output-relative path the preprocessed spec is written to, as JSON |
 
 These options are rejected whenever they are set, whatever the value:

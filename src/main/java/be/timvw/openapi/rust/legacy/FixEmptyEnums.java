@@ -321,16 +321,45 @@ public final class FixEmptyEnums implements Rewrite {
         return false;
     }
 
-    /** {@code replace_enum_block}. */
-    private static String replaceEnumBlock(String enumName, String content, String newEnumSrc) {
+    /**
+     * {@code replace_enum_block}. The script matched the block up to the first {@code }}, which cuts an enum with
+     * struct variants (a discriminated {@code anyOf} renders its variants inline) after the first variant and leaves
+     * the rest behind as unparsable text; the block here ends at the brace that closes the enum.
+     */
+    static String replaceEnumBlock(String enumName, String content, String newEnumSrc) {
         // enum_name is interpolated unescaped into the pattern, as in the script
-        Pattern pattern = Pattern.compile("(#[^\\n]*\\n)*\\s*pub enum " + enumName + " \\{[\\s\\S]*?\\}",
+        Pattern pattern = Pattern.compile("(#[^\\n]*\\n)*\\s*pub enum " + enumName + " \\{",
                 PY | Pattern.MULTILINE);
         Matcher m = pattern.matcher(content);
         if (!m.find()) {
             return null;
         }
-        return content.substring(0, m.start()) + newEnumSrc + content.substring(m.end());
+        int end = Utils.closingBrace(content, m.end() - 1);
+        if (end < 0) {
+            return null;
+        }
+        return content.substring(0, m.start()) + newEnumSrc + content.substring(end + 1);
+    }
+
+    /**
+     * The stock {@code impl Default} of a discriminated enum with struct variants builds the first variant with a
+     * struct literal ({@code Self::A { id: Default::default(), .. }}); once the variants are rebuilt as tuple
+     * variants that impl does not compile, and it goes, like the impls of the enums that were rendered empty.
+     */
+    static String dropStructVariantDefault(String enumName, String content) {
+        Matcher header = Pattern.compile("impl Default for " + Pattern.quote(enumName) + " \\{", PY).matcher(content);
+        if (!header.find()) {
+            return content;
+        }
+        int end = Utils.closingBrace(content, header.end() - 1);
+        if (end < 0 || !Pattern.compile("Self::\\w+ \\{", PY).matcher(content.substring(header.end(), end)).find()) {
+            return content;
+        }
+        int from = end + 1;
+        while (from < content.length() && Character.isWhitespace(content.charAt(from))) {
+            from++;
+        }
+        return content.substring(0, header.start()) + content.substring(from);
     }
 
     /** The variant lines both branches of {@code fix_empty_enum} build; only the empty case upper-cases a lower first letter. */
@@ -377,7 +406,7 @@ public final class FixEmptyEnums implements Rewrite {
                 String newEnum = buildEnum(enumName, enumInfo, buildVariants(enumName, enumInfo, false));
                 String replaced = replaceEnumBlock(enumName, content, newEnum);
                 if (replaced != null) {
-                    Files.writeString(enumFile, replaced);
+                    Files.writeString(enumFile, dropStructVariantDefault(enumName, replaced));
                     return true;
                 }
             }

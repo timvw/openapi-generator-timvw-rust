@@ -171,8 +171,8 @@ public class FixGeneratedCode implements Rewrite {
         for (Path filePath : rsFiles(modelsDir)) {
             String content = read(filePath);
             if (re("pub enum \\w+ \\{\\s*\\}").matcher(content).find()) {
-                String newContent = sub(Pattern.compile("impl Default for (\\w+) \\{[^}]*\\}\\s*\\}\\s*",
-                        FLAGS | Pattern.DOTALL), content, m -> "");
+                // The script's pattern assumed a body without braces; the whole impl block goes, as intended.
+                String newContent = Utils.removeBlocks(content, re("impl Default for (\\w+) \\{"), true);
                 newContent = sub(re("(pub enum \\w+ \\{\\s*\\})\\s*\\n\\s*\\}"), newContent, m -> m.group(1));
                 if (!newContent.equals(content)) {
                     write(filePath, newContent);
@@ -266,8 +266,9 @@ public class FixGeneratedCode implements Rewrite {
                         re("\\w+\\((?:Box<)?(?:models::)?(\\w+)>?\\)"), enumMatch.group(1), 1));
                 variantTypes.retainAll(nonDefaultTypes);
                 if (!variantTypes.isEmpty()) {
-                    String newContent = sub(Pattern.compile("impl Default for " + Pattern.quote(enumName)
-                            + "\\s*\\{[^}]*\\{[^}]*\\}[^}]*\\}", FLAGS | Pattern.DOTALL), content, m -> "");
+                    // The script's pattern assumed one block inside the impl; a struct-variant default has two.
+                    String newContent = Utils.removeBlocks(content,
+                            re("impl Default for " + Pattern.quote(enumName) + "\\s*\\{"), false);
                     if (!newContent.equals(content)) {
                         write(filePath, newContent);
                         nonDefaultTypes.add(enumName);

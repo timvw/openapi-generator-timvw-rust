@@ -274,7 +274,7 @@ public class FixUntaggedUnions implements Rewrite {
                             || refType.equals("ChatCompletionRequestDeveloperMessageContentPart")) {
                         refType = "ChatCompletionRequestMessageContentPartText";
                     }
-                    variants.add(new Variant(sanitizeVariantName(title), "Vec<models::" + refType + ">"));
+                    variants.add(new Variant(sanitizeVariantName(title), "Vec<" + modelType(refType, refType, schemas) + ">"));
                 } else if ("string".equals(map(itemsDef).get("type"))) {
                     variants.add(new Variant("ArrayOfStrings", "Vec<String>"));
                 } else if ("integer".equals(map(itemsDef).get("type"))) {
@@ -295,13 +295,14 @@ public class FixUntaggedUnions implements Rewrite {
                         Object arrayItems = get(map(schemas.get(refName)), "items", new LinkedHashMap<>());
                         if (in("$ref", arrayItems)) {
                             String innerType = lastSegment((String) map(arrayItems).get("$ref"));
-                            variants.add(new Variant(sanitizeVariantName(title), "Vec<models::" + innerType + ">"));
+                            variants.add(new Variant(sanitizeVariantName(title),
+                                    "Vec<" + modelType(innerType, innerType, schemas) + ">"));
                         } else {
                             variants.add(new Variant(sanitizeVariantName(title), "Vec<serde_json::Value>"));
                         }
                     } else {
-                        refName = convertToRustTypeName(refName);
-                        variants.add(new Variant(sanitizeVariantName(title), "models::" + refName));
+                        variants.add(new Variant(sanitizeVariantName(title),
+                                modelType(refName, convertToRustTypeName(refName), schemas)));
                     }
                 } else {
                     Object props = get(item, "properties", new LinkedHashMap<>());
@@ -315,6 +316,33 @@ public class FixUntaggedUnions implements Rewrite {
             }
         }
         return new Analysis(variants, enumTypes);
+    }
+
+    /** A free-form map, which the generator renders as a map and writes no model file for. */
+    static final String FREE_FORM_MAP = "std::collections::HashMap<String, serde_json::Value>";
+
+    /**
+     * The Rust type of a referenced component schema: {@code models::<rustName>}, or {@link #FREE_FORM_MAP} for a
+     * free-form object ({@code type: object} without properties, composition or a typed {@code additionalProperties}),
+     * which the stock generator renders the same way everywhere else. The script always wrote {@code models::}, which
+     * does not compile for such a schema; no union of the spec it ran on referenced one.
+     */
+    static String modelType(String schemaName, String rustName, Map<String, Object> schemas) {
+        Object def = schemas.get(schemaName);
+        if (def instanceof Map && isFreeFormObject(map(def))) {
+            return FREE_FORM_MAP;
+        }
+        return "models::" + rustName;
+    }
+
+    private static boolean isFreeFormObject(Map<String, Object> schema) {
+        Object additional = schema.get("additionalProperties");
+        return "object".equals(schema.get("type"))
+                && !truthy(schema.get("properties"))
+                && !schema.containsKey("allOf") && !schema.containsKey("anyOf") && !schema.containsKey("oneOf")
+                && !schema.containsKey("enum")
+                && (additional == null || Boolean.TRUE.equals(additional)
+                        || (additional instanceof Map && map(additional).isEmpty()));
     }
 
     /** {@code create_untagged_enum}: the untagged enum with Default, constructors, From and Display impls. */

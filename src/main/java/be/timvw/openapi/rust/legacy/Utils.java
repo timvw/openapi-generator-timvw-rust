@@ -1,5 +1,7 @@
 package be.timvw.openapi.rust.legacy;
 
+import java.util.regex.Matcher;
+
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -114,5 +116,44 @@ final class Utils {
             i++;
         }
         return sb.toString();
+    }
+
+    /** The index of the brace that closes the one at {@code open}, or -1. */
+    static int closingBrace(String content, int open) {
+        int depth = 0;
+        for (int i = open; i < content.length(); i++) {
+            char c = content.charAt(i);
+            if (c == '{') {
+                depth++;
+            } else if (c == '}' && --depth == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Removes every block that starts with a match of {@code header} (ending in its opening brace) and runs to the
+     * matching closing brace; with {@code trailingWhitespace} the whitespace after the block goes too. A header
+     * without a closing brace is left alone.
+     */
+    static String removeBlocks(String content, Pattern header, boolean trailingWhitespace) {
+        StringBuilder out = new StringBuilder();
+        Matcher m = header.matcher(content);
+        int from = 0;
+        while (from <= content.length() && m.find(from)) {
+            int end = closingBrace(content, m.end() - 1);
+            if (end < 0) {
+                break;
+            }
+            out.append(content, from, m.start());
+            from = end + 1;
+            if (trailingWhitespace) {
+                while (from < content.length() && Character.isWhitespace(content.charAt(from))) {
+                    from++;
+                }
+            }
+        }
+        return out.append(content.substring(Math.min(from, content.length()))).toString();
     }
 }

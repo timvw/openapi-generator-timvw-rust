@@ -321,16 +321,38 @@ public final class FixEmptyEnums implements Rewrite {
         return false;
     }
 
-    /** {@code replace_enum_block}. */
-    private static String replaceEnumBlock(String enumName, String content, String newEnumSrc) {
+    /**
+     * {@code replace_enum_block}. The script matched the block up to the first {@code }}, which cuts an enum with
+     * struct variants (a discriminated {@code anyOf} renders its variants inline) after the first variant and leaves
+     * the rest behind as unparsable text; the block here ends at the brace that closes the enum.
+     */
+    static String replaceEnumBlock(String enumName, String content, String newEnumSrc) {
         // enum_name is interpolated unescaped into the pattern, as in the script
-        Pattern pattern = Pattern.compile("(#[^\\n]*\\n)*\\s*pub enum " + enumName + " \\{[\\s\\S]*?\\}",
+        Pattern pattern = Pattern.compile("(#[^\\n]*\\n)*\\s*pub enum " + enumName + " \\{",
                 PY | Pattern.MULTILINE);
         Matcher m = pattern.matcher(content);
         if (!m.find()) {
             return null;
         }
-        return content.substring(0, m.start()) + newEnumSrc + content.substring(m.end());
+        int end = closingBrace(content, m.end() - 1);
+        if (end < 0) {
+            return null;
+        }
+        return content.substring(0, m.start()) + newEnumSrc + content.substring(end + 1);
+    }
+
+    /** The index of the brace that closes the one at {@code open}, or -1. */
+    static int closingBrace(String content, int open) {
+        int depth = 0;
+        for (int i = open; i < content.length(); i++) {
+            char c = content.charAt(i);
+            if (c == '{') {
+                depth++;
+            } else if (c == '}' && --depth == 0) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** The variant lines both branches of {@code fix_empty_enum} build; only the empty case upper-cases a lower first letter. */

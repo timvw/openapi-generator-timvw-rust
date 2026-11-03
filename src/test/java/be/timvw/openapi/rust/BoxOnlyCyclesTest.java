@@ -89,6 +89,14 @@ class BoxOnlyCyclesTest {
     }
 
     @Test
+    void discriminatedUnionVariantsAreHeldByValue() throws IOException {
+        String shape = read(cycles, "shape");
+        assertTrue(shape.contains("Circle(models::Circle),"), shape);
+        assertTrue(shape.contains("Square(models::Square),"), shape);
+        assertTrue(read(stock, "shape").contains("Circle(Box<models::Circle>),"));
+    }
+
+    @Test
     void withoutTheOptionEveryModelReferenceIsBoxed() throws IOException {
         String tree = read(stock, "tree");
         assertTrue(tree.contains("pub root: Box<models::Node>,"), tree);

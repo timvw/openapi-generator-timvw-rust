@@ -33,6 +33,7 @@ import java.util.Set;
  */
 final class BoxRules {
 
+
     /** Vendor extension on a {@link CodegenProperty}: render this model reference as {@code Box<T>}. */
     static final String BOX = "x-rust-box";
 
@@ -57,9 +58,10 @@ final class BoxRules {
      *
      * @param boxOnlyCycles {@code false} boxes every model reference (stock); {@code true} only references inside a
      *                      cycle
-     * @return the number of model references that are boxed, counted on {@code vars} and {@code oneOf} variants
+     * @return model name to strongly connected component (empty without {@code boxOnlyCycles}), for
+     *         {@link #inCycle}
      */
-    static int mark(Map<String, ModelsMap> allModels, boolean boxOnlyCycles) {
+    static Map<String, Integer> mark(Map<String, ModelsMap> allModels, boolean boxOnlyCycles) {
         Map<String, CodegenModel> byName = new LinkedHashMap<>();
         for (ModelsMap models : allModels.values()) {
             for (ModelMap mm : models.getModels()) {
@@ -69,23 +71,20 @@ final class BoxRules {
         }
 
         Map<String, Integer> component = boxOnlyCycles ? components(byName) : Map.of();
-        int boxed = 0;
         for (CodegenModel cm : byName.values()) {
             for (List<CodegenProperty> list : propertyLists(cm)) {
                 for (CodegenProperty p : list) {
                     boolean box = !boxOnlyCycles || sameComponent(component, cm.classname, target(p, byName));
                     p.vendorExtensions.put(BOX, box);
-                    if (box && p.isModel && (list == cm.vars || isOneOf(cm, list))) {
-                        boxed++;
-                    }
                 }
             }
         }
-        return boxed;
+        return component;
     }
 
-    private static boolean isOneOf(CodegenModel cm, List<CodegenProperty> list) {
-        return cm.getComposedSchemas() != null && list == cm.getComposedSchemas().getOneOf();
+    /** Whether a reference from {@code holder} to {@code target} lies on a cycle of the components {@link #mark} found. */
+    static boolean inCycle(Map<String, Integer> component, String holder, String target) {
+        return sameComponent(component, holder, target);
     }
 
     private static boolean sameComponent(Map<String, Integer> component, String from, String to) {

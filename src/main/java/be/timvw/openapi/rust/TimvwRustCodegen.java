@@ -158,6 +158,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private String preprocessedSpecJson;
     private List<String> fileProperties = new ArrayList<>();
     private boolean boxOnlyCycles;
+    private Map<String, Integer> boxComponents = Map.of();
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -321,10 +322,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     @Override
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
         objs = super.postProcessAllModels(objs);
-        int boxed = BoxRules.mark(objs, boxOnlyCycles);
-        if (boxOnlyCycles) {
-            LOGGER.info("{}: {} model references are boxed to break cycles", GENERATOR_NAME, boxed);
-        }
+        boxComponents = BoxRules.mark(objs, boxOnlyCycles);
         return objs;
     }
 
@@ -652,13 +650,22 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         preprocessedSpecJson);
                 be.timvw.openapi.rust.legacy.LegacyModelRewrites.run(
                         new be.timvw.openapi.rust.legacy.LegacyContext(java.nio.file.Paths.get(outputFolder), raw,
-                                preprocessed),
+                                preprocessed, boxPolicy()),
                         msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg));
             } catch (java.io.IOException e) {
                 throw new IllegalStateException(GENERATOR_NAME + ": legacy model rewrites failed", e);
             }
         }
         super.postProcess();
+    }
+
+    /** What the legacy rewrites box: every model payload, or with {@code boxOnlyCycles} only those on a cycle. */
+    private be.timvw.openapi.rust.legacy.BoxPolicy boxPolicy() {
+        if (!boxOnlyCycles) {
+            return be.timvw.openapi.rust.legacy.BoxPolicy.ALWAYS;
+        }
+        Map<String, Integer> components = boxComponents;
+        return (holder, target) -> BoxRules.inCycle(components, holder, target);
     }
 
     /** {@code default_api} re-exports the webhook module when {@code webhookModuleReexport} is set. */

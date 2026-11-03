@@ -77,3 +77,28 @@ components:
       properties:
         inner:
           $ref: "#/components/schemas/Expr"
+    Shape:
+      oneOf:
+        - $ref: "#/components/schemas/Circle"
+        - $ref: "#/components/schemas/Square"
+      discriminator:
+        propertyName: kind
+        mapping:
+          circle: "#/components/schemas/Circle"
+          square: "#/components/schemas/Square"
+    Circle:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+        radius:
+          type: number
+    Square:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+        side:
+          type: number

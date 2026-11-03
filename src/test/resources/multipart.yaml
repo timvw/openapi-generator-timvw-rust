@@ -1,0 +1,79 @@
+openapi: 3.1.0
+info:
+  title: Multipart fixture
+  version: "1"
+paths:
+  /uploads:
+    post:
+      operationId: upload_create
+      tags: [uploads]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, name, mode]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                mask:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+                mode:
+                  $ref: "#/components/schemas/Mode"
+                tags:
+                  type: array
+                  items:
+                    type: string
+                options:
+                  $ref: "#/components/schemas/Options"
+                sdp:
+                  type: string
+                image:
+                  anyOf:
+                    - type: string
+                      format: binary
+                    - type: array
+                      items:
+                        type: string
+                        format: binary
+            encoding:
+              sdp:
+                contentType: application/sdp
+              options:
+                contentType: application/json
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Options"
+  /plain:
+    get:
+      operationId: plain_get
+      tags: [plain]
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Mode:
+      type: object
+      properties:
+        kind:
+          type: string
+    Options:
+      type: object
+      properties:
+        verbose:
+          type: boolean
+    Picture:
+      type: object
+      properties:
+        image:
+          type: string

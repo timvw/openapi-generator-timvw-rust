@@ -6,7 +6,7 @@
 use reqwest;
 use serde::{Deserialize, Serialize, de::Error as _};
 use crate::{apis::ResponseContent, models};
-use super::{Error, configuration, ContentType};
+use super::{Error, configuration, ContentType{{#multipartHelperImport}}, multipart_helper{{/multipartHelperImport}}};
 {{#operations}}
 {{#operation}}
 {{#vendorExtensions.useAsyncFileStream}}
@@ -36,7 +36,7 @@ pub struct {{{operationIdCamelCase}}}Params {
     ### UUIDs
     }}{{#isUuid}}{{#isArray}}Vec<{{/isArray}}String{{#isArray}}>{{/isArray}}{{/isUuid}}{{!
     ### Models and primative types
-    }}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}models::{{/isContainer}}{{/isPrimitiveType}}{{{dataType}}}{{/isUuid}}{{/isString}}{{!
+    }}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}{{^vendorExtensions.x-rust-type-qualified}}models::{{/vendorExtensions.x-rust-type-qualified}}{{/isContainer}}{{/isPrimitiveType}}{{{dataType}}}{{/isUuid}}{{/isString}}{{!
     ### Option End
     }}{{^required}}>{{/required}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{!
     ### Comma for next arguement
@@ -134,7 +134,7 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
 ### UUIDs
 }}{{#isUuid}}{{#isArray}}Vec<{{/isArray}}&str{{#isArray}}>{{/isArray}}{{/isUuid}}{{!
 ### Models and primative types
-}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}models::{{/isContainer}}{{/isPrimitiveType}}{{{dataType}}}{{/isUuid}}{{/isString}}{{!
+}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}{{^vendorExtensions.x-rust-type-qualified}}models::{{/vendorExtensions.x-rust-type-qualified}}{{/isContainer}}{{/isPrimitiveType}}{{{dataType}}}{{/isUuid}}{{/isString}}{{!
 ### Option End
 }}{{^required}}>{{/required}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{!
 ### Comma for next arguement
@@ -366,6 +366,105 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     {{/supportTokenSource}}
     {{/authMethods}}
     {{/hasAuthMethods}}
+{{#multipartHelper}}
+    {{#isMultipart}}
+    {{#hasFormParams}}
+    let mut multipart_form = reqwest::multipart::Form::new();
+    {{#formParams}}
+    {{#isFile}}
+    {{#required}}
+    {{#isArray}}
+    for value in &{{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+    }
+    {{/isArray}}
+    {{^isArray}}
+    // Add file to multipart form
+    multipart_form = multipart_helper::add_file_to_form(multipart_form, &{{{vendorExtensions.x-rust-param-identifier}}}, "{{{baseName}}}")?;
+    {{/isArray}}
+    {{/required}}
+    {{^required}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        {{#isArray}}
+        for value in param_value {
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+        }
+        {{/isArray}}
+        {{^isArray}}
+        // Add file to multipart form
+        multipart_form = multipart_helper::add_file_to_form(multipart_form, param_value, "{{{baseName}}}")?;
+        {{/isArray}}
+    }
+    {{/required}}
+    {{/isFile}}
+    {{^isFile}}
+    {{#vendorExtensions.x-multipart-json-items}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        for item in param_value {
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(item)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+        }
+    }
+    {{/vendorExtensions.x-multipart-json-items}}
+    {{#vendorExtensions.x-multipart-json-value}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form = multipart_helper::add_schema_value_to_form(
+            multipart_form,
+            "{{{baseName}}}",
+            serde_json::to_value(param_value)?,
+            {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+        )?;
+    }
+    {{/vendorExtensions.x-multipart-json-value}}
+    {{#vendorExtensions.x-multipart-text-media-type}}
+    {{#required}}
+    multipart_form = multipart_helper::add_schema_value_to_form(
+        multipart_form,
+        "{{{baseName}}}",
+        serde_json::Value::String({{{vendorExtensions.x-rust-param-identifier}}}.to_string()),
+        Some("{{{vendorExtensions.x-multipart-content-type}}}"),
+    )?;
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form = multipart_helper::add_schema_value_to_form(
+            multipart_form,
+            "{{{baseName}}}",
+            serde_json::Value::String(param_value.to_string()),
+            Some("{{{vendorExtensions.x-multipart-content-type}}}"),
+        )?;
+    }
+    {{/required}}
+    {{/vendorExtensions.x-multipart-text-media-type}}
+    {{#vendorExtensions.x-multipart-stock}}
+    {{#required}}
+    {{^isNullable}}
+    multipart_form = multipart_form.text("{{{baseName}}}", {{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}.into_iter().map(|p| p.to_string()).collect::<Vec<String>>().join(","){{/isArray}}.to_string());
+    {{/isNullable}}
+    {{#isNullable}}
+    match {{{vendorExtensions.x-rust-param-identifier}}} {
+        Some(param_value) => { multipart_form = multipart_form.text("{{{baseName}}}", param_value{{#isArray}}.into_iter().map(|p| p.to_string()).collect::<Vec<String>>().join(","){{/isArray}}.to_string()); },
+        None => { multipart_form = multipart_form.text("{{{baseName}}}", ""); },
+    }
+    {{/isNullable}}
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value{{#isArray}}.into_iter().map(|p| p.to_string()).collect::<Vec<String>>().join(","){{/isArray}}.to_string());
+    }
+    {{/required}}
+    {{/vendorExtensions.x-multipart-stock}}
+    {{/isFile}}
+    {{/formParams}}
+    req_builder = req_builder.multipart(multipart_form);
+    {{/hasFormParams}}
+    {{/isMultipart}}
+{{/multipartHelper}}
+{{^multipartHelper}}
     {{#isMultipart}}
     {{#hasFormParams}}
     let mut multipart_form = reqwest{{^supportAsync}}::blocking{{/supportAsync}}::multipart::Form::new();
@@ -415,6 +514,7 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     req_builder = req_builder.multipart(multipart_form);
     {{/hasFormParams}}
     {{/isMultipart}}
+{{/multipartHelper}}
     {{^isMultipart}}
     {{#hasFormParams}}
     let mut multipart_form_params = std::collections::HashMap::new();

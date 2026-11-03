@@ -543,3 +543,6 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
 
 {{/operation}}
 {{/operations}}
+{{#webhookReexport}}
+pub use super::{{{.}}}::*;
+{{/webhookReexport}}

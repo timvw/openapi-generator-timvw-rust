@@ -7,6 +7,7 @@ import org.openapitools.codegen.CodegenModel;
 import org.openapitools.codegen.CodegenProperty;
 import org.openapitools.codegen.model.ModelMap;
 import org.openapitools.codegen.model.ModelsMap;
+import org.openapitools.codegen.model.OperationsMap;
 import org.openapitools.codegen.InlineModelResolverAccess;
 import org.openapitools.codegen.CliOption;
 import org.openapitools.codegen.CodegenConstants;
@@ -44,7 +45,11 @@ import java.util.Set;
  *       one variant, and an {@code anyOf} with no typed branch ({@code anyOf: [{}, null]}) is {@code serde_json::Value}
  *       instead of a reference to a model that is never written (Milestone 2.1);</li>
  *   <li>a required nullable model field is built with {@code name.map(Box::new)} in {@code new()} rather than an
- *       if-let/else expression (Milestone 2.2).</li>
+ *       if-let/else expression (Milestone 2.2);</li>
+ *   <li>spec rules run before naming (Milestone 2.3, see {@link SpecRules}): generic repairs of constructs the stock
+ *       generator mishandles, and the options {@code webhookModule}, {@code webhookModuleReexport},
+ *       {@code stringIdSchemas}, {@code stringIdProperties}, {@code stringProperties}, {@code jsonValueSchemas},
+ *       {@code deepObjectQueryParameters} and {@code resetQueryParameterStyle} for decisions a client takes about its spec.</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -62,6 +67,29 @@ public class TimvwRustCodegen extends RustClientCodegen {
 
     /** Our own option: let schema titles name, merge and replace types (stock openapi-generator 7.2x behaviour). */
     public static final String TITLE_NAMING = "titleNaming";
+
+    /** Tag given to webhook operations, so they are generated into their own API module. */
+    public static final String WEBHOOK_MODULE = "webhookModule";
+    /** {@code default_api} re-exports the webhook module (for clients that had webhooks there before). */
+    public static final String WEBHOOK_MODULE_REEXPORT = "webhookModuleReexport";
+    /** Component schemas rendered as {@code String}. */
+    public static final String STRING_ID_SCHEMAS = "stringIdSchemas";
+    /** Property names rendered as {@code String} wherever an id schema or a union of them types them. */
+    public static final String STRING_ID_PROPERTIES = "stringIdProperties";
+    /** {@code Schema.property} entries rendered as a bare {@code String}. */
+    public static final String STRING_PROPERTIES = "stringProperties";
+    /** Component schemas rendered as {@code serde_json::Value}. */
+    public static final String JSON_VALUE_SCHEMAS = "jsonValueSchemas";
+    /** {@code <path>?<name>} query parameters kept as objects sent in deepObject style. */
+    public static final String DEEP_OBJECT_QUERY_PARAMETERS = "deepObjectQueryParameters";
+    /** Query parameters get the default style (form, exploded), whatever the spec says. */
+    public static final String RESET_QUERY_PARAMETER_STYLE = "resetQueryParameterStyle";
+    /** Output-relative path the spec is written to after the spec rules ran (JSON; for scripts and debugging). */
+    public static final String PREPROCESSED_SPEC_FILE = "preprocessedSpecFile";
+    /** Key under which the api template finds the module {@code default_api} re-exports. */
+    static final String WEBHOOK_REEXPORT_KEY = "webhookReexport";
+    /** Key under which the api mod template finds the webhook module files to declare. */
+    static final String WEBHOOK_MODULES_KEY = "webhookModules";
 
     /** Mustache lambda that templates wrap around doc-comment text. */
     static final String RUSTDOC_LAMBDA = "rustdoc";
@@ -87,6 +115,15 @@ public class TimvwRustCodegen extends RustClientCodegen {
 
     private final String openApiGeneratorVersion;
     private boolean titleNaming = true;
+    private String webhookModule;
+    private boolean webhookModuleReexport;
+    private List<String> stringIdSchemas = new ArrayList<>();
+    private List<String> stringIdProperties = new ArrayList<>();
+    private List<String> stringProperties = new ArrayList<>();
+    private List<String> jsonValueSchemas = new ArrayList<>();
+    private List<String> deepObjectQueryParameters = new ArrayList<>();
+    private String preprocessedSpecFile;
+    private boolean resetQueryParameterStyle;
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -144,6 +181,32 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         + "inline schemas matching a titled component are replaced by it, and an inline array's title "
                         + "names its item type. Set to false to derive names from schema keys and property paths only",
                 true));
+        cliOptions.add(CliOption.newString(WEBHOOK_MODULE,
+                "Tag given to every webhook operation, so that webhooks are generated into their own API module "
+                        + "instead of default_api (where a webhook replaces the untagged path operations). "
+                        + "A path operation that already carries the tag fails generation"));
+        cliOptions.add(CliOption.newBoolean(WEBHOOK_MODULE_REEXPORT,
+                "With webhookModule: default_api re-exports the webhook module, keeping the paths of clients that "
+                        + "had webhooks there", false));
+        cliOptions.add(CliOption.newString(STRING_ID_SCHEMAS,
+                "Component schemas rendered as String (model and voice id unions, say). Entries are separated by "
+                        + "'|', ';' or whitespace on the command line, or given as a JSON list in a config file"));
+        cliOptions.add(CliOption.newString(STRING_ID_PROPERTIES,
+                "Property names (name or name=fallback_description) rendered as String wherever they reference a "
+                        + "stringIdSchemas schema or are a union, directly or through allOf"));
+        cliOptions.add(CliOption.newString(STRING_PROPERTIES,
+                "Schema.property entries rendered as a bare String, directly or in an allOf component"));
+        cliOptions.add(CliOption.newString(JSON_VALUE_SCHEMAS,
+                "Component schemas rendered as a free-form object (serde_json::Value)"));
+        cliOptions.add(CliOption.newBoolean(RESET_QUERY_PARAMETER_STYLE,
+                "Give every query parameter not listed in deepObjectQueryParameters the default style (form, "
+                        + "exploded), so arrays are sent as repeated parameters whatever the spec says", false));
+        cliOptions.add(CliOption.newString(PREPROCESSED_SPEC_FILE,
+                "Write the spec as it stands after the spec rules (before inline schemas are named) to this "
+                        + "output-relative path, as JSON"));
+        cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
+                "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
+                        + "object-typed query parameter is sent as a string"));
     }
 
     /** The template set for an openapi-generator version, or {@code null} when none was compiled for it. */
@@ -290,6 +353,24 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 || convertPropertyToBooleanAndWriteBack(TITLE_NAMING);
         additionalProperties.put(TITLE_NAMING, titleNaming);
 
+        Object module = additionalProperties.get(WEBHOOK_MODULE);
+        webhookModule = module == null || String.valueOf(module).isEmpty() ? null : String.valueOf(module);
+        webhookModuleReexport = additionalProperties.containsKey(WEBHOOK_MODULE_REEXPORT)
+                && convertPropertyToBooleanAndWriteBack(WEBHOOK_MODULE_REEXPORT);
+        if (webhookModuleReexport && webhookModule == null) {
+            throw new IllegalArgumentException(String.format("%s: %s needs %s", GENERATOR_NAME,
+                    WEBHOOK_MODULE_REEXPORT, WEBHOOK_MODULE));
+        }
+        stringIdSchemas = SpecRules.entries(additionalProperties.get(STRING_ID_SCHEMAS));
+        stringIdProperties = SpecRules.entries(additionalProperties.get(STRING_ID_PROPERTIES));
+        stringProperties = SpecRules.entries(additionalProperties.get(STRING_PROPERTIES));
+        jsonValueSchemas = SpecRules.entries(additionalProperties.get(JSON_VALUE_SCHEMAS));
+        deepObjectQueryParameters = SpecRules.entries(additionalProperties.get(DEEP_OBJECT_QUERY_PARAMETERS));
+        resetQueryParameterStyle = additionalProperties.containsKey(RESET_QUERY_PARAMETER_STYLE)
+                && convertPropertyToBooleanAndWriteBack(RESET_QUERY_PARAMETER_STYLE);
+        Object dump = additionalProperties.get(PREPROCESSED_SPEC_FILE);
+        preprocessedSpecFile = dump == null || String.valueOf(dump).isEmpty() ? null : String.valueOf(dump);
+
         additionalProperties.put(RUSTDOC_LAMBDA,
                 (Mustache.Lambda) (fragment, out) -> out.write(RustDoc.wrapBareUrls(fragment.execute())));
     }
@@ -303,8 +384,49 @@ public class TimvwRustCodegen extends RustClientCodegen {
         return false;
     }
 
+    /**
+     * The OpenAPI normalizer is run by {@link #preprocessOpenAPI} as well, after the spec rules: for a 3.1 document it
+     * rewrites a {@code $ref} with sibling keywords into an {@code allOf} wrapper, which the rules must see in its
+     * original form (as the client's scripts did, running on the file).
+     */
+    @Override
+    public boolean getUseOpenapiNormalizer() {
+        return false;
+    }
+
     @Override
     public void preprocessOpenAPI(OpenAPI openAPI) {
+        // The spec rules edit the document as a file would be edited, so they run on a non-resolving parse of the
+        // input file: the resolving parse the CLI did shares one Schema instance between identical subtrees (two
+        // components with the same inline union hold the same object) and drops `required` names that are not
+        // properties of the same object (names inherited through allOf). The result is then parsed again as the
+        // CLI parses its input and takes the place of the document the generator holds.
+        OpenAPI working = getInputSpec() != null ? parseFile(getInputSpec(), false) : reparse(openAPI, false);
+        applySpecRules(working);
+        String json = serialize(working);
+        if (preprocessedSpecFile != null) {
+            java.nio.file.Path target = java.nio.file.Paths.get(outputFolder, preprocessedSpecFile);
+            try {
+                java.nio.file.Files.createDirectories(target.getParent());
+                java.nio.file.Files.writeString(target, json);
+                LOGGER.info("{}: wrote the preprocessed spec to {}", GENERATOR_NAME, target);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("cannot write " + target, e);
+            }
+        }
+        copyInto(openAPI, parse(json, true));
+        if (super.getUseOpenapiNormalizer()) {
+            Map<String, String> rules = new LinkedHashMap<>(openapiNormalizer());
+            if (openAPI.getOpenapi() != null && new org.openapitools.codegen.utils.SemVer(openAPI.getOpenapi()).atLeast("3.1.0")) {
+                rules.put("NORMALIZE_31SPEC", "true");
+            }
+            try {
+                org.openapitools.codegen.OpenAPINormalizerAccess.normalize(openAPI, rules);
+            } catch (Exception e) {
+                LOGGER.error("An exception occurred in OpenAPI Normalizer. Please report the issue via "
+                        + "https://github.com/openapitools/openapi-generator/issues/new/: ", e);
+            }
+        }
         if (!titleNaming) {
             List<String> stripped = TitleNaming.stripNamingTitles(openAPI);
             LOGGER.info("{}: {}=false, removed the title from {} component and array schemas before naming",
@@ -317,5 +439,129 @@ public class TimvwRustCodegen extends RustClientCodegen {
         for (String where : SpecNormalizer.integerWithFloatFormatToNumber(openAPI)) {
             LOGGER.warn("{}: read 'type: integer' with a float format as 'type: number' at {}", GENERATOR_NAME, where);
         }
+    }
+
+    private static String serialize(OpenAPI openAPI) {
+        boolean v31 = openAPI.getOpenapi() != null
+                && new org.openapitools.codegen.utils.SemVer(openAPI.getOpenapi()).atLeast("3.1.0");
+        return v31 ? io.swagger.v3.core.util.Json31.pretty(openAPI) : io.swagger.v3.core.util.Json.pretty(openAPI);
+    }
+
+    private static OpenAPI reparse(OpenAPI openAPI, boolean resolve) {
+        return parse(serialize(openAPI), resolve);
+    }
+
+    /** Parses a document the way the CLI parses its input ({@code resolve}), or as an unshared tree (no resolve). */
+    private static OpenAPI parse(String json, boolean resolve) {
+        return check(new io.swagger.parser.OpenAPIParser().readContents(json, null, parseOptions(resolve)),
+                "the preprocessed spec");
+    }
+
+    private static OpenAPI parseFile(String location, boolean resolve) {
+        return check(new io.swagger.parser.OpenAPIParser().readLocation(location, null, parseOptions(resolve)),
+                location);
+    }
+
+    private static io.swagger.v3.parser.core.models.ParseOptions parseOptions(boolean resolve) {
+        io.swagger.v3.parser.core.models.ParseOptions options = new io.swagger.v3.parser.core.models.ParseOptions();
+        options.setResolve(resolve);
+        return options;
+    }
+
+    private static OpenAPI check(io.swagger.v3.parser.core.models.SwaggerParseResult result, String what) {
+        if (result.getOpenAPI() == null) {
+            throw new IllegalStateException(GENERATOR_NAME + ": cannot parse " + what + ": " + result.getMessages());
+        }
+        return result.getOpenAPI();
+    }
+
+    /** Moves the content of {@code from} into {@code into}, which the generator holds a reference to. */
+    private static void copyInto(OpenAPI into, OpenAPI from) {
+        into.setOpenapi(from.getOpenapi());
+        into.setInfo(from.getInfo());
+        into.setExternalDocs(from.getExternalDocs());
+        into.setServers(from.getServers());
+        into.setSecurity(from.getSecurity());
+        into.setTags(from.getTags());
+        into.setPaths(from.getPaths());
+        into.setComponents(from.getComponents());
+        into.setExtensions(from.getExtensions());
+        into.setWebhooks(from.getWebhooks());
+        into.setJsonSchemaDialect(from.getJsonSchemaDialect());
+        into.setSpecVersion(from.getSpecVersion());
+    }
+
+    /**
+     * Milestone 2.3: the spec decisions named by the options, then the generic repairs, in the order the scripts ran.
+     * Runs on the parsed document before the normalizer and the inline-model resolver.
+     */
+    private void applySpecRules(OpenAPI openAPI) {
+        java.util.function.Consumer<String> log = msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg);
+        if (webhookModule != null) {
+            int routed = SpecRules.routeWebhooks(openAPI, webhookModule);
+            LOGGER.info("{}: {}: routed {} webhook operations to tag {}", GENERATOR_NAME, WEBHOOK_MODULE, routed,
+                    webhookModule);
+        }
+        SpecRules.stringSchemas(openAPI, stringIdSchemas, log);
+        SpecRules.stringIdProperties(openAPI, stringIdProperties, SpecRules.names(stringIdSchemas), log);
+        int inlined = SpecRules.inlineStringRefsInUnions(openAPI);
+        int pruned = SpecRules.pruneGeneratorHostileKeywords(openAPI);
+        List<String> retitled = SpecRules.disambiguateInlineTitles(openAPI, this::toModelName);
+        for (String r : retitled) {
+            LOGGER.warn("{}: inline title collides with a component schema, renamed: {}", GENERATOR_NAME, r);
+        }
+        int stripped = SpecRules.stripRefSiblings(openAPI);
+        int collapsed = SpecRules.collapseRequiredOnlyUnions(openAPI);
+        int titled = SpecRules.titleUnnamedUnionVariants(openAPI);
+        List<String> hoisted = SpecRules.hoistInlineUnions(openAPI);
+        for (String h : hoisted) {
+            LOGGER.info("{}: hoisted inline union {}", GENERATOR_NAME, h);
+        }
+        SpecRules.stringProperties(openAPI, stringProperties, log);
+        SpecRules.jsonValueSchemas(openAPI, jsonValueSchemas, log);
+        // A hoisted union may carry a stringIdSchemas name: apply the string rendering to it as well.
+        SpecRules.stringSchemas(openAPI, stringIdSchemas, log);
+        List<String> renamed = SpecRules.normalizeHyphenatedSchemaNames(openAPI);
+        for (String r : renamed) {
+            LOGGER.info("{}: renamed hyphenated schema {}", GENERATOR_NAME, r);
+        }
+        List<String> params = SpecRules.simplifyObjectQueryParameters(openAPI, deepObjectQueryParameters,
+                resetQueryParameterStyle);
+        for (String q : params) {
+            LOGGER.info("{}: query parameter {}", GENERATOR_NAME, q);
+        }
+        LOGGER.info("{}: spec rules: {} string refs inlined in unions, {} default/propertyNames removed, {} $ref "
+                        + "siblings stripped, {} validation-only unions collapsed, {} union variants titled, {} inline "
+                        + "unions hoisted, {} schemas renamed, {} query parameters changed", GENERATOR_NAME, inlined,
+                pruned, stripped, collapsed, titled, hoisted.size(), renamed.size(), params.size());
+    }
+
+    /**
+     * {@code src/apis/mod.rs} declares the webhook module: the stock template lists only the path APIs
+     * ({@code apiInfo.apis}), while webhooks are bundled apart under {@code webhooks}.
+     */
+    @Override
+    public Map<String, Object> postProcessSupportingFileData(Map<String, Object> objs) {
+        objs = super.postProcessSupportingFileData(objs);
+        if (webhookModule != null && objs.get("webhooks") instanceof List && !((List<?>) objs.get("webhooks")).isEmpty()) {
+            List<?> webhooks = (List<?>) objs.get("webhooks");
+            if (webhooks.size() > 1) {
+                LOGGER.warn("{}: {} webhook API modules generated; only {} is declared in mod.rs (webhooks with "
+                        + "their own tags are not supported)", GENERATOR_NAME, webhooks.size(), webhookModule);
+            }
+            objs.put(WEBHOOK_MODULES_KEY, Arrays.asList(toApiFilename(webhookModule)));
+        }
+        return objs;
+    }
+
+    /** {@code default_api} re-exports the webhook module when {@code webhookModuleReexport} is set. */
+    @Override
+    public OperationsMap postProcessOperationsWithModels(OperationsMap objs, List<ModelMap> allModels) {
+        objs = super.postProcessOperationsWithModels(objs, allModels);
+        if (webhookModuleReexport && objs.getOperations() != null
+                && toApiName("default").equals(objs.getOperations().getClassname())) {
+            objs.put(WEBHOOK_REEXPORT_KEY, toApiFilename(webhookModule));
+        }
+        return objs;
     }
 }

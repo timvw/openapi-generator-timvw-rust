@@ -83,6 +83,14 @@ CTOR_IF_LET = "if let Some(x) = {{{name}}} {Some(Box::new(x))} else {None}"
 CTOR_MAP = "{{{name}}}.map(Box::new)"
 
 
+# mod.rs declares the webhook API module (webhookModule): the stock template lists only apiInfo.apis.
+API_MOD_CONFIGURATION = "pub mod configuration;\n"
+API_MOD_WEBHOOKS = "pub mod configuration;\n{{#webhookModules}}\npub mod {{{.}}};\n{{/webhookModules}}\n"
+
+# default_api re-exports the webhook module when the generator sets webhookReexport (webhookModuleReexport).
+WEBHOOK_REEXPORT = "{{#webhookReexport}}\npub use super::{{{.}}}::*;\n{{/webhookReexport}}\n"
+
+
 def replace_at_most_once(text: str, old: str, new: str, what: str) -> str:
     found = text.count(old)
     if found > 1:
@@ -114,8 +122,10 @@ EDITS = {
             flags=re.MULTILINE,
         ),
         w,
-    ), MULTIPART_JSON_TEXT, MULTIPART_ENUM_TEXT, w),
-    "reqwest/api_mod.mustache": lambda t, w: replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w),
+    ), MULTIPART_JSON_TEXT, MULTIPART_ENUM_TEXT, w).rstrip("\n") + "\n" + WEBHOOK_REEXPORT,
+    "reqwest/api_mod.mustache": lambda t, w: replace_exactly(
+        replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w), API_MOD_CONFIGURATION, API_MOD_WEBHOOKS, 1, w
+    ),
     "Cargo.mustache": lambda t, w: replace_exactly(
         t, "[dependencies]\n", '[dependencies]\n{{#bonBuilders}}\nbon = "^3"\n{{/bonBuilders}}\n', 1, w
     ),

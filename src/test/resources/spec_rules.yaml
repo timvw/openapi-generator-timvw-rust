@@ -1,0 +1,160 @@
+openapi: 3.1.0
+info:
+  title: Spec rules fixture
+  version: "1"
+paths:
+  /things:
+    get:
+      operationId: things_list
+      parameters:
+        - name: metadata
+          in: query
+          schema:
+            $ref: "#/components/schemas/Metadata"
+        - name: filter
+          in: query
+          schema:
+            type: [object, "null"]
+            additionalProperties:
+              type: string
+          style: deepObject
+          explode: true
+        - name: ids
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thing"
+  /events:
+    post:
+      operationId: events_create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Event"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+webhooks:
+  thing_created:
+    post:
+      operationId: thing_created
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Thing"
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Metadata:
+      type: object
+      additionalProperties:
+        type: string
+    ModelIds:
+      description: The model to use.
+      anyOf:
+        - type: string
+        - type: string
+          enum: [gpt-4.1, gpt-4.5]
+    Thing:
+      type: object
+      required: [id, model, item, choice]
+      properties:
+        id:
+          type: string
+          default: none
+        model:
+          $ref: "#/components/schemas/ModelIds"
+          description: Which model made the thing.
+        voice:
+          anyOf:
+            - type: string
+            - type: string
+              enum: [alloy, ash]
+        item:
+          $ref: "#/components/schemas/Item-2"
+        # inline union of a string and an array: hoisted to ThingChoice
+        choice:
+          description: A choice.
+          oneOf:
+            - type: string
+              enum: [auto, none]
+            - type: array
+              items:
+                $ref: "#/components/schemas/Item-2"
+        # untitled primitive variants get Text / Integer titles
+        size:
+          anyOf:
+            - type: string
+            - type: integer
+        # title that collides with the Options component
+        options:
+          type: object
+          title: Options
+          properties:
+            ttl:
+              type: string
+        # validation-only union
+        source:
+          type: object
+          properties:
+            a:
+              type: string
+            b:
+              type: string
+          oneOf:
+            - required: [a]
+            - required: [b]
+    TextOrMeta:
+      oneOf:
+        - $ref: "#/components/schemas/PlainText"
+        - $ref: "#/components/schemas/Metadata"
+    PlainText:
+      type: string
+    Options:
+      type: object
+      properties:
+        ttl:
+          type: string
+    Item-2:
+      type: object
+      properties:
+        name:
+          type: string
+    Event:
+      type: object
+      properties:
+        payload:
+          $ref: "#/components/schemas/Payload"
+        kind:
+          type: string
+    Payload:
+      oneOf:
+        - $ref: "#/components/schemas/Thing"
+        - $ref: "#/components/schemas/Event"
+      discriminator:
+        propertyName: kind
+    Derived:
+      allOf:
+        - $ref: "#/components/schemas/Thing"
+        - type: object
+          properties:
+            extra:
+              type: string

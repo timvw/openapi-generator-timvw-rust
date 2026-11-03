@@ -83,6 +83,37 @@ CTOR_IF_LET = "if let Some(x) = {{{name}}} {Some(Box::new(x))} else {None}"
 CTOR_MAP = "{{{name}}}.map(Box::new)"
 
 
+# Milestone 2.6. boxResponseError: Error::ResponseError holds Box<ResponseContent<T>> (clippy result_large_err:
+# a response entity can be large, and every Result<_, Error<T>> carries the variant).
+RESPONSE_ERROR_VARIANT = "    ResponseError(ResponseContent<T>),\n"
+RESPONSE_ERROR_VARIANT_BOXED = (
+    "    ResponseError({{#boxResponseError}}Box<{{/boxResponseError}}ResponseContent<T>"
+    "{{#boxResponseError}}>{{/boxResponseError}}),\n"
+)
+RESPONSE_ERROR_CTOR = "Err(Error::ResponseError(ResponseContent { status, content, entity }))"
+RESPONSE_ERROR_CTOR_BOXED = (
+    "Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}"
+    "ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}))"
+)
+
+# apiLintAllows: API modules and configuration.rs start with #![allow(<lints>)].
+PARTIAL_HEADER = "{{>partial_header}}\n"
+PARTIAL_HEADER_ALLOWS = "{{>partial_header}}\n{{#apiLintAllows}}\n#![allow({{{.}}})]\n{{/apiLintAllows}}\n"
+
+# userAgentFromPackage: the default user agent is <packageName>/<crate version> (CARGO_PKG_VERSION at build time)
+# instead of OpenAPI-Generator/<spec version>/rust.
+USER_AGENT_STOCK = (
+    'user_agent: {{#httpUserAgent}}Some("{{{.}}}".to_owned()){{/httpUserAgent}}'
+    '{{^httpUserAgent}}Some("OpenAPI-Generator/{{{version}}}/rust".to_owned()){{/httpUserAgent}},'
+)
+USER_AGENT_PACKAGE = (
+    'user_agent: {{#httpUserAgent}}Some("{{{.}}}".to_owned()){{/httpUserAgent}}{{^httpUserAgent}}'
+    '{{#userAgentFromPackage}}Some(concat!("{{{packageName}}}/", env!("CARGO_PKG_VERSION")).to_owned())'
+    '{{/userAgentFromPackage}}{{^userAgentFromPackage}}Some("OpenAPI-Generator/{{{version}}}/rust".to_owned())'
+    '{{/userAgentFromPackage}}{{/httpUserAgent}},'
+)
+
+
 # mod.rs declares the webhook API module (webhookModule): the stock template lists only apiInfo.apis.
 API_MOD_CONFIGURATION = "pub mod configuration;\n"
 API_MOD_WEBHOOKS = "pub mod configuration;\n{{#webhookModules}}\npub mod {{{.}}};\n{{/webhookModules}}\n"
@@ -113,7 +144,7 @@ EDITS = {
         ),
         w,
     ),
-    "reqwest/api.mustache": lambda t, w: replace_at_most_once(wrap_doc_lines(
+    "reqwest/api.mustache": lambda t, w: replace_exactly(replace_exactly(replace_at_most_once(wrap_doc_lines(
         re.sub(
             r"^(?=pub \{\{#supportAsync\}\}async \{\{/supportAsync\}\}fn \{\{\{operationId\}\}\}\()",
             BON_BUILDER_FN,
@@ -123,8 +154,12 @@ EDITS = {
         ),
         w,
     ), MULTIPART_JSON_TEXT, MULTIPART_ENUM_TEXT, w).rstrip("\n") + "\n" + WEBHOOK_REEXPORT,
-    "reqwest/api_mod.mustache": lambda t, w: replace_exactly(
+        RESPONSE_ERROR_CTOR, RESPONSE_ERROR_CTOR_BOXED, 1, w), PARTIAL_HEADER, PARTIAL_HEADER_ALLOWS, 1, w),
+    "reqwest/api_mod.mustache": lambda t, w: replace_exactly(replace_exactly(
         replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w), API_MOD_CONFIGURATION, API_MOD_WEBHOOKS, 1, w
+    ), RESPONSE_ERROR_VARIANT, RESPONSE_ERROR_VARIANT_BOXED, 1, w),
+    "reqwest/configuration.mustache": lambda t, w: replace_exactly(
+        replace_exactly(t, PARTIAL_HEADER, PARTIAL_HEADER_ALLOWS, 1, w), USER_AGENT_STOCK, USER_AGENT_PACKAGE, 1, w
     ),
     "Cargo.mustache": lambda t, w: replace_exactly(
         t, "[dependencies]\n", '[dependencies]\n{{#bonBuilders}}\nbon = "^3"\n{{/bonBuilders}}\n', 1, w

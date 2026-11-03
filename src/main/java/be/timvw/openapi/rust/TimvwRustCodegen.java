@@ -49,7 +49,9 @@ import java.util.Set;
  *   <li>spec rules run before naming (Milestone 2.3, see {@link SpecRules}): generic repairs of constructs the stock
  *       generator mishandles, and the options {@code webhookModule}, {@code webhookModuleReexport},
  *       {@code stringIdSchemas}, {@code stringIdProperties}, {@code stringProperties}, {@code jsonValueSchemas},
- *       {@code deepObjectQueryParameters} and {@code resetQueryParameterStyle} for decisions a client takes about its spec.</li>
+ *       {@code deepObjectQueryParameters} and {@code resetQueryParameterStyle} for decisions a client takes about its spec;</li>
+ *   <li>{@code boxResponseError}, {@code apiLintAllows} and {@code userAgentFromPackage} shape the API modules
+ *       (Milestone 2.6).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -86,6 +88,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String RESET_QUERY_PARAMETER_STYLE = "resetQueryParameterStyle";
     /** Output-relative path the spec is written to after the spec rules ran (JSON; for scripts and debugging). */
     public static final String PREPROCESSED_SPEC_FILE = "preprocessedSpecFile";
+    /** {@code Error::ResponseError} holds {@code Box<ResponseContent<T>>} (clippy {@code result_large_err}). */
+    public static final String BOX_RESPONSE_ERROR = "boxResponseError";
+    /** Lints allowed at the top of every API module and {@code configuration.rs}, as {@code #![allow(..)]}. */
+    public static final String API_LINT_ALLOWS = "apiLintAllows";
+    /** The default user agent is {@code <packageName>/<crate version>}. */
+    public static final String USER_AGENT_FROM_PACKAGE = "userAgentFromPackage";
     /** Key under which the api template finds the module {@code default_api} re-exports. */
     static final String WEBHOOK_REEXPORT_KEY = "webhookReexport";
     /** Key under which the api mod template finds the webhook module files to declare. */
@@ -201,6 +209,15 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newBoolean(RESET_QUERY_PARAMETER_STYLE,
                 "Give every query parameter not listed in deepObjectQueryParameters the default style (form, "
                         + "exploded), so arrays are sent as repeated parameters whatever the spec says", false));
+        cliOptions.add(CliOption.newBoolean(BOX_RESPONSE_ERROR,
+                "Error::ResponseError holds Box<ResponseContent<T>>, keeping every Result small (clippy "
+                        + "result_large_err)", false));
+        cliOptions.add(CliOption.newString(API_LINT_ALLOWS,
+                "Lints allowed at the top of every API module and configuration.rs, written as "
+                        + "#![allow(<value>)], e.g. 'clippy::needless_return, clippy::into_iter_on_ref'"));
+        cliOptions.add(CliOption.newBoolean(USER_AGENT_FROM_PACKAGE,
+                "Default user agent <packageName>/<crate version> (CARGO_PKG_VERSION) instead of "
+                        + "OpenAPI-Generator/<spec version>/rust; httpUserAgent still wins", false));
         cliOptions.add(CliOption.newString(PREPROCESSED_SPEC_FILE,
                 "Write the spec as it stands after the spec rules (before inline schemas are named) to this "
                         + "output-relative path, as JSON"));
@@ -368,6 +385,14 @@ public class TimvwRustCodegen extends RustClientCodegen {
         deepObjectQueryParameters = SpecRules.entries(additionalProperties.get(DEEP_OBJECT_QUERY_PARAMETERS));
         resetQueryParameterStyle = additionalProperties.containsKey(RESET_QUERY_PARAMETER_STYLE)
                 && convertPropertyToBooleanAndWriteBack(RESET_QUERY_PARAMETER_STYLE);
+        for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
+            additionalProperties.put(flag, additionalProperties.containsKey(flag)
+                    && convertPropertyToBooleanAndWriteBack(flag));
+        }
+        Object allows = additionalProperties.get(API_LINT_ALLOWS);
+        if (allows != null && String.valueOf(allows).trim().isEmpty()) {
+            additionalProperties.remove(API_LINT_ALLOWS);
+        }
         Object dump = additionalProperties.get(PREPROCESSED_SPEC_FILE);
         preprocessedSpecFile = dump == null || String.valueOf(dump).isEmpty() ? null : String.valueOf(dump);
 

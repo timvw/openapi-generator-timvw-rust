@@ -70,6 +70,15 @@ class GenerationTest {
     }
 
     @Test
+    void stockErrorsLintsAndUserAgentWithoutOptions() throws IOException {
+        assertTrue(read("src/apis/mod.rs").contains("    ResponseError(ResponseContent<T>),\n"));
+        String api = read("src/apis/widgets_api.rs");
+        assertTrue(api.contains("Err(Error::ResponseError(ResponseContent { status, content, entity }))"), api);
+        assertFalse(api.contains("#![allow("), api);
+        assertTrue(read("src/apis/configuration.rs").contains("Some(\"OpenAPI-Generator/"));
+    }
+
+    @Test
     void deepObjectParsingDoesNotPanic() throws IOException {
         String mod = read("src/apis/mod.rs");
         assertFalse(mod.contains("unimplemented!"), mod);

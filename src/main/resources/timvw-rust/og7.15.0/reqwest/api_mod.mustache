@@ -19,7 +19,7 @@ pub enum Error<T> {
     {{/supportMiddleware}}
     Serde(serde_json::Error),
     Io(std::io::Error),
-    ResponseError(ResponseContent<T>),
+    ResponseError({{#boxResponseError}}Box<{{/boxResponseError}}ResponseContent<T>{{#boxResponseError}}>{{/boxResponseError}}),
     {{#withAWSV4Signature}}
     AWSV4SignatureError(aws_sigv4::http_request::Error),
     {{/withAWSV4Signature}}

@@ -19,7 +19,11 @@ public class FixToolEnumTagging implements Rewrite {
     private static final int PY = Pattern.UNIX_LINES | Pattern.UNICODE_CHARACTER_CLASS;
     private static final Pattern UPPER_BOUNDARY = Pattern.compile("(?<!^)(?=[A-Z])", PY);
     private static final Pattern TYPE_FIELD = Pattern.compile("pub\\s+(r#)?type\\s*:", PY);
-    private static final Pattern VARIANT = Pattern.compile("(\\w+)\\(Box<models::(\\w+)>\\)", PY);
+    /**
+     * A variant holding a model: {@code Name(Box<models::X>)}, or {@code Name(models::X)} where {@code boxOnlyCycles}
+     * left the payload unboxed (the stock rendering boxes every model payload, so both spell the same variants).
+     */
+    private static final Pattern VARIANT = Pattern.compile("(\\w+)\\((?:Box<models::(\\w+)>|models::(\\w+))\\)", PY);
     private static final Pattern TAG = Pattern.compile("#\\[serde\\(tag = \"type\"\\)\\]", PY);
     private static final Pattern VARIANT_RENAME = Pattern.compile("    #\\[serde\\(rename = \"[^\"]+\"\\)\\]\\n", PY);
 
@@ -62,7 +66,7 @@ public class FixToolEnumTagging implements Rewrite {
         Matcher m = VARIANT.matcher(content);
         boolean conflicting = false;
         while (m.find()) {
-            if (hasTypeField(m.group(2), srcDir)) {
+            if (hasTypeField(m.group(2) != null ? m.group(2) : m.group(3), srcDir)) {
                 conflicting = true;
             }
         }

@@ -18,9 +18,16 @@ import java.util.Map;
  *       order, as Python's {@code yaml.safe_load} gives it.</li>
  *   <li>{@code preprocessedSpec}: the spec after the generator's spec rules (the scripts' {@code SPEC_OUT},
  *       {@code target/specs/l2_rust_compatible.json}).</li>
+ *   <li>{@code boxPolicy}: which model payloads a rewrite that writes them boxes ({@code boxOnlyCycles}).</li>
  * </ul>
  */
-public record LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec) {
+public record LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec,
+                            BoxPolicy boxPolicy) {
+
+    /** A context in which every model payload a rewrite writes is boxed, as in the scripts. */
+    public LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec) {
+        this(root, rawSpec, preprocessedSpec, BoxPolicy.ALWAYS);
+    }
 
     public Path src() {
         return root.resolve("src");

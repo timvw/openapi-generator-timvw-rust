@@ -41,7 +41,16 @@ public class FixDefaultIssues implements Rewrite {
     private static final Pattern DOUBLE_COMMA = Pattern.compile(",\\s*,", PY);
     private static final Pattern LEADING_COMMA = Pattern.compile("^,\\s*", PY);
     private static final Pattern ONLY_DEFAULT = Pattern.compile("#\\[derive\\(Default\\)\\]", PY);
-    private static final Pattern BOXED_CONTENT = Pattern.compile("Box<models::ChatCompletionRequest\\w*MessageContent>", PY);
+    /**
+     * A model held by value: {@code Box<models::X>}, or {@code models::X} where {@code boxOnlyCycles} left it unboxed.
+     * Collection items ({@code Vec<models::X>}, {@code HashMap<String, models::X>}) were never boxed and do not count.
+     */
+    private static Pattern heldByValue(String type) {
+        return Pattern.compile("Box<models::" + type + ">|(?<!Vec<)(?<!, )(?<!Box<)models::" + type + "(?!\\w)", PY);
+    }
+
+    private static final Pattern BOXED_RUN_OBJECT = heldByValue("RunObject");
+    private static final Pattern BOXED_CONTENT = heldByValue("ChatCompletionRequest\\w*MessageContent");
 
     public FixDefaultIssues() {
     }
@@ -64,7 +73,7 @@ public class FixDefaultIssues implements Rewrite {
                 }
                 String content = Files.readString(filePath);
                 if (content.contains("derive") && content.contains("Default")) {
-                    if (content.contains("Box<models::RunObject>") || BOXED_CONTENT.matcher(content).find()) {
+                    if (BOXED_RUN_OBJECT.matcher(content).find() || BOXED_CONTENT.matcher(content).find()) {
                         removeDefaultDerive(filePath);
                     }
                 }

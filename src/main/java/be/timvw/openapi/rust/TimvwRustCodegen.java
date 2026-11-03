@@ -58,7 +58,9 @@ import java.util.Set;
  *   <li>{@code multipartHelper} sends multipart bodies through a generated helper module (see {@link MultipartRules}),
  *       and {@code fileProperties} declares properties to be files (Milestone 2.5);</li>
  *   <li>{@code legacyModelRewrites} runs transitional Java ports of openai-client-base's model scripts over the
- *       rendered crate (Milestone 2.4, see {@code be.timvw.openapi.rust.legacy}).</li>
+ *       rendered crate (Milestone 2.4, see {@code be.timvw.openapi.rust.legacy});</li>
+ *   <li>{@code boxOnlyCycles} boxes a model reference only where the model graph needs it to break a cycle
+ *       (Milestone 3.1, see {@link BoxRules}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -107,6 +109,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String MULTIPART_HELPER = "multipartHelper";
     /** {@code Schema.property} entries rendered as a file ({@code type: string, format: binary}). */
     public static final String FILE_PROPERTIES = "fileProperties";
+    /** Box a model reference only where it closes a cycle of the model graph (Milestone 3.1, see {@link BoxRules}). */
+    public static final String BOX_ONLY_CYCLES = "boxOnlyCycles";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
     /** Set on a parameter whose dataType already carries {@code models::}. */
@@ -153,6 +157,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private boolean legacyModelRewrites;
     private String preprocessedSpecJson;
     private List<String> fileProperties = new ArrayList<>();
+    private boolean boxOnlyCycles;
+    private Map<String, Integer> boxComponents = Map.of();
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -312,6 +318,14 @@ public class TimvwRustCodegen extends RustClientCodegen {
      * nullable field stays {@code Option<Box<serde_json::Value>>} as before. Every property list of the model holds
      * its own copies, so all of them are visited.
      */
+    /** Marks every model property with {@link BoxRules#BOX}, which the model template reads. */
+    @Override
+    public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
+        objs = super.postProcessAllModels(objs);
+        boxComponents = BoxRules.mark(objs, boxOnlyCycles);
+        return objs;
+    }
+
     @Override
     public ModelsMap postProcessModels(ModelsMap objs) {
         objs = super.postProcessModels(objs);
@@ -424,6 +438,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
             supportingFiles.add(new SupportingFile("multipart_helper.mustache", apiFolder, "multipart_helper.rs"));
         }
         fileProperties = SpecRules.entries(additionalProperties.get(FILE_PROPERTIES));
+        boxOnlyCycles = additionalProperties.containsKey(BOX_ONLY_CYCLES)
+                && convertPropertyToBooleanAndWriteBack(BOX_ONLY_CYCLES);
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
             additionalProperties.put(flag, additionalProperties.containsKey(flag)
                     && convertPropertyToBooleanAndWriteBack(flag));
@@ -634,13 +650,22 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         preprocessedSpecJson);
                 be.timvw.openapi.rust.legacy.LegacyModelRewrites.run(
                         new be.timvw.openapi.rust.legacy.LegacyContext(java.nio.file.Paths.get(outputFolder), raw,
-                                preprocessed),
+                                preprocessed, boxPolicy()),
                         msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg));
             } catch (java.io.IOException e) {
                 throw new IllegalStateException(GENERATOR_NAME + ": legacy model rewrites failed", e);
             }
         }
         super.postProcess();
+    }
+
+    /** What the legacy rewrites box: every model payload, or with {@code boxOnlyCycles} only those on a cycle. */
+    private be.timvw.openapi.rust.legacy.BoxPolicy boxPolicy() {
+        if (!boxOnlyCycles) {
+            return be.timvw.openapi.rust.legacy.BoxPolicy.ALWAYS;
+        }
+        Map<String, Integer> components = boxComponents;
+        return (holder, target) -> BoxRules.inCycle(components, holder, target);
     }
 
     /** {@code default_api} re-exports the webhook module when {@code webhookModuleReexport} is set. */

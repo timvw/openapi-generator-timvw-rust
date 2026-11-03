@@ -59,7 +59,7 @@ public final class FixEmptyEnums implements Rewrite {
             return;
         }
         for (Map.Entry<String, EnumInfo> e : emptyEnums.entrySet()) {
-            fixEmptyEnum(modelsDir, e.getKey(), e.getValue());
+            fixEmptyEnum(modelsDir, e.getKey(), e.getValue(), context.boxPolicy());
         }
         fallbackMissingVariantTypes(modelsDir);
     }
@@ -363,7 +363,8 @@ public final class FixEmptyEnums implements Rewrite {
     }
 
     /** The variant lines both branches of {@code fix_empty_enum} build; only the empty case upper-cases a lower first letter. */
-    private static List<String> buildVariants(String enumName, EnumInfo enumInfo, boolean upperFirst) {
+    private static List<String> buildVariants(String enumName, EnumInfo enumInfo, boolean upperFirst,
+                                              BoxPolicy boxPolicy) {
         List<String> variants = new ArrayList<>();
         for (Variant variant : enumInfo.variants()) {
             String schemaName = variant.schema();
@@ -380,7 +381,7 @@ public final class FixEmptyEnums implements Rewrite {
                 variantName = Character.toUpperCase(variantName.charAt(0)) + variantName.substring(1);
             }
             variants.add("    #[serde(rename = \"" + variant.discriminatorValue() + "\")]\n    " + variantName
-                    + "(Box<models::" + rustTypeName + ">),");
+                    + "(" + boxPolicy.type(enumName, rustTypeName) + "),");
         }
         return variants;
     }
@@ -391,7 +392,8 @@ public final class FixEmptyEnums implements Rewrite {
     }
 
     /** {@code fix_empty_enum}. */
-    private static boolean fixEmptyEnum(Path modelsDir, String enumName, EnumInfo enumInfo) throws IOException {
+    private static boolean fixEmptyEnum(Path modelsDir, String enumName, EnumInfo enumInfo, BoxPolicy boxPolicy)
+            throws IOException {
         Path enumFile = modelsDir.resolve(Utils.pascalToSnake(enumName) + ".rs");
         if (!Files.exists(enumFile)) {
             return false;
@@ -403,7 +405,7 @@ public final class FixEmptyEnums implements Rewrite {
             // note: '-' anywhere in the file, not only in the enum block
             boolean enumBlockHasDash = content.contains("pub enum " + enumName + " {") && content.contains("-");
             if (enumBlockHasDash) {
-                String newEnum = buildEnum(enumName, enumInfo, buildVariants(enumName, enumInfo, false));
+                String newEnum = buildEnum(enumName, enumInfo, buildVariants(enumName, enumInfo, false, boxPolicy));
                 String replaced = replaceEnumBlock(enumName, content, newEnum);
                 if (replaced != null) {
                     Files.writeString(enumFile, dropStructVariantDefault(enumName, replaced));
@@ -413,7 +415,7 @@ public final class FixEmptyEnums implements Rewrite {
             return fixCaseSensitivityInEnum(enumFile, content);
         }
 
-        List<String> variants = buildVariants(enumName, enumInfo, true);
+        List<String> variants = buildVariants(enumName, enumInfo, true, boxPolicy);
         if (variants.isEmpty()) {
             return false;
         }

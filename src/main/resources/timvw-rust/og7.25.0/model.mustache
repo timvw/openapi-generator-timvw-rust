@@ -90,7 +90,7 @@ pub enum {{{classname}}} {
         /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
         {{/description}}
         #[serde(rename = "{{{baseName}}}"{{^required}}, skip_serializing_if = "Option::is_none"{{/required}})]
-        {{{name}}}: {{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{^required}}Option<{{/required}}{{#isEnum}}{{{enumName}}}{{/isEnum}}{{^isEnum}}{{#isModel}}{{^avoidBoxedModels}}Box<{{/avoidBoxedModels}}{{{dataType}}}{{^avoidBoxedModels}}>{{/avoidBoxedModels}}{{/isModel}}{{^isModel}}{{{dataType}}}{{/isModel}}{{/isEnum}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{^required}}>{{/required}},
+        {{{name}}}: {{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{^required}}Option<{{/required}}{{#isEnum}}{{{enumName}}}{{/isEnum}}{{^isEnum}}{{#isModel}}{{#vendorExtensions.x-rust-box}}Box<{{/vendorExtensions.x-rust-box}}{{{dataType}}}{{#vendorExtensions.x-rust-box}}>{{/vendorExtensions.x-rust-box}}{{/isModel}}{{^isModel}}{{{dataType}}}{{/isModel}}{{/isEnum}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{^required}}>{{/required}},
     {{/vars}}
     },
     {{/mappedModels}}
@@ -103,7 +103,7 @@ pub enum {{{classname}}} {
     {{#baseName}}
     #[serde(rename="{{{.}}}")]
     {{/baseName}}
-    {{{name}}}({{#isModel}}{{^avoidBoxedModels}}Box<{{/avoidBoxedModels}}{{/isModel}}{{{dataType}}}{{#isModel}}{{^avoidBoxedModels}}>{{/avoidBoxedModels}}{{/isModel}}),
+    {{{name}}}({{#isModel}}{{#vendorExtensions.x-rust-box}}Box<{{/vendorExtensions.x-rust-box}}{{/isModel}}{{{dataType}}}{{#isModel}}{{#vendorExtensions.x-rust-box}}>{{/vendorExtensions.x-rust-box}}{{/isModel}}),
     {{/composedSchemas.oneOf}}
     {{/oneOf.isEmpty}}
 }
@@ -142,7 +142,7 @@ pub struct {{{classname}}} {
     ### Non-Enums Start
     }}{{^isEnum}}{{!
     ### Models
-    }}{{#isModel}}{{^avoidBoxedModels}}Box<{{/avoidBoxedModels}}{{{dataType}}}{{^avoidBoxedModels}}>{{/avoidBoxedModels}}{{/isModel}}{{!
+    }}{{#isModel}}{{#vendorExtensions.x-rust-box}}Box<{{/vendorExtensions.x-rust-box}}{{{dataType}}}{{#vendorExtensions.x-rust-box}}>{{/vendorExtensions.x-rust-box}}{{/isModel}}{{!
     ### Primative datatypes
     }}{{^isModel}}{{#isByteArray}}Vec<u8>{{/isByteArray}}{{^isByteArray}}{{{dataType}}}{{/isByteArray}}{{/isModel}}{{!
     ### Non-Enums End
@@ -169,7 +169,7 @@ impl {{{classname}}} {
     }}{{^-last}}, {{/-last}}{{/requiredVars}}) -> {{{classname}}} {
         {{{classname}}} {
             {{#vars}}
-            {{{name}}}{{^required}}: None{{/required}}{{#required}}{{^isEnum}}{{#isModel}}{{^avoidBoxedModels}}: {{^isNullable}}Box::new({{{name}}}){{/isNullable}}{{#isNullable}}{{{name}}}.map(Box::new){{/isNullable}}{{/avoidBoxedModels}}{{/isModel}}{{/isEnum}}{{/required}},
+            {{{name}}}{{^required}}: None{{/required}}{{#required}}{{^isEnum}}{{#isModel}}{{#vendorExtensions.x-rust-box}}: {{^isNullable}}Box::new({{{name}}}){{/isNullable}}{{#isNullable}}{{{name}}}.map(Box::new){{/isNullable}}{{/vendorExtensions.x-rust-box}}{{/isModel}}{{/isEnum}}{{/required}},
             {{/vars}}
         }
     }
@@ -187,7 +187,7 @@ pub enum {{classname}} {
     {{#description}}
     /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
     {{/description}}
-    {{{name}}}({{#isModel}}{{^avoidBoxedModels}}Box<{{/avoidBoxedModels}}{{/isModel}}{{{dataType}}}{{#isModel}}{{^avoidBoxedModels}}>{{/avoidBoxedModels}}{{/isModel}}),
+    {{{name}}}({{#isModel}}{{#vendorExtensions.x-rust-box}}Box<{{/vendorExtensions.x-rust-box}}{{/isModel}}{{{dataType}}}{{#isModel}}{{#vendorExtensions.x-rust-box}}>{{/vendorExtensions.x-rust-box}}{{/isModel}}),
 {{/composedSchemas.oneOf}}
 }
 

@@ -167,3 +167,6 @@ pub mod {{{classFilename}}};
 {{/apiInfo}}
 
 pub mod configuration;
+{{#webhookModules}}
+pub mod {{{.}}};
+{{/webhookModules}}

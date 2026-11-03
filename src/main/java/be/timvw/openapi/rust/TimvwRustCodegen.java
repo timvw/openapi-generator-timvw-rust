@@ -56,7 +56,9 @@ import java.util.Set;
  *   <li>{@code boxResponseError}, {@code apiLintAllows} and {@code userAgentFromPackage} shape the API modules
  *       (Milestone 2.6);</li>
  *   <li>{@code multipartHelper} sends multipart bodies through a generated helper module (see {@link MultipartRules}),
- *       and {@code fileProperties} declares properties to be files (Milestone 2.5).</li>
+ *       and {@code fileProperties} declares properties to be files (Milestone 2.5);</li>
+ *   <li>{@code legacyModelRewrites} runs transitional Java ports of openai-client-base's model scripts over the
+ *       rendered crate (Milestone 2.4, see {@code be.timvw.openapi.rust.legacy}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -99,6 +101,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String API_LINT_ALLOWS = "apiLintAllows";
     /** The default user agent is {@code <packageName>/<crate version>}. */
     public static final String USER_AGENT_FROM_PACKAGE = "userAgentFromPackage";
+    /** Run the transitional model rewrites of Milestone 2.4 over the rendered crate (openai-client-base). */
+    public static final String LEGACY_MODEL_REWRITES = "legacyModelRewrites";
     /** Multipart bodies go through a generated {@code src/apis/multipart_helper.rs} (Milestone 2.5). */
     public static final String MULTIPART_HELPER = "multipartHelper";
     /** {@code Schema.property} entries rendered as a file ({@code type: string, format: binary}). */
@@ -146,6 +150,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private String preprocessedSpecFile;
     private boolean resetQueryParameterStyle;
     private boolean multipartHelper;
+    private boolean legacyModelRewrites;
+    private String preprocessedSpecJson;
     private List<String> fileProperties = new ArrayList<>();
 
     private static Map<String, String> templateSets() {
@@ -224,6 +230,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newBoolean(RESET_QUERY_PARAMETER_STYLE,
                 "Give every query parameter not listed in deepObjectQueryParameters the default style (form, "
                         + "exploded), so arrays are sent as repeated parameters whatever the spec says", false));
+        cliOptions.add(CliOption.newBoolean(LEGACY_MODEL_REWRITES,
+                "Run the transitional rewrites that reproduce openai-client-base's scripted model output (union "
+                        + "enums, Default and Display impls, imports); they go in Milestone 3", false));
         cliOptions.add(CliOption.newBoolean(MULTIPART_HELPER,
                 "Send multipart bodies through a generated src/apis/multipart_helper.rs: files are read into a part "
                         + "named after the file, optional arrays send one part per item and optional objects one JSON "
@@ -406,6 +415,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
         deepObjectQueryParameters = SpecRules.entries(additionalProperties.get(DEEP_OBJECT_QUERY_PARAMETERS));
         resetQueryParameterStyle = additionalProperties.containsKey(RESET_QUERY_PARAMETER_STYLE)
                 && convertPropertyToBooleanAndWriteBack(RESET_QUERY_PARAMETER_STYLE);
+        legacyModelRewrites = additionalProperties.containsKey(LEGACY_MODEL_REWRITES)
+                && convertPropertyToBooleanAndWriteBack(LEGACY_MODEL_REWRITES);
         multipartHelper = additionalProperties.containsKey(MULTIPART_HELPER)
                 && convertPropertyToBooleanAndWriteBack(MULTIPART_HELPER);
         additionalProperties.put(MULTIPART_HELPER, multipartHelper);
@@ -457,6 +468,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         OpenAPI working = getInputSpec() != null ? parseFile(getInputSpec(), false) : reparse(openAPI, false);
         applySpecRules(working);
         String json = serialize(working);
+        preprocessedSpecJson = json;
         if (preprocessedSpecFile != null) {
             java.nio.file.Path target = java.nio.file.Paths.get(outputFolder, preprocessedSpecFile);
             try {
@@ -606,6 +618,29 @@ public class TimvwRustCodegen extends RustClientCodegen {
             objs.put(WEBHOOK_MODULES_KEY, Arrays.asList(toApiFilename(webhookModule)));
         }
         return objs;
+    }
+
+    /**
+     * Runs the transitional model rewrites ({@code legacyModelRewrites}) over the written crate, then the stock
+     * post-processing.
+     */
+    @Override
+    public void postProcess() {
+        if (legacyModelRewrites) {
+            try {
+                java.util.Map<String, Object> raw = be.timvw.openapi.rust.legacy.LegacyContext.load(
+                        java.nio.file.Paths.get(getInputSpec()));
+                java.util.Map<String, Object> preprocessed = be.timvw.openapi.rust.legacy.LegacyContext.parseJson(
+                        preprocessedSpecJson);
+                be.timvw.openapi.rust.legacy.LegacyModelRewrites.run(
+                        new be.timvw.openapi.rust.legacy.LegacyContext(java.nio.file.Paths.get(outputFolder), raw,
+                                preprocessed),
+                        msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg));
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(GENERATOR_NAME + ": legacy model rewrites failed", e);
+            }
+        }
+        super.postProcess();
     }
 
     /** {@code default_api} re-exports the webhook module when {@code webhookModuleReexport} is set. */

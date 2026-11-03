@@ -4,7 +4,10 @@ import com.samskivert.mustache.Mustache;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.media.Schema;
 import org.openapitools.codegen.CodegenModel;
+import org.openapitools.codegen.CodegenOperation;
+import org.openapitools.codegen.CodegenParameter;
 import org.openapitools.codegen.CodegenProperty;
+import org.openapitools.codegen.SupportingFile;
 import org.openapitools.codegen.model.ModelMap;
 import org.openapitools.codegen.model.ModelsMap;
 import org.openapitools.codegen.model.OperationsMap;
@@ -51,7 +54,9 @@ import java.util.Set;
  *       {@code stringIdSchemas}, {@code stringIdProperties}, {@code stringProperties}, {@code jsonValueSchemas},
  *       {@code deepObjectQueryParameters} and {@code resetQueryParameterStyle} for decisions a client takes about its spec;</li>
  *   <li>{@code boxResponseError}, {@code apiLintAllows} and {@code userAgentFromPackage} shape the API modules
- *       (Milestone 2.6).</li>
+ *       (Milestone 2.6);</li>
+ *   <li>{@code multipartHelper} sends multipart bodies through a generated helper module (see {@link MultipartRules}),
+ *       and {@code fileProperties} declares properties to be files (Milestone 2.5).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -94,6 +99,14 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String API_LINT_ALLOWS = "apiLintAllows";
     /** The default user agent is {@code <packageName>/<crate version>}. */
     public static final String USER_AGENT_FROM_PACKAGE = "userAgentFromPackage";
+    /** Multipart bodies go through a generated {@code src/apis/multipart_helper.rs} (Milestone 2.5). */
+    public static final String MULTIPART_HELPER = "multipartHelper";
+    /** {@code Schema.property} entries rendered as a file ({@code type: string, format: binary}). */
+    public static final String FILE_PROPERTIES = "fileProperties";
+    /** Key under which the api template finds whether its module uses the multipart helper. */
+    static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
+    /** Set on a parameter whose dataType already carries {@code models::}. */
+    static final String TYPE_QUALIFIED = "x-rust-type-qualified";
     /** Key under which the api template finds the module {@code default_api} re-exports. */
     static final String WEBHOOK_REEXPORT_KEY = "webhookReexport";
     /** Key under which the api mod template finds the webhook module files to declare. */
@@ -132,6 +145,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private List<String> deepObjectQueryParameters = new ArrayList<>();
     private String preprocessedSpecFile;
     private boolean resetQueryParameterStyle;
+    private boolean multipartHelper;
+    private List<String> fileProperties = new ArrayList<>();
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -209,6 +224,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newBoolean(RESET_QUERY_PARAMETER_STYLE,
                 "Give every query parameter not listed in deepObjectQueryParameters the default style (form, "
                         + "exploded), so arrays are sent as repeated parameters whatever the spec says", false));
+        cliOptions.add(CliOption.newBoolean(MULTIPART_HELPER,
+                "Send multipart bodies through a generated src/apis/multipart_helper.rs: files are read into a part "
+                        + "named after the file, optional arrays send one part per item and optional objects one JSON "
+                        + "part, and an encoding contentType of a scalar part is applied", false));
+        cliOptions.add(CliOption.newString(FILE_PROPERTIES,
+                "Schema.property entries rendered as a file (type: string, format: binary)"));
         cliOptions.add(CliOption.newBoolean(BOX_RESPONSE_ERROR,
                 "Error::ResponseError holds Box<ResponseContent<T>>, keeping every Result small (clippy "
                         + "result_large_err)", false));
@@ -385,6 +406,13 @@ public class TimvwRustCodegen extends RustClientCodegen {
         deepObjectQueryParameters = SpecRules.entries(additionalProperties.get(DEEP_OBJECT_QUERY_PARAMETERS));
         resetQueryParameterStyle = additionalProperties.containsKey(RESET_QUERY_PARAMETER_STYLE)
                 && convertPropertyToBooleanAndWriteBack(RESET_QUERY_PARAMETER_STYLE);
+        multipartHelper = additionalProperties.containsKey(MULTIPART_HELPER)
+                && convertPropertyToBooleanAndWriteBack(MULTIPART_HELPER);
+        additionalProperties.put(MULTIPART_HELPER, multipartHelper);
+        if (multipartHelper) {
+            supportingFiles.add(new SupportingFile("multipart_helper.mustache", apiFolder, "multipart_helper.rs"));
+        }
+        fileProperties = SpecRules.entries(additionalProperties.get(FILE_PROPERTIES));
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
             additionalProperties.put(flag, additionalProperties.containsKey(flag)
                     && convertPropertyToBooleanAndWriteBack(flag));
@@ -544,6 +572,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         }
         SpecRules.stringProperties(openAPI, stringProperties, log);
         SpecRules.jsonValueSchemas(openAPI, jsonValueSchemas, log);
+        SpecRules.fileProperties(openAPI, fileProperties, log);
         // A hoisted union may carry a stringIdSchemas name: apply the string rendering to it as well.
         SpecRules.stringSchemas(openAPI, stringIdSchemas, log);
         List<String> renamed = SpecRules.normalizeHyphenatedSchemaNames(openAPI);
@@ -583,6 +612,34 @@ public class TimvwRustCodegen extends RustClientCodegen {
     @Override
     public OperationsMap postProcessOperationsWithModels(OperationsMap objs, List<ModelMap> allModels) {
         objs = super.postProcessOperationsWithModels(objs, allModels);
+        boolean helperUsed = false;
+        if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
+            for (CodegenOperation op : objs.getOperations().getOperation()) {
+                for (List<CodegenParameter> params : Arrays.asList(op.allParams, op.formParams, op.bodyParams,
+                        op.queryParams, op.pathParams, op.headerParams, op.requiredParams, op.optionalParams)) {
+                    if (params == null) {
+                        continue;
+                    }
+                    for (CodegenParameter p : params) {
+                        if (p.dataType != null && p.dataType.startsWith("models::")) {
+                            p.vendorExtensions.put(TYPE_QUALIFIED, true);
+                        }
+                    }
+                }
+                if (multipartHelper && op.isMultipart && op.formParams != null && !op.formParams.isEmpty()) {
+                    MultipartRules.classify(openAPI, op,
+                            msg -> LOGGER.warn("{}: multipart: {}", GENERATOR_NAME, msg));
+                    for (CodegenParameter p : op.formParams) {
+                        if (p.isFile || !p.vendorExtensions.containsKey(MultipartRules.STOCK)) {
+                            helperUsed = true;
+                        }
+                    }
+                }
+            }
+        }
+        if (helperUsed) {
+            objs.put(MULTIPART_HELPER_IMPORT, true);
+        }
         if (webhookModuleReexport && objs.getOperations() != null
                 && toApiName("default").equals(objs.getOperations().getClassname())) {
             objs.put(WEBHOOK_REEXPORT_KEY, toApiFilename(webhookModule));

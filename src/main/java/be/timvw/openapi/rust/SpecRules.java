@@ -252,6 +252,30 @@ final class SpecRules {
         }
     }
 
+    /** Renders {@code Schema.property} entries as a file ({@code type: string, format: binary}). */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static void fileProperties(OpenAPI openAPI, Collection<String> entries, Consumer<String> log) {
+        Map<String, Schema> schemas = schemas(openAPI);
+        for (String entry : entries) {
+            int dot = entry.lastIndexOf('.');
+            if (dot < 0) {
+                throw new IllegalArgumentException("fileProperties entry must be Schema.property: " + entry);
+            }
+            Schema schema = schemas.get(entry.substring(0, dot));
+            String prop = entry.substring(dot + 1);
+            if (schema == null || schema.getProperties() == null || !schema.getProperties().containsKey(prop)) {
+                log.accept("fileProperties: " + entry + " not found");
+                continue;
+            }
+            Schema old = (Schema) schema.getProperties().get(prop);
+            StringSchema file = new StringSchema();
+            file.setFormat("binary");
+            file.setDescription(old.getDescription());
+            schema.getProperties().put(prop, file);
+            log.accept("fileProperties: " + entry + " is now a file");
+        }
+    }
+
     /** Replaces each named component schema by a free-form object, rendered as {@code serde_json::Value}. */
     @SuppressWarnings("rawtypes")
     static void jsonValueSchemas(OpenAPI openAPI, Collection<String> names, Consumer<String> log) {

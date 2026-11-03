@@ -184,6 +184,11 @@ pub mod {{{classFilename}}};
 {{/apiInfo}}
 
 pub mod configuration;
-{{#webhookModules}}
+{{#multipartHelper}}
+
+// Internal helper module for multipart file handling
+pub(crate) mod multipart_helper;
+
+{{/multipartHelper}}{{#webhookModules}}
 pub mod {{{.}}};
 {{/webhookModules}}

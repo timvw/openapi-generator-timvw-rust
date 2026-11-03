@@ -272,9 +272,9 @@ final class SpecRules {
     static int pruneGeneratorHostileKeywords(OpenAPI openAPI) {
         int[] n = {0};
         forEachComponentSchema(openAPI, s -> {
-            if (s.getDefault() != null || s.getDefaultSetFlag()) {
+            if (s.getDefault() != null || flag(s, "getDefaultSetFlag")) {
                 s.setDefault(null);
-                s.setDefaultSetFlag(false);
+                clearFlag(s, "setDefaultSetFlag");
                 n[0]++;
             }
             if (s.getPropertyNames() != null) {
@@ -643,6 +643,27 @@ final class SpecRules {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /**
+     * swagger-models 2.2.3x (openapi-generator 7.25) records whether {@code default}/{@code example} was set, so a
+     * cleared value would serialize as an explicit {@code null}; the 7.15 version has no such flag. Read and clear it
+     * reflectively so the generator builds against both.
+     */
+    private static boolean flag(Schema<?> schema, String getter) {
+        try {
+            return (Boolean) Schema.class.getMethod(getter).invoke(schema);
+        } catch (ReflectiveOperationException e) {
+            return false;
+        }
+    }
+
+    private static void clearFlag(Schema<?> schema, String setter) {
+        try {
+            Schema.class.getMethod(setter, boolean.class).invoke(schema, false);
+        } catch (ReflectiveOperationException e) {
+            // not present in this swagger-models version
+        }
+    }
 
     /** An object schema, possibly nullable, possibly expressed as a union of an object and null. */
     @SuppressWarnings("rawtypes")

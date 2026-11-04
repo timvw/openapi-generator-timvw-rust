@@ -270,6 +270,63 @@ def wrap_doc_lines(text: str, what: str) -> str:
     return text
 
 
+# Milestone 3.2. noStructDisplay: a struct has no Display, so a parameter of struct type (x-rust-struct-json) or an array
+# of structs (x-rust-struct-json-items), which the generator marks, goes through serde_json::to_string where the stock
+# template calls to_string(). Struct Display was serde_json::to_string, so the bytes stay the same. The other branches
+# of these templates are either not reachable for a struct or already serialize it as JSON.
+STRUCT_JSON = "vendorExtensions.x-rust-struct-json"
+STRUCT_JSON_ITEMS = "vendorExtensions.x-rust-struct-json-items"
+PARAM_ID = "{{{vendorExtensions.x-rust-param-identifier}}}"
+PATH_UNWRAP = "{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}"
+PATH_REST = (
+    '{{#isArray}}.join(",").as_ref(){{/isArray}}'
+    "{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}.to_string()"
+    "{{/isContainer}}{{/isPrimitiveType}}{{/isUuid}}{{/isString}}"
+)
+JSON_ITEMS = '.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(",")'
+
+
+def when(flag: str, json: str, stock: str) -> str:
+    return f"{{{{#{flag}}}}}{json}{{{{/{flag}}}}}{{{{^{flag}}}}}{stock}{{{{/{flag}}}}}"
+
+
+def struct_json_sites(t: str, w: str) -> str:
+    # A path parameter.
+    stock = PARAM_ID + PATH_UNWRAP + PATH_REST
+    t = replace_exactly(t, stock, when(STRUCT_JSON, f"serde_json::to_string(&{PARAM_ID}{PATH_UNWRAP})?", stock), 1, w)
+    for value in (PARAM_ID, "param_value"):
+        # An array in the query, as repeated parameters and as one joined parameter.
+        pair = '("{{{baseName}}}".to_owned(), p.to_string())'
+        tuples = "Vec<(std::string::String, std::string::String)>"
+        stock = f"req_builder.query(&{value}.into_iter().map(|p| {pair}).collect::<{tuples}>())"
+        json = (
+            f'req_builder.query(&{value}.into_iter().map(|p| serde_json::to_string(&p)'
+            f'.map(|value| ("{{{{{{baseName}}}}}}".to_owned(), value))).collect::<Result<{tuples}, _>>()?)'
+        )
+        t = replace_exactly(t, stock, when(STRUCT_JSON_ITEMS, json, stock), 1, w)
+        stock = f'&{value}.into_iter().map(|p| p.to_string()).collect::<Vec<String>>().join(",").to_string()'
+        t = replace_exactly(t, stock, when(STRUCT_JSON_ITEMS, f"&{value}{JSON_ITEMS}", stock), 1, w)
+        # A form or multipart text part, single or joined.
+        stock = (
+            f'{value}{{{{#isArray}}}}.into_iter().map(|p| p.to_string()).collect::<Vec<String>>().join(",")'
+            "{{/isArray}}.to_string()"
+        )
+        if t.count(stock) < 3:
+            raise SystemExit(f"{w}: expected at least 3 form text parts for {value}, found {t.count(stock)}")
+        t = t.replace(stock, when(STRUCT_JSON_ITEMS, value + JSON_ITEMS,
+                                  when(STRUCT_JSON, f"serde_json::to_string(&{value})?", stock)))
+    # A required query parameter.
+    stock = f'&[("{{{{{{baseName}}}}}}", &{PARAM_ID}.to_string())]'
+    t = replace_exactly(
+        t, stock, when(STRUCT_JSON, f'&[("{{{{{{baseName}}}}}}", &serde_json::to_string(&{PARAM_ID})?)]', stock), 1, w
+    )
+    # A header.
+    for value, sites in ((PARAM_ID, 1), ("param_value", 2)):
+        stock = f'{value}{{{{#isArray}}}}.join(","){{{{/isArray}}}}.to_string()'
+        t = replace_exactly(t, stock, when(STRUCT_JSON, f"serde_json::to_string(&{value})?", stock), sites, w)
+    return t
+
+
 def api_template(t: str, w: str) -> str:
     # The enum text-part edit first: the multipart helper block copies the (edited) stock non-file branch.
     t = replace_at_most_once(t, MULTIPART_JSON_TEXT, MULTIPART_ENUM_TEXT, w)
@@ -288,6 +345,7 @@ def api_template(t: str, w: str) -> str:
     t = replace_exactly(t, PARTIAL_HEADER, PARTIAL_HEADER_ALLOWS, 1, w)
     t = replace_exactly(t, API_SUPER_IMPORT, API_SUPER_IMPORT_HELPER, 1, w)
     t = replace_exactly(t, MODELS_PREFIX, MODELS_PREFIX_ONCE, 2, w)
+    t = struct_json_sites(t, w)
     return t
 
 

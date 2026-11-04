@@ -19,7 +19,11 @@ public final class LegacyModelRewrites {
     }
 
     static List<Named> pipeline() {
-        FixGeneratedCode fixGeneratedCode = new FixGeneratedCode();
+        return pipeline(true);
+    }
+
+    static List<Named> pipeline(boolean structDisplay) {
+        FixGeneratedCode fixGeneratedCode = new FixGeneratedCode(structDisplay);
         FixHelperImplMismatches helperImpls = new FixHelperImplMismatches();
         return Arrays.asList(
                 new Named("patch_generated.rs.sh (models)", new PatchGeneratedModels()),
@@ -42,7 +46,12 @@ public final class LegacyModelRewrites {
     }
 
     public static void run(LegacyContext context, Consumer<String> log) throws IOException {
-        for (Named step : pipeline()) {
+        run(context, true, log);
+    }
+
+    /** @param structDisplay whether structs get the JSON {@code Display} the scripts gave them */
+    public static void run(LegacyContext context, boolean structDisplay, Consumer<String> log) throws IOException {
+        for (Named step : pipeline(structDisplay)) {
             log.accept("legacy rewrite: " + step.script());
             step.rewrite().apply(context);
         }

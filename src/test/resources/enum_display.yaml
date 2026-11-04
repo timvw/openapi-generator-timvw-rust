@@ -1,0 +1,189 @@
+openapi: 3.1.0
+info:
+  title: Fixture
+  version: "1"
+paths:
+  /things/{filter}:
+    post:
+      operationId: things_path
+      tags: [things]
+      parameters:
+        - name: filter
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Filter"
+        - name: color
+          in: query
+          schema:
+            $ref: "#/components/schemas/Color"
+        - name: filters
+          in: query
+          required: true
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/Filter"
+        - name: joined
+          in: query
+          required: true
+          explode: false
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/Filter"
+        - name: maybe_filters
+          in: query
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/Filter"
+        - name: maybe_joined
+          in: query
+          explode: false
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/Filter"
+        - name: colors
+          in: query
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/Color"
+        - name: X-Filter
+          in: header
+          required: true
+          schema:
+            $ref: "#/components/schemas/Filter"
+        - name: X-Maybe-Filter
+          in: header
+          schema:
+            $ref: "#/components/schemas/Filter"
+        - name: X-Color
+          in: header
+          schema:
+            $ref: "#/components/schemas/Color"
+      responses:
+        "200":
+          description: ok
+  /things/deep:
+    get:
+      operationId: things_deep
+      tags: [things]
+      parameters:
+        - name: filter
+          in: query
+          required: true
+          style: deepObject
+          schema:
+            $ref: "#/components/schemas/Filter"
+      responses:
+        "200":
+          description: ok
+  /things/form:
+    post:
+      operationId: things_form
+      tags: [things]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [filter, filters]
+              properties:
+                filter:
+                  $ref: "#/components/schemas/Filter"
+                maybe_filter:
+                  $ref: "#/components/schemas/Filter"
+                filters:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Filter"
+                color:
+                  $ref: "#/components/schemas/Color"
+      responses:
+        "200":
+          description: ok
+  /things/upload:
+    post:
+      operationId: things_upload
+      tags: [things]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [filter, filters, size]
+              properties:
+                filter:
+                  $ref: "#/components/schemas/Filter"
+                maybe_filter:
+                  $ref: "#/components/schemas/Filter"
+                filters:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Filter"
+                color:
+                  $ref: "#/components/schemas/Color"
+                size:
+                  $ref: "#/components/schemas/ThingSize"
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Color:
+      type: string
+      enum: [red, blue-green, "256x256"]
+    Priority:
+      type: integer
+      enum: [1, 2, 30]
+    Clash:
+      type: string
+      description: Values whose variants collide with what the impls name.
+      enum: [Err, Error, Ok, None, Some, String, Result, FromStr, TryFrom, Display, Value]
+    Holder:
+      type: object
+      properties:
+        quality:
+          type: string
+          enum: [low, high]
+        level:
+          type: integer
+          enum: [1, 2]
+    Filter:
+      type: object
+      properties:
+        name:
+          type: string
+    Either:
+      oneOf:
+        - $ref: "#/components/schemas/Filter"
+        - $ref: "#/components/schemas/Holder"
+    ThingSize:
+      description: Rendered as a struct, then turned into a union by the legacy rewrites.
+      anyOf:
+        - type: string
+          title: Text
+        - type: string
+          enum: [small, large]
+          title: Text
+    Result:
+      type: object
+      description: A schema shadowing the prelude's Result in its own file.
+      properties:
+        status:
+          type: string
+          enum: [ok, failed]
+    String:
+      type: object
+      description: A schema shadowing the prelude's String in its own file.
+      properties:
+        kind:
+          type: string
+          enum: [short, long]

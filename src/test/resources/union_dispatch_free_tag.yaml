@@ -1,0 +1,26 @@
+openapi: 3.1.0
+info:
+  title: A discriminator whose field is a free string and has no mapping
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Free:
+      oneOf:
+        - $ref: '#/components/schemas/Fixed'
+        - $ref: '#/components/schemas/Open'
+      discriminator:
+        propertyName: type
+    Fixed:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [fixed]
+    Open:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string

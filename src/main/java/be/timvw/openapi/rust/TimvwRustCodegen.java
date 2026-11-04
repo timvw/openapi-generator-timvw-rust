@@ -73,7 +73,9 @@ import java.util.Set;
  *       it stands otherwise, and fails generation when two different schemas would share a Rust model or file (Milestone 3.3, see {@link InlineNames} and
  *       {@link NameCollisions});</li>
  *   <li>{@code modelUnions} renders unions from the model instead of through the text rewrites of
- *       {@code legacyModelRewrites} (Milestone 3.3, see {@link UnionRules}).</li>
+ *       {@code legacyModelRewrites} (Milestone 3.3, see {@link UnionRules});</li>
+ *   <li>{@code unionDispatch} makes a union with a tag decode by that tag (Milestone 3.3, see
+ *       {@link UnionRules#dispatch}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -140,6 +142,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String QUALIFIED_INLINE_NAMES = "qualifiedInlineNames";
     /** Unions render from the model; the union text rewrites of {@code legacyModelRewrites} do not run (Milestone 3.3). */
     public static final String MODEL_UNIONS = "modelUnions";
+    /** A union with a tag decodes by that tag; it requires {@link #MODEL_UNIONS} (Milestone 3.3). */
+    public static final String UNION_DISPATCH = "unionDispatch";
     /** Output-relative path the union plan of {@code modelUnions} is written to, as JSON (for tools and debugging). */
     public static final String UNION_PLAN_FILE = "unionPlanFile";
     /** Key under which the api template finds whether its module uses the multipart helper. */
@@ -197,6 +201,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private final Set<String> structJsonModels = new java.util.TreeSet<>();
     private boolean qualifiedInlineNames;
     private boolean modelUnions;
+    private boolean unionDispatch;
+    private boolean anyDispatch;
     private String unionPlanFile;
     private final Set<String> unionNames = new HashSet<>();
 
@@ -319,6 +325,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 "Render every oneOf and anyOf as an untagged enum from the model: variants named after the branch and "
                         + "ordered so that decoding takes the narrowest one. The union rewrites of legacyModelRewrites "
                         + "do not run", false));
+        cliOptions.add(CliOption.newBoolean(UNION_DISPATCH,
+                "With modelUnions: a union with a discriminator, or whose branches all require one property with fixed "
+                        + "values, decodes the variant its tag selects instead of trying them all. It serializes as "
+                        + "before: each struct holds its tag", false));
         cliOptions.add(CliOption.newString(UNION_PLAN_FILE,
                 "With modelUnions: write the variants of every union and the schemas they refer to to this "
                         + "output-relative path, as JSON"));
@@ -411,6 +421,14 @@ public class TimvwRustCodegen extends RustClientCodegen {
         if (modelUnions) {
             UnionRules.payloads(unions, objs);
             unionNames.addAll(unions.keySet());
+            if (unionDispatch) {
+                UnionRules.DispatchCounts counts = UnionRules.dispatch(unions, objs, openAPI);
+                anyDispatch = counts.explicit() + counts.implicit() > 0;
+                LOGGER.info("{}: {}: {} tagged ({} by a discriminator, {} implicitly), {} untagged; {} have a value on "
+                                + "two variants, {} allow the tag to be missing", GENERATOR_NAME, UNION_DISPATCH,
+                        counts.explicit() + counts.implicit(), counts.explicit(), counts.implicit(), counts.untagged(),
+                        counts.sharedValue(), counts.optional());
+            }
             writeUnionPlan(unions);
         }
         DefaultRules.mark(objs, defaultOnlyWhereValid);
@@ -427,7 +445,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         try {
             java.nio.file.Files.createDirectories(target.getParent());
             (v31 ? io.swagger.v3.core.util.Json31.pretty() : io.swagger.v3.core.util.Json.pretty())
-                    .writeValue(target.toFile(), UnionRules.describe(unions, openAPI));
+                    .writeValue(target.toFile(), UnionRules.describe(unions, openAPI, unionDispatch));
         } catch (java.io.IOException e) {
             throw new IllegalStateException("cannot write " + target, e);
         }
@@ -561,6 +579,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 && convertPropertyToBooleanAndWriteBack(QUALIFIED_INLINE_NAMES);
         modelUnions = additionalProperties.containsKey(MODEL_UNIONS)
                 && convertPropertyToBooleanAndWriteBack(MODEL_UNIONS);
+        unionDispatch = additionalProperties.containsKey(UNION_DISPATCH)
+                && convertPropertyToBooleanAndWriteBack(UNION_DISPATCH);
+        if (unionDispatch && !modelUnions) {
+            throw new IllegalArgumentException(GENERATOR_NAME + ": " + UNION_DISPATCH + " requires " + MODEL_UNIONS
+                    + ": it decodes the unions that option renders");
+        }
         Object plan = additionalProperties.get(UNION_PLAN_FILE);
         unionPlanFile = plan == null || String.valueOf(plan).isEmpty() ? null : String.valueOf(plan);
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
@@ -830,6 +854,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
         java.nio.file.Path models = java.nio.file.Paths.get(outputFolder, "src", "models");
         try {
             checkStructJsonModels(models, structJsonModels);
+            if (anyDispatch) {
+                UnionRules.writeDispatchModule(models);
+            }
             if (enumFromStr) {
                 EnumFromStr.Result result = EnumFromStr.run(models,
                         msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, ENUM_FROM_STR, msg));

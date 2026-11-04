@@ -68,7 +68,10 @@ import java.util.Set;
  *   <li>{@code noStructDisplay} leaves structs without a JSON {@code Display} and has the API code serialize them
  *       explicitly (Milestone 3.2);</li>
  *   <li>{@code integersAsI64} renders an integer as {@code i64} unless the spec says {@code format: int32}
- *       (Milestone 3.4, see {@link #getSchemaType}).</li>
+ *       (Milestone 3.4, see {@link #getSchemaType});</li>
+ *   <li>{@code qualifiedInlineNames} names inline schemas after where they stand, and fails generation when two
+ *       different schemas would share a Rust model or file (Milestone 3.3, see {@link InlineNames} and
+ *       {@link NameCollisions}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -131,6 +134,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     static final String STRUCT_JSON_ITEMS = "x-rust-struct-json-items";
     /** Render an integer as {@code i64} unless the spec says {@code format: int32} (Milestone 3.4). */
     public static final String INTEGERS_AS_I64 = "integersAsI64";
+    /** Name inline schemas after their location; different schemas sharing a Rust name fail generation (Milestone 3.3). */
+    public static final String QUALIFIED_INLINE_NAMES = "qualifiedInlineNames";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
     /** Set on a parameter whose dataType already carries {@code models::}. */
@@ -184,6 +189,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private boolean enumFromStr;
     private boolean noStructDisplay;
     private final Set<String> structJsonModels = new java.util.TreeSet<>();
+    private boolean qualifiedInlineNames;
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -268,6 +274,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 "Send multipart bodies through a generated src/apis/multipart_helper.rs: files are read into a part "
                         + "named after the file, optional arrays send one part per item and optional objects one JSON "
                         + "part, and an encoding contentType of a scalar part is applied", false));
+        cliOptions.add(CliOption.newBoolean(QUALIFIED_INLINE_NAMES,
+                "Name every inline schema that becomes a model after where it stands (Parent_property, Parent_inner, "
+                        + "Parent_value, Parent_<branch title>), never after its title alone, and fail generation when "
+                        + "two structurally different schemas would produce the same Rust model or file", false));
         cliOptions.add(CliOption.newString(FILE_PROPERTIES,
                 "Schema.property entries rendered as a file (type: string, format: binary)"));
         cliOptions.add(CliOption.newBoolean(DEFAULT_ONLY_WHERE_VALID,
@@ -502,6 +512,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 && convertPropertyToBooleanAndWriteBack(NO_STRUCT_DISPLAY);
         integersAsI64 = additionalProperties.containsKey(INTEGERS_AS_I64)
                 && convertPropertyToBooleanAndWriteBack(INTEGERS_AS_I64);
+        qualifiedInlineNames = additionalProperties.containsKey(QUALIFIED_INLINE_NAMES)
+                && convertPropertyToBooleanAndWriteBack(QUALIFIED_INLINE_NAMES);
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
             additionalProperties.put(flag, additionalProperties.containsKey(flag)
                     && convertPropertyToBooleanAndWriteBack(flag));
@@ -576,11 +588,40 @@ public class TimvwRustCodegen extends RustClientCodegen {
                     GENERATOR_NAME, TITLE_NAMING, stripped.size());
         }
         if (super.getUseInlineModelResolver()) {
-            InlineModelResolverAccess.flatten(openAPI, inlineSchemaNameMapping(), inlineSchemaOption());
+            if (qualifiedInlineNames) {
+                flattenWithQualifiedNames(openAPI);
+            } else {
+                InlineModelResolverAccess.flatten(openAPI, inlineSchemaNameMapping(), inlineSchemaOption());
+            }
         }
         super.preprocessOpenAPI(openAPI);
         for (String where : SpecNormalizer.integerWithFloatFormatToNumber(openAPI)) {
             LOGGER.warn("{}: read 'type: integer' with a float format as 'type: number' at {}", GENERATOR_NAME, where);
+        }
+    }
+
+    /**
+     * Names the inline schemas, then runs the resolver between two checks: the first sees the schemas the resolver
+     * would overwrite, the second the models it really made.
+     */
+    private void flattenWithQualifiedNames(OpenAPI openAPI) {
+        InlineNames.Plan plan = InlineNames.qualify(openAPI, inlineSchemaOption());
+        LOGGER.info("{}: {}: {} models planned, {} inline titles replaced, {} inline schemas are shared: {}",
+                GENERATOR_NAME, QUALIFIED_INLINE_NAMES, plan.sites().size(), plan.renamed(), plan.shared().size(),
+                plan.shared());
+        failOnCollisions(NameCollisions.beforeFlattening(openAPI, plan.sites(), this::toModelName,
+                this::toModelFilename));
+        InlineModelResolverAccess.flatten(openAPI, inlineSchemaNameMapping(), inlineSchemaOption());
+        failOnCollisions(NameCollisions.afterFlattening(openAPI, plan.sites(), this::toModelName,
+                this::toModelFilename));
+    }
+
+    private static void failOnCollisions(List<String> collisions) {
+        if (!collisions.isEmpty()) {
+            throw new IllegalArgumentException(String.format("%s: %s: different schemas would produce the same Rust "
+                            + "name (%d); fix this upstream, the generator does not pick a winner:%n  %s",
+                    GENERATOR_NAME, QUALIFIED_INLINE_NAMES, collisions.size(),
+                    String.join(System.lineSeparator() + "  ", collisions)));
         }
     }
 
@@ -649,9 +690,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
         SpecRules.stringIdProperties(openAPI, stringIdProperties, SpecRules.names(stringIdSchemas), log);
         int inlined = SpecRules.inlineStringRefsInUnions(openAPI);
         int pruned = SpecRules.pruneGeneratorHostileKeywords(openAPI);
-        List<String> retitled = SpecRules.disambiguateInlineTitles(openAPI, this::toModelName);
-        for (String r : retitled) {
-            LOGGER.warn("{}: inline title collides with a component schema, renamed: {}", GENERATOR_NAME, r);
+        if (!qualifiedInlineNames) {
+            List<String> retitled = SpecRules.disambiguateInlineTitles(openAPI, this::toModelName);
+            for (String r : retitled) {
+                LOGGER.warn("{}: inline title collides with a component schema, renamed: {}", GENERATOR_NAME, r);
+            }
         }
         int stripped = SpecRules.stripRefSiblings(openAPI);
         int collapsed = SpecRules.collapseRequiredOnlyUnions(openAPI);

@@ -1,0 +1,193 @@
+openapi: 3.1.0
+info:
+  title: Inline names
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              title: Thing body
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: created
+          content:
+            application/json:
+              schema:
+                title: Created thing
+                type: object
+                properties:
+                  id:
+                    type: string
+components:
+  schemas:
+    # The title of the inline schema normalizes to the name of this component: stock writes both to one file.
+    StaticChunkingStrategy:
+      type: object
+      required: [max_chunk_size_tokens]
+      properties:
+        max_chunk_size_tokens:
+          type: integer
+    ChunkingStrategy:
+      oneOf:
+        - title: Static Chunking Strategy
+          type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [static]
+            static:
+              $ref: "#/components/schemas/StaticChunkingStrategy"
+        - title: Auto Chunking Strategy
+          type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [auto]
+    # The object branch has the title of the union around it: stock overwrites the object with the union.
+    Session:
+      type: object
+      properties:
+        tracing:
+          title: Tracing Configuration
+          oneOf:
+            - type: string
+              enum: [auto]
+            - title: Tracing Configuration
+              type: object
+              properties:
+                workflow_name:
+                  type: string
+        # The same in property form: the outer object would reference itself.
+        format:
+          title: Grammar format
+          type: object
+          required: [grammar]
+          properties:
+            type:
+              type: string
+              enum: [grammar]
+            grammar:
+              title: Grammar format
+              type: object
+              properties:
+                definition:
+                  type: string
+    # The plugin titles these branches Object0: stock numbers them Object0_1, Object0_2.
+    LeftUnion:
+      anyOf:
+        - type: object
+          properties:
+            left:
+              type: string
+        - type: string
+    RightUnion:
+      anyOf:
+        - type: object
+          properties:
+            right:
+              type: integer
+        - type: string
+    # A nullable object: the null branch goes, so the object stands where the property is.
+    Nullable:
+      type: object
+      properties:
+        details:
+          anyOf:
+            - type: object
+              properties:
+                reason:
+                  type: string
+            - type: "null"
+    # The same title at two places, for different shapes: stock numbers the second one.
+    First:
+      type: object
+      properties:
+        filter:
+          title: Tool filter
+          type: object
+          properties:
+            one:
+              type: string
+    Second:
+      type: object
+      properties:
+        filter:
+          title: Tool filter
+          type: object
+          properties:
+            two:
+              type: string
+    # Two branches of one union with one title get their position.
+    SameTitles:
+      oneOf:
+        - title: Same
+          type: object
+          properties:
+            a:
+              type: string
+        - title: Same
+          type: object
+          properties:
+            b:
+              type: string
+    Containers:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            title: A list item
+            type: object
+            properties:
+              x:
+                type: string
+        labels:
+          type: object
+          additionalProperties:
+            title: A label
+            type: object
+            properties:
+              y:
+                type: string
+    # Identical apart from annotations, and through differently named references: one model is fine.
+    Twin_Info:
+      type: object
+      description: One description.
+      required: [node, leaf]
+      properties:
+        node:
+          $ref: "#/components/schemas/Twin_Info"
+        leaf:
+          $ref: "#/components/schemas/LeafA"
+    TwinInfo:
+      type: object
+      title: Another title
+      description: Another description.
+      required: [leaf, node]
+      properties:
+        node:
+          $ref: "#/components/schemas/TwinInfo"
+        leaf:
+          $ref: "#/components/schemas/LeafB"
+    LeafA:
+      type: object
+      properties:
+        value:
+          type: string
+    LeafB:
+      type: object
+      description: Same shape as LeafA.
+      properties:
+        value:
+          type: string

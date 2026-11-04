@@ -66,7 +66,9 @@ import java.util.Set;
  *   <li>{@code enumFromStr} gives closed enums {@code FromStr} and {@code TryFrom} (Milestone 3.2, see
  *       {@link EnumFromStr});</li>
  *   <li>{@code noStructDisplay} leaves structs without a JSON {@code Display} and has the API code serialize them
- *       explicitly (Milestone 3.2).</li>
+ *       explicitly (Milestone 3.2);</li>
+ *   <li>{@code integersAsI64} renders an integer as {@code i64} unless the spec says {@code format: int32}
+ *       (Milestone 3.4, see {@link #getSchemaType}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -127,6 +129,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     static final String STRUCT_JSON = "x-rust-struct-json";
     /** Set on a parameter holding an array of structs, whose items the api template serializes as JSON. */
     static final String STRUCT_JSON_ITEMS = "x-rust-struct-json-items";
+    /** Render an integer as {@code i64} unless the spec says {@code format: int32} (Milestone 3.4). */
+    public static final String INTEGERS_AS_I64 = "integersAsI64";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
     /** Set on a parameter whose dataType already carries {@code models::}. */
@@ -174,6 +178,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private String preprocessedSpecJson;
     private List<String> fileProperties = new ArrayList<>();
     private boolean boxOnlyCycles;
+    private boolean integersAsI64;
     private Map<String, Integer> boxComponents = Map.of();
     private boolean defaultOnlyWhereValid;
     private boolean enumFromStr;
@@ -277,6 +282,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newBoolean(USER_AGENT_FROM_PACKAGE,
                 "Default user agent <packageName>/<crate version> (CARGO_PKG_VERSION) instead of "
                         + "OpenAPI-Generator/<spec version>/rust; httpUserAgent still wins", false));
+        cliOptions.add(CliOption.newBoolean(INTEGERS_AS_I64,
+                "Render an integer as i64 unless the spec says format: int32, wherever it appears; spec bounds never "
+                        + "pick a type. Without the option an integer without a format, or with one other than int64, "
+                        + "is i32, as in stock -g rust", false));
         cliOptions.add(CliOption.newString(PREPROCESSED_SPEC_FILE,
                 "Write the spec as it stands after the spec rules (before inline schemas are named) to this "
                         + "output-relative path, as JSON"));
@@ -306,6 +315,20 @@ public class TimvwRustCodegen extends RustClientCodegen {
     @Override
     public String getName() {
         return GENERATOR_NAME;
+    }
+
+    /**
+     * With {@code integersAsI64}, an integer the stock generator renders as {@code i32} is {@code i64} unless its
+     * format is {@code int32}. Every location (fields, container items, parameters, responses, union variants) gets
+     * its type from here. The stock flags are left alone, so {@code isInteger} still selects the integer enum
+     * rendering. {@code preferUnsignedInt} and {@code bestFitInt} are pinned to false, so the stock mapping can only
+     * answer {@code i32} or {@code i64} for an integer.
+     */
+    @Override
+    @SuppressWarnings("rawtypes")
+    public String getSchemaType(Schema p) {
+        String type = super.getSchemaType(p);
+        return integersAsI64 && "i32".equals(type) && !"int32".equals(p.getFormat()) ? "i64" : type;
     }
 
     /** The model name the stock generator gives a composed schema without typed branches ({@code anyOf<>}). */
@@ -477,6 +500,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 && convertPropertyToBooleanAndWriteBack(ENUM_FROM_STR);
         noStructDisplay = additionalProperties.containsKey(NO_STRUCT_DISPLAY)
                 && convertPropertyToBooleanAndWriteBack(NO_STRUCT_DISPLAY);
+        integersAsI64 = additionalProperties.containsKey(INTEGERS_AS_I64)
+                && convertPropertyToBooleanAndWriteBack(INTEGERS_AS_I64);
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
             additionalProperties.put(flag, additionalProperties.containsKey(flag)
                     && convertPropertyToBooleanAndWriteBack(flag));
@@ -687,7 +712,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         preprocessedSpecJson);
                 be.timvw.openapi.rust.legacy.LegacyModelRewrites.run(
                         new be.timvw.openapi.rust.legacy.LegacyContext(java.nio.file.Paths.get(outputFolder), raw,
-                                preprocessed, boxPolicy(), defaultOnlyWhereValid),
+                                preprocessed, boxPolicy(), defaultOnlyWhereValid, integersAsI64),
                         !noStructDisplay,
                         msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg));
             } catch (java.io.IOException e) {

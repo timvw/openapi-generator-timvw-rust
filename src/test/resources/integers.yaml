@@ -1,0 +1,120 @@
+openapi: 3.0.3
+info:
+  title: integers
+  version: 1.0.0
+paths:
+  /things/{id}/{shard}:
+    get:
+      operationId: getThing
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+        - {name: shard, in: path, required: true, schema: {type: integer, format: int32}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 0, maximum: 100}}
+        - {name: after, in: query, schema: {type: integer, format: int64}}
+        - {name: since, in: query, schema: {type: integer, format: unixtime}}
+        - {name: page, in: query, schema: {type: integer, format: int32}}
+        - name: ids
+          in: query
+          schema: {type: array, items: {type: integer}}
+        - name: pages
+          in: query
+          schema: {type: array, items: {type: integer, format: int32}}
+        - {name: X-Count, in: header, schema: {type: integer}}
+        - {name: X-Small, in: header, schema: {type: integer, format: int32}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thing"
+  /counts:
+    get:
+      operationId: getCount
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: integer}
+  /small-counts:
+    get:
+      operationId: getSmallCount
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: integer, format: int32}
+  /uploads:
+    post:
+      operationId: upload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [size, chunk]
+              properties:
+                size: {type: integer}
+                chunk: {type: integer, format: int32}
+                stamp: {type: integer, format: unixtime}
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Count:
+      type: integer
+    Small:
+      type: integer
+      format: int32
+    Priority:
+      type: integer
+      enum: [1, 2, 3]
+    Thing:
+      type: object
+      required: [plain, small, big, stamp, odd, bounded, count, tiny]
+      properties:
+        plain: {type: integer}
+        small: {type: integer, format: int32}
+        big: {type: integer, format: int64}
+        stamp: {type: integer, format: unixtime}
+        odd: {type: integer, format: int16}
+        bounded: {type: integer, minimum: 0, maximum: 10}
+        count: {$ref: "#/components/schemas/Count"}
+        tiny: {$ref: "#/components/schemas/Small"}
+        opt: {type: integer}
+        opt_small: {type: integer, format: int32}
+        nullable_opt: {type: integer, nullable: true}
+        list: {type: array, items: {type: integer}}
+        list_small: {type: array, items: {type: integer, format: int32}}
+        list_count: {type: array, items: {$ref: "#/components/schemas/Count"}}
+        matrix: {type: array, items: {type: array, items: {type: integer}}}
+        by_name: {type: object, additionalProperties: {type: integer}}
+        by_name_small: {type: object, additionalProperties: {type: integer, format: int32}}
+        price: {type: number}
+        ratio: {type: number, format: double}
+        priority: {$ref: "#/components/schemas/Priority"}
+        level: {type: integer, enum: [10, 20]}
+        epochs: {$ref: "#/components/schemas/Epochs"}
+        small_epochs: {$ref: "#/components/schemas/SmallEpochs"}
+        tokens: {$ref: "#/components/schemas/Tokens"}
+        small_tokens: {$ref: "#/components/schemas/SmallTokens"}
+    Epochs:
+      oneOf:
+        - {type: string, enum: [auto], title: Auto}
+        - {type: integer, title: Integer}
+    SmallEpochs:
+      oneOf:
+        - {type: string, enum: [auto], title: Auto}
+        - {type: integer, format: int32, title: Integer}
+    Tokens:
+      anyOf:
+        - {type: array, items: {type: integer}}
+        - {type: array, items: {type: array, items: {type: integer}}}
+    SmallTokens:
+      anyOf:
+        - {type: array, items: {type: integer, format: int32}}
+        - {type: array, items: {type: array, items: {type: integer, format: int32}}}

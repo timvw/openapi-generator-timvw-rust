@@ -64,7 +64,7 @@ public class FixUntaggedUnions implements Rewrite {
         if (!Files.exists(modelsDir)) {
             throw new IOException("Models directory not found: " + modelsDir);
         }
-        Detection detection = detectUntaggedUnions(context.preprocessedSpec());
+        Detection detection = detectUntaggedUnions(context.preprocessedSpec(), context.integersAsI64());
         Map<String, List<Variant>> untaggedUnions = detection.untaggedUnions();
         Map<String, EnumInfo> simpleStringEnums = detection.simpleStringEnums();
 
@@ -177,7 +177,7 @@ public class FixUntaggedUnions implements Rewrite {
     }
 
     /** {@code detect_untagged_unions}: property-level and schema-level unions without a discriminator. */
-    static Detection detectUntaggedUnions(Map<String, Object> spec) {
+    static Detection detectUntaggedUnions(Map<String, Object> spec, boolean integersAsI64) {
         Map<String, List<Variant>> untaggedUnions = new LinkedHashMap<>();
         Map<String, EnumInfo> simpleStringEnums = new LinkedHashMap<>();
         Map<String, Object> schemas = map(get(map(get(spec, "components", new LinkedHashMap<>())), "schemas",
@@ -201,7 +201,8 @@ public class FixUntaggedUnions implements Rewrite {
                                 propPascal.append(capitalize(word));
                             }
                             String typeName = schemaName + propPascal;
-                            Analysis a = analyzeUnionVariants(anyOfOrOneOf(map(propDef)), schemas, typeName);
+                            Analysis a = analyzeUnionVariants(anyOfOrOneOf(map(propDef)), schemas, typeName,
+                                    integersAsI64);
                             if (!a.variants().isEmpty()) {
                                 untaggedUnions.put(typeName, a.variants());
                                 mergeSimpleStringEnums(simpleStringEnums, a.enumTypes());
@@ -212,7 +213,8 @@ public class FixUntaggedUnions implements Rewrite {
             }
             if (in("anyOf", schemaDef) || in("oneOf", schemaDef)) {
                 if (!in("discriminator", schemaDef)) {
-                    Analysis a = analyzeUnionVariants(anyOfOrOneOf(map(schemaDef)), schemas, schemaName);
+                    Analysis a = analyzeUnionVariants(anyOfOrOneOf(map(schemaDef)), schemas, schemaName,
+                            integersAsI64);
                     if (!a.variants().isEmpty()) {
                         untaggedUnions.put(schemaName, a.variants());
                         mergeSimpleStringEnums(simpleStringEnums, a.enumTypes());
@@ -225,6 +227,11 @@ public class FixUntaggedUnions implements Rewrite {
 
     /** {@code analyze_union_variants}: maps each anyOf/oneOf item to a {@code (name, type)} variant. */
     static Analysis analyzeUnionVariants(Object unionItems, Map<String, Object> schemas, String contextName) {
+        return analyzeUnionVariants(unionItems, schemas, contextName, false);
+    }
+
+    static Analysis analyzeUnionVariants(Object unionItems, Map<String, Object> schemas, String contextName,
+                                         boolean integersAsI64) {
         List<Variant> variants = new ArrayList<>();
         Map<String, EnumInfo> enumTypes = new LinkedHashMap<>();
 
@@ -237,7 +244,7 @@ public class FixUntaggedUnions implements Rewrite {
             // Flatten nested anyOf/oneOf structures before handling concrete nodes
             Object nested = truthy(item.get("anyOf")) ? item.get("anyOf") : item.get("oneOf");
             if (truthy(nested)) {
-                Analysis n = analyzeUnionVariants(nested, schemas, contextName);
+                Analysis n = analyzeUnionVariants(nested, schemas, contextName, integersAsI64);
                 for (Variant v : n.variants()) {
                     if (!variants.contains(v)) {
                         variants.add(v);
@@ -280,11 +287,13 @@ public class FixUntaggedUnions implements Rewrite {
                 } else if ("string".equals(map(itemsDef).get("type"))) {
                     variants.add(new Variant("ArrayOfStrings", "Vec<String>"));
                 } else if ("integer".equals(map(itemsDef).get("type"))) {
-                    variants.add(new Variant("ArrayOfIntegers", "Vec<i32>"));
+                    variants.add(new Variant("ArrayOfIntegers",
+                            "Vec<" + integerType(map(itemsDef), integersAsI64) + ">"));
                 } else if ("array".equals(map(itemsDef).get("type"))) {
                     Map<String, Object> inner = map(get(map(itemsDef), "items", new LinkedHashMap<>()));
                     if ("integer".equals(inner.get("type"))) {
-                        variants.add(new Variant("ArrayOfIntegerArrays", "Vec<Vec<i32>>"));
+                        variants.add(new Variant("ArrayOfIntegerArrays",
+                                "Vec<Vec<" + integerType(inner, integersAsI64) + ">>"));
                     }
                 } else {
                     variants.add(new Variant(sanitizeVariantName(title), "Vec<serde_json::Value>"));
@@ -318,6 +327,11 @@ public class FixUntaggedUnions implements Rewrite {
             }
         }
         return new Analysis(variants, enumTypes);
+    }
+
+    /** The Rust type of an integer schema: {@code i32} as the script wrote, or the {@code integersAsI64} rule. */
+    private static String integerType(Map<String, Object> schema, boolean integersAsI64) {
+        return integersAsI64 && !"int32".equals(schema.get("format")) ? "i64" : "i32";
     }
 
     /** A free-form map, which the generator renders as a map and writes no model file for. */
@@ -366,7 +380,7 @@ public class FixUntaggedUnions implements Rewrite {
 
         String firstName = variants.isEmpty() ? null : variants.get(0).name();
         String firstType = variants.isEmpty() ? null : variants.get(0).type();
-        if (implDefault && List.of("String", "()", "Vec<String>", "Vec<i32>").contains(firstType)) {
+        if (implDefault && List.of("String", "()", "Vec<String>", "Vec<i32>", "Vec<i64>").contains(firstType)) {
             lines.add("impl Default for " + name + " {");
             lines.add("    fn default() -> Self {");
             if (firstType.equals("String")) {

@@ -94,6 +94,8 @@ def main() -> int:
     violations = []
     with_default, without_default, enums, spec_checked, spec_skipped = 0, 0, 0, 0, 0
     for path in sorted((args.crate / "src/models").glob("*.rs")):
+        if path.name == "parse_enum_error.rs":
+            continue  # enumFromStr's error type: not a model of the spec
         text = path.read_text()
         for m in STRUCT.finditer(text):
             body = text[m.end() : closing_brace(text, m.end() - 1)]

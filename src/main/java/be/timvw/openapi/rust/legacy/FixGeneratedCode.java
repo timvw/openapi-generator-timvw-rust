@@ -28,7 +28,15 @@ public class FixGeneratedCode implements Rewrite {
 
     private static final int FLAGS = Pattern.UNICODE_CHARACTER_CLASS | Pattern.UNIX_LINES;
 
+    private final boolean structDisplay;
+
     public FixGeneratedCode() {
+        this(true);
+    }
+
+    /** @param structDisplay whether structs get the JSON {@code Display} ({@code noStructDisplay} turns this off) */
+    public FixGeneratedCode(boolean structDisplay) {
+        this.structDisplay = structDisplay;
     }
 
     /** Port of {@code main()}: applies the fixes in the script's order. */
@@ -128,6 +136,9 @@ public class FixGeneratedCode implements Rewrite {
 
     /** Port of {@code add_display_impl_for_structs}: adds a JSON {@code Display} impl to serializable structs. */
     void addDisplayImplForStructs(Path modelsDir) throws IOException {
+        if (!structDisplay) {
+            return;
+        }
         Pattern structPattern = re("pub struct (\\w+)");
         for (Path filePath : rsFiles(modelsDir)) {
             String content = read(filePath);

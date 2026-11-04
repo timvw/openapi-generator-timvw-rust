@@ -62,7 +62,11 @@ import java.util.Set;
  *   <li>{@code boxOnlyCycles} boxes a model reference only where the model graph needs it to break a cycle
  *       (Milestone 3.1, see {@link BoxRules});</li>
  *   <li>{@code defaultOnlyWhereValid} keeps {@code Default} only where its value is one the API would accept
- *       (Milestone 3.2, see {@link DefaultRules}).</li>
+ *       (Milestone 3.2, see {@link DefaultRules});</li>
+ *   <li>{@code enumFromStr} gives closed enums {@code FromStr} and {@code TryFrom} (Milestone 3.2, see
+ *       {@link EnumFromStr});</li>
+ *   <li>{@code noStructDisplay} leaves structs without a JSON {@code Display} and has the API code serialize them
+ *       explicitly (Milestone 3.2).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -115,6 +119,14 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String BOX_ONLY_CYCLES = "boxOnlyCycles";
     /** {@code Default} only where its value is one the API would accept (Milestone 3.2, see {@link DefaultRules}). */
     public static final String DEFAULT_ONLY_WHERE_VALID = "defaultOnlyWhereValid";
+    /** Closed enums get {@code FromStr} and {@code TryFrom} (Milestone 3.2, see {@link EnumFromStr}). */
+    public static final String ENUM_FROM_STR = "enumFromStr";
+    /** Structs have no JSON {@code Display}; the API code calls {@code serde_json::to_string} (Milestone 3.2). */
+    public static final String NO_STRUCT_DISPLAY = "noStructDisplay";
+    /** Set on a parameter of struct type, which the api template then serializes as JSON. */
+    static final String STRUCT_JSON = "x-rust-struct-json";
+    /** Set on a parameter holding an array of structs, whose items the api template serializes as JSON. */
+    static final String STRUCT_JSON_ITEMS = "x-rust-struct-json-items";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
     /** Set on a parameter whose dataType already carries {@code models::}. */
@@ -164,6 +176,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private boolean boxOnlyCycles;
     private Map<String, Integer> boxComponents = Map.of();
     private boolean defaultOnlyWhereValid;
+    private boolean enumFromStr;
+    private boolean noStructDisplay;
+    private final Set<String> structJsonModels = new java.util.TreeSet<>();
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -265,6 +280,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newString(PREPROCESSED_SPEC_FILE,
                 "Write the spec as it stands after the spec rules (before inline schemas are named) to this "
                         + "output-relative path, as JSON"));
+        cliOptions.add(CliOption.newBoolean(ENUM_FROM_STR,
+                "Closed enums implement FromStr and TryFrom<&str>, TryFrom<&String> and TryFrom<String>, accepting "
+                        + "exactly what their Display prints; property enums get the Display they lack", false));
+        cliOptions.add(CliOption.newBoolean(NO_STRUCT_DISPLAY,
+                "Structs have no JSON Display (legacyModelRewrites adds one otherwise); API code serializes parameters "
+                        + "of struct type with serde_json::to_string, with the same bytes on the wire", false));
         cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
                 "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
                         + "object-typed query parameter is sent as a string"));
@@ -452,6 +473,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
         defaultOnlyWhereValid = additionalProperties.containsKey(DEFAULT_ONLY_WHERE_VALID)
                 && convertPropertyToBooleanAndWriteBack(DEFAULT_ONLY_WHERE_VALID);
         additionalProperties.put(DEFAULT_ONLY_WHERE_VALID, defaultOnlyWhereValid);
+        enumFromStr = additionalProperties.containsKey(ENUM_FROM_STR)
+                && convertPropertyToBooleanAndWriteBack(ENUM_FROM_STR);
+        noStructDisplay = additionalProperties.containsKey(NO_STRUCT_DISPLAY)
+                && convertPropertyToBooleanAndWriteBack(NO_STRUCT_DISPLAY);
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
             additionalProperties.put(flag, additionalProperties.containsKey(flag)
                     && convertPropertyToBooleanAndWriteBack(flag));
@@ -663,12 +688,72 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 be.timvw.openapi.rust.legacy.LegacyModelRewrites.run(
                         new be.timvw.openapi.rust.legacy.LegacyContext(java.nio.file.Paths.get(outputFolder), raw,
                                 preprocessed, boxPolicy(), defaultOnlyWhereValid),
+                        !noStructDisplay,
                         msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg));
             } catch (java.io.IOException e) {
                 throw new IllegalStateException(GENERATOR_NAME + ": legacy model rewrites failed", e);
             }
         }
+        java.nio.file.Path models = java.nio.file.Paths.get(outputFolder, "src", "models");
+        try {
+            checkStructJsonModels(models, structJsonModels);
+            if (enumFromStr) {
+                EnumFromStr.Result result = EnumFromStr.run(models,
+                        msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, ENUM_FROM_STR, msg));
+                LOGGER.info("{}: {}: {} closed enums, {} of them given a Display", GENERATOR_NAME, ENUM_FROM_STR,
+                        result.enums(), result.displaysAdded());
+            }
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(GENERATOR_NAME + ": cannot process " + models, e);
+        }
         super.postProcess();
+    }
+
+    /**
+     * A parameter marked {@link #STRUCT_JSON} was a struct when the API module was rendered. If a legacy rewrite turned
+     * that model into a union afterwards, its {@code Display} is not its JSON (a string variant prints unquoted), so the
+     * explicit serialization would change the bytes on the wire: fail instead.
+     */
+    void checkStructJsonModels(java.nio.file.Path models, Set<String> names) throws java.io.IOException {
+        List<String> notStructs = new ArrayList<>();
+        for (String model : names) {
+            java.nio.file.Path file = models.resolve(toModelFilename(model) + ".rs");
+            if (!java.nio.file.Files.exists(file) || !java.util.regex.Pattern.compile(
+                    "\\bpub struct " + java.util.regex.Pattern.quote(model) + "\\b")
+                    .matcher(java.nio.file.Files.readString(file)).find()) {
+                notStructs.add(model);
+            }
+        }
+        if (!notStructs.isEmpty()) {
+            throw new IllegalStateException(String.format(
+                    "%s: %s: parameters of these types are serialized as JSON, but they are no longer structs: %s",
+                    GENERATOR_NAME, NO_STRUCT_DISPLAY, notStructs));
+        }
+    }
+
+    /** Marks a parameter whose type, or whose array items' type, is one of the structs. */
+    static void markStructJson(CodegenParameter p, Set<String> structs) {
+        boolean items = p.isArray && p.items != null;
+        String type = items ? p.items.dataType : p.dataType;
+        if (type != null && structs.contains(type.replaceFirst("^models::", ""))) {
+            p.vendorExtensions.put(items ? STRUCT_JSON_ITEMS : STRUCT_JSON, true);
+        }
+    }
+
+    /**
+     * The models that end up as a struct: no enum, discriminated union or {@code oneOf}, as in the model template. The
+     * template also renders an {@code anyOf} as an empty struct, but the legacy rewrites turn it into a union.
+     */
+    private static Set<String> renderedStructs(List<ModelMap> allModels, boolean legacyModelRewrites) {
+        Set<String> structs = new HashSet<>();
+        for (ModelMap map : allModels) {
+            CodegenModel cm = map.getModel();
+            boolean union = legacyModelRewrites && cm.anyOf != null && !cm.anyOf.isEmpty();
+            if (!cm.isEnum && cm.discriminator == null && (cm.oneOf == null || cm.oneOf.isEmpty()) && !union) {
+                structs.add(cm.classname);
+            }
+        }
+        return structs;
     }
 
     /** What the legacy rewrites box: every model payload, or with {@code boxOnlyCycles} only those on a cycle. */
@@ -685,6 +770,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public OperationsMap postProcessOperationsWithModels(OperationsMap objs, List<ModelMap> allModels) {
         objs = super.postProcessOperationsWithModels(objs, allModels);
         boolean helperUsed = false;
+        Set<String> structs = noStructDisplay ? renderedStructs(allModels, legacyModelRewrites) : Set.of();
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             for (CodegenOperation op : objs.getOperations().getOperation()) {
                 for (List<CodegenParameter> params : Arrays.asList(op.allParams, op.formParams, op.bodyParams,
@@ -695,6 +781,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
                     for (CodegenParameter p : params) {
                         if (p.dataType != null && p.dataType.startsWith("models::")) {
                             p.vendorExtensions.put(TYPE_QUALIFIED, true);
+                        }
+                        markStructJson(p, structs);
+                        if (p.vendorExtensions.containsKey(STRUCT_JSON)) {
+                            structJsonModels.add(p.dataType.replaceFirst("^models::", ""));
+                        } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS)) {
+                            structJsonModels.add(p.items.dataType.replaceFirst("^models::", ""));
                         }
                     }
                 }

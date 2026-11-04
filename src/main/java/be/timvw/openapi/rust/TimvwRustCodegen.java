@@ -69,8 +69,8 @@ import java.util.Set;
  *       explicitly (Milestone 3.2);</li>
  *   <li>{@code integersAsI64} renders an integer as {@code i64} unless the spec says {@code format: int32}
  *       (Milestone 3.4, see {@link #getSchemaType});</li>
- *   <li>{@code qualifiedInlineNames} names inline schemas after where they stand, and fails generation when two
- *       different schemas would share a Rust model or file (Milestone 3.3, see {@link InlineNames} and
+ *   <li>{@code qualifiedInlineNames} names an inline schema after its title when that is unique and after where
+ *       it stands otherwise, and fails generation when two different schemas would share a Rust model or file (Milestone 3.3, see {@link InlineNames} and
  *       {@link NameCollisions}).</li>
  * </ul>
  *
@@ -134,7 +134,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     static final String STRUCT_JSON_ITEMS = "x-rust-struct-json-items";
     /** Render an integer as {@code i64} unless the spec says {@code format: int32} (Milestone 3.4). */
     public static final String INTEGERS_AS_I64 = "integersAsI64";
-    /** Name inline schemas after their location; different schemas sharing a Rust name fail generation (Milestone 3.3). */
+    /** Name inline schemas after a unique title or their location; a real name collision fails generation (Milestone 3.3). */
     public static final String QUALIFIED_INLINE_NAMES = "qualifiedInlineNames";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
@@ -275,9 +275,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         + "named after the file, optional arrays send one part per item and optional objects one JSON "
                         + "part, and an encoding contentType of a scalar part is applied", false));
         cliOptions.add(CliOption.newBoolean(QUALIFIED_INLINE_NAMES,
-                "Name every inline schema that becomes a model after where it stands (Parent_property, Parent_inner, "
-                        + "Parent_value, Parent_<branch title>), never after its title alone, and fail generation when "
-                        + "two structurally different schemas would produce the same Rust model or file", false));
+                "An inline schema's title names its model only when it is unique; every other inline schema that "
+                        + "becomes a model is named after where it stands (Parent_property, Parent_inner, Parent_value, "
+                        + "Parent_<branch title>). Generation fails when two structurally different schemas would "
+                        + "produce the same Rust model or file", false));
         cliOptions.add(CliOption.newString(FILE_PROPERTIES,
                 "Schema.property entries rendered as a file (type: string, format: binary)"));
         cliOptions.add(CliOption.newBoolean(DEFAULT_ONLY_WHERE_VALID,
@@ -605,10 +606,13 @@ public class TimvwRustCodegen extends RustClientCodegen {
      * would overwrite, the second the models it really made.
      */
     private void flattenWithQualifiedNames(OpenAPI openAPI) {
-        InlineNames.Plan plan = InlineNames.qualify(openAPI, inlineSchemaOption());
-        LOGGER.info("{}: {}: {} models planned, {} inline titles replaced, {} inline schemas are shared: {}",
-                GENERATOR_NAME, QUALIFIED_INLINE_NAMES, plan.sites().size(), plan.renamed(), plan.shared().size(),
+        InlineNames.Plan plan = InlineNames.qualify(openAPI, inlineSchemaOption(), this::toModelName,
+                this::toModelFilename);
+        LOGGER.info("{}: {}: {} models planned, {} titles name a model, {} inline schemas are one instance: {}",
+                GENERATOR_NAME, QUALIFIED_INLINE_NAMES, plan.sites().size(), plan.kept().size(), plan.shared().size(),
                 plan.shared());
+        plan.qualified().forEach((title, why) -> LOGGER.info("{}: {}: title {} names no model: {}", GENERATOR_NAME,
+                QUALIFIED_INLINE_NAMES, title, why));
         failOnCollisions(NameCollisions.beforeFlattening(openAPI, plan.sites(), this::toModelName,
                 this::toModelFilename));
         InlineModelResolverAccess.flatten(openAPI, inlineSchemaNameMapping(), inlineSchemaOption());

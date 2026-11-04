@@ -51,7 +51,7 @@ final class NameCollisions {
     private final Map<String, Schema> schemas;
     private final Map<String, JsonNode> trees = new HashMap<>();
 
-    private NameCollisions(OpenAPI openAPI) {
+    NameCollisions(OpenAPI openAPI) {
         v31 = openAPI.getOpenapi() != null
                 && new org.openapitools.codegen.utils.SemVer(openAPI.getOpenapi()).atLeast("3.1.0");
         schemas = SpecRules.schemas(openAPI);
@@ -97,6 +97,12 @@ final class NameCollisions {
         List<String> collisions = new NameCollisions(openAPI).check(sites, modelName, fileName);
         collisions.addAll(numbered);
         return collisions;
+    }
+
+    /** The first structural difference between two schemas of the document, or {@code null} when they have none. */
+    @SuppressWarnings("rawtypes")
+    String difference(Schema a, Schema b) {
+        return schemaDifference(tree(a), tree(b), "", new HashSet<>());
     }
 
     private List<String> check(List<InlineNames.Site> sites, Function<String, String> modelName,

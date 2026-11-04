@@ -1,0 +1,45 @@
+openapi: 3.1.0
+info:
+  title: Titles in two orders
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Delta:
+      type: object
+      properties:
+        options:
+          title: Same options
+          type: object
+          description: Delta's description.
+          properties:
+            limit:
+              type: integer
+    Gamma:
+      type: object
+      properties:
+        options:
+          title: Same options
+          type: object
+          description: Gamma's description.
+          properties:
+            limit:
+              type: integer
+    Beta:
+      type: object
+      properties:
+        filter:
+          title: Tool filter
+          type: object
+          properties:
+            two:
+              type: string
+    Alpha:
+      type: object
+      properties:
+        filter:
+          title: Tool filter
+          type: object
+          properties:
+            one:
+              type: string

@@ -13,25 +13,38 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 
 /**
- * Gives every inline schema that becomes a model a name derived from where it stands, before the inline-model
- * resolver runs ({@code qualifiedInlineNames}, Milestone 3.3).
+ * Decides the name of every inline schema that becomes a model, before the inline-model resolver runs
+ * ({@code qualifiedInlineNames}, Milestone 3.3).
  *
- * <p>The resolver names an inline schema after its title when it has one, and after its location otherwise. A title
- * is display text: {@code uniqueName} turns a title that is already taken into {@code Title_1}, a schema nested in
- * one with the same title overwrites its parent (which then references itself), and a title that normalizes to the
- * name of a component ends up in the same file. So the title of such a schema is replaced by the name its location
- * gives it, which the resolver then uses as is:</p>
+ * <p>The resolver names an inline schema after its title when it has one, and after its location otherwise. Left
+ * alone, a title that is already taken becomes {@code Title_1}, a schema nested in one with the same title overwrites
+ * its parent (which then references itself), and a title that normalizes to the name of a component ends up in the
+ * same file. So a title names a model here only when it is unique:</p>
+ *
+ * <ul>
+ *   <li>its Rust name matches no component and no other model that will be generated, and</li>
+ *   <li>every inline schema with that Rust name has the same shape; those share one model.</li>
+ * </ul>
+ *
+ * <p>Otherwise every schema with that title takes the name of its location. The decision is made on the whole document
+ * and not schema by schema, so it does not depend on the order of the spec. The title of a schema that takes its
+ * location's name, and the {@code Object<i>} titles the plugin gives to untitled union branches, name nothing:</p>
  *
  * <table>
- *   <caption>The naming scheme</caption>
+ *   <caption>The name of a location</caption>
  *   <tr><th>Inline schema</th><th>Name</th></tr>
  *   <tr><td>property {@code p} of {@code P}</td><td>{@code P_p}</td></tr>
  *   <tr><td>array items of {@code P}</td><td>{@code P_inner}</td></tr>
@@ -43,14 +56,13 @@ import java.util.Set;
  *       ({@code <op>_request}, {@code <op>_<param>_parameter}, {@code <op>_<code>_response})</td></tr>
  * </table>
  *
- * <p>The properties of an inline {@code allOf} member are named {@code P_allOf_p}, as the resolver does: the member
- * itself never becomes a model. These are the resolver's own names for an untitled schema, so an untitled schema
- * below a component keeps its name. Rust naming then camel-cases them ({@code Foo_bar} is {@code FooBar}).</p>
+ * <p>{@code P} is the name of the enclosing schema, whichever way it got it. The properties of an inline {@code allOf}
+ * member are named {@code P_allOf_p}, as the resolver does: the member itself never becomes a model. Rust naming then
+ * camel-cases all of these ({@code Foo_bar} is {@code FooBar}).</p>
  *
- * <p>Different locations give the same name only in odd cases ({@code Foo.a_b} and {@code Foo.a.b}, or {@code Foo.bar}
- * and a component {@code FooBar}). Those are not resolved here: see {@link NameCollisions}.</p>
- *
- * <p>Titles of schemas that do not become models are left alone: a primitive branch's title names its enum variant.</p>
+ * <p>The parser hands identical subtrees out as one schema instance. An untitled one stays one model, named after its
+ * shortest location (the first by text among equals). Different locations can still give one name ({@code Foo.a_b} and {@code Foo.a.b}, or
+ * {@code Foo.bar} and a component {@code FooBar}). Those are not resolved here: see {@link NameCollisions}.</p>
  */
 final class InlineNames {
 
@@ -61,38 +73,91 @@ final class InlineNames {
     /**
      * What {@link #qualify} did.
      *
-     * @param sites   every planned model: the component schemas, then the inline schemas
-     * @param renamed how many inline schemas lost a title of their own
-     * @param shared  locations holding the same schema instance as an earlier location, whose model they share
+     * @param sites     every planned model: the component schemas, then the inline schemas
+     * @param kept      title to the locations of the inline schemas it names, for titles that name a model
+     * @param qualified title to why it names no model, for titles that do not
+     * @param shared    locations holding the same schema instance as the location that names it, whose model they share
      */
-    record Plan(List<Site> sites, int renamed, List<String> shared) {
+    record Plan(List<Site> sites, Map<String, List<String>> kept, Map<String, String> qualified, List<String> shared) {
     }
 
     private static final String COMPONENTS = "#/components/schemas/";
 
+    /** The title {@code SpecRules.titleUnnamedUnionVariants} gives an untitled object branch: not upstream's name. */
+    private static final Pattern GENERATED_TITLE = Pattern.compile("^Object\\d+$");
+
+    /** Which location names a schema that stands in several: the shortest, then the first by text, never by document order. */
+    private static final Comparator<String> LOCATION_ORDER =
+            Comparator.comparingInt(String::length).thenComparing(Comparator.naturalOrder());
+
+    /** Where a schema stands: below {@code parent}, or at a root name when {@code parent} is null. */
+    private record Use(Node parent, String suffix, String segment, Consumer<Schema<?>> replace) {
+    }
+
+    /** A schema instance of the document: a component, an inline model, or something inline that only holds those. */
+    private static final class Node {
+        final Schema<?> schema;
+        final boolean component;
+        final boolean model;
+        final List<Use> uses = new ArrayList<>();
+        final List<Node> children = new ArrayList<>();
+        Use primary;
+        String location;
+
+        Node(Schema<?> schema, boolean component, boolean model) {
+            this.schema = schema;
+            this.component = component;
+            this.model = model;
+        }
+    }
+
+    /** All inline schemas whose titles have one Rust name, in location order. */
+    private static final class TitleGroup {
+        final String title;
+        final List<Node> members;
+
+        TitleGroup(String title, List<Node> members) {
+            this.title = title;
+            this.members = members;
+        }
+
+        Node canonical() {
+            return members.get(0);
+        }
+    }
+
     private final OpenAPI openAPI;
     private final Map<String, String> options;
-    private final List<Site> sites = new ArrayList<>();
-    private final Set<Schema<?>> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-    private final List<String> shared = new ArrayList<>();
-    private int renamed;
+    private final Function<String, String> modelName;
+    private final Function<String, String> fileName;
+    private final Map<Schema<?>, Node> nodes = new IdentityHashMap<>();
+    private final List<Node> order = new ArrayList<>();
+    private final List<Node> roots = new ArrayList<>();
 
-    private InlineNames(OpenAPI openAPI, Map<String, String> options) {
+    private InlineNames(OpenAPI openAPI, Map<String, String> options, Function<String, String> modelName,
+                        Function<String, String> fileName) {
         this.openAPI = openAPI;
         this.options = options;
+        this.modelName = modelName;
+        this.fileName = fileName;
     }
 
     /**
-     * Replaces the title of every inline schema that will become a model by its qualified name.
+     * Gives every inline schema that will become a model the title the resolver then names it after, and lets inline
+     * schemas that share a unique title share one instance.
      *
      * @param openAPI             the document the resolver is about to flatten
      * @param inlineSchemaOptions the resolver options, for {@code ARRAY_ITEM_SUFFIX} and {@code MAP_ITEM_SUFFIX}
+     * @param modelName           the generator's {@code toModelName}
+     * @param fileName            the generator's {@code toModelFilename}
      * @return the component schemas and inline schemas that will be models
      */
-    static Plan qualify(OpenAPI openAPI, Map<String, String> inlineSchemaOptions) {
-        InlineNames names = new InlineNames(openAPI, inlineSchemaOptions == null ? new HashMap<>() : inlineSchemaOptions);
-        names.run();
-        return new Plan(names.sites, names.renamed, names.shared);
+    static Plan qualify(OpenAPI openAPI, Map<String, String> inlineSchemaOptions, Function<String, String> modelName,
+                        Function<String, String> fileName) {
+        InlineNames names = new InlineNames(openAPI, inlineSchemaOptions == null ? new HashMap<>() : inlineSchemaOptions,
+                modelName, fileName);
+        names.walk();
+        return names.decide();
     }
 
     /** The resolver's {@code sanitizeName}: the name it derives a component key from. */
@@ -100,18 +165,232 @@ final class InlineNames {
         return name.replaceAll("^[0-9]", "_$0").replaceAll("[^A-Za-z0-9]", "_");
     }
 
-    @SuppressWarnings("rawtypes")
-    private void run() {
-        Map<String, Schema> components = SpecRules.schemas(openAPI);
-        for (Map.Entry<String, Schema> e : components.entrySet()) {
-            sites.add(new Site(e.getKey(), COMPONENTS + e.getKey(), e.getValue()));
+    // ---------------------------------------------------------------- deciding
+
+    private Plan decide() {
+        for (Node node : order) {
+            locate(node);
         }
-        // Components first: a schema a component and an operation share is named after the component.
-        for (Map.Entry<String, Schema> e : new LinkedHashMap<>(components).entrySet()) {
-            String where = COMPONENTS + e.getKey();
-            if (seen.add(e.getValue())) {
-                children(e.getValue(), e.getKey(), where);
+        Map<String, String> qualified = new TreeMap<>();
+        Map<String, TitleGroup> kept = candidates(qualified);
+        // Dropping a title renames what lies below its schemas, which can take the name of another title. Every title
+        // that collides in a round goes in that round, so the result is a function of the document, not of its order.
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            Map<Node, TitleGroup> byMember = byMember(kept);
+            Map<String, List<Node>> byRustName = new HashMap<>();
+            for (Node node : live(byMember)) {
+                String name = name(node, byMember, new IdentityHashMap<>());
+                byRustName.computeIfAbsent("model " + modelName.apply(name), k -> new ArrayList<>()).add(node);
+                byRustName.computeIfAbsent("file " + fileName.apply(name), k -> new ArrayList<>()).add(node);
             }
+            Map<String, String> colliding = new LinkedHashMap<>();
+            for (Map.Entry<String, TitleGroup> e : kept.entrySet()) {
+                TitleGroup group = e.getValue();
+                for (String key : List.of("model " + modelName.apply(group.title), "file " + fileName.apply(group.title))) {
+                    for (Node other : byRustName.getOrDefault(key, List.of())) {
+                        if (byMember.get(other) != group) {
+                            colliding.putIfAbsent(e.getKey(), "the model at " + other.location + " has that "
+                                    + key.substring(0, key.indexOf(' ')) + " name");
+                        }
+                    }
+                }
+            }
+            for (Map.Entry<String, String> e : colliding.entrySet()) {
+                qualified.put(kept.remove(e.getKey()).title, e.getValue());
+                changed = true;
+            }
+        }
+        return apply(kept, qualified);
+    }
+
+    /** The titles that can name a model before looking at inline names: same shape, and not the name of a component. */
+    private Map<String, TitleGroup> candidates(Map<String, String> qualified) {
+        Map<String, List<Node>> byRustName = new TreeMap<>();
+        for (Node node : order) {
+            if (node.model && !node.component && upstreamTitle(node.schema)) {
+                byRustName.computeIfAbsent(modelName.apply(sanitize(node.schema.getTitle())), k -> new ArrayList<>())
+                        .add(node);
+            }
+        }
+        Map<String, Node> components = new HashMap<>();
+        for (Node node : order) {
+            if (node.component) {
+                components.put("model " + modelName.apply(node.uses.get(0).suffix()), node);
+                components.put("file " + fileName.apply(node.uses.get(0).suffix()), node);
+            }
+        }
+        NameCollisions shapes = new NameCollisions(openAPI);
+        Map<String, TitleGroup> groups = new TreeMap<>();
+        for (Map.Entry<String, List<Node>> e : byRustName.entrySet()) {
+            List<Node> members = e.getValue();
+            members.sort(Comparator.comparing(n -> n.location, LOCATION_ORDER));
+            // The titles of one Rust name may be spelled differently: which one names the file must not depend on order.
+            String title = members.stream().map(n -> sanitize(n.schema.getTitle())).min(Comparator.naturalOrder())
+                    .orElseThrow();
+            Node component = components.get("model " + modelName.apply(title));
+            if (component == null) {
+                component = components.get("file " + fileName.apply(title));
+            }
+            if (component != null) {
+                qualified.put(title, "it is the name of the component at " + component.location);
+                continue;
+            }
+            String difference = null;
+            for (Node other : members.subList(1, members.size())) {
+                String found = shapes.difference(members.get(0).schema, other.schema);
+                if (found != null) {
+                    difference = members.get(0).location + " and " + other.location + " differ: " + found;
+                    break;
+                }
+            }
+            if (difference != null) {
+                qualified.put(title, difference);
+            } else {
+                groups.put(e.getKey(), new TitleGroup(title, members));
+            }
+        }
+        return groups;
+    }
+
+    private static boolean upstreamTitle(Schema<?> schema) {
+        String title = schema.getTitle();
+        return title != null && !sanitize(title).replace("_", "").isEmpty() && !GENERATED_TITLE.matcher(title).matches();
+    }
+
+    private static Map<Node, TitleGroup> byMember(Map<String, TitleGroup> kept) {
+        Map<Node, TitleGroup> byMember = new IdentityHashMap<>();
+        for (TitleGroup group : kept.values()) {
+            for (Node member : group.members) {
+                byMember.put(member, group);
+            }
+        }
+        return byMember;
+    }
+
+    /** The name of a schema: the kept title of its group, or else the name its first location gives it. */
+    private String name(Node node, Map<Node, TitleGroup> byMember, Map<Node, String> names) {
+        String known = names.get(node);
+        if (known != null) {
+            return known;
+        }
+        TitleGroup group = byMember.get(node);
+        String name;
+        if (node.component) {
+            name = node.uses.get(0).suffix();
+        } else if (group != null) {
+            name = group.title;
+        } else if (node.primary.parent() == null) {
+            name = sanitize(node.primary.suffix());
+        } else {
+            name = sanitize(name(node.primary.parent(), byMember, names) + node.primary.suffix());
+        }
+        names.put(node, name);
+        return name;
+    }
+
+    /** The models that will exist: below a title that is shared, only the first schema with it stays in the document. */
+    private List<Node> live(Map<Node, TitleGroup> byMember) {
+        List<Node> live = new ArrayList<>();
+        Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Node root : roots) {
+            visit(root, byMember, seen, live);
+        }
+        return live;
+    }
+
+    private void visit(Node node, Map<Node, TitleGroup> byMember, Set<Node> seen, List<Node> live) {
+        TitleGroup group = byMember.get(node);
+        Node stays = group == null ? node : group.canonical();
+        if (!seen.add(stays)) {
+            return;
+        }
+        if (stays.model) {
+            live.add(stays);
+        }
+        for (Node child : stays.children) {
+            visit(child, byMember, seen, live);
+        }
+    }
+
+    /** Writes the decision into the document, for the resolver to read. */
+    private Plan apply(Map<String, TitleGroup> kept, Map<String, String> qualified) {
+        Map<Node, TitleGroup> byMember = byMember(kept);
+        Map<Node, String> names = new IdentityHashMap<>();
+        for (Node node : order) {
+            names.put(node, name(node, byMember, names));
+        }
+        List<Node> live = live(byMember);
+        List<Site> sites = new ArrayList<>();
+        List<String> shared = new ArrayList<>();
+        for (Node node : live) {
+            sites.add(new Site(names.get(node), node.location, node.schema));
+            for (Use use : node.uses) {
+                String where = use.parent() == null ? use.segment() : use.parent().location + use.segment();
+                if (!where.equals(node.location)) {
+                    shared.add(where);
+                }
+            }
+        }
+        for (Node node : order) {
+            if (node.model && !node.component) {
+                node.schema.setTitle(names.get(node));
+            }
+        }
+        Map<String, List<String>> titles = new TreeMap<>();
+        for (TitleGroup group : kept.values()) {
+            Node canonical = group.canonical();
+            List<String> where = new ArrayList<>();
+            for (Node member : group.members) {
+                where.add(member.location);
+                if (member != canonical) {
+                    for (Use use : member.uses) {
+                        use.replace().accept(canonical.schema);
+                    }
+                }
+            }
+            titles.put(group.title, where);
+        }
+        Collections.sort(shared);
+        return new Plan(sites, titles, qualified, shared);
+    }
+
+    private void locate(Node node) {
+        if (node.location != null) {
+            return;
+        }
+        if (node.component) {
+            node.primary = node.uses.get(0);
+            node.location = node.primary.segment();
+            return;
+        }
+        for (Use use : node.uses) {
+            String where = use.segment();
+            if (use.parent() != null) {
+                locate(use.parent());
+                where = use.parent().location + where;
+            }
+            if (node.location == null || LOCATION_ORDER.compare(where, node.location) < 0) {
+                node.location = where;
+                node.primary = use;
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- walking
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void walk() {
+        for (Map.Entry<String, Schema> e : SpecRules.schemas(openAPI).entrySet()) {
+            Node node = new Node(e.getValue(), true, true);
+            node.uses.add(new Use(null, e.getKey(), COMPONENTS + e.getKey(), s -> { }));
+            nodes.put(e.getValue(), node);
+            order.add(node);
+            roots.add(node);
+        }
+        for (Node component : new ArrayList<>(roots)) {
+            children(component);
         }
         if (openAPI.getComponents() != null && openAPI.getComponents().getResponses() != null) {
             for (Map.Entry<String, ApiResponse> e : openAPI.getComponents().getResponses().entrySet()) {
@@ -178,7 +457,9 @@ final class InlineNames {
                 p = openAPI.getComponents().getParameters().get(SpecRules.refName(p.get$ref()));
             }
             if (p != null) {
-                inline(p.getSchema(), name + "_" + p.getName() + "_parameter", where + "/parameters/" + p.getName());
+                Parameter parameter = p;
+                inline(p.getSchema(), null, name + "_" + p.getName() + "_parameter",
+                        where + "/parameters/" + p.getName(), parameter::setSchema);
             }
         }
     }
@@ -197,73 +478,90 @@ final class InlineNames {
             }
         }
         for (Map.Entry<String, MediaType> e : content.entrySet()) {
-            String qualified = models > 1 ? name + "_" + e.getKey() : name;
-            inline(e.getValue().getSchema(), qualified, where + "/content/" + e.getKey() + "/schema");
+            MediaType mediaType = e.getValue();
+            inline(mediaType.getSchema(), null, models > 1 ? name + "_" + e.getKey() : name,
+                    where + "/content/" + e.getKey() + "/schema", mediaType::setSchema);
         }
     }
 
-    /** An inline schema at {@code where}: names it if it becomes a model, then whatever it holds. */
-    @SuppressWarnings("rawtypes")
-    private void inline(Schema schema, String name, String where) {
+    /**
+     * An inline schema: below {@code parent} with this suffix, or at a root name when {@code parent} is null. The
+     * schema is walked once, however many locations hold the instance.
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void inline(Schema schema, Node parent, String suffix, String segment, Consumer<Schema> replace) {
         if (schema == null || schema.get$ref() != null) {
             return;
         }
-        if (!seen.add(schema)) {
-            // The resolving parse shares one instance between identical subtrees: it stays one model.
-            if (needsModel(schema)) {
-                shared.add(where);
+        Use use = new Use(parent, suffix, segment, s -> replace.accept(s));
+        Node node = nodes.get(schema);
+        if (node != null) {
+            node.uses.add(use);
+            if (parent != null) {
+                parent.children.add(node);
+            } else {
+                roots.add(node);
             }
             return;
         }
-        String qualified = sanitize(name);
-        if (needsModel(schema)) {
-            if (!qualified.equals(schema.getTitle())) {
-                if (schema.getTitle() != null) {
-                    renamed++;
-                }
-                schema.setTitle(qualified);
-            }
-            sites.add(new Site(qualified, where, schema));
+        node = new Node(schema, false, needsModel(schema));
+        node.uses.add(use);
+        nodes.put(schema, node);
+        order.add(node);
+        if (parent != null) {
+            parent.children.add(node);
+        } else {
+            roots.add(node);
         }
-        children(schema, qualified, where);
+        children(node);
     }
 
-    /** The resolver's {@code gatherInlineModels}, naming instead of moving. */
+    /** The resolver's {@code gatherInlineModels}, recording instead of moving. */
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private void children(Schema<?> schema, String name, String where) {
+    private void children(Node node) {
+        Schema<?> schema = node.schema;
         if (schema.getType() == null || "object".equals(schema.getType())) {
             if (schema.getProperties() != null) {
-                for (Map.Entry<String, Schema> p : ((Map<String, Schema>) (Map) schema.getProperties()).entrySet()) {
-                    inline(p.getValue(), name + "_" + p.getKey(), where + "/properties/" + p.getKey());
+                Map<String, Schema> properties = (Map<String, Schema>) (Map) schema.getProperties();
+                for (Map.Entry<String, Schema> p : properties.entrySet()) {
+                    String key = p.getKey();
+                    inline(p.getValue(), node, "_" + key, "/properties/" + key, s -> properties.put(key, s));
                 }
             }
             if (schema.getAdditionalProperties() instanceof Schema) {
-                inline((Schema) schema.getAdditionalProperties(),
-                        name + options.getOrDefault("MAP_ITEM_SUFFIX", "_value"), where + "/additionalProperties");
+                inline((Schema) schema.getAdditionalProperties(), node, options.getOrDefault("MAP_ITEM_SUFFIX", "_value"),
+                        "/additionalProperties", schema::setAdditionalProperties);
             }
         } else if (schema.getProperties() != null || schema.getAdditionalProperties() != null) {
             return; // the resolver reports these and leaves them alone
         }
         if (schema.getItems() != null) {
-            inline(schema.getItems(), name + options.getOrDefault("ARRAY_ITEM_SUFFIX", "_inner"), where + "/items");
+            inline(schema.getItems(), node, options.getOrDefault("ARRAY_ITEM_SUFFIX", "_inner"), "/items",
+                    s -> ((Schema) schema).setItems(s));
         }
         if (schema.getAllOf() != null) {
             for (int i = 0; i < schema.getAllOf().size(); i++) {
                 Schema member = schema.getAllOf().get(i);
-                if (member != null && member.get$ref() == null && seen.add(member)) {
-                    children(member, sanitize(name + "_allOf"), where + "/allOf/" + i);
+                if (member != null && member.get$ref() == null && !nodes.containsKey(member)) {
+                    // A member never becomes a model and keeps its title; it only prefixes what it holds.
+                    Node holder = new Node(member, false, false);
+                    holder.uses.add(new Use(node, "_allOf", "/allOf/" + i, s -> { }));
+                    nodes.put(member, holder);
+                    order.add(holder);
+                    node.children.add(holder);
+                    children(holder);
                 }
             }
         }
-        branches(schema.getOneOf(), name, "oneOf", where);
-        branches(schema.getAnyOf(), name, "anyOf", where);
+        branches(schema.getOneOf(), node, "oneOf");
+        branches(schema.getAnyOf(), node, "anyOf");
         if (schema.getNot() != null) {
-            inline(schema.getNot(), name + "_not", where + "/not");
+            inline(schema.getNot(), node, "_not", "/not", s -> ((Schema) schema).setNot(s));
         }
     }
 
     @SuppressWarnings("rawtypes")
-    private void branches(List<Schema> branches, String name, String keyword, String where) {
+    private void branches(List<Schema> branches, Node parent, String keyword) {
         if (branches == null) {
             return;
         }
@@ -283,9 +581,10 @@ final class InlineNames {
         for (int i = 0; i < branches.size(); i++) {
             String suffix = suffixes.get(i);
             if (suffix != null) {
+                int index = i;
                 String qualified = uses.getOrDefault(suffix, 0) > 1 ? suffix + i : suffix;
                 // The branch keeps the title of a schema that is no model: that title names its variant.
-                inline(branches.get(i), name + "_" + qualified, where + "/" + keyword + "/" + i);
+                inline(branches.get(i), parent, "_" + qualified, "/" + keyword + "/" + i, s -> branches.set(index, s));
             }
         }
     }

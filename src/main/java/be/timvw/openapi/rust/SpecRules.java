@@ -542,6 +542,10 @@ final class SpecRules {
      * {@code ConversationParam2}, other hyphens become underscores) and updates every {@code $ref}.
      */
     @SuppressWarnings("rawtypes")
+    static String withoutHyphens(String name) {
+        return HYPHEN_DIGITS.matcher(name).replaceAll("$1").replace('-', '_');
+    }
+
     static List<String> normalizeHyphenatedSchemaNames(OpenAPI openAPI) {
         List<String> renamed = new ArrayList<>();
         Map<String, Schema> schemas = schemas(openAPI);
@@ -550,7 +554,7 @@ final class SpecRules {
             if (!name.contains("-")) {
                 continue;
             }
-            String newName = HYPHEN_DIGITS.matcher(name).replaceAll("$1").replace('-', '_');
+            String newName = withoutHyphens(name);
             if (schemas.containsKey(newName)) {
                 throw new IllegalStateException("renaming schema " + name + " to " + newName + " collides with an existing schema");
             }

@@ -76,7 +76,9 @@ import java.util.Set;
  *   <li>{@code modelUnions} renders unions from the model instead of through the text rewrites of
  *       {@code legacyModelRewrites} (Milestone 3.3, see {@link UnionRules});</li>
  *   <li>{@code unionDispatch} makes a union with a tag decode by that tag (Milestone 3.3, see
- *       {@link UnionRules#dispatch}).</li>
+ *       {@link UnionRules#dispatch});</li>
+ *   <li>{@code openEnums} gives what a response can hold a catch-all for values the spec does not list (Milestone 3.5,
+ *       see {@link OpenEnums}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -145,6 +147,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String MODEL_UNIONS = "modelUnions";
     /** A union with a tag decodes by that tag; it requires {@link #MODEL_UNIONS} (Milestone 3.3). */
     public static final String UNION_DISPATCH = "unionDispatch";
+    /** Enums and tagged unions a response can hold have a catch-all; it requires {@link #MODEL_UNIONS} (Milestone 3.5). */
+    public static final String OPEN_ENUMS = "openEnums";
     /** Output-relative path the union plan of {@code modelUnions} is written to, as JSON (for tools and debugging). */
     public static final String UNION_PLAN_FILE = "unionPlanFile";
     /** Key under which the api template finds whether its module uses the multipart helper. */
@@ -204,6 +208,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private boolean modelUnions;
     private boolean unionDispatch;
     private boolean anyDispatch;
+    private boolean openEnums;
+    private OpenEnums.Census openEnumsCensus;
     private String unionPlanFile;
     private final Map<String, CodegenModel> unionModels = new HashMap<>();
 
@@ -330,6 +336,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 "With modelUnions: a union with a discriminator, or whose branches all require one property with fixed "
                         + "values, decodes the variant its tag selects instead of trying them all. It serializes as "
                         + "before: each struct holds its tag", false));
+        cliOptions.add(CliOption.newBoolean(OPEN_ENUMS,
+                "With modelUnions: a value enum or tagged union that a response body or webhook payload can hold accepts "
+                        + "values the spec does not list. An enum gets a unit variant Unknown, which serializes as "
+                        + "\"unknown\" and which FromStr does not parse to; a tagged union gets Unknown(serde_json::Value), "
+                        + "which serializes as it came. What other variants rely on to reject a value stays closed", false));
         cliOptions.add(CliOption.newString(UNION_PLAN_FILE,
                 "With modelUnions: write the variants of every union and the schemas they refer to to this "
                         + "output-relative path, as JSON"));
@@ -430,6 +441,15 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         counts.explicit() + counts.implicit(), counts.explicit(), counts.implicit(), counts.untagged(),
                         counts.sharedValue(), counts.optional());
             }
+            if (openEnums) {
+                openEnumsCensus = OpenEnums.mark(objs, unions, openAPI);
+                LOGGER.info("{}: {}: {} enums, {} reachable, {} of them guarded; {} tagged unions, {} reachable, {} of them "
+                                + "guarded; {} untagged unions left as they are", GENERATOR_NAME, OPEN_ENUMS,
+                        openEnumsCensus.enums().size(), openEnumsCensus.reachableEnums().size(),
+                        openEnumsCensus.guardedEnums().size(), openEnumsCensus.taggedUnions().size(),
+                        openEnumsCensus.reachableTagged().size(), openEnumsCensus.guardedUnions().size(),
+                        openEnumsCensus.untaggedUnions().size());
+            }
             writeUnionPlan(unions);
         }
         DefaultRules.mark(objs, defaultOnlyWhereValid);
@@ -445,8 +465,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 && new org.openapitools.codegen.utils.SemVer(openAPI.getOpenapi()).atLeast("3.1.0");
         try {
             java.nio.file.Files.createDirectories(target.getParent());
+            Map<String, Object> described = UnionRules.describe(unions, openAPI, unionDispatch);
+            if (openEnumsCensus != null) {
+                described.put(OPEN_ENUMS, openEnumsCensus.describe());
+            }
             (v31 ? io.swagger.v3.core.util.Json31.pretty() : io.swagger.v3.core.util.Json.pretty())
-                    .writeValue(target.toFile(), UnionRules.describe(unions, openAPI, unionDispatch));
+                    .writeValue(target.toFile(), described);
         } catch (java.io.IOException e) {
             throw new IllegalStateException("cannot write " + target, e);
         }
@@ -585,6 +609,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
         if (unionDispatch && !modelUnions) {
             throw new IllegalArgumentException(GENERATOR_NAME + ": " + UNION_DISPATCH + " requires " + MODEL_UNIONS
                     + ": it decodes the unions that option renders");
+        }
+        openEnums = additionalProperties.containsKey(OPEN_ENUMS) && convertPropertyToBooleanAndWriteBack(OPEN_ENUMS);
+        if (openEnums && !modelUnions) {
+            throw new IllegalArgumentException(GENERATOR_NAME + ": " + OPEN_ENUMS + " requires " + MODEL_UNIONS
+                    + ": which values stay closed depends on the variants and the order that option settles");
         }
         Object plan = additionalProperties.get(UNION_PLAN_FILE);
         unionPlanFile = plan == null || String.valueOf(plan).isEmpty() ? null : String.valueOf(plan);
@@ -794,7 +823,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
             LOGGER.info("{}: hoisted inline union {}", GENERATOR_NAME, h);
         }
         SpecRules.stringProperties(openAPI, stringProperties, log);
+        Map<String, List<String>> behindValues = openEnums ? OpenEnums.refsBehind(openAPI, jsonValueSchemas) : Map.of();
         SpecRules.jsonValueSchemas(openAPI, jsonValueSchemas, log);
+        OpenEnums.keepRefs(openAPI, behindValues);
         SpecRules.fileProperties(openAPI, fileProperties, log);
         // A hoisted union may carry a stringIdSchemas name: apply the string rendering to it as well.
         SpecRules.stringSchemas(openAPI, stringIdSchemas, log);
@@ -856,7 +887,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         try {
             checkStructJsonModels(models, structJsonModels);
             if (anyDispatch) {
-                UnionRules.writeDispatchModule(models);
+                UnionRules.writeDispatchModule(models, openEnums);
             }
             if (enumFromStr) {
                 EnumFromStr.Result result = EnumFromStr.run(models,

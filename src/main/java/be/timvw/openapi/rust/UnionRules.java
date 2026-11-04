@@ -64,6 +64,9 @@ import java.util.function.Function;
  *
  * <p><b>Tag dispatch</b> ({@code unionDispatch}) decodes a union with a tag by that tag; see {@link #dispatch}. It does
  * not touch the variants, their payloads, their order or how they serialize.</p>
+ *
+ * <p>{@code openEnums} adds a catch-all to some tagged unions, and decides which by the variant order and tags settled
+ * here; see {@link OpenEnums}.</p>
  */
 final class UnionRules {
 
@@ -361,7 +364,7 @@ final class UnionRules {
         }
     }
 
-    private static Map<String, CodegenModel> byName(Map<String, ModelsMap> allModels) {
+    static Map<String, CodegenModel> byName(Map<String, ModelsMap> allModels) {
         Map<String, CodegenModel> byName = new LinkedHashMap<>();
         for (ModelsMap models : allModels.values()) {
             for (ModelMap mm : models.getModels()) {
@@ -533,7 +536,7 @@ final class UnionRules {
     }
 
     /** Computes what each type accepts and orders variants by it. */
-    private static final class Shapes {
+    static final class Shapes {
         private final Map<String, CodegenModel> byName;
         private final Map<String, List<CodegenProperty>> unions;
         private final Map<String, Map<Kind, Accepts>> done = new LinkedHashMap<>();
@@ -688,7 +691,7 @@ final class UnionRules {
         }
 
         /** The values of a field holding a closed enum, inline or by reference; otherwise {@code null}. */
-        private List<?> values(CodegenProperty field) {
+        List<?> values(CodegenProperty field) {
             if (field.isEnum && field.allowableValues != null && field.allowableValues.get("values") instanceof List) {
                 return (List<?>) field.allowableValues.get("values");
             }
@@ -698,6 +701,12 @@ final class UnionRules {
                 return (List<?>) model.allowableValues.get("values");
             }
             return null;
+        }
+
+        /** The values of an enum model. */
+        List<?> values(CodegenModel model) {
+            return model.isEnum && model.allowableValues != null && model.allowableValues.get("values") instanceof List
+                    ? (List<?>) model.allowableValues.get("values") : null;
         }
 
         /** What a Rust type accepts, per kind. */
@@ -779,6 +788,8 @@ final class UnionRules {
         public final List<Arm> arms;
         public final boolean allowsMissing;
         public final boolean acceptsNonObject;
+        /** {@code openEnums}: the variant a tag no variant has decodes to, holding the value as it came. */
+        public String catchAll;
         final Map<String, List<String>> values;
         final List<String> missing;
         final List<String> nonObject;
@@ -818,6 +829,9 @@ final class UnionRules {
             plan.put("values", values);
             plan.put("missing", missing);
             plan.put("nonObject", nonObject);
+            if (catchAll != null) {
+                plan.put("unknown", catchAll);
+            }
             return plan;
         }
 
@@ -877,9 +891,7 @@ final class UnionRules {
     @SuppressWarnings("rawtypes")
     static DispatchCounts dispatch(Map<String, CodegenModel> unions, Map<String, ModelsMap> allModels, OpenAPI openAPI) {
         Map<String, CodegenModel> byName = byName(allModels);
-        Map<String, List<CodegenProperty>> variants = new LinkedHashMap<>();
-        unions.forEach((name, cm) -> variants.put(name, variantsOf(cm)));
-        Shapes shapes = new Shapes(byName, variants);
+        Shapes shapes = shapes(byName, unions);
         Tags tags = new Tags(SpecRules.schemas(openAPI));
         int explicit = 0;
         int implicit = 0;
@@ -1003,8 +1015,15 @@ final class UnionRules {
         }
     }
 
+    /** Reads what a type accepts, with the variants {@link #plan} settled. */
+    static Shapes shapes(Map<String, CodegenModel> byName, Map<String, CodegenModel> unions) {
+        Map<String, List<CodegenProperty>> variants = new LinkedHashMap<>();
+        unions.forEach((name, cm) -> variants.put(name, variantsOf(cm)));
+        return new Shapes(byName, variants);
+    }
+
     @SuppressWarnings("unchecked")
-    private static List<CodegenProperty> variantsOf(CodegenModel cm) {
+    static List<CodegenProperty> variantsOf(CodegenModel cm) {
         return (List<CodegenProperty>) cm.vendorExtensions.get(VARIANTS);
     }
 
@@ -1227,16 +1246,20 @@ final class UnionRules {
     /**
      * Writes {@code src/models/union_dispatch.rs} and declares it in {@code mod.rs}.
      *
+     * @param open with {@code openEnums} every tagged union can have a catch-all, and then nothing calls the error of an
+     *             unknown tag
      * @throws IllegalStateException when a schema already takes the module's name
      */
-    static void writeDispatchModule(java.nio.file.Path models) throws java.io.IOException {
+    static void writeDispatchModule(java.nio.file.Path models, boolean open) throws java.io.IOException {
         java.nio.file.Path mod = models.resolve("mod.rs");
         String declarations = java.nio.file.Files.readString(mod);
         if (java.util.regex.Pattern.compile("\\b" + DISPATCH_MODULE + "\\b").matcher(declarations).find()) {
             throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": " + TimvwRustCodegen.UNION_DISPATCH
                     + " needs the module " + DISPATCH_MODULE + ", which a schema already has");
         }
-        java.nio.file.Files.writeString(models.resolve(DISPATCH_MODULE + ".rs"), dispatchModule());
+        String module = dispatchModule();
+        java.nio.file.Files.writeString(models.resolve(DISPATCH_MODULE + ".rs"), !open ? module : module.replace(
+                "pub(crate) fn unknown_tag", "#[allow(dead_code)]\npub(crate) fn unknown_tag"));
         java.nio.file.Files.writeString(mod, declarations + "pub(crate) mod " + DISPATCH_MODULE + ";\n");
     }
 

@@ -11,14 +11,19 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Milestone 3.3: inline schemas are named after where they stand, and a real name collision fails generation. */
+/** Milestone 3.3: an inline schema is named after a unique title or where it stands; a real collision fails generation. */
 class QualifiedInlineNamesTest {
 
     @TempDir
@@ -73,12 +78,13 @@ class QualifiedInlineNamesTest {
         String branch = read(qualified, "chunking_strategy_static_chunking_strategy");
         assertTrue(branch.contains("pub struct ChunkingStrategyStaticChunkingStrategy {"), branch);
         assertTrue(branch.contains("models::StaticChunkingStrategy"), branch);
-        assertTrue(exists(qualified, "chunking_strategy_auto_chunking_strategy"));
     }
 
     @Test
     void aBranchWithTheTitleOfItsUnionKeepsItsFields() throws IOException {
-        assertFalse(exists(stock, "session_tracing_tracing_configuration"));
+        // Stock: the object is overwritten by the union, which then references itself.
+        assertTrue(read(stock, "tracing_configuration").contains("models::TracingConfiguration"));
+        assertFalse(exists(qualified, "tracing_configuration"));
 
         String union = read(qualified, "session_tracing");
         assertTrue(union.contains("models::SessionTracingTracingConfiguration"), union);
@@ -91,6 +97,7 @@ class QualifiedInlineNamesTest {
         // Stock: the object requires a box of itself, and can never decode.
         String stockModel = read(stock, "grammar_format");
         assertTrue(stockModel.contains("pub grammar: Box<models::GrammarFormat>,"), stockModel);
+        assertFalse(exists(qualified, "grammar_format"));
 
         String outer = read(qualified, "session_format");
         assertTrue(outer.contains("models::SessionFormatGrammar"), outer);
@@ -112,6 +119,75 @@ class QualifiedInlineNamesTest {
     void aNullableObjectIsNamedAfterItsProperty() throws IOException {
         assertTrue(read(qualified, "nullable_details").contains("pub reason:"));
         assertTrue(read(qualified, "nullable").contains("models::NullableDetails"));
+    }
+
+    @Test
+    void aUniqueTitleNamesTheModelAndWhatLiesBelowIt() throws IOException {
+        assertTrue(read(qualified, "auto_chunking_strategy").contains("pub struct AutoChunkingStrategy {"));
+        assertFalse(exists(qualified, "chunking_strategy_auto_chunking_strategy"));
+        assertTrue(read(qualified, "widget_config").contains("models::WidgetConfigSize"));
+        assertTrue(read(qualified, "widget_config_size").contains("pub width:"));
+        assertTrue(read(qualified, "unique").contains("models::WidgetConfig"));
+    }
+
+    @Test
+    void identicalShapesWithOneTitleShareOneModel() throws IOException {
+        assertTrue(exists(qualified, "shared_options"));
+        assertFalse(exists(qualified, "shared_options_1"));
+        assertFalse(exists(qualified, "same_shape_one_options"));
+        assertFalse(exists(qualified, "same_shape_two_settings"));
+        assertTrue(read(qualified, "same_shape_one").contains("models::SharedOptions"));
+        assertTrue(read(qualified, "same_shape_two").contains("models::SharedOptions"));
+        assertTrue(exists(qualified, "shared_options_nested"));
+        assertFalse(exists(qualified, "shared_options_nested_1"));
+    }
+
+    @Test
+    void aTitleThatIsTheNameOfAComponentNamesNothing() throws IOException {
+        assertTrue(read(qualified, "existing_model").contains("pub original:"));
+        assertFalse(read(qualified, "existing_model").contains("pub other:"));
+        assertTrue(read(qualified, "title_like_component_thing").contains("pub other:"));
+    }
+
+    @Test
+    void aTitleThatIsTheNameOfItsParentNamesNothing() throws IOException {
+        // The component holding it.
+        String parent = read(qualified, "parent_model");
+        assertTrue(parent.contains("models::ParentModelChild"), parent);
+        assertTrue(read(qualified, "parent_model_child").contains("pub value:"));
+        // The untitled inline schema holding it.
+        String middle = read(qualified, "outer_middle");
+        assertTrue(middle.contains("models::OuterMiddleLeaf"), middle);
+        assertFalse(middle.contains("pub value:"), middle);
+        assertTrue(read(qualified, "outer_middle_leaf").contains("pub value:"));
+    }
+
+    @Test
+    void theOutcomeDoesNotDependOnTheOrderOfTheSpec() throws IOException {
+        Path forward = other.resolve("forward");
+        Path reversed = other.resolve("reversed");
+        generate("title_order_forward.yaml", forward, true);
+        generate("title_order_reversed.yaml", reversed, true);
+        // Two shapes: neither has the title, whichever comes first.
+        for (Path output : List.of(forward, reversed)) {
+            assertFalse(exists(output, "tool_filter"));
+            assertTrue(read(output, "alpha_filter").contains("pub one:"));
+            assertTrue(read(output, "beta_filter").contains("pub two:"));
+            assertTrue(exists(output, "same_options"));
+        }
+        assertEquals(models(forward), models(reversed));
+        for (String model : models(forward)) {
+            if (!model.equals("mod.rs")) {
+                assertEquals(Files.readString(forward.resolve("src/models/" + model)),
+                        Files.readString(reversed.resolve("src/models/" + model)), model);
+            }
+        }
+    }
+
+    private static Set<String> models(Path output) throws IOException {
+        try (Stream<Path> files = Files.list(output.resolve("src/models"))) {
+            return files.map(f -> f.getFileName().toString()).collect(Collectors.toCollection(TreeSet::new));
+        }
     }
 
     @Test
@@ -140,10 +216,10 @@ class QualifiedInlineNamesTest {
 
     @Test
     void operationSchemasAreNamedAfterTheOperation() throws IOException {
-        assertFalse(exists(qualified, "thing_body"));
-        assertFalse(exists(qualified, "created_thing"));
         assertTrue(read(qualified, "create_thing_request").contains("pub name:"));
-        assertTrue(read(qualified, "create_thing_200_response").contains("pub id:"));
+        // A unique title names the response here as well.
+        assertTrue(read(qualified, "created_thing").contains("pub id:"));
+        assertFalse(exists(qualified, "create_thing_200_response"));
     }
 
     @Test

@@ -10,7 +10,6 @@ paths:
         content:
           application/json:
             schema:
-              title: Thing body
               type: object
               required: [name]
               properties:
@@ -68,6 +67,7 @@ components:
               properties:
                 workflow_name:
                   type: string
+            - type: "null"
         # The same in property form: the outer object would reference itself.
         format:
           title: Grammar format
@@ -147,7 +147,6 @@ components:
         list:
           type: array
           items:
-            title: A list item
             type: object
             properties:
               x:
@@ -155,11 +154,101 @@ components:
         labels:
           type: object
           additionalProperties:
-            title: A label
             type: object
             properties:
               y:
                 type: string
+    # A unique title names the model, and what lies below it is named after it.
+    Unique:
+      type: object
+      properties:
+        widget:
+          title: Widget config
+          type: object
+          properties:
+            size:
+              type: object
+              properties:
+                width:
+                  type: integer
+    # The same title twice, for one shape: one model, whatever the annotations say.
+    SameShapeOne:
+      type: object
+      properties:
+        options:
+          title: Shared options
+          type: object
+          description: The first description.
+          properties:
+            limit:
+              oneOf:
+                - title: A count
+                  type: integer
+                - type: string
+            nested:
+              type: object
+              properties:
+                deep:
+                  type: string
+    SameShapeTwo:
+      type: object
+      properties:
+        settings:
+          title: Shared options
+          type: object
+          description: The second description.
+          x-note: an extension
+          properties:
+            limit:
+              oneOf:
+                - title: A number of them
+                  type: integer
+                - type: string
+            nested:
+              type: object
+              description: Described only here.
+              properties:
+                deep:
+                  type: string
+    # A title that is the name of a component names nothing.
+    ExistingModel:
+      type: object
+      properties:
+        original:
+          type: string
+    TitleLikeComponent:
+      type: object
+      properties:
+        thing:
+          title: Existing Model
+          type: object
+          properties:
+            other:
+              type: string
+    # A title that is the name of the component holding it.
+    ParentModel:
+      type: object
+      properties:
+        child:
+          title: Parent model
+          type: object
+          required: [value]
+          properties:
+            value:
+              type: string
+    # A title that is the name of the untitled inline schema holding it.
+    Outer:
+      type: object
+      properties:
+        middle:
+          type: object
+          properties:
+            leaf:
+              title: Outer middle
+              type: object
+              properties:
+                value:
+                  type: string
     # Identical apart from annotations, and through differently named references: one model is fine.
     Twin_Info:
       type: object

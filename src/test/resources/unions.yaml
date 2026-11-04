@@ -1,0 +1,349 @@
+openapi: 3.1.0
+info:
+  title: Unions
+  version: 1.0.0
+paths:
+  /videos:
+    post:
+      operationId: createVideo
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateVideoBody'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Log'
+components:
+  schemas:
+    CreateVideoBody:
+      type: object
+      required: [prompt, title]
+      properties:
+        prompt:
+          type: string
+        title:
+          $ref: '#/components/schemas/ModelChoice'
+        model:
+          $ref: '#/components/schemas/ModelChoice'
+    # A free string and an enum: the enum goes first, and gets a model of its own.
+    ModelChoice:
+      anyOf:
+        - type: string
+        - type: string
+          enum: [sora-2, sora-2-pro]
+    # A discriminated oneOf with a mapping: internally tagged by stock, which writes the tag twice.
+    Message:
+      oneOf:
+        - $ref: '#/components/schemas/SystemMessage'
+        - $ref: '#/components/schemas/UserMessage'
+      discriminator:
+        propertyName: role
+        mapping:
+          system: '#/components/schemas/SystemMessage'
+          user: '#/components/schemas/UserMessage'
+    SystemMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [system]
+        content:
+          type: string
+    UserMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user]
+        content:
+          oneOf:
+            - type: string
+              title: Text content
+            - type: array
+              title: Array of parts
+              items:
+                type: string
+    # A discriminated anyOf: stock leaves it empty, since its templates only read oneOf.
+    ServerEvent:
+      anyOf:
+        - $ref: '#/components/schemas/StartedEvent'
+        - $ref: '#/components/schemas/StoppedEvent'
+      discriminator:
+        propertyName: type
+    # The same union under another name: stock leaves this one empty as well.
+    ServerEventAlias:
+      discriminator:
+        propertyName: type
+      allOf:
+        - $ref: '#/components/schemas/ServerEvent'
+    StartedEvent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [started]
+    StoppedEvent:
+      type: object
+      required: [type, code]
+      properties:
+        type:
+          type: string
+          enum: [stopped]
+        code:
+          type: integer
+    # A nullable reference is an Option, and the component it refers to stays what it is.
+    Log:
+      type: object
+      required: [actor]
+      properties:
+        actor:
+          anyOf:
+            - $ref: '#/components/schemas/LogActor'
+            - type: 'null'
+        error:
+          anyOf:
+            - $ref: '#/components/schemas/LogError'
+            - type: 'null'
+        tracing:
+          anyOf:
+            - title: Tracing Configuration
+              description: Tracing, or the mode to use.
+              oneOf:
+                - type: string
+                - type: object
+                  title: Tracing Configuration
+                  properties:
+                    workflow_name:
+                      type: string
+            - type: 'null'
+        batch_size:
+          oneOf:
+            - type: string
+              enum: [auto]
+            - type: integer
+        temperature:
+          anyOf:
+            - type: number
+            - type: integer
+    LogActor:
+      type: object
+      properties:
+        type:
+          type: string
+        session:
+          type: string
+    LogError:
+      oneOf:
+        - $ref: '#/components/schemas/ProtocolError'
+        - $ref: '#/components/schemas/HttpError'
+      discriminator:
+        propertyName: type
+    ProtocolError:
+      type: object
+      required: [type, code]
+      properties:
+        type:
+          type: string
+          enum: [protocol_error]
+        code:
+          type: integer
+    HttpError:
+      type: object
+      required: [type, status]
+      properties:
+        type:
+          type: string
+          enum: [http_error]
+        status:
+          type: integer
+    # An object branch next to null: a struct, not an enum of one variant.
+    Prompt:
+      anyOf:
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: string
+        - type: 'null'
+    # Inline object branches keep their own fields.
+    Format:
+      oneOf:
+        - type: object
+          title: Pcm
+          required: [rate]
+          properties:
+            rate:
+              type: integer
+        - type: object
+          title: Ulaw
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [ulaw]
+    # The same title on another shape: with qualifiedInlineNames neither names a model.
+    OtherFormat:
+      oneOf:
+        - type: object
+          title: Pcm
+          required: [bits]
+          properties:
+            bits:
+              type: integer
+        - type: object
+          title: Mulaw
+          required: [law]
+          properties:
+            law:
+              type: string
+    # A struct with fewer fields goes after a union that holds a richer one; a weaker struct goes after both.
+    InputItem:
+      oneOf:
+        - $ref: '#/components/schemas/ItemReference'
+        - $ref: '#/components/schemas/EasyMessage'
+        - $ref: '#/components/schemas/Item'
+    ItemReference:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+    EasyMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+        content:
+          type: string
+    Item:
+      oneOf:
+        - $ref: '#/components/schemas/InputMessage'
+        - $ref: '#/components/schemas/ToolCall'
+    InputMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+    ToolCall:
+      type: object
+      required: [call_id, name, arguments]
+      properties:
+        call_id:
+          type: string
+        name:
+          type: string
+        arguments:
+          type: string
+    # A struct that requires less would swallow one that requires more, and an all-optional one any object.
+    Alert:
+      oneOf:
+        - $ref: '#/components/schemas/Plain'
+        - $ref: '#/components/schemas/Notice'
+        - $ref: '#/components/schemas/Warning'
+    Plain:
+      type: object
+      properties:
+        message:
+          type: string
+    Notice:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    Warning:
+      type: object
+      required: [message, code]
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
+    # A fixed tag tells them apart, whatever the other fields say.
+    Tagged:
+      oneOf:
+        - $ref: '#/components/schemas/Short'
+        - $ref: '#/components/schemas/Long'
+    Short:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [short]
+    Long:
+      type: object
+      required: [kind, detail]
+      properties:
+        kind:
+          type: string
+          enum: [long]
+        detail:
+          type: string
+    # The spec titles all of these the same.
+    InputValue:
+      oneOf:
+        - type: string
+        - type: array
+          title: array
+          items:
+            type: string
+        - type: array
+          title: array
+          items:
+            type: integer
+        - type: array
+          title: array
+          items:
+            type: array
+            items:
+              type: integer
+    # Whatever accepts everything comes last, whatever the spec says.
+    Anything:
+      oneOf:
+        - $ref: '#/components/schemas/Whatever'
+        - type: object
+          additionalProperties: true
+        - type: array
+          items: {}
+        - type: array
+          title: Numbers
+          items:
+            type: number
+        - $ref: '#/components/schemas/LogActor'
+    Whatever:
+      type: object
+    # A cycle through a union is boxed under boxOnlyCycles, and only there.
+    Tree:
+      oneOf:
+        - $ref: '#/components/schemas/Leaf'
+        - $ref: '#/components/schemas/Branch'
+    Leaf:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+    Branch:
+      type: object
+      required: [left, right]
+      properties:
+        left:
+          $ref: '#/components/schemas/Tree'
+        right:
+          $ref: '#/components/schemas/Tree'

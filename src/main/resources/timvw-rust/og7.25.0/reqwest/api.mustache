@@ -501,7 +501,12 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
     {{/isEnumRef}}
     {{^isEnumRef}}
+    {{#vendorExtensions.x-rust-union-text}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
+    {{/vendorExtensions.x-rust-union-text}}
+    {{^vendorExtensions.x-rust-union-text}}
         multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);
+    {{/vendorExtensions.x-rust-union-text}}
     {{/isEnumRef}}
     {{/isPrimitiveType}}
     }
@@ -626,7 +631,12 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
     {{/isEnumRef}}
     {{^isEnumRef}}
+    {{#vendorExtensions.x-rust-union-text}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
+    {{/vendorExtensions.x-rust-union-text}}
+    {{^vendorExtensions.x-rust-union-text}}
         multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);
+    {{/vendorExtensions.x-rust-union-text}}
     {{/isEnumRef}}
     {{/isPrimitiveType}}
     }

@@ -77,6 +77,7 @@ Options not listed below (`packageName`, `packageVersion`, `useChrono`, `reqwest
 | `noStructDisplay=true`: structs have no JSON `Display` (`legacyModelRewrites` adds one otherwise). API code that relied on it serializes explicitly with `serde_json::to_string`: path, query and header parameters and form and multipart text parts of struct type, and arrays of structs in the query, a form or a multipart part. The bytes on the wire are the same, and a serialization failure is now `Error::Serde` instead of a panic. Enums keep their `Display`, unions included. Generation fails if a rewrite turned such a parameter's struct into a union, whose `Display` is not its JSON. | nothing: removes `to_string()` on structs from the public API |
 | `integersAsI64=true`: an integer is `i64` unless the spec says `format: int32`, wherever it appears: model fields, `Vec` and map items, parameters, multipart fields, responses, `new()` parameters, builders and union variants. Formats other than `int32` (`int64`, `unixtime`, absent, unknown) give `i64`. Spec bounds never pick a type, and nothing is inferred as unsigned or `NonZero`. `number` is untouched. Integer-valued enums keep `#[repr(i64)]`. Without the option an integer without a format, or with one other than `int64`, is `i32`, as in stock `-g rust`. | nothing: a new rendering, which changes the public API |
 | `qualifiedInlineNames=true`: an inline schema that becomes a model keeps its title as its name only when that title is unique: its Rust name matches no component and no other model that will be generated, and every inline schema with that name has the same shape (those share one model). Otherwise all of them, like untitled schemas, are named after where they stand: property `p` of `P` is `P_p` (Rust `PP`), array items `P_inner`, map values `P_value`, a `oneOf`/`anyOf` branch `P_<title>` or, untitled, `P_oneOf`/`P_anyOf` (branches of one union that would share a name get their position), `not` is `P_not`, and an operation's body, parameter or response is `<op>_request`, `<op>_<param>_parameter`, `<op>_<code>_response` (with the media type when several in one body need a model). `P` is the name of the enclosing schema, however it got it. The `Object<i>` titles the generator gives untitled branches never name a model. The outcome does not depend on the order of the spec. Generation then fails, naming both schemas and locations, when two structurally different schemas would produce the same Rust model or file; names are compared after Rust normalization, so `Static_Chunking_Strategy` and `StaticChunkingStrategy` are the same model. Schemas that differ only in annotations (title, description, examples, external docs, `deprecated`, `x-*`), or in the names of references to equal schemas, may share a model. Stock numbers an inline schema whose title is taken (`Object0_17`), lets a schema nested in one with the same title overwrite it (which then references itself), and writes a title that normalizes to a component's name over that component's file. Default `false`. With the option on, the `<Schema><Property>` rename of inline object titles above no longer runs: nothing needs it. The check covers what the generator models, not the text rewrites of `legacyModelRewrites`, which run afterwards. | nothing: a new rendering, which renames types of the public API |
+| `modelUnions=true`: unions render from the model (`UnionRules`). Every `oneOf` and `anyOf`, with or without a discriminator, is a `#[serde(untagged)]` enum, and a model that is `allOf` one union gets that union's variants; a `type: null` branch is no variant, the union is an `Option` where it is nullable. A variant is named after its branch: discriminator mapping key, referenced schema (minus the union's name when the branch was inline), title, then type. A string enum branch becomes a model `<Union><Variant>Enum`. Unions have `Display` (a string, enum or union variant prints itself, anything else its JSON, so a text part of union type goes out as plain text), and with a string variant `new_text`, `new_<vec variant>`, `From<String>` and `From<&str>`. `Default` is rendered unless `defaultOnlyWhereValid` is on. Structs keep every field, tag included. The variants are ordered for untagged decoding, see [below](#union-variant-order). Under this option `legacyModelRewrites` leaves out `fix_empty_enums`, `fix_enum_attributes`, `fix_tool_enum_tagging`, `fix_untagged_unions`, `fix_helper_impl_mismatches` and `fix_generator_artifacts`. Without `qualifiedInlineNames`, an inline schema with the title of the schema it stands in gets a title of its own (`<title> object`, `<title> <property>`), or the resolver makes it refer to itself. `unionPlanFile=<output-relative path>`: the variants of every union and the schemas they refer to are written there as JSON; `tools/check-union-samples.py` uses it to decode one sample per branch of a generated crate. | `fix_untagged_unions.py` and the other scripts named, and the bugs of their name-based rewriting. A new rendering, which changes the public API |
 | `boxResponseError=true`: `Error::ResponseError` holds `Box<ResponseContent<T>>` and every API function builds it with `Box::new` (clippy `result_large_err`). `apiLintAllows=<lints>`: API modules and `configuration.rs` start with `#![allow(<lints>)]`. `userAgentFromPackage=true`: the default user agent is `<packageName>/<crate version>` (`env!("CARGO_PKG_VERSION")`) instead of `OpenAPI-Generator/<spec version>/rust`. | `box_response_errors.py`, `fix_clippy_warnings.py`, the user-agent edit of `patch_generated.rs.sh` (openai-client-base) |
 | `preprocessedSpecFile=<output-relative path>`: the spec as it stands after the rules above is written there as JSON, for scripts that still read it and for debugging. | the `target/specs/l2_rust_compatible.*` files the scripts produced |
 
@@ -84,6 +85,28 @@ Spec-level decisions stay in the client repos. Spec validation runs in the CLI b
 code, so a keyword the 3.0 validator rejects (Langfuse uses the 3.1 `const`) cannot be repaired here;
 langfuse-client-base drops it while composing the generator input (`prepare_compatible_spec.py`, which
 also adds the v3 compatibility layer). Any other invalid construct fails generation and is fixed upstream.
+
+## Union variant order
+
+With `modelUnions` every union is untagged, so decoding takes the first variant that accepts the value, and a struct
+accepts any object that has its required fields. `UnionRules` puts a variant before another when both accept the same
+JSON kind and it is the narrower one for that kind:
+
+| Kind | Narrower first |
+| --- | --- |
+| number | an integer before a float, which accepts integers too |
+| string | a closed enum before a free string |
+| object | a struct before one that would decode its values when it would not decode theirs. A struct would decode a value when the value has every field the struct requires and no required field contradicts: a fixed tag with other values, or a type of another kind. When both would: more required fields first, then more fields, which lose less, and when that ties a union first, since its other arms fall through. Maps after structs |
+| array | by these same rules, applied to the items; `Vec<serde_json::Value>` last |
+| all | `serde_json::Value` last, since it accepts everything |
+
+A union counts through its arms. When two variants compare differently on different kinds, the object kind decides.
+Variants this says nothing about keep the order of the spec, so a tag that tells two variants apart leaves them where
+they are.
+
+Two variants that accept the same values stay ambiguous under this rule, and decode to whichever comes first:
+`tools/check-union-samples.py` lists them. They wait for tag dispatch, which will take the place of `serde(untagged)` in
+`tools/static/model_union.mustache`, with the variants and their order as they are.
 
 ## Supported configuration
 
@@ -119,6 +142,8 @@ Our own options:
 | `enumFromStr` | `false` | closed enums implement `FromStr` and `TryFrom`; property enums get the `Display` they lack |
 | `noStructDisplay` | `false` | structs have no JSON `Display`; API code serializes them with `serde_json::to_string` |
 | `integersAsI64` | `false` | integers are `i64` unless `format: int32`; `preferUnsignedInt` and `bestFitInt` stay pinned to `false`, so setting either still fails generation |
+| `modelUnions` | `false` | unions render from the model as untagged enums, and the union rewrites of `legacyModelRewrites` do not run |
+| `unionPlanFile` | unset | with `modelUnions`: output-relative path the union plan is written to, as JSON |
 | `boxResponseError` | `false` | box the `ResponseError` payload |
 | `apiLintAllows` | unset | `#![allow(..)]` contents for API modules and `configuration.rs` |
 | `userAgentFromPackage` | `false` | default user agent from `packageName` and the crate version |

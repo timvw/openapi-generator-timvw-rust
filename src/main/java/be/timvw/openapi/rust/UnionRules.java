@@ -328,6 +328,12 @@ final class UnionRules {
         return unions;
     }
 
+    /** The variants of a union, in decoding order. */
+    @SuppressWarnings("unchecked")
+    static List<CodegenProperty> variants(CodegenModel union) {
+        return (List<CodegenProperty>) union.vendorExtensions.get(VARIANTS);
+    }
+
     /** Sets what depends on the boxes: the payload of every variant, and how it prints. */
     static void payloads(Map<String, CodegenModel> unions, Map<String, ModelsMap> allModels) {
         Map<String, CodegenModel> byName = byName(allModels);

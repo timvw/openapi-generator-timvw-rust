@@ -1,0 +1,29 @@
+openapi: 3.1.0
+info:
+  title: A union holding files in a shape multipart has no form for
+  version: "1"
+paths:
+  /nested:
+    post:
+      operationId: nested_create
+      tags: [nested]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  oneOf:
+                    - type: string
+                      format: binary
+                    - type: array
+                      items:
+                        type: array
+                        items:
+                          type: string
+                          format: binary
+      responses:
+        "200":
+          description: ok

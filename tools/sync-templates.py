@@ -92,6 +92,50 @@ CTOR_IF_LET = "if let Some(x) = {{{name}}} {Some(Box::new(x))} else {None}"
 CTOR_MAP = "{{{name}}}.map(Box::new)"
 
 
+# modelUnions: a multipart parameter whose union has file variants matches on the union (x-multipart-file-union, set by
+# MultipartRules.fileUnion). A file goes through the helper as an ordinary file parameter does, an array of files sends one
+# part per file, and any other variant is a schema value: a string stays plain text, an object is one JSON part.
+MULTIPART_FILE_UNION_ARMS = """    {{#vendorExtensions.x-multipart-file-union}}
+        {{{pattern}}}(value) => {
+            {{#isFilePart}}
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            {{/isFilePart}}
+            {{#isFileParts}}
+            for path in value {
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+            }
+            {{/isFileParts}}
+            {{#isValuePart}}
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(value)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+            {{/isValuePart}}
+        }
+    {{/vendorExtensions.x-multipart-file-union}}
+"""
+MULTIPART_FILE_UNION = f"""    {{{{#vendorExtensions.x-multipart-file-union-required}}}}
+    match &{{{{{{vendorExtensions.x-rust-param-identifier}}}}}} {{
+{MULTIPART_FILE_UNION_ARMS}    }}
+    {{{{/vendorExtensions.x-multipart-file-union-required}}}}
+    {{{{#vendorExtensions.x-multipart-file-union-nullable}}}}
+    match &{{{{{{vendorExtensions.x-rust-param-identifier}}}}}} {{
+        None => {{ multipart_form = multipart_form.text("{{{{{{baseName}}}}}}", ""); }},
+        Some(param_value) => match param_value {{
+{MULTIPART_FILE_UNION_ARMS}        }},
+    }}
+    {{{{/vendorExtensions.x-multipart-file-union-nullable}}}}
+    {{{{#vendorExtensions.x-multipart-file-union-optional}}}}
+    if let Some(ref param_value) = {{{{{{vendorExtensions.x-rust-param-identifier}}}}}} {{
+        match param_value {{
+{MULTIPART_FILE_UNION_ARMS}        }}
+    }}
+    {{{{/vendorExtensions.x-multipart-file-union-optional}}}}
+"""
+
+
 # Milestone 2.5. multipartHelper: multipart bodies go through src/apis/multipart_helper.rs. Files are read into a
 # part named after the file; an optional exploded array sends one part per item and an optional object one JSON part
 # (both as application/json), and a scalar with an explicit encoding contentType is sent with that media type. The
@@ -171,7 +215,7 @@ MULTIPART_HELPER_BLOCK = """{{#multipartHelper}}
     }
     {{/required}}
     {{/vendorExtensions.x-multipart-text-media-type}}
-    {{#vendorExtensions.x-multipart-stock}}
+{{FILE_UNION}}    {{#vendorExtensions.x-multipart-stock}}
 {{STOCK_NON_FILE}}
     {{/vendorExtensions.x-multipart-stock}}
     {{/isFile}}
@@ -219,7 +263,9 @@ def multipart_block(text: str, what: str) -> str:
     if nf_start < 0 or nf_end < 0:
         raise SystemExit(f"{what}: no non-file branch in the multipart block")
     stock_non_file = stock[nf_start + len(NON_FILE_OPEN):nf_end].rstrip("\n")
-    helper = MULTIPART_HELPER_BLOCK.replace("{{STOCK_NON_FILE}}", stock_non_file)
+    helper = MULTIPART_HELPER_BLOCK.replace("{{STOCK_NON_FILE}}", stock_non_file).replace(
+        "{{FILE_UNION}}", MULTIPART_FILE_UNION
+    )
     return text[:start] + helper + stock + "{{/multipartHelper}}\n" + text[end:]
 
 

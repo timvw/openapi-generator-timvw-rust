@@ -71,7 +71,9 @@ import java.util.Set;
  *       (Milestone 3.4, see {@link #getSchemaType});</li>
  *   <li>{@code qualifiedInlineNames} names an inline schema after its title when that is unique and after where
  *       it stands otherwise, and fails generation when two different schemas would share a Rust model or file (Milestone 3.3, see {@link InlineNames} and
- *       {@link NameCollisions}).</li>
+ *       {@link NameCollisions});</li>
+ *   <li>{@code modelUnions} renders unions from the model instead of through the text rewrites of
+ *       {@code legacyModelRewrites} (Milestone 3.3, see {@link UnionRules}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -136,6 +138,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String INTEGERS_AS_I64 = "integersAsI64";
     /** Name inline schemas after a unique title or their location; a real name collision fails generation (Milestone 3.3). */
     public static final String QUALIFIED_INLINE_NAMES = "qualifiedInlineNames";
+    /** Unions render from the model; the union text rewrites of {@code legacyModelRewrites} do not run (Milestone 3.3). */
+    public static final String MODEL_UNIONS = "modelUnions";
+    /** Output-relative path the union plan of {@code modelUnions} is written to, as JSON (for tools and debugging). */
+    public static final String UNION_PLAN_FILE = "unionPlanFile";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
     /** Set on a parameter whose dataType already carries {@code models::}. */
@@ -190,6 +196,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private boolean noStructDisplay;
     private final Set<String> structJsonModels = new java.util.TreeSet<>();
     private boolean qualifiedInlineNames;
+    private boolean modelUnions;
+    private String unionPlanFile;
+    private final Set<String> unionNames = new HashSet<>();
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -306,6 +315,13 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newBoolean(NO_STRUCT_DISPLAY,
                 "Structs have no JSON Display (legacyModelRewrites adds one otherwise); API code serializes parameters "
                         + "of struct type with serde_json::to_string, with the same bytes on the wire", false));
+        cliOptions.add(CliOption.newBoolean(MODEL_UNIONS,
+                "Render every oneOf and anyOf as an untagged enum from the model: variants named after the branch and "
+                        + "ordered so that decoding takes the narrowest one. The union rewrites of legacyModelRewrites "
+                        + "do not run", false));
+        cliOptions.add(CliOption.newString(UNION_PLAN_FILE,
+                "With modelUnions: write the variants of every union and the schemas they refer to to this "
+                        + "output-relative path, as JSON"));
         cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
                 "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
                         + "object-typed query parameter is sent as a string"));
@@ -356,6 +372,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
     @SuppressWarnings("rawtypes")
     public CodegenModel fromModel(String name, Schema model) {
         CodegenModel mdl = super.fromModel(name, model);
+        if (modelUnions) {
+            UnionRules.nameVariants(mdl, name, model, this::toModelName);
+            return mdl;
+        }
         if (mdl.getComposedSchemas() != null && mdl.getComposedSchemas().getOneOf() != null) {
             List<CodegenProperty> kept = new ArrayList<>();
             Set<String> seen = new HashSet<>();
@@ -385,9 +405,33 @@ public class TimvwRustCodegen extends RustClientCodegen {
     @Override
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
         objs = super.postProcessAllModels(objs);
+        Map<String, CodegenModel> unions = modelUnions
+                ? UnionRules.plan(objs, msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, MODEL_UNIONS, msg)) : Map.of();
         boxComponents = BoxRules.mark(objs, boxOnlyCycles);
+        if (modelUnions) {
+            UnionRules.payloads(unions, objs);
+            unionNames.addAll(unions.keySet());
+            writeUnionPlan(unions);
+        }
         DefaultRules.mark(objs, defaultOnlyWhereValid);
         return objs;
+    }
+
+    private void writeUnionPlan(Map<String, CodegenModel> unions) {
+        if (unionPlanFile == null) {
+            return;
+        }
+        java.nio.file.Path target = java.nio.file.Paths.get(outputFolder, unionPlanFile);
+        boolean v31 = openAPI.getOpenapi() != null
+                && new org.openapitools.codegen.utils.SemVer(openAPI.getOpenapi()).atLeast("3.1.0");
+        try {
+            java.nio.file.Files.createDirectories(target.getParent());
+            (v31 ? io.swagger.v3.core.util.Json31.pretty() : io.swagger.v3.core.util.Json.pretty())
+                    .writeValue(target.toFile(), UnionRules.describe(unions, openAPI));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("cannot write " + target, e);
+        }
+        LOGGER.info("{}: wrote the union plan to {}", GENERATOR_NAME, target);
     }
 
     @Override
@@ -515,6 +559,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 && convertPropertyToBooleanAndWriteBack(INTEGERS_AS_I64);
         qualifiedInlineNames = additionalProperties.containsKey(QUALIFIED_INLINE_NAMES)
                 && convertPropertyToBooleanAndWriteBack(QUALIFIED_INLINE_NAMES);
+        modelUnions = additionalProperties.containsKey(MODEL_UNIONS)
+                && convertPropertyToBooleanAndWriteBack(MODEL_UNIONS);
+        Object plan = additionalProperties.get(UNION_PLAN_FILE);
+        unionPlanFile = plan == null || String.valueOf(plan).isEmpty() ? null : String.valueOf(plan);
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
             additionalProperties.put(flag, additionalProperties.containsKey(flag)
                     && convertPropertyToBooleanAndWriteBack(flag));
@@ -571,6 +619,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
             }
         }
         copyInto(openAPI, parse(json, true));
+        if (modelUnions) {
+            UnionRules.pinArrayTitles(openAPI);
+        }
         if (super.getUseOpenapiNormalizer()) {
             Map<String, String> rules = new LinkedHashMap<>(openapiNormalizer());
             if (openAPI.getOpenapi() != null && new org.openapitools.codegen.utils.SemVer(openAPI.getOpenapi()).atLeast("3.1.0")) {
@@ -594,6 +645,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
             } else {
                 InlineModelResolverAccess.flatten(openAPI, inlineSchemaNameMapping(), inlineSchemaOption());
             }
+        }
+        if (modelUnions) {
+            LOGGER.info("{}: {}: {} string enum branches became models", GENERATOR_NAME, MODEL_UNIONS,
+                    UnionRules.hoistEnumBranches(openAPI, this::toModelName));
         }
         super.preprocessOpenAPI(openAPI);
         for (String where : SpecNormalizer.integerWithFloatFormatToNumber(openAPI)) {
@@ -703,6 +758,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
         int stripped = SpecRules.stripRefSiblings(openAPI);
         int collapsed = SpecRules.collapseRequiredOnlyUnions(openAPI);
         int titled = SpecRules.titleUnnamedUnionVariants(openAPI);
+        if (modelUnions && !qualifiedInlineNames) {
+            for (String r : UnionRules.retitleNestedTwins(openAPI, this::toModelName)) {
+                LOGGER.info("{}: {}: inline title repeats the enclosing one, renamed: {}", GENERATOR_NAME, MODEL_UNIONS,
+                        r);
+            }
+        }
         List<String> hoisted = SpecRules.hoistInlineUnions(openAPI);
         for (String h : hoisted) {
             LOGGER.info("{}: hoisted inline union {}", GENERATOR_NAME, h);
@@ -760,7 +821,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 be.timvw.openapi.rust.legacy.LegacyModelRewrites.run(
                         new be.timvw.openapi.rust.legacy.LegacyContext(java.nio.file.Paths.get(outputFolder), raw,
                                 preprocessed, boxPolicy(), defaultOnlyWhereValid, integersAsI64),
-                        !noStructDisplay,
+                        !noStructDisplay, modelUnions,
                         msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg));
             } catch (java.io.IOException e) {
                 throw new IllegalStateException(GENERATOR_NAME + ": legacy model rewrites failed", e);
@@ -820,7 +881,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         Set<String> structs = new HashSet<>();
         for (ModelMap map : allModels) {
             CodegenModel cm = map.getModel();
-            boolean union = legacyModelRewrites && cm.anyOf != null && !cm.anyOf.isEmpty();
+            boolean union = UnionRules.isUnion(cm) || (legacyModelRewrites && cm.anyOf != null && !cm.anyOf.isEmpty());
             if (!cm.isEnum && cm.discriminator == null && (cm.oneOf == null || cm.oneOf.isEmpty()) && !union) {
                 structs.add(cm.classname);
             }
@@ -859,6 +920,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
                             structJsonModels.add(p.dataType.replaceFirst("^models::", ""));
                         } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS)) {
                             structJsonModels.add(p.items.dataType.replaceFirst("^models::", ""));
+                        }
+                        if (p.dataType != null && unionNames.contains(p.dataType.replaceFirst("^models::", ""))) {
+                            p.vendorExtensions.put(UnionRules.UNION_TEXT, true);
                         }
                     }
                 }

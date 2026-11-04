@@ -76,6 +76,80 @@ impl Default for {{{classname}}} {
 }
 {{/defaultOnlyWhereValid}}
 {{/isEnum}}
+{{!-- modelUnions: a union, as UnionRules decided it --}}
+{{#vendorExtensions.x-rust-enum}}
+{{#vendorExtensions.x-rust-enum-variants}}
+{{#vendorExtensions.x-rust-enum-model}}
+pub use crate::models::{{{.}}};
+{{/vendorExtensions.x-rust-enum-model}}
+{{/vendorExtensions.x-rust-enum-variants}}
+
+{{!-- Tag dispatch goes here, in place of serde(untagged): a union with a usable tag gets a Deserialize that reads the tag and decodes the variant it names. Variants, payloads and their order stay as they are. --}}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum {{{classname}}} {
+{{#vendorExtensions.x-rust-enum-variants}}
+    {{#description}}
+    /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
+    {{/description}}
+    {{{name}}}({{{vendorExtensions.x-rust-enum-payload}}}),
+{{/vendorExtensions.x-rust-enum-variants}}
+}
+
+{{^defaultOnlyWhereValid}}
+impl Default for {{{classname}}} {
+    fn default() -> Self {
+        {{#vendorExtensions.x-rust-enum-variants}}{{#-first}}Self::{{{name}}}(Default::default()){{/-first}}{{/vendorExtensions.x-rust-enum-variants}}
+    }
+}
+
+{{/defaultOnlyWhereValid}}
+{{#vendorExtensions.x-rust-enum-text}}
+impl {{{classname}}} {
+    pub fn new_text(text: String) -> Self {
+        Self::{{{.}}}(text)
+    }
+    {{#vendorExtensions.x-rust-enum-variants}}
+    {{#vendorExtensions.x-rust-enum-new-fn}}
+    pub fn {{{.}}}(items: {{{vendorExtensions.x-rust-enum-payload}}}) -> Self {
+        Self::{{{name}}}(items)
+    }
+    {{/vendorExtensions.x-rust-enum-new-fn}}
+    {{/vendorExtensions.x-rust-enum-variants}}
+}
+
+impl From<String> for {{{classname}}} {
+    fn from(s: String) -> Self {
+        Self::{{{.}}}(s)
+    }
+}
+
+impl From<&str> for {{{classname}}} {
+    fn from(s: &str) -> Self {
+        Self::{{{.}}}(s.to_string())
+    }
+}
+
+{{/vendorExtensions.x-rust-enum-text}}
+impl std::fmt::Display for {{{classname}}} {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            {{#vendorExtensions.x-rust-enum-variants}}
+            {{#vendorExtensions.x-rust-enum-plain-display}}
+            Self::{{{name}}}(value) => write!(f, "{}", value),
+            {{/vendorExtensions.x-rust-enum-plain-display}}
+            {{^vendorExtensions.x-rust-enum-plain-display}}
+            Self::{{{name}}}(value) => match serde_json::to_string(value) {
+                Ok(s) => write!(f, "{}", s),
+                Err(_) => Err(std::fmt::Error),
+            },
+            {{/vendorExtensions.x-rust-enum-plain-display}}
+            {{/vendorExtensions.x-rust-enum-variants}}
+        }
+    }
+}
+{{/vendorExtensions.x-rust-enum}}
+{{^vendorExtensions.x-rust-enum}}
 {{!-- for schemas that have a discriminator --}}
 {{#discriminator}}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -203,6 +277,7 @@ impl Default for {{classname}} {
 {{/oneOf.isEmpty}}
 {{/discriminator}}
 {{/isEnum}}
+{{/vendorExtensions.x-rust-enum}}
 {{!-- for properties that are of enum type --}}
 {{#vars}}
 {{#isEnum}}

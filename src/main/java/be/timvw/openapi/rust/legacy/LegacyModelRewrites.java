@@ -23,7 +23,25 @@ public final class LegacyModelRewrites {
     }
 
     static List<Named> pipeline(boolean structDisplay) {
+        return pipeline(structDisplay, false);
+    }
+
+    /**
+     * @param structDisplay whether structs get the JSON {@code Display} the scripts gave them
+     * @param modelUnions   unions were rendered from the model ({@code be.timvw.openapi.rust.UnionRules}), so the
+     *                      rewrites that write and patch them have nothing left to do and do not run
+     */
+    static List<Named> pipeline(boolean structDisplay, boolean modelUnions) {
         FixGeneratedCode fixGeneratedCode = new FixGeneratedCode(structDisplay);
+        if (modelUnions) {
+            return Arrays.asList(
+                    new Named("patch_generated.rs.sh (models)", new PatchGeneratedModels(false)),
+                    new Named("fix_generated_code.py", fixGeneratedCode),
+                    new Named("fix_default_issues.py", new FixDefaultIssues()),
+                    new Named("fix_generated_code.py", fixGeneratedCode),
+                    new Named("doc-link fix (perl)", new DocLinkFix()),
+                    new Named("fix_unused_imports.py", new FixUnusedImports()));
+        }
         FixHelperImplMismatches helperImpls = new FixHelperImplMismatches();
         return Arrays.asList(
                 new Named("patch_generated.rs.sh (models)", new PatchGeneratedModels()),
@@ -51,7 +69,13 @@ public final class LegacyModelRewrites {
 
     /** @param structDisplay whether structs get the JSON {@code Display} the scripts gave them */
     public static void run(LegacyContext context, boolean structDisplay, Consumer<String> log) throws IOException {
-        for (Named step : pipeline(structDisplay)) {
+        run(context, structDisplay, false, log);
+    }
+
+    /** @param modelUnions leave out the union rewrites, see {@link #pipeline(boolean, boolean)} */
+    public static void run(LegacyContext context, boolean structDisplay, boolean modelUnions, Consumer<String> log)
+            throws IOException {
+        for (Named step : pipeline(structDisplay, modelUnions)) {
             log.accept("legacy rewrite: " + step.script());
             step.rewrite().apply(context);
         }

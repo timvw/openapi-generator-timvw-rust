@@ -74,7 +74,13 @@ MULTIPART_ENUM_TEXT = (
     '        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());\n'
     "    {{/isEnumRef}}\n"
     "    {{^isEnumRef}}\n"
+    # modelUnions: a union's Display prints a string variant as the string, and anything else as JSON.
+    "    {{#vendorExtensions.x-rust-union-text}}\n"
+    '        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());\n'
+    "    {{/vendorExtensions.x-rust-union-text}}\n"
+    "    {{^vendorExtensions.x-rust-union-text}}\n"
     '        multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);\n'
+    "    {{/vendorExtensions.x-rust-union-text}}\n"
     "    {{/isEnumRef}}\n"
     "    {{/isPrimitiveType}}\n"
 )
@@ -379,14 +385,33 @@ def gate_enum_defaults(text: str, what: str) -> str:
     return text
 
 
+# Milestone 3.3. modelUnions: a union (UnionRules sets x-rust-enum) renders from tools/static/model_union.mustache, in
+# place of the stock discriminated and untagged enums, which stay as they are for the other models.
+UNION_BLOCK_START = "{{!-- for schemas that have a discriminator --}}\n"
+UNION_BLOCK_END = "{{!-- for properties that are of enum type --}}\n"
+UNION_GATE_OPEN = "{{^vendorExtensions.x-rust-enum}}\n"
+UNION_GATE_CLOSE = "{{/vendorExtensions.x-rust-enum}}\n"
+
+
+def union_block(text: str, what: str) -> str:
+    text = replace_exactly(
+        text,
+        UNION_BLOCK_START,
+        (ROOT / "tools/static/model_union.mustache").read_text() + UNION_GATE_OPEN + UNION_BLOCK_START,
+        1,
+        what,
+    )
+    return replace_exactly(text, UNION_BLOCK_END, UNION_GATE_CLOSE + UNION_BLOCK_END, 1, what)
+
+
 EDITS = {
     "lib.mustache": lambda t, w: CRATE_DOCS + t,
-    "model.mustache": lambda t, w: gate_enum_defaults(per_property_box(wrap_doc_lines(
+    "model.mustache": lambda t, w: union_block(gate_enum_defaults(per_property_box(wrap_doc_lines(
         replace_exactly(
             replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), CTOR_IF_LET, CTOR_MAP, 1, w
         ),
         w,
-    ), w), w),
+    ), w), w), w),
     "reqwest/api.mustache": lambda t, w: api_template(t, w),
     "reqwest/api_mod.mustache": lambda t, w: replace_exactly(replace_exactly(
         replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w), API_MOD_CONFIGURATION,

@@ -19,7 +19,15 @@ public class PatchGeneratedModels implements Rewrite {
     private static final Pattern PUB_STRUCT = Pattern.compile("^pub struct \\w+ \\{",
             Pattern.UNIX_LINES | Pattern.UNICODE_CHARACTER_CLASS);
 
+    private final boolean toolEnumTagging;
+
     public PatchGeneratedModels() {
+        this(true);
+    }
+
+    /** @param toolEnumTagging run {@code fix_tool_enum_tagging.py}; without it no enum is retagged */
+    public PatchGeneratedModels(boolean toolEnumTagging) {
+        this.toolEnumTagging = toolEnumTagging;
     }
 
     @Override
@@ -33,7 +41,9 @@ public class PatchGeneratedModels implements Rewrite {
         sedFile(context.models().resolve("prediction_content.rs"),
                 "pub fn new(r#type: Type, content: String)", "pub fn new(r#type: Type, content: serde_json::Value)");
         addBonBuilderToAllStructs(context.models());
-        new FixToolEnumTagging().apply(context);
+        if (toolEnumTagging) {
+            new FixToolEnumTagging().apply(context);
+        }
         new DocLinkFix().apply(context);
     }
 

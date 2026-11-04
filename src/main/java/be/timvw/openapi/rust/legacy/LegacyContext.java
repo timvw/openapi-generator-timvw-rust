@@ -19,14 +19,23 @@ import java.util.Map;
  *   <li>{@code preprocessedSpec}: the spec after the generator's spec rules (the scripts' {@code SPEC_OUT},
  *       {@code target/specs/l2_rust_compatible.json}).</li>
  *   <li>{@code boxPolicy}: which model payloads a rewrite that writes them boxes ({@code boxOnlyCycles}).</li>
+ *   <li>{@code defaultOnlyWhereValid}: the generator decides {@code Default} from the required fields, so the
+ *       rewrites that infer it from the rendered text stay out and the ones that write an enum give it no
+ *       {@code Default} impl.</li>
  * </ul>
  */
 public record LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec,
-                            BoxPolicy boxPolicy) {
+                            BoxPolicy boxPolicy, boolean defaultOnlyWhereValid) {
 
     /** A context in which every model payload a rewrite writes is boxed, as in the scripts. */
     public LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec) {
         this(root, rawSpec, preprocessedSpec, BoxPolicy.ALWAYS);
+    }
+
+    /** A context in which the rewrites keep the scripts' {@code Default} handling. */
+    public LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec,
+                         BoxPolicy boxPolicy) {
+        this(root, rawSpec, preprocessedSpec, boxPolicy, false);
     }
 
     public Path src() {

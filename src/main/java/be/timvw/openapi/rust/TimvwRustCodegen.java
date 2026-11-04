@@ -60,7 +60,9 @@ import java.util.Set;
  *   <li>{@code legacyModelRewrites} runs transitional Java ports of openai-client-base's model scripts over the
  *       rendered crate (Milestone 2.4, see {@code be.timvw.openapi.rust.legacy});</li>
  *   <li>{@code boxOnlyCycles} boxes a model reference only where the model graph needs it to break a cycle
- *       (Milestone 3.1, see {@link BoxRules}).</li>
+ *       (Milestone 3.1, see {@link BoxRules});</li>
+ *   <li>{@code defaultOnlyWhereValid} keeps {@code Default} only where its value is one the API would accept
+ *       (Milestone 3.2, see {@link DefaultRules}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -111,6 +113,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String FILE_PROPERTIES = "fileProperties";
     /** Box a model reference only where it closes a cycle of the model graph (Milestone 3.1, see {@link BoxRules}). */
     public static final String BOX_ONLY_CYCLES = "boxOnlyCycles";
+    /** {@code Default} only where its value is one the API would accept (Milestone 3.2, see {@link DefaultRules}). */
+    public static final String DEFAULT_ONLY_WHERE_VALID = "defaultOnlyWhereValid";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
     /** Set on a parameter whose dataType already carries {@code models::}. */
@@ -159,6 +163,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private List<String> fileProperties = new ArrayList<>();
     private boolean boxOnlyCycles;
     private Map<String, Integer> boxComponents = Map.of();
+    private boolean defaultOnlyWhereValid;
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -245,6 +250,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         + "part, and an encoding contentType of a scalar part is applied", false));
         cliOptions.add(CliOption.newString(FILE_PROPERTIES,
                 "Schema.property entries rendered as a file (type: string, format: binary)"));
+        cliOptions.add(CliOption.newBoolean(DEFAULT_ONLY_WHERE_VALID,
+                "Default only where its value is one the API would accept: a struct derives it only without required "
+                        + "fields (a required nullable field counts), and no enum implements it", false));
         cliOptions.add(CliOption.newBoolean(BOX_RESPONSE_ERROR,
                 "Error::ResponseError holds Box<ResponseContent<T>>, keeping every Result small (clippy "
                         + "result_large_err)", false));
@@ -318,11 +326,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
      * nullable field stays {@code Option<Box<serde_json::Value>>} as before. Every property list of the model holds
      * its own copies, so all of them are visited.
      */
-    /** Marks every model property with {@link BoxRules#BOX}, which the model template reads. */
+    /** Marks every model property with {@link BoxRules#BOX} and every model with {@link DefaultRules#DERIVE_DEFAULT}. */
     @Override
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
         objs = super.postProcessAllModels(objs);
         boxComponents = BoxRules.mark(objs, boxOnlyCycles);
+        DefaultRules.mark(objs, defaultOnlyWhereValid);
         return objs;
     }
 
@@ -440,6 +449,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
         fileProperties = SpecRules.entries(additionalProperties.get(FILE_PROPERTIES));
         boxOnlyCycles = additionalProperties.containsKey(BOX_ONLY_CYCLES)
                 && convertPropertyToBooleanAndWriteBack(BOX_ONLY_CYCLES);
+        defaultOnlyWhereValid = additionalProperties.containsKey(DEFAULT_ONLY_WHERE_VALID)
+                && convertPropertyToBooleanAndWriteBack(DEFAULT_ONLY_WHERE_VALID);
+        additionalProperties.put(DEFAULT_ONLY_WHERE_VALID, defaultOnlyWhereValid);
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
             additionalProperties.put(flag, additionalProperties.containsKey(flag)
                     && convertPropertyToBooleanAndWriteBack(flag));
@@ -650,7 +662,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         preprocessedSpecJson);
                 be.timvw.openapi.rust.legacy.LegacyModelRewrites.run(
                         new be.timvw.openapi.rust.legacy.LegacyContext(java.nio.file.Paths.get(outputFolder), raw,
-                                preprocessed, boxPolicy()),
+                                preprocessed, boxPolicy(), defaultOnlyWhereValid),
                         msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg));
             } catch (java.io.IOException e) {
                 throw new IllegalStateException(GENERATOR_NAME + ": legacy model rewrites failed", e);

@@ -41,8 +41,10 @@ public class FixGeneratedCode implements Rewrite {
         fixInvalidEnumVariants(modelsDir);
         fixRecursiveTypes(modelsDir);
         addDisplayImplForStructs(modelsDir);
-        removeDefaultFromEmptyEnums(modelsDir);
-        removeDefaultFromProblematicStructs(modelsDir);
+        if (!context.defaultOnlyWhereValid()) {
+            removeDefaultFromEmptyEnums(modelsDir);
+            removeDefaultFromProblematicStructs(modelsDir);
+        }
     }
 
     /** Port of {@code fix_recursive_types}: wraps self-references in {@code Box<>}. */

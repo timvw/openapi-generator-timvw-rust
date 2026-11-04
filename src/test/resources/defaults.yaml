@@ -1,0 +1,119 @@
+openapi: 3.0.3
+info:
+  title: defaults
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateThing"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Options"
+components:
+  schemas:
+    # A required field: no value of it is the API's default.
+    CreateThing:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+        size:
+          type: string
+          enum: [small, large]
+    # A required nullable field is still required: leaving it out is not sending null.
+    NullableNote:
+      type: object
+      required: [note]
+      properties:
+        note:
+          type: string
+          nullable: true
+    # All optional: Option<T> does not need T: Default, so the field types do not matter.
+    Options:
+      type: object
+      properties:
+        label:
+          type: string
+        size:
+          type: string
+          default: large
+          enum: [small, large]
+        color:
+          $ref: "#/components/schemas/Color"
+        shape:
+          $ref: "#/components/schemas/Shape"
+        pet:
+          $ref: "#/components/schemas/Pet"
+        thing:
+          $ref: "#/components/schemas/CreateThing"
+    Color:
+      type: string
+      default: blue
+      enum: [red, blue]
+    Circle:
+      type: object
+      required: [radius]
+      properties:
+        radius:
+          type: number
+    Square:
+      type: object
+      properties:
+        side:
+          type: number
+    Shape:
+      oneOf:
+        - $ref: "#/components/schemas/Circle"
+        - $ref: "#/components/schemas/Square"
+    Cat:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+    Dog:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+    Pet:
+      oneOf:
+        - $ref: "#/components/schemas/Cat"
+        - $ref: "#/components/schemas/Dog"
+      discriminator:
+        propertyName: kind
+        mapping:
+          cat: "#/components/schemas/Cat"
+          dog: "#/components/schemas/Dog"
+    # The name collision: the legacy analysis takes the union Object for the local property enum Object of Holder.
+    Object:
+      oneOf:
+        - $ref: "#/components/schemas/Circle"
+        - type: string
+          title: Text
+    Holder:
+      type: object
+      properties:
+        object:
+          type: string
+          enum: [holder]
+    # A union the legacy rewrites write themselves, with a Default impl of their own.
+    TextOrParts:
+      oneOf:
+        - type: string
+          title: Text
+        - type: array
+          title: Parts
+          items:
+            type: string

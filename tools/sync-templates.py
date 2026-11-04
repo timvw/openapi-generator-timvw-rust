@@ -40,8 +40,11 @@ DEEP_OBJECT_FIX = (
 )
 
 STRUCT_DERIVE = "#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]\npub struct {{{classname}}} {"
+# Milestone 3.2. A struct derives Default per the x-rust-derive-default flag (DefaultRules: always, or with
+# defaultOnlyWhereValid only without required fields).
 STRUCT_DERIVE_BON = (
-    "#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize"
+    "#[derive(Clone, {{#vendorExtensions.x-rust-derive-default}}Default, {{/vendorExtensions.x-rust-derive-default}}"
+    "Debug, PartialEq, Serialize, Deserialize"
     "{{#bonBuilders}}, bon::Builder{{/bonBuilders}})]\npub struct {{{classname}}} {"
 )
 
@@ -303,14 +306,29 @@ def per_property_box(text: str, what: str) -> str:
     return text.replace(BOX_OPEN, PER_PROPERTY_BOX_OPEN).replace(BOX_CLOSE, PER_PROPERTY_BOX_CLOSE)
 
 
+# Milestone 3.2. defaultOnlyWhereValid: no enum implements Default, since no variant is the API's default. The stock
+# template has four such impls: value enums, discriminated unions, untagged unions and property enums.
+ENUM_IMPL_DEFAULT = re.compile(r"^impl Default for .*?^\}\n", re.MULTILINE | re.DOTALL)
+ENUM_IMPL_DEFAULTS = 4
+
+
+def gate_enum_defaults(text: str, what: str) -> str:
+    text, n = ENUM_IMPL_DEFAULT.subn(
+        lambda m: "{{^defaultOnlyWhereValid}}\n" + m.group() + "{{/defaultOnlyWhereValid}}\n", text
+    )
+    if n != ENUM_IMPL_DEFAULTS:
+        raise SystemExit(f"{what}: expected {ENUM_IMPL_DEFAULTS} enum Default impls, found {n}")
+    return text
+
+
 EDITS = {
     "lib.mustache": lambda t, w: CRATE_DOCS + t,
-    "model.mustache": lambda t, w: per_property_box(wrap_doc_lines(
+    "model.mustache": lambda t, w: gate_enum_defaults(per_property_box(wrap_doc_lines(
         replace_exactly(
             replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), CTOR_IF_LET, CTOR_MAP, 1, w
         ),
         w,
-    ), w),
+    ), w), w),
     "reqwest/api.mustache": lambda t, w: api_template(t, w),
     "reqwest/api_mod.mustache": lambda t, w: replace_exactly(replace_exactly(
         replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w), API_MOD_CONFIGURATION,

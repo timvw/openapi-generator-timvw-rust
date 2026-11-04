@@ -15,11 +15,15 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -58,10 +62,8 @@ import java.util.function.Function;
  * tells two variants apart leaves them where they are. Two variants that accept the same values remain ambiguous: only
  * tag dispatch can tell them apart.</p>
  *
- * <p><b>Tag dispatch</b> comes next, and takes the place of {@code serde(untagged)} for the unions with a usable tag.
- * {@link #plan} is where that is decided, per union; {@code tools/static/model_union.mustache} marks where it renders.
- * The model keeps its {@code discriminator} for it, and the variants, their payloads and their order stay as they are:
- * dispatch only needs to read the tag first.</p>
+ * <p><b>Tag dispatch</b> ({@code unionDispatch}) decodes a union with a tag by that tag; see {@link #dispatch}. It does
+ * not touch the variants, their payloads, their order or how they serialize.</p>
  */
 final class UnionRules {
 
@@ -89,6 +91,10 @@ final class UnionRules {
     static final String UNION_TEXT = "x-rust-union-text";
     /** On a branch schema: the variant name the rules chose before the schema lost the title it came from. */
     static final String VARIANT_NAME = "x-rust-variant-name";
+    /** On a model with {@code unionDispatch} and a tag: what its {@code Deserialize} does, for the template. */
+    static final String DISPATCH = "x-rust-enum-dispatch";
+    /** The module holding what every generated {@code Deserialize} of {@code unionDispatch} shares. */
+    static final String DISPATCH_MODULE = "union_dispatch";
 
     private UnionRules() {
     }
@@ -756,9 +762,586 @@ final class UnionRules {
         }
     }
 
+    /**
+     * What a tagged union's {@code Deserialize} does, read by the template and written to the plan. An arm is one thing
+     * the union can find where it looks for its tag, and what to decode then: one variant, or several to try in order.
+     */
+    public static final class Dispatch {
+        public final String tagName;
+        public final String tagLiteral;
+        public final String source;
+        public final List<Arm> arms;
+        public final boolean allowsMissing;
+        public final boolean acceptsNonObject;
+        final Map<String, List<String>> values;
+        final List<String> missing;
+        final List<String> nonObject;
+
+        Dispatch(String tag, String source, Map<String, List<String>> values, List<String> missing,
+                 List<String> nonObject) {
+            this.tagName = tag;
+            this.tagLiteral = rustString(tag);
+            this.source = source;
+            this.values = values;
+            this.missing = missing;
+            this.nonObject = nonObject;
+            this.allowsMissing = !missing.isEmpty();
+            this.acceptsNonObject = !nonObject.isEmpty();
+            // Values that select the same variants share an arm.
+            Map<List<String>, List<String>> grouped = new LinkedHashMap<>();
+            values.forEach((value, variants) -> grouped.computeIfAbsent(variants, v -> new ArrayList<>()).add(value));
+            List<Arm> all = new ArrayList<>();
+            grouped.forEach((variants, patterns) -> {
+                List<String> literals = new ArrayList<>();
+                patterns.forEach(p -> literals.add(rustString(p)));
+                all.add(new Arm("Tag::Value(" + String.join(" | ", literals) + ")", variants));
+            });
+            if (allowsMissing) {
+                all.add(new Arm("Tag::Missing", missing));
+            }
+            if (acceptsNonObject) {
+                all.add(new Arm("Tag::NotObject", nonObject));
+            }
+            this.arms = all;
+        }
+
+        Map<String, Object> describe() {
+            Map<String, Object> plan = new LinkedHashMap<>();
+            plan.put("tag", tagName);
+            plan.put("source", source);
+            plan.put("values", values);
+            plan.put("missing", missing);
+            plan.put("nonObject", nonObject);
+            return plan;
+        }
+
+        boolean sharesAValue() {
+            return values.values().stream().anyMatch(variants -> variants.size() > 1);
+        }
+    }
+
+    /** One arm of the {@code match} on the tag; exactly one of {@code single} and {@code attempts} is set. */
+    public static final class Arm {
+        public final String pattern;
+        public final Variant single;
+        public final List<Variant> attempts;
+
+        Arm(String pattern, List<String> variants) {
+            this.pattern = pattern;
+            this.single = variants.size() == 1 ? new Variant(variants.get(0)) : null;
+            this.attempts = variants.size() == 1 ? null : variants.stream().map(Variant::new).toList();
+        }
+    }
+
+    /** A variant an arm decodes. */
+    public static final class Variant {
+        public final String name;
+
+        Variant(String name) {
+            this.name = name;
+        }
+    }
+
+    static String rustString(String text) {
+        return '"' + text.replace("\\", "\\\\").replace("\"", "\\\"") + '"';
+    }
+
+    /** The counts of {@link #dispatch}. */
+    record DispatchCounts(int explicit, int implicit, int untagged, int sharedValue, int optional) {
+    }
+
+    /**
+     * Tag dispatch ({@code unionDispatch}): finds the tag of every union in its schema and sets what its
+     * {@code Deserialize} does. A union is tagged when
+     * <ul>
+     *   <li>it has a {@code discriminator}, on {@code oneOf} or {@code anyOf}; or</li>
+     *   <li>every branch requires one property with fixed string values, and that property tells two variants apart.
+     *       A branch that is a union has it when all its arms do. When several properties qualify, the one with the
+     *       fewest values on two variants wins, then {@code type}, then the first by name.</li>
+     * </ul>
+     * <p>Decoding a tagged union reads the JSON value and decodes the variants its tag selects, each of which reads the
+     * tag again from its own field. Nothing strips a field, so the bytes a value serializes to do not change. Variants
+     * sharing a value are tried in the order of {@link #plan}, for that value only; so are the ones that allow a missing
+     * tag when it is missing or null, and the ones that accept something other than an object when the value is one.</p>
+     *
+     * @throws IllegalArgumentException when a tagged union has a variant without that field in its struct, or a
+     *     discriminator's variant has no value to be selected by. That is a fault of the spec or of this rule, and a
+     *     guess would decode the wrong variant
+     */
+    @SuppressWarnings("rawtypes")
+    static DispatchCounts dispatch(Map<String, CodegenModel> unions, Map<String, ModelsMap> allModels, OpenAPI openAPI) {
+        Map<String, CodegenModel> byName = byName(allModels);
+        Map<String, List<CodegenProperty>> variants = new LinkedHashMap<>();
+        unions.forEach((name, cm) -> variants.put(name, variantsOf(cm)));
+        Shapes shapes = new Shapes(byName, variants);
+        Tags tags = new Tags(SpecRules.schemas(openAPI));
+        int explicit = 0;
+        int implicit = 0;
+        int untagged = 0;
+        int shared = 0;
+        int optional = 0;
+        for (CodegenModel cm : unions.values()) {
+            Object aliased = cm.vendorExtensions.get(SCHEMA);
+            Schema<?> schema = tags.schemas.get(aliased != null ? aliased : cm.name);
+            List<Schema> branches = schema == null ? null : branchesOf(cm, schema);
+            String tag = schema == null ? null : tags.tagOf(schema, branches);
+            if (tag == null) {
+                untagged++;
+                continue;
+            }
+            checkStructs(cm, tag, unions, byName, shapes);
+            Dispatch table = table(cm, schema, tag, branches, tags, shapes);
+            cm.vendorExtensions.put(DISPATCH, table);
+            if ("discriminator".equals(table.source)) {
+                explicit++;
+            } else {
+                implicit++;
+            }
+            shared += table.sharesAValue() ? 1 : 0;
+            optional += table.allowsMissing ? 1 : 0;
+        }
+        return new DispatchCounts(explicit, implicit, untagged, shared, optional);
+    }
+
+    /** The branch of every variant, in the order of the variants. */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static List<Schema> branchesOf(CodegenModel cm, Schema<?> schema) {
+        List<Schema> branches = "oneOf".equals(cm.vendorExtensions.get(KEYWORD)) ? schema.getOneOf() : schema.getAnyOf();
+        List<Schema> own = new ArrayList<>();
+        for (CodegenProperty v : variantsOf(cm)) {
+            Object index = v.vendorExtensions.get(BRANCH);
+            own.add(branches != null && index != null ? branches.get((Integer) index) : null);
+        }
+        return own;
+    }
+
+    private static boolean discriminated(Schema<?> schema) {
+        return schema.getDiscriminator() != null && schema.getDiscriminator().getPropertyName() != null;
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static Dispatch table(CodegenModel cm, Schema<?> schema, String tag, List<Schema> own, Tags tags, Shapes shapes) {
+        List<CodegenProperty> variants = variantsOf(cm);
+        boolean discriminated = discriminated(schema);
+        Map<String, String> mapping = discriminated && schema.getDiscriminator().getMapping() != null
+                ? schema.getDiscriminator().getMapping() : Map.of();
+        Map<String, List<String>> values = new LinkedHashMap<>();
+        List<String> missing = new ArrayList<>();
+        List<String> nonObject = new ArrayList<>();
+        for (int i = 0; i < variants.size(); i++) {
+            CodegenProperty v = variants.get(i);
+            Set<Kind> kinds = shapes.accepts(v.dataType).keySet();
+            if (kinds.stream().anyMatch(kind -> kind != Kind.OBJECT)) {
+                nonObject.add(v.name);
+            }
+            if (!kinds.contains(Kind.OBJECT)) {
+                continue;
+            }
+            Tagged tagged = own.get(i) == null ? null : tags.tagged(own.get(i), tag, identitySet());
+            Set<String> selected = new LinkedHashSet<>(tagged == null ? List.of() : tagged.values);
+            if (own.get(i) != null && own.get(i).get$ref() != null) {
+                String target = SpecRules.refName(own.get(i).get$ref());
+                mapping.forEach((key, ref) -> {
+                    if (SpecRules.refName(ref).equals(target)) {
+                        selected.add(key);
+                    }
+                });
+            }
+            if (selected.isEmpty()) {
+                throw new IllegalArgumentException(String.format("%s: %s: %s is tagged on '%s', but no value selects "
+                                + "its variant %s (%s): the spec's branch needs fixed values or a discriminator mapping; "
+                                + "fix this upstream", TimvwRustCodegen.GENERATOR_NAME, TimvwRustCodegen.UNION_DISPATCH,
+                        cm.classname, tag, v.name, v.dataType));
+            }
+            for (String value : selected) {
+                values.computeIfAbsent(value, x -> new ArrayList<>()).add(v.name);
+            }
+            if (tagged != null && tagged.optional) {
+                missing.add(v.name);
+            }
+        }
+        return new Dispatch(tag, discriminated ? "discriminator" : "implicit", values, missing, nonObject);
+    }
+
+    /** The check that the tag the schema gave is one the structs have, whatever the rules did on the way to them. */
+    private static void checkStructs(CodegenModel cm, String tag, Map<String, CodegenModel> unions,
+                                     Map<String, CodegenModel> byName, Shapes shapes) {
+        for (CodegenProperty v : variantsOf(cm)) {
+            if (shapes.accepts(v.dataType).containsKey(Kind.OBJECT)) {
+                checkStruct(cm, v.name, v, tag, unions, byName, shapes, new HashSet<>());
+            }
+        }
+    }
+
+    private static void checkStruct(CodegenModel union, String variant, CodegenProperty payload, String tag,
+                                    Map<String, CodegenModel> unions, Map<String, CodegenModel> byName, Shapes shapes,
+                                    Set<String> seen) {
+        // The type as rendered: the complexType of an inline branch is its schema's name, not its model's.
+        String target = payload.dataType.replaceFirst("^models::", "");
+        CodegenModel model = byName.get(target);
+        if (model != null && unions.containsKey(target)) {
+            if (seen.add(target)) {
+                for (CodegenProperty arm : variantsOf(model)) {
+                    if (shapes.accepts(arm.dataType).containsKey(Kind.OBJECT)) {
+                        checkStruct(union, variant, arm, tag, unions, byName, shapes, seen);
+                    }
+                }
+            }
+            return;
+        }
+        if (model == null || model.vars.stream().noneMatch(f -> tag.equals(f.baseName))) {
+            throw new IllegalArgumentException(String.format("%s: %s: %s is tagged on '%s', but its variant %s holds %s, "
+                            + "which has no such field: decoding by the tag would drop it. Fix this upstream",
+                    TimvwRustCodegen.GENERATOR_NAME, TimvwRustCodegen.UNION_DISPATCH, union.classname, tag, variant,
+                    payload.dataType));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<CodegenProperty> variantsOf(CodegenModel cm) {
+        return (List<CodegenProperty>) cm.vendorExtensions.get(VARIANTS);
+    }
+
+    /** A schema's hash and equals walk everything below it, and these only ever need to tell schemas apart. */
+    private static <T> Set<T> identitySet() {
+        return Collections.newSetFromMap(new IdentityHashMap<>());
+    }
+
+    /** What a branch has of a tag: the values that select it, and whether it allows the tag to be missing or null. */
+    private record Tagged(Set<String> values, boolean optional) {
+    }
+
+    /** Reads tags off the schemas. */
+    @SuppressWarnings("rawtypes")
+    private static final class Tags {
+        final Map<String, Schema> schemas;
+
+        Tags(Map<String, Schema> schemas) {
+            this.schemas = schemas;
+        }
+
+        private Schema<?> resolve(Schema<?> schema) {
+            Set<String> seen = new HashSet<>();
+            Schema<?> s = schema;
+            while (s != null && s.get$ref() != null) {
+                String name = SpecRules.refName(s.get$ref());
+                s = seen.add(name) ? schemas.get(name) : null;
+            }
+            return s;
+        }
+
+        /** The arms of a branch that is a union, by itself or as {@code allOf} one union; otherwise {@code null}. */
+        @SuppressWarnings("unchecked")
+        private List<Schema> arms(Schema<?> schema) {
+            for (List<Schema> arms : Arrays.asList(schema.getOneOf(), schema.getAnyOf())) {
+                if (arms != null && !arms.isEmpty()) {
+                    return arms.stream().filter(a -> !"null".equals(SpecRules.singleType(a))).toList();
+                }
+            }
+            if (schema.getAllOf() != null && schema.getAllOf().size() == 1) {
+                Schema<?> only = resolve((Schema<?>) schema.getAllOf().get(0));
+                return only == null ? null : arms(only);
+            }
+            return null;
+        }
+
+        /** A branch's own properties and required names, with what it inherits through {@code allOf}. */
+        @SuppressWarnings("unchecked")
+        private void fields(Schema<?> schema, Map<String, Schema> properties, Set<String> required, Set<Schema> seen) {
+            Schema<?> s = resolve(schema);
+            if (s == null || !seen.add(s)) {
+                return;
+            }
+            if (s.getAllOf() != null) {
+                for (Schema part : (List<Schema>) (List<?>) s.getAllOf()) {
+                    fields(part, properties, required, seen);
+                }
+            }
+            if (s.getProperties() != null) {
+                properties.putAll(s.getProperties());
+            }
+            if (s.getRequired() != null) {
+                required.addAll(s.getRequired());
+            }
+        }
+
+        /** The string values a tag field is fixed to, through a nullable wrapper; {@code null} when it is not. */
+        private Set<String> fixedValues(Schema<?> field) {
+            Schema<?> s = resolve(field);
+            if (s == null) {
+                return null;
+            }
+            List<?> values = s.getConst() != null ? List.of(s.getConst()) : s.getEnum();
+            if (values != null && !values.isEmpty()) {
+                Set<String> strings = new LinkedHashSet<>();
+                for (Object value : values) {
+                    if (value instanceof String text) {
+                        strings.add(text);
+                    } else if (value != null) {
+                        return null;
+                    }
+                }
+                return strings.isEmpty() ? null : strings;
+            }
+            List<Schema> arms = arms(s);
+            return arms != null && arms.size() == 1 ? fixedValues(arms.get(0)) : null;
+        }
+
+        /**
+         * What a branch has of a tag, through the arms if it is a union; an arm that holds no object has no say.
+         * {@code null} when an object in it has no field with that name.
+         */
+        Tagged tagged(Schema<?> branch, String tag, Set<Schema<?>> stack) {
+            Schema<?> s = resolve(branch);
+            if (s == null || !stack.add(s)) {
+                return null;
+            }
+            try {
+                List<Schema> arms = arms(s);
+                if (arms != null) {
+                    Set<String> values = new LinkedHashSet<>();
+                    boolean optional = false;
+                    for (Schema arm : arms) {
+                        if (!holdsObject(arm)) {
+                            continue;
+                        }
+                        Tagged tagged = tagged(arm, tag, stack);
+                        if (tagged == null || tagged.values.isEmpty()) {
+                            // Not one arm can go unselected: no values for all of them, so the caller decides.
+                            return tagged;
+                        }
+                        values.addAll(tagged.values);
+                        optional |= tagged.optional;
+                    }
+                    return new Tagged(values, optional);
+                }
+                Map<String, Schema> properties = new LinkedHashMap<>();
+                Set<String> required = new HashSet<>();
+                fields(s, properties, required, identitySet());
+                Schema field = properties.get(tag);
+                if (field == null) {
+                    return null;
+                }
+                Set<String> values = fixedValues(field);
+                return new Tagged(values == null ? Set.of() : values, !required.contains(tag) || nullable(field));
+            } finally {
+                stack.remove(s);
+            }
+        }
+
+        private boolean nullable(Schema<?> field) {
+            Schema<?> s = resolve(field);
+            return s != null && (Boolean.TRUE.equals(s.getNullable()) || (s.getTypes() != null && s.getTypes().contains("null"))
+                    || (s.getEnum() != null && s.getEnum().contains(null)));
+        }
+
+        private boolean holdsObject(Schema<?> branch) {
+            Schema<?> s = resolve(branch);
+            if (s == null) {
+                return false;
+            }
+            if (arms(s) != null) {
+                return true;
+            }
+            if (s.getTypes() != null && !s.getTypes().isEmpty()) {
+                return s.getTypes().contains("object");
+            }
+            return s.getType() == null ? s.getEnum() == null && s.getConst() == null : s.getType().equals("object");
+        }
+
+        /** The property names a branch has, those all its arms have if it is a union. */
+        private Set<String> names(Schema<?> branch, Set<Schema<?>> stack) {
+            Schema<?> s = resolve(branch);
+            if (s == null || !stack.add(s)) {
+                return Set.of();
+            }
+            try {
+                List<Schema> arms = arms(s);
+                if (arms != null) {
+                    Set<String> common = null;
+                    for (Schema arm : arms) {
+                        Set<String> names = new TreeSet<>(names(arm, stack));
+                        if (common != null) {
+                            names.retainAll(common);
+                        }
+                        common = names;
+                    }
+                    return common == null ? Set.of() : common;
+                }
+                Map<String, Schema> properties = new LinkedHashMap<>();
+                fields(s, properties, new HashSet<>(), identitySet());
+                return properties.keySet();
+            } finally {
+                stack.remove(s);
+            }
+        }
+
+        /** A union's discriminator, or the property that makes its branches an implicitly tagged union; or {@code null}. */
+        String tagOf(Schema<?> schema, List<Schema> branches) {
+            if (discriminated(schema)) {
+                return schema.getDiscriminator().getPropertyName();
+            }
+            if (branches.size() < 2 || branches.stream().anyMatch(Objects::isNull)) {
+                return null;
+            }
+            Set<String> common = null;
+            for (Schema branch : branches) {
+                Set<String> names = new TreeSet<>(names(branch, identitySet()));
+                if (common != null) {
+                    names.retainAll(common);
+                }
+                common = names;
+            }
+            String best = null;
+            long fewest = Long.MAX_VALUE;
+            for (String name : common) {
+                Map<String, Integer> uses = new HashMap<>();
+                boolean all = true;
+                for (Schema branch : branches) {
+                    Tagged tagged = holdsObject(branch) ? tagged(branch, name, identitySet()) : null;
+                    if (tagged == null || tagged.values.isEmpty() || tagged.optional) {
+                        all = false;
+                        break;
+                    }
+                    tagged.values.forEach(value -> uses.merge(value, 1, Integer::sum));
+                }
+                if (!all || uses.values().stream().allMatch(n -> n == branches.size())) {
+                    continue;
+                }
+                long shared = uses.values().stream().filter(n -> n > 1).count();
+                if (shared < fewest || (shared == fewest && name.equals("type"))) {
+                    best = name;
+                    fewest = shared;
+                }
+            }
+            return best;
+        }
+    }
+
+    /**
+     * Writes {@code src/models/union_dispatch.rs} and declares it in {@code mod.rs}.
+     *
+     * @throws IllegalStateException when a schema already takes the module's name
+     */
+    static void writeDispatchModule(java.nio.file.Path models) throws java.io.IOException {
+        java.nio.file.Path mod = models.resolve("mod.rs");
+        String declarations = java.nio.file.Files.readString(mod);
+        if (java.util.regex.Pattern.compile("\\b" + DISPATCH_MODULE + "\\b").matcher(declarations).find()) {
+            throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": " + TimvwRustCodegen.UNION_DISPATCH
+                    + " needs the module " + DISPATCH_MODULE + ", which a schema already has");
+        }
+        java.nio.file.Files.writeString(models.resolve(DISPATCH_MODULE + ".rs"), dispatchModule());
+        java.nio.file.Files.writeString(mod, declarations + "pub(crate) mod " + DISPATCH_MODULE + ";\n");
+    }
+
+    /** {@code src/models/union_dispatch.rs}: what the generated {@code Deserialize} of every tagged union shares. */
+    static String dispatchModule() {
+        return """
+                //! Decoding of tagged unions: read the JSON value, look at the tag, decode only what it selects. A union
+                //! calls these from the `dispatch` function next to its `Deserialize`.
+                //!
+                //! Decoding goes through `serde_json::Value`, like `serde(untagged)`, whose buffer holds numbers the same
+                //! way: an integer up to 64 bits stays that integer, anything larger and every float is an `f64`.
+                //! A key that appears twice in an object is the last one, where a struct alone would reject it.
+
+                use serde::de::DeserializeOwned;
+                use serde_json::Value;
+
+                /// What a union finds where it looks for its tag.
+                pub(crate) enum Tag<'a> {
+                    /// The tag's value.
+                    Value(&'a str),
+                    /// An object without the tag, or with `null` for it.
+                    Missing,
+                    /// Not an object at all.
+                    NotObject,
+                }
+
+                /// Looks at the tag. A tag of another kind than a string is an error here, whatever the variants say.
+                pub(crate) fn tag<'a>(value: &'a Value, union: &str, tag: &str) -> Result<Tag<'a>, String> {
+                    let Value::Object(fields) = value else {
+                        return Ok(Tag::NotObject);
+                    };
+                    match fields.get(tag) {
+                        None | Some(Value::Null) => Ok(Tag::Missing),
+                        Some(Value::String(found)) => Ok(Tag::Value(found)),
+                        Some(other) => Err(format!(
+                            "{union}: tag `{tag}` must be a string, got {}",
+                            kind(other)
+                        )),
+                    }
+                }
+
+                /// Decodes the one variant selected, and keeps its error.
+                pub(crate) fn decode<T: DeserializeOwned>(
+                    value: Value,
+                    union: &str,
+                    variant: &str,
+                ) -> Result<T, String> {
+                    serde_json::from_value(value).map_err(|e| format!("{union}::{variant}: {e}"))
+                }
+
+                /// A variant to try: its name, and how to decode it.
+                pub(crate) type Attempt<U> = (&'static str, fn(Value) -> Result<U, serde_json::Error>);
+
+                /// Tries the variants selected in order, and keeps the error of each when none decodes.
+                pub(crate) fn first_of<U>(
+                    mut value: Value,
+                    union: &str,
+                    tag: &str,
+                    attempts: &[Attempt<U>],
+                ) -> Result<U, String> {
+                    let found = match value.get(tag) {
+                        Some(Value::String(found)) => format!("`{tag}` {found:?}"),
+                        _ if value.is_object() => format!("no `{tag}`"),
+                        _ => kind(&value).to_owned(),
+                    };
+                    let mut errors = Vec::with_capacity(attempts.len());
+                    for (index, (variant, decode)) in attempts.iter().enumerate() {
+                        let input = if index + 1 == attempts.len() {
+                            std::mem::take(&mut value)
+                        } else {
+                            value.clone()
+                        };
+                        match decode(input) {
+                            Ok(decoded) => return Ok(decoded),
+                            Err(e) => errors.push(format!("{variant}: {e}")),
+                        }
+                    }
+                    Err(format!("{union}: no variant decodes {found}: {}", errors.join("; ")))
+                }
+
+                /// The error of a tag no variant has.
+                pub(crate) fn unknown_tag(union: &str, tag: &str, value: &str) -> String {
+                    format!("{union}: unknown `{tag}` value {value:?}")
+                }
+
+                /// The error of no tag, when every variant requires it.
+                pub(crate) fn missing_tag(union: &str, tag: &str) -> String {
+                    format!("{union}: tag `{tag}` is missing or null")
+                }
+
+                /// The error of something other than an object, when every variant is one.
+                pub(crate) fn not_an_object(value: &Value, union: &str, tag: &str) -> String {
+                    format!("{union}: expected an object with tag `{tag}`, got {}", kind(value))
+                }
+
+                fn kind(value: &Value) -> &'static str {
+                    match value {
+                        Value::Null => "null",
+                        Value::Bool(_) => "a boolean",
+                        Value::Number(_) => "a number",
+                        Value::String(_) => "a string",
+                        Value::Array(_) => "an array",
+                        Value::Object(_) => "an object",
+                    }
+                }
+                """;
+    }
+
     /** The plan as data ({@code unionPlanFile}), for tools that hold a generated crate against the spec. */
     @SuppressWarnings({"rawtypes", "unchecked"})
-    static Map<String, Object> describe(Map<String, CodegenModel> unions, OpenAPI openAPI) {
+    static Map<String, Object> describe(Map<String, CodegenModel> unions, OpenAPI openAPI, boolean dispatched) {
         Map<String, Schema> schemas = SpecRules.schemas(openAPI);
         List<Map<String, Object>> described = new ArrayList<>();
         for (CodegenModel cm : unions.values()) {
@@ -785,6 +1368,10 @@ final class UnionRules {
             union.put("nullable", own != null && (Boolean.TRUE.equals(own.getNullable())
                     || (own.getTypes() != null && own.getTypes().contains("null"))));
             union.put("variants", variants);
+            if (dispatched) {
+                Object table = cm.vendorExtensions.get(DISPATCH);
+                union.put("dispatch", table == null ? null : ((Dispatch) table).describe());
+            }
             described.add(union);
         }
         Map<String, Object> plan = new LinkedHashMap<>();

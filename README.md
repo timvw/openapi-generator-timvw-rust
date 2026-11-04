@@ -78,6 +78,7 @@ Options not listed below (`packageName`, `packageVersion`, `useChrono`, `reqwest
 | `integersAsI64=true`: an integer is `i64` unless the spec says `format: int32`, wherever it appears: model fields, `Vec` and map items, parameters, multipart fields, responses, `new()` parameters, builders and union variants. Formats other than `int32` (`int64`, `unixtime`, absent, unknown) give `i64`. Spec bounds never pick a type, and nothing is inferred as unsigned or `NonZero`. `number` is untouched. Integer-valued enums keep `#[repr(i64)]`. Without the option an integer without a format, or with one other than `int64`, is `i32`, as in stock `-g rust`. | nothing: a new rendering, which changes the public API |
 | `qualifiedInlineNames=true`: an inline schema that becomes a model keeps its title as its name only when that title is unique: its Rust name matches no component and no other model that will be generated, and every inline schema with that name has the same shape (those share one model). Otherwise all of them, like untitled schemas, are named after where they stand: property `p` of `P` is `P_p` (Rust `PP`), array items `P_inner`, map values `P_value`, a `oneOf`/`anyOf` branch `P_<title>` or, untitled, `P_oneOf`/`P_anyOf` (branches of one union that would share a name get their position), `not` is `P_not`, and an operation's body, parameter or response is `<op>_request`, `<op>_<param>_parameter`, `<op>_<code>_response` (with the media type when several in one body need a model). `P` is the name of the enclosing schema, however it got it. The `Object<i>` titles the generator gives untitled branches never name a model. The outcome does not depend on the order of the spec. Generation then fails, naming both schemas and locations, when two structurally different schemas would produce the same Rust model or file; names are compared after Rust normalization, so `Static_Chunking_Strategy` and `StaticChunkingStrategy` are the same model. Schemas that differ only in annotations (title, description, examples, external docs, `deprecated`, `x-*`), or in the names of references to equal schemas, may share a model. Stock numbers an inline schema whose title is taken (`Object0_17`), lets a schema nested in one with the same title overwrite it (which then references itself), and writes a title that normalizes to a component's name over that component's file. Default `false`. With the option on, the `<Schema><Property>` rename of inline object titles above no longer runs: nothing needs it. The check covers what the generator models, not the text rewrites of `legacyModelRewrites`, which run afterwards. | nothing: a new rendering, which renames types of the public API |
 | `modelUnions=true`: unions render from the model (`UnionRules`). Every `oneOf` and `anyOf`, with or without a discriminator, is a `#[serde(untagged)]` enum, and a model that is `allOf` one union gets that union's variants; a `type: null` branch is no variant, the union is an `Option` where it is nullable. A variant is named after its branch: discriminator mapping key, referenced schema (minus the union's name when the branch was inline), title, then type. A string enum branch becomes a model `<Union><Variant>Enum`. Unions have `Display` (a string, enum or union variant prints itself, anything else its JSON, so a text part of union type goes out as plain text), and with a string variant `new_text`, `new_<vec variant>`, `From<String>` and `From<&str>`. `Default` is rendered unless `defaultOnlyWhereValid` is on. Structs keep every field, tag included. The variants are ordered for untagged decoding, see [below](#union-variant-order). Under this option `legacyModelRewrites` leaves out `fix_empty_enums`, `fix_enum_attributes`, `fix_tool_enum_tagging`, `fix_untagged_unions`, `fix_helper_impl_mismatches` and `fix_generator_artifacts`. Without `qualifiedInlineNames`, an inline schema with the title of the schema it stands in gets a title of its own (`<title> object`, `<title> <property>`), or the resolver makes it refer to itself. `unionPlanFile=<output-relative path>`: the variants of every union and the schemas they refer to are written there as JSON; `tools/check-union-samples.py` uses it to decode one sample per branch of a generated crate. | `fix_untagged_unions.py` and the other scripts named, and the bugs of their name-based rewriting. A new rendering, which changes the public API |
+| `unionDispatch=true`, with `modelUnions`: a union with a tag decodes the variant that tag selects, and serializes as before; see [below](#union-tag-dispatch). Set without `modelUnions` it fails generation. | nothing: decoding that used to try every variant, and the error `data did not match any variant` |
 | `boxResponseError=true`: `Error::ResponseError` holds `Box<ResponseContent<T>>` and every API function builds it with `Box::new` (clippy `result_large_err`). `apiLintAllows=<lints>`: API modules and `configuration.rs` start with `#![allow(<lints>)]`. `userAgentFromPackage=true`: the default user agent is `<packageName>/<crate version>` (`env!("CARGO_PKG_VERSION")`) instead of `OpenAPI-Generator/<spec version>/rust`. | `box_response_errors.py`, `fix_clippy_warnings.py`, the user-agent edit of `patch_generated.rs.sh` (openai-client-base) |
 | `preprocessedSpecFile=<output-relative path>`: the spec as it stands after the rules above is written there as JSON, for scripts that still read it and for debugging. | the `target/specs/l2_rust_compatible.*` files the scripts produced |
 
@@ -105,8 +106,46 @@ Variants this says nothing about keep the order of the spec, so a tag that tells
 they are.
 
 Two variants that accept the same values stay ambiguous under this rule, and decode to whichever comes first:
-`tools/check-union-samples.py` lists them. They wait for tag dispatch, which will take the place of `serde(untagged)` in
-`tools/static/model_union.mustache`, with the variants and their order as they are.
+`tools/check-union-samples.py` lists them. Tag dispatch tells apart those with a tag that differs.
+
+## Union tag dispatch
+
+With `unionDispatch` (which requires `modelUnions`) a union with a tag decodes by that tag. `UnionRules` finds the tag in
+the schema:
+
+- a `discriminator`, on `oneOf` or `anyOf`;
+- without one, a property that every branch requires with fixed string values and that tells two variants apart. A
+  branch that is a union has it when all its arms do. When several properties qualify, the one with the fewest values on
+  two variants wins, then `type`, then the first by name.
+
+Every other union stays `#[serde(untagged)]`, also one where only some branches require the property, one with a branch
+that is no object, and one where the property has the same values everywhere. A variant no value selects, or one whose
+struct has no such field, fails generation.
+
+A tagged union keeps `#[derive(Serialize)]` and `#[serde(untagged)]`, so what it serializes to does not change: each
+struct keeps its tag field, receives the tag when decoding, and writes it once. Its `Deserialize` is generated: it reads
+a `serde_json::Value`, looks at the tag and decodes what that selects, with helpers from one crate-private module,
+`src/models/union_dispatch.rs`. A schema with that name fails generation.
+
+| Input | What happens |
+| --- | --- |
+| a value of one variant | that variant decodes, and its error is the error: `` Shape::Circle: missing field `radius` `` |
+| a value on several variants | they are tried in the variant order, for that value only; if none decodes, each one's error is listed |
+| any of several values of one variant | that variant decodes and holds the value it was given |
+| a value of a variant that is a union | that union decodes, by its own tag, and its error comes with the path: `` InputItem::Item: Item::ToolCall: missing field `name` `` |
+| no tag, or `null` | the variants where the tag is optional or nullable are tried in order; if there are none: `` Part: tag `type` is missing or null `` |
+| an unknown value | `` Shape: unknown `kind` value "triangle" `` |
+| a tag that is no string | `` Shape: tag `kind` must be a string, got a number `` |
+| no object | the variants that accept something else are tried in order; if there are none: `` Shape: expected an object with tag `kind`, got a number `` |
+
+Numbers go through `serde_json::Value` as they go through the buffer of `serde(untagged)`: an integer up to 64 bits stays
+that integer, a larger one and every float is an `f64`, which is also what a struct field would get. A key repeated in
+one object is the last one, where a struct alone would reject it. A message has no line and column of its own when the
+union is the whole document; inside a struct, `serde_json` adds the end of the value.
+
+`unionPlanFile` then also holds each union's `dispatch`: its tag, what selects which variants, and which variants allow
+no tag or accept no object. `tools/check-union-samples.py` uses it to decode a sample per value of every variant, count
+the keys of what comes back, and check the error messages.
 
 ## Supported configuration
 
@@ -143,6 +182,7 @@ Our own options:
 | `noStructDisplay` | `false` | structs have no JSON `Display`; API code serializes them with `serde_json::to_string` |
 | `integersAsI64` | `false` | integers are `i64` unless `format: int32`; `preferUnsignedInt` and `bestFitInt` stay pinned to `false`, so setting either still fails generation |
 | `modelUnions` | `false` | unions render from the model as untagged enums, and the union rewrites of `legacyModelRewrites` do not run |
+| `unionDispatch` | `false` | with `modelUnions`: a union with a tag decodes by that tag |
 | `unionPlanFile` | unset | with `modelUnions`: output-relative path the union plan is written to, as JSON |
 | `boxResponseError` | `false` | box the `ResponseError` payload |
 | `apiLintAllows` | unset | `#![allow(..)]` contents for API modules and `configuration.rs` |

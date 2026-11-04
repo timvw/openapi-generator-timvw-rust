@@ -84,8 +84,8 @@ pub use crate::models::{{{.}}};
 {{/vendorExtensions.x-rust-enum-model}}
 {{/vendorExtensions.x-rust-enum-variants}}
 
-{{!-- Tag dispatch goes here, in place of serde(untagged): a union with a usable tag gets a Deserialize that reads the tag and decodes the variant it names. Variants, payloads and their order stay as they are. --}}
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+{{!-- unionDispatch: a tagged union serializes untagged, since each struct holds its tag, and gets the Deserialize further down. --}}
+#[derive(Clone, Debug, PartialEq, Serialize{{^vendorExtensions.x-rust-enum-dispatch}}, Deserialize{{/vendorExtensions.x-rust-enum-dispatch}})]
 #[serde(untagged)]
 pub enum {{{classname}}} {
 {{#vendorExtensions.x-rust-enum-variants}}
@@ -96,6 +96,42 @@ pub enum {{{classname}}} {
 {{/vendorExtensions.x-rust-enum-variants}}
 }
 
+{{#vendorExtensions.x-rust-enum-dispatch}}
+impl<'de> Deserialize<'de> for {{{classname}}} {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        Self::dispatch(value).map_err(serde::de::Error::custom)
+    }
+}
+
+impl {{{classname}}} {
+    /// Decodes the variant that `{{{tagName}}}` selects, so an error is that variant's.
+    {{!-- Inline, so that like a derived Deserialize it is compiled where something decodes this type. Without it the client's rlib grows by 65% and its build by 14%. --}}
+    #[inline]
+    fn dispatch(value: serde_json::Value) -> Result<Self, String> {
+        use models::union_dispatch::{self as dispatch, Tag};
+        const UNION: &str = "{{{classname}}}";
+        const TAG: &str = {{{tagLiteral}}};
+        match dispatch::tag(&value, UNION, TAG)? {
+            {{#arms}}
+            {{{pattern}}} => {{#single}}dispatch::decode(value, UNION, "{{{name}}}").map(Self::{{{name}}}),{{/single}}{{#attempts}}{{#-first}}dispatch::first_of(value, UNION, TAG, &[{{/-first}}("{{{name}}}", |v| serde_json::from_value(v).map(Self::{{{name}}})),{{#-last}}]),{{/-last}}{{/attempts}}
+            {{/arms}}
+            {{!-- Milestone 3.5 replaces this arm with an Unknown(Value) variant. --}}
+            Tag::Value(other) => Err(dispatch::unknown_tag(UNION, TAG, other)),
+            {{^allowsMissing}}
+            Tag::Missing => Err(dispatch::missing_tag(UNION, TAG)),
+            {{/allowsMissing}}
+            {{^acceptsNonObject}}
+            Tag::NotObject => Err(dispatch::not_an_object(&value, UNION, TAG)),
+            {{/acceptsNonObject}}
+        }
+    }
+}
+
+{{/vendorExtensions.x-rust-enum-dispatch}}
 {{^defaultOnlyWhereValid}}
 impl Default for {{{classname}}} {
     fn default() -> Self {

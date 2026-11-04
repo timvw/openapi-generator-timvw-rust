@@ -1,0 +1,26 @@
+openapi: 3.1.0
+info:
+  title: A discriminator one branch does not have
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Broken:
+      oneOf:
+        - $ref: '#/components/schemas/WithTag'
+        - $ref: '#/components/schemas/WithoutTag'
+      discriminator:
+        propertyName: type
+    WithTag:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [with]
+    WithoutTag:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string

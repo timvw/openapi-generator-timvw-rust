@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -204,7 +205,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private boolean unionDispatch;
     private boolean anyDispatch;
     private String unionPlanFile;
-    private final Set<String> unionNames = new HashSet<>();
+    private final Map<String, CodegenModel> unionModels = new HashMap<>();
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -420,7 +421,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         boxComponents = BoxRules.mark(objs, boxOnlyCycles);
         if (modelUnions) {
             UnionRules.payloads(unions, objs);
-            unionNames.addAll(unions.keySet());
+            unionModels.putAll(unions);
             if (unionDispatch) {
                 UnionRules.DispatchCounts counts = UnionRules.dispatch(unions, objs, openAPI);
                 anyDispatch = counts.explicit() + counts.implicit() > 0;
@@ -948,13 +949,13 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS)) {
                             structJsonModels.add(p.items.dataType.replaceFirst("^models::", ""));
                         }
-                        if (p.dataType != null && unionNames.contains(p.dataType.replaceFirst("^models::", ""))) {
+                        if (p.dataType != null && unionModels.containsKey(p.dataType.replaceFirst("^models::", ""))) {
                             p.vendorExtensions.put(UnionRules.UNION_TEXT, true);
                         }
                     }
                 }
                 if (multipartHelper && op.isMultipart && op.formParams != null && !op.formParams.isEmpty()) {
-                    MultipartRules.classify(openAPI, op,
+                    MultipartRules.classify(openAPI, op, unionModels,
                             msg -> LOGGER.warn("{}: multipart: {}", GENERATOR_NAME, msg));
                     for (CodegenParameter p : op.formParams) {
                         if (p.isFile || !p.vendorExtensions.containsKey(MultipartRules.STOCK)) {

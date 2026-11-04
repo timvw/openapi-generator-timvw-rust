@@ -404,14 +404,71 @@ def union_block(text: str, what: str) -> str:
     return replace_exactly(text, UNION_BLOCK_END, UNION_GATE_CLOSE + UNION_BLOCK_END, 1, what)
 
 
+# Milestone 3.5. openEnums: the generator sets x-rust-open-enum on an enum a response can hold (model enums and inline
+# property enums alike), and the enum gets a catch-all variant after the listed values. A string enum's serializes as a
+# string no value has; an integer enum's as a number no value has. 7.15 renders an integer property enum as a string one.
+OPEN_ENUM_OPEN = "{{#vendorExtensions.x-rust-open-enum}}\n"
+OPEN_ENUM_CLOSE = "{{/vendorExtensions.x-rust-open-enum}}\n"
+OPEN_ENUM_STRING_VARIANT = (
+    OPEN_ENUM_OPEN
+    + '    /// A value this client does not know. It is not kept: this serializes as `"{{{wire}}}"`, which the API does not list.\n'
+    + '    #[serde(rename = "{{{wire}}}", other)]\n'
+    + "    {{{name}}},\n"
+    + OPEN_ENUM_CLOSE
+)
+OPEN_ENUM_INTEGER_VARIANT = (
+    OPEN_ENUM_OPEN
+    + "    /// A value this client does not know. It is not kept: this serializes as `i64::MAX`, which the API does not list.\n"
+    + "    #[serde(other)]\n"
+    + "    {{{name}}} = i64::MAX,\n"
+    + OPEN_ENUM_CLOSE
+)
+OPEN_ENUM_DISPLAY_OPEN = "            {{#vendorExtensions.x-rust-open-enum}}\n"
+OPEN_ENUM_DISPLAY_CLOSE = "            {{/vendorExtensions.x-rust-open-enum}}\n"
+
+
+def open_enums(text: str, what: str) -> str:
+    enum_vars_end = "{{/enumVars}}{{/allowableValues}}\n}\n"
+    property_vars_end = "{{/enumVars}}\n{{/allowableValues}}\n}\n"
+    string_variant = '    #[serde(rename = "{{{value}}}")]\n    {{{name}}},\n'
+    integer_variant = "    {{{name}}} = {{{value}}},\n"
+    for variant, vars_end, catch_all, sites in (
+        (string_variant, enum_vars_end, OPEN_ENUM_STRING_VARIANT, 1),
+        (string_variant, property_vars_end, OPEN_ENUM_STRING_VARIANT, 1),
+        (integer_variant, enum_vars_end, OPEN_ENUM_INTEGER_VARIANT, 1),
+    ):
+        text = replace_exactly(text, variant + vars_end, variant + vars_end[:-2] + catch_all + "}\n", sites, what)
+    text = replace_at_most_once(
+        text, integer_variant + property_vars_end, integer_variant + property_vars_end[:-2] + OPEN_ENUM_INTEGER_VARIANT + "}\n", what
+    )
+    # Display: only value enums have one in the template; EnumFromStr writes the one of a property enum from serde's name.
+    vars_close = "            {{/enumVars}}\n            {{/allowableValues}}\n"
+    string_arm = '            Self::{{{name}}} => write!(f, "{{{value}}}"),\n'
+    text = replace_exactly(
+        text,
+        string_arm + vars_close,
+        string_arm + vars_close + OPEN_ENUM_DISPLAY_OPEN + '            Self::{{{name}}} => write!(f, "{{{wire}}}"),\n' + OPEN_ENUM_DISPLAY_CLOSE,
+        1,
+        what,
+    )
+    integer_arm = '            Self::{{{name}}} => "{{{value}}}",\n'
+    found = text.count(integer_arm + vars_close)
+    if found not in (1, 2):
+        raise SystemExit(f"{what}: expected 1 or 2 integer enum Display impls, found {found}")
+    return text.replace(
+        integer_arm + vars_close,
+        integer_arm + vars_close + OPEN_ENUM_DISPLAY_OPEN + '            Self::{{{name}}} => "{{{wire}}}",\n' + OPEN_ENUM_DISPLAY_CLOSE,
+    )
+
+
 EDITS = {
     "lib.mustache": lambda t, w: CRATE_DOCS + t,
-    "model.mustache": lambda t, w: union_block(gate_enum_defaults(per_property_box(wrap_doc_lines(
+    "model.mustache": lambda t, w: union_block(open_enums(gate_enum_defaults(per_property_box(wrap_doc_lines(
         replace_exactly(
             replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), CTOR_IF_LET, CTOR_MAP, 1, w
         ),
         w,
-    ), w), w), w),
+    ), w), w), w), w),
     "reqwest/api.mustache": lambda t, w: api_template(t, w),
     "reqwest/api_mod.mustache": lambda t, w: replace_exactly(replace_exactly(
         replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w), API_MOD_CONFIGURATION,

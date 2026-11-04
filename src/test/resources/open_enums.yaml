@@ -1,0 +1,483 @@
+openapi: 3.1.0
+info:
+  title: Open enums
+  version: 1.0.0
+paths:
+  /envelope:
+    get:
+      operationId: getEnvelope
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+        default:
+          $ref: '#/components/responses/Failure'
+  /stream:
+    get:
+      operationId: getStream
+      responses:
+        '200':
+          description: Server-sent events
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/StreamEvent'
+  /page:
+    get:
+      operationId: getPage
+      responses:
+        '200':
+          description: A component that is an array
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageList'
+  /order:
+    post:
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Order'
+      responses:
+        '204':
+          description: No content
+webhooks:
+  thing_done:
+    post:
+      operationId: thingDone
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEvent'
+      responses:
+        '200':
+          description: Received
+components:
+  responses:
+    Failure:
+      description: An error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  schemas:
+    Envelope:
+      type: object
+      required: [status, phase, deep, items]
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        phase:
+          type: string
+          description: An enum inlined in a struct's file.
+          enum: [draft, final]
+        phases:
+          type: array
+          description: An array of an inline enum.
+          items:
+            type: string
+            enum: [early, late]
+        byName:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Status'
+        deep:
+          $ref: '#/components/schemas/Deep'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Shape'
+        role:
+          $ref: '#/components/schemas/Role'
+        flavor:
+          $ref: '#/components/schemas/Flavor'
+        rate:
+          $ref: '#/components/schemas/Rate'
+        odd:
+          $ref: '#/components/schemas/Odd'
+        mode:
+          $ref: '#/components/schemas/Hoisted'
+        named:
+          $ref: '#/components/schemas/ModelName'
+        either:
+          $ref: '#/components/schemas/EitherEnum'
+        turn:
+          $ref: '#/components/schemas/Turn'
+        shared:
+          $ref: '#/components/schemas/SharedTag'
+        wrapped:
+          $ref: '#/components/schemas/Wrapped'
+        loose:
+          $ref: '#/components/schemas/Loose'
+        extended:
+          $ref: '#/components/schemas/Extended'
+        opaque:
+          $ref: '#/components/schemas/Opaque'
+        untagged:
+          $ref: '#/components/schemas/Untagged'
+        weight:
+          type: integer
+          description: An integer enum inlined in a struct's file. openapi-generator 7.15 renders it as a string enum.
+          enum: [0, 1]
+    # Used by a request too: it counts as reachable.
+    Status:
+      type: string
+      description: The status of a thing.
+      enum: [active, done]
+    Deep:
+      type: object
+      required: [deeper]
+      properties:
+        deeper:
+          $ref: '#/components/schemas/Deeper'
+    Deeper:
+      type: object
+      required: [colors]
+      properties:
+        colors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Color'
+    Color:
+      type: string
+      enum: [red, green]
+    # A value that is called what the catch-all would be called.
+    Role:
+      type: string
+      enum: [user, unknown]
+    # A value called like the serde attribute of the catch-all.
+    Flavor:
+      type: string
+      enum: [plain, other]
+    Rate:
+      type: integer
+      enum: [16000, 24000]
+    Shape:
+      oneOf:
+        - $ref: '#/components/schemas/Circle'
+        - $ref: '#/components/schemas/Square'
+      discriminator:
+        propertyName: kind
+        mapping:
+          circle: '#/components/schemas/Circle'
+          square: '#/components/schemas/Square'
+    Circle:
+      type: object
+      required: [kind, radius]
+      properties:
+        kind:
+          type: string
+          enum: [circle]
+        radius:
+          type: integer
+          format: int64
+        hue:
+          $ref: '#/components/schemas/Color'
+    Square:
+      type: object
+      required: [kind, side]
+      properties:
+        kind:
+          type: string
+          enum: [square]
+        side:
+          type: number
+    # A branch named after the catch-all.
+    Odd:
+      oneOf:
+        - $ref: '#/components/schemas/KnownThing'
+        - $ref: '#/components/schemas/UnknownThing'
+      discriminator:
+        propertyName: type
+        mapping:
+          known: '#/components/schemas/KnownThing'
+          unknown: '#/components/schemas/UnknownThing'
+    KnownThing:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [known]
+    UnknownThing:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [unknown]
+    # A string enum branch: a synthesized model, reachable through its union, and nothing behind it to take a string.
+    Hoisted:
+      oneOf:
+        - type: string
+          title: Mode
+          enum: [auto, none]
+        - $ref: '#/components/schemas/Named'
+    Named:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    # A closed enum in front of a free string: a catch-all would take every string the free one is for.
+    ModelName:
+      oneOf:
+        - type: string
+          title: Known
+          enum: [small, large]
+        - type: string
+          title: Custom
+    # Two enums: the first has to reject the values of the second, and the last can take what nothing lists.
+    EitherEnum:
+      oneOf:
+        - type: string
+          title: Primary
+          enum: [red2, green2]
+        - type: string
+          title: Secondary
+          enum: [cyan, pink]
+    # No tag, since one branch does not require role: only the enum in role tells these apart.
+    Turn:
+      oneOf:
+        - $ref: '#/components/schemas/UserTurn'
+        - $ref: '#/components/schemas/BotTurn'
+    UserTurn:
+      type: object
+      required: [text]
+      properties:
+        role:
+          type: string
+          enum: [user]
+        text:
+          type: string
+        mood:
+          type: string
+          description: The later branch has no such field, so this one can open.
+          enum: [happy, sad]
+    BotTurn:
+      type: object
+      required: [role, text]
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+        text:
+          type: string
+    # A tag with a value on two variants: within it only an enum tells them apart.
+    SharedTag:
+      oneOf:
+        - $ref: '#/components/schemas/InMessage'
+        - $ref: '#/components/schemas/OutMessage'
+        - $ref: '#/components/schemas/ToolCall'
+    InMessage:
+      type: object
+      required: [type, author]
+      properties:
+        type:
+          type: string
+          enum: [message]
+        author:
+          $ref: '#/components/schemas/Author'
+        tone:
+          $ref: '#/components/schemas/Tone'
+    OutMessage:
+      type: object
+      required: [type, author]
+      properties:
+        type:
+          type: string
+          enum: [message]
+        author:
+          type: string
+          enum: [assistant]
+        tone:
+          type: string
+          enum: [loud]
+        state:
+          type: string
+          description: Nothing is tried after this variant, so this can open.
+          enum: [partial, complete]
+    Author:
+      type: string
+      enum: [user, system]
+    # Author already rejects every value of the later variant, so this one needs not to.
+    Tone:
+      type: string
+      enum: [calm]
+    ToolCall:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          enum: [tool_call]
+        name:
+          type: string
+    # A tagged union in front of a struct whose tag is free: Unknown(Value) would take that struct's values.
+    Wrapped:
+      oneOf:
+        - $ref: '#/components/schemas/Animal'
+        - $ref: '#/components/schemas/FreeForm'
+    Animal:
+      oneOf:
+        - $ref: '#/components/schemas/Cat'
+        - $ref: '#/components/schemas/Dog'
+      discriminator:
+        propertyName: type
+    Cat:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [cat]
+    Dog:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [dog]
+    FreeForm:
+      type: object
+      properties:
+        type:
+          type: string
+        blob:
+          type: string
+    # A struct in front of a map, which takes any object: everything in the struct has to keep rejecting.
+    Loose:
+      oneOf:
+        - $ref: '#/components/schemas/Strict'
+        - type: object
+          title: Rest
+          additionalProperties:
+            type: string
+    Strict:
+      type: object
+      required: [grade]
+      properties:
+        grade:
+          $ref: '#/components/schemas/Grade'
+    Grade:
+      type: string
+      enum: [a, b]
+    # A schema taken in through allOf: its fields are in the response.
+    Extended:
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          properties:
+            extra:
+              type: string
+    Base:
+      type: object
+      properties:
+        level:
+          $ref: '#/components/schemas/Level'
+    Level:
+      type: string
+      enum: [low, high]
+    # jsonValueSchemas makes this a Value, which still holds these.
+    Opaque:
+      oneOf:
+        - $ref: '#/components/schemas/OpaqueBranch'
+    OpaqueBranch:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          $ref: '#/components/schemas/OpaqueKind'
+    OpaqueKind:
+      type: string
+      enum: [one, two]
+    # No tag, and nothing behind the enum: left as it is, and the enum opens.
+    Untagged:
+      oneOf:
+        - $ref: '#/components/schemas/Status'
+        - type: integer
+          format: int64
+    ApiError:
+      type: object
+      required: [code]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+    ErrorCode:
+      type: string
+      enum: [not_found, gone]
+    StreamEvent:
+      type: object
+      required: [phase]
+      properties:
+        phase:
+          $ref: '#/components/schemas/StreamPhase'
+    StreamPhase:
+      type: string
+      enum: [started, stopped]
+    PageList:
+      type: array
+      items:
+        $ref: '#/components/schemas/PageEntry'
+    PageEntry:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          $ref: '#/components/schemas/PageKind'
+    PageKind:
+      type: string
+      enum: [first, last]
+    WebhookEvent:
+      type: object
+      required: [state]
+      properties:
+        state:
+          $ref: '#/components/schemas/WebhookState'
+    WebhookState:
+      type: string
+      enum: [ok, failed]
+    # Only a request holds these: they stay closed.
+    Order:
+      type: object
+      required: [status, priority, urgency, payment]
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        urgency:
+          type: string
+          enum: [low, high]
+        payment:
+          $ref: '#/components/schemas/Payment'
+    Priority:
+      type: string
+      enum: [normal, rush]
+    Payment:
+      oneOf:
+        - $ref: '#/components/schemas/Card'
+        - $ref: '#/components/schemas/Wire'
+      discriminator:
+        propertyName: method
+    Card:
+      type: object
+      required: [method]
+      properties:
+        method:
+          type: string
+          enum: [card]
+    Wire:
+      type: object
+      required: [method]
+      properties:
+        method:
+          type: string
+          enum: [wire]

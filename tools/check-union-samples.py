@@ -30,7 +30,8 @@ With unionDispatch the plan also says what selects each variant of a tagged unio
              lossy make the exit status 1.
   errors     an unknown tag, a tag of the wrong kind, a missing tag where every variant requires it, and input that is
              no object must each be an error that names the union and the tag. A sample without one of its required
-             fields must fail with serde's message for that field, not "data did not match any variant".
+             fields must fail with serde's message for that field, not "data did not match any variant". With openEnums
+             a union with a catch-all takes an unknown tag instead, and must serialize it back to the same JSON.
 
 --bytes <file> writes every sample and what it serializes to, so two crates can be compared: run it with the plan of the
 dispatching crate on both (--no-error-checks on the one that does not dispatch), then diff the files.
@@ -231,10 +232,9 @@ def error_checks(union: dict, samplers: dict) -> list:
     name = union["union"]
     dispatch = union["dispatch"]
     tag = dispatch["tag"]
-    checks = [
-        ("unknown", json.dumps({tag: "no_such_value"}), [name, tag, "no_such_value"]),
-        ("wrong-kind", json.dumps({tag: 5}), [name, tag, "must be a string"]),
-    ]
+    checks = [("wrong-kind", json.dumps({tag: 5}), [name, tag, "must be a string"])]
+    if not dispatch.get("unknown"):
+        checks.insert(0, ("unknown", json.dumps({tag: "no_such_value"}), [name, tag, "no_such_value"]))
     if not dispatch["missing"]:
         checks.append(("missing", "{}", [name, tag, "missing or null"]))
     if not dispatch["nonObject"]:
@@ -337,6 +337,17 @@ def test_source(package: str, plan: dict, error_tests: bool = True) -> tuple[str
         '    writeln!(out, "{}\\t{}\\t{}\\t{}\\t{}", union, case, class, json.replace(\'\\t\', " "), message.replace(\'\\t\', " ")).unwrap();',
         "}",
         "",
+        "/// openEnums: the catch-all takes the value and gives it back.",
+        "fn expect_kept<U: DeserializeOwned + Serialize>(out: &mut String, union: &str, json: &str) {",
+        "    let wanted: serde_json::Value = serde_json::from_str(json).unwrap();",
+        "    let (class, message) = match serde_json::from_str::<U>(json) {",
+        '        Ok(value) if serde_json::to_value(&value).unwrap() == wanted => ("pass", String::new()),',
+        '        Ok(value) => ("lost", serde_json::to_string(&value).unwrap()),',
+        '        Err(e) => ("rejected", e.to_string()),',
+        "    };",
+        '    writeln!(out, "{}\\tunknown\\t{}\\t{}\\t{}", union, class, json.replace(\'\\t\', " "), message.replace(\'\\t\', " ")).unwrap();',
+        "}",
+        "",
         "/// One line per sample with what it serializes to, for comparing two crates.",
         "fn bytes<U: Serialize>(union: &str, variant: &str, mode: &str, json: &str, value: &U) {",
         "    use std::io::Write as _;",
@@ -354,7 +365,9 @@ def test_source(package: str, plan: dict, error_tests: bool = True) -> tuple[str
     error_calls = []
     for index, union in enumerate(plan["unions"]):
         name = union["union"]
-        arms = "".join(f'models::{name}::{v["name"]}(_) => "{v["name"]}", ' for v in union["variants"])
+        catch_all = (union.get("dispatch") or {}).get("unknown")
+        arms = "".join(f'models::{name}::{v}(_) => "{v}", '
+                       for v in [v["name"] for v in union["variants"]] + ([catch_all] if catch_all else []))
         out.append(f"fn pick{index}(v: &models::{name}) -> &'static str {{ match v {{ {arms}}} }}")
         samples = []
         for variant in union["variants"]:
@@ -373,6 +386,9 @@ def test_source(package: str, plan: dict, error_tests: bool = True) -> tuple[str
             tagged = tag_samples(union, samplers)
             tag_calls.append(f'    check_tags::<models::{name}>(&mut out, "{name}", pick{index}, &[{", ".join(tagged)}]);')
             if error_tests:
+                if catch_all:
+                    sample = json.dumps({union["dispatch"]["tag"]: "no_such_value", "extra": [1, {"a": None}]})
+                    error_calls.append(f'    expect_kept::<models::{name}>(&mut out, "{name}", {raw(sample)});')
                 for case, sample, needles in error_checks(union, samplers):
                     wanted = ", ".join(raw(n) for n in needles)
                     error_calls.append(

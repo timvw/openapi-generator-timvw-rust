@@ -27,6 +27,11 @@ pub enum {{{classname}}} {
 {{#enumVars}}
     {{{name}}} = {{{value}}},
 {{/enumVars}}{{/allowableValues}}
+{{#vendorExtensions.x-rust-open-enum}}
+    /// A value this client does not know. It is not kept: this serializes as `i64::MAX`, which the API does not list.
+    #[serde(other)]
+    {{{name}}} = i64::MAX,
+{{/vendorExtensions.x-rust-open-enum}}
 }
 
 impl std::fmt::Display for {{{classname}}} {
@@ -37,6 +42,9 @@ impl std::fmt::Display for {{{classname}}} {
             Self::{{{name}}} => "{{{value}}}",
             {{/enumVars}}
             {{/allowableValues}}
+            {{#vendorExtensions.x-rust-open-enum}}
+            Self::{{{name}}} => "{{{wire}}}",
+            {{/vendorExtensions.x-rust-open-enum}}
         })
     }
 }
@@ -53,6 +61,11 @@ pub enum {{{classname}}} {
     #[serde(rename = "{{{value}}}")]
     {{{name}}},
 {{/enumVars}}{{/allowableValues}}
+{{#vendorExtensions.x-rust-open-enum}}
+    /// A value this client does not know. It is not kept: this serializes as `"{{{wire}}}"`, which the API does not list.
+    #[serde(rename = "{{{wire}}}", other)]
+    {{{name}}},
+{{/vendorExtensions.x-rust-open-enum}}
 }
 
 impl std::fmt::Display for {{{classname}}} {
@@ -63,6 +76,9 @@ impl std::fmt::Display for {{{classname}}} {
             Self::{{{name}}} => write!(f, "{{{value}}}"),
             {{/enumVars}}
             {{/allowableValues}}
+            {{#vendorExtensions.x-rust-open-enum}}
+            Self::{{{name}}} => write!(f, "{{{wire}}}"),
+            {{/vendorExtensions.x-rust-open-enum}}
         }
     }
 }
@@ -96,6 +112,12 @@ pub enum {{{classname}}} {
     {{/description}}
     {{{name}}}({{{vendorExtensions.x-rust-enum-payload}}}),
 {{/vendorExtensions.x-rust-enum-variants}}
+{{#vendorExtensions.x-rust-enum-dispatch}}
+{{#catchAll}}
+    /// A `{{{tagName}}}` this client does not know, holding the value as it came, which is what it serializes to.
+    {{{.}}}(serde_json::Value),
+{{/catchAll}}
+{{/vendorExtensions.x-rust-enum-dispatch}}
 }
 
 {{#vendorExtensions.x-rust-enum-dispatch}}
@@ -121,8 +143,12 @@ impl {{{classname}}} {
             {{#arms}}
             {{{pattern}}} => {{#single}}dispatch::decode(value, UNION, "{{{name}}}").map(Self::{{{name}}}),{{/single}}{{#attempts}}{{#-first}}dispatch::first_of(value, UNION, TAG, &[{{/-first}}("{{{name}}}", |v| serde_json::from_value(v).map(Self::{{{name}}})),{{#-last}}]),{{/-last}}{{/attempts}}
             {{/arms}}
-            {{!-- Milestone 3.5 replaces this arm with an Unknown(Value) variant. --}}
+            {{#catchAll}}
+            Tag::Value(_) => Ok(Self::{{{.}}}(value)),
+            {{/catchAll}}
+            {{^catchAll}}
             Tag::Value(other) => Err(dispatch::unknown_tag(UNION, TAG, other)),
+            {{/catchAll}}
             {{^allowsMissing}}
             Tag::Missing => Err(dispatch::missing_tag(UNION, TAG)),
             {{/allowsMissing}}
@@ -183,6 +209,11 @@ impl std::fmt::Display for {{{classname}}} {
             },
             {{/vendorExtensions.x-rust-enum-plain-display}}
             {{/vendorExtensions.x-rust-enum-variants}}
+            {{#vendorExtensions.x-rust-enum-dispatch}}
+            {{#catchAll}}
+            Self::{{{.}}}(value) => write!(f, "{}", value),
+            {{/catchAll}}
+            {{/vendorExtensions.x-rust-enum-dispatch}}
         }
     }
 }
@@ -329,6 +360,11 @@ pub enum {{{enumName}}} {
     {{{name}}} = {{{value}}},
 {{/enumVars}}
 {{/allowableValues}}
+{{#vendorExtensions.x-rust-open-enum}}
+    /// A value this client does not know. It is not kept: this serializes as `i64::MAX`, which the API does not list.
+    #[serde(other)]
+    {{{name}}} = i64::MAX,
+{{/vendorExtensions.x-rust-open-enum}}
 }
 
 impl std::fmt::Display for {{{enumName}}} {
@@ -339,6 +375,9 @@ impl std::fmt::Display for {{{enumName}}} {
             Self::{{{name}}} => "{{{value}}}",
             {{/enumVars}}
             {{/allowableValues}}
+            {{#vendorExtensions.x-rust-open-enum}}
+            Self::{{{name}}} => "{{{wire}}}",
+            {{/vendorExtensions.x-rust-open-enum}}
         })
     }
 }
@@ -353,6 +392,11 @@ pub enum {{{enumName}}} {
     {{{name}}},
 {{/enumVars}}
 {{/allowableValues}}
+{{#vendorExtensions.x-rust-open-enum}}
+    /// A value this client does not know. It is not kept: this serializes as `"{{{wire}}}"`, which the API does not list.
+    #[serde(rename = "{{{wire}}}", other)]
+    {{{name}}},
+{{/vendorExtensions.x-rust-open-enum}}
 }
 {{/isInteger}}
 

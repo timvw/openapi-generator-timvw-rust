@@ -89,12 +89,14 @@ public class FixUntaggedUnions implements Rewrite {
         }
 
         Set<String> createdModules = new HashSet<>();
+        boolean implDefault = !context.defaultOnlyWhereValid();
 
         // First, create files for simple string enums that might not exist
         for (Map.Entry<String, EnumInfo> e : simpleStringEnums.entrySet()) {
             String enumName = e.getKey();
             Path filepath = modelsDir.resolve(pascalToSnake(enumName) + ".rs");
-            String newContent = "use serde::{Deserialize, Serialize};\n\n" + createSimpleStringEnum(enumName, e.getValue());
+            String newContent = "use serde::{Deserialize, Serialize};\n\n"
+                    + createSimpleStringEnum(enumName, e.getValue(), implDefault);
             if (!Files.exists(filepath)) {
                 write(filepath, newContent);
                 createdModules.add(pascalToSnake(enumName));
@@ -107,7 +109,7 @@ public class FixUntaggedUnions implements Rewrite {
         for (Map.Entry<String, List<Variant>> e : untaggedUnions.entrySet()) {
             Path filepath = modelsDir.resolve(pascalToSnake(e.getKey()) + ".rs");
             if (Files.exists(filepath)) {
-                fixFile(filepath, e.getKey(), e.getValue(), simpleStringEnums);
+                fixFile(filepath, e.getKey(), e.getValue(), simpleStringEnums, implDefault);
             }
         }
 
@@ -345,8 +347,8 @@ public class FixUntaggedUnions implements Rewrite {
                         || (additional instanceof Map && map(additional).isEmpty()));
     }
 
-    /** {@code create_untagged_enum}: the untagged enum with Default, constructors, From and Display impls. */
-    static String createUntaggedEnum(String name, List<Variant> variants) {
+    /** {@code create_untagged_enum}: the untagged enum with Default (if asked), constructors, From and Display impls. */
+    static String createUntaggedEnum(String name, List<Variant> variants, boolean implDefault) {
         List<String> lines = new ArrayList<>(List.of(
                 "/// " + name + " - Untagged union type",
                 "#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]",
@@ -364,7 +366,7 @@ public class FixUntaggedUnions implements Rewrite {
 
         String firstName = variants.isEmpty() ? null : variants.get(0).name();
         String firstType = variants.isEmpty() ? null : variants.get(0).type();
-        if (List.of("String", "()", "Vec<String>", "Vec<i32>").contains(firstType)) {
+        if (implDefault && List.of("String", "()", "Vec<String>", "Vec<i32>").contains(firstType)) {
             lines.add("impl Default for " + name + " {");
             lines.add("    fn default() -> Self {");
             if (firstType.equals("String")) {
@@ -428,8 +430,8 @@ public class FixUntaggedUnions implements Rewrite {
         return String.join("\n", lines);
     }
 
-    /** {@code create_simple_string_enum}: a lower-case-renamed string enum with Default and Display impls. */
-    static String createSimpleStringEnum(String name, EnumInfo enumInfo) {
+    /** {@code create_simple_string_enum}: a lower-case-renamed string enum with Default (if asked) and Display impls. */
+    static String createSimpleStringEnum(String name, EnumInfo enumInfo, boolean implDefault) {
         List<Object> values = enumInfo.values;
         Object defaultValue = enumInfo.defaultValue;
         List<String> lines = new ArrayList<>(List.of(
@@ -449,28 +451,30 @@ public class FixUntaggedUnions implements Rewrite {
             pairs.add(new String[] {variant, value});
         }
 
-        lines.addAll(List.of(
-                "}",
-                "",
-                "impl Default for " + name + " {",
-                "    fn default() -> Self {"));
+        lines.addAll(List.of("}", ""));
 
-        Object firstValue = values.contains(defaultValue) ? defaultValue : values.get(0);
-        String firstVariant = null;
-        for (String[] pair : pairs) {
-            if (Objects.equals(pair[1], firstValue)) {
-                firstVariant = pair[0];
-                break;
+        if (implDefault) {
+            lines.addAll(List.of(
+                    "impl Default for " + name + " {",
+                    "    fn default() -> Self {"));
+
+            Object firstValue = values.contains(defaultValue) ? defaultValue : values.get(0);
+            String firstVariant = null;
+            for (String[] pair : pairs) {
+                if (Objects.equals(pair[1], firstValue)) {
+                    firstVariant = pair[0];
+                    break;
+                }
             }
+            if (firstVariant == null && !pairs.isEmpty()) {
+                firstVariant = pairs.get(0)[0];
+            }
+            lines.addAll(List.of(
+                    "        Self::" + (firstVariant == null ? "None" : firstVariant),
+                    "    }",
+                    "}",
+                    ""));
         }
-        if (firstVariant == null && !pairs.isEmpty()) {
-            firstVariant = pairs.get(0)[0];
-        }
-        lines.addAll(List.of(
-                "        Self::" + (firstVariant == null ? "None" : firstVariant),
-                "    }",
-                "}",
-                ""));
 
         lines.addAll(List.of(
                 "impl std::fmt::Display for " + name + " {",
@@ -489,15 +493,15 @@ public class FixUntaggedUnions implements Rewrite {
     }
 
     /** {@code fix_file}: overwrites a model file with the untagged enum and the string enums its variants use. */
-    static void fixFile(Path filepath, String typeName, List<Variant> variants, Map<String, EnumInfo> simpleStringEnums)
-            throws IOException {
+    static void fixFile(Path filepath, String typeName, List<Variant> variants, Map<String, EnumInfo> simpleStringEnums,
+                        boolean implDefault) throws IOException {
         String rustTypeName = convertToRustTypeName(typeName);
         StringBuilder content = new StringBuilder("use crate::models;\nuse serde::{Deserialize, Serialize};\n\n");
-        content.append(createUntaggedEnum(rustTypeName, variants));
+        content.append(createUntaggedEnum(rustTypeName, variants, implDefault));
         Set<String> addedEnums = new HashSet<>();
         for (Variant v : variants) {
             if (simpleStringEnums.containsKey(v.type()) && !addedEnums.contains(v.type())) {
-                content.append(createSimpleStringEnum(v.type(), simpleStringEnums.get(v.type())));
+                content.append(createSimpleStringEnum(v.type(), simpleStringEnums.get(v.type()), implDefault));
                 addedEnums.add(v.type());
             }
         }

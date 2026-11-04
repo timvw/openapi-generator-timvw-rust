@@ -68,6 +68,7 @@ impl std::fmt::Display for {{{classname}}} {
 }
 
 {{/isInteger}}
+{{^defaultOnlyWhereValid}}
 impl Default for {{{classname}}} {
     fn default() -> {{{classname}}} {
         {{#allowableValues}}
@@ -75,6 +76,7 @@ impl Default for {{{classname}}} {
         {{/allowableValues}}
     }
 }
+{{/defaultOnlyWhereValid}}
 {{/isEnum}}
 {{!-- for schemas that have a discriminator --}}
 {{#discriminator}}
@@ -108,6 +110,7 @@ pub enum {{{classname}}} {
     {{/oneOf.isEmpty}}
 }
 
+{{^defaultOnlyWhereValid}}
 impl Default for {{classname}} {
     fn default() -> Self {
         {{^oneOf}}{{#mappedModels}}{{#-first}}Self::{{modelName}} {
@@ -118,13 +121,14 @@ impl Default for {{classname}} {
         {{/oneOf}}{{^oneOf.isEmpty}}{{#composedSchemas.oneOf}}{{#-first}}Self::{{{name}}}(Default::default()){{/-first}}{{/composedSchemas.oneOf}}{{/oneOf.isEmpty}}
     }
 }
+{{/defaultOnlyWhereValid}}
 
 {{/discriminator}}
 {{!-- for non-enum schemas --}}
 {{^isEnum}}
 {{^discriminator}}
 {{#vendorExtensions.x-rust-has-byte-array}}#[serde_as]
-{{/vendorExtensions.x-rust-has-byte-array}}{{#oneOf.isEmpty}}#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize{{#bonBuilders}}, bon::Builder{{/bonBuilders}})]
+{{/vendorExtensions.x-rust-has-byte-array}}{{#oneOf.isEmpty}}#[derive(Clone, {{#vendorExtensions.x-rust-derive-default}}Default, {{/vendorExtensions.x-rust-derive-default}}Debug, PartialEq, Serialize, Deserialize{{#bonBuilders}}, bon::Builder{{/bonBuilders}})]
 pub struct {{{classname}}} {
 {{#vars}}
     {{#description}}
@@ -191,11 +195,13 @@ pub enum {{classname}} {
 {{/composedSchemas.oneOf}}
 }
 
+{{^defaultOnlyWhereValid}}
 impl Default for {{classname}} {
     fn default() -> Self {
         {{#composedSchemas.oneOf}}{{#-first}}Self::{{{name}}}(Default::default()){{/-first}}{{/composedSchemas.oneOf}}
     }
 }
+{{/defaultOnlyWhereValid}}
 {{/oneOf.isEmpty}}
 {{/discriminator}}
 {{/isEnum}}
@@ -239,6 +245,7 @@ pub enum {{{enumName}}} {
 }
 {{/isInteger}}
 
+{{^defaultOnlyWhereValid}}
 impl Default for {{{enumName}}} {
     fn default() -> {{{enumName}}} {
         {{#allowableValues}}
@@ -246,6 +253,7 @@ impl Default for {{{enumName}}} {
         {{/allowableValues}}
     }
 }
+{{/defaultOnlyWhereValid}}
 {{/isEnum}}
 {{/vars}}
 

@@ -58,6 +58,9 @@ public class FixDefaultIssues implements Rewrite {
     /** {@code main}: the seed list first, then the auto-detected files. */
     @Override
     public void apply(LegacyContext context) throws IOException {
+        if (context.defaultOnlyWhereValid()) {
+            return;
+        }
         Path modelsDir = context.models();
         for (String structName : REMOVE_DEFAULT_FROM) {
             String fileName = UPPER_BOUNDARY.matcher(structName).replaceAll("_").toLowerCase(Locale.ROOT) + ".rs";

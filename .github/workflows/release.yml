@@ -31,7 +31,7 @@ jobs:
     if: github.event_name == 'push' || inputs.publish-maven
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.CHECKOUT_REF }}
 
@@ -96,7 +96,7 @@ jobs:
           - openapi-generator: "7.25.0"
             default: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.CHECKOUT_REF }}
 

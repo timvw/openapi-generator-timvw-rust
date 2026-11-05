@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "25"
           cache: maven
           # Writes ~/.m2/settings.xml with a <server id="central"> entry fed from the env vars below.
           server-id: central
@@ -103,7 +103,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "25"
           cache: maven
 
       - name: Version from tag

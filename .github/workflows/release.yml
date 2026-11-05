@@ -119,7 +119,7 @@ jobs:
           ./mvnw -B --no-transfer-progress -Dopenapi-generator.version="${{ matrix.openapi-generator }}" -DskipTests package
 
       # The jar is architecture-independent; publish for Intel and Apple Silicon.
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
 

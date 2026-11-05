@@ -301,4 +301,11 @@ class ModelUnionsTest {
         assertTrue(message.contains("#[serde(tag = \"role\")]"), message);
         assertFalse(Files.exists(off.resolve("target/union_plan.json")));
     }
+
+    @Test
+    void aVariantHoldingAnUntypedAnyOfHoldsJsonValues() throws IOException {
+        String union = Files.readString(on.resolve("src/models/untyped_payload.rs"));
+        assertFalse(union.contains("AnyOfLessThanGreaterThan"), union);
+        assertTrue(union.contains("serde_json::Value"), union);
+    }
 }

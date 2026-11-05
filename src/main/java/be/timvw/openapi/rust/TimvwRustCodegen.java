@@ -395,6 +395,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public CodegenModel fromModel(String name, Schema model) {
         CodegenModel mdl = super.fromModel(name, model);
         if (modelUnions) {
+            retypeUntypedVariants(mdl);
             UnionRules.nameVariants(mdl, name, model, this::toModelName);
             return mdl;
         }
@@ -496,6 +497,19 @@ public class TimvwRustCodegen extends RustClientCodegen {
             }
         }
         return objs;
+    }
+
+    /** A union variant can hold an untyped {@code anyOf} too, directly or as its map value or array item. */
+    private static void retypeUntypedVariants(CodegenModel model) {
+        if (model.getComposedSchemas() == null) {
+            return;
+        }
+        for (List<CodegenProperty> variants : Arrays.asList(model.getComposedSchemas().getOneOf(),
+                model.getComposedSchemas().getAnyOf())) {
+            if (variants != null) {
+                variants.forEach(TimvwRustCodegen::retypeUntypedComposed);
+            }
+        }
     }
 
     private static boolean retypeUntypedComposed(CodegenProperty property) {

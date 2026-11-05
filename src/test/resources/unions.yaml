@@ -347,3 +347,20 @@ components:
           $ref: '#/components/schemas/Tree'
         right:
           $ref: '#/components/schemas/Tree'
+    UntypedPayload:
+      description: A map variant whose values are an untyped anyOf.
+      oneOf:
+        - type: object
+          additionalProperties:
+            anyOf:
+              - {}
+              - type: "null"
+          title: Object0
+        - type: array
+          items:
+            type: object
+            additionalProperties:
+              anyOf:
+                - {}
+                - type: "null"
+          title: ArrayOfObjects

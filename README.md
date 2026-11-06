@@ -195,6 +195,54 @@ without a wildcard, like any new value in the spec, and such a match can name `U
 
 `tools/check-union-samples.py` knows the catch-all: it checks that an unknown tag comes back as the same JSON.
 
+## Content-type methods and event streams
+
+The stock generator renders one method per operation: it sends the request body as the first media type the spec
+lists and decodes the first media type of the success response. Two options give an operation a method per media type
+(`ContentTypeMethods`). The operation's own method keeps its name and what it did; every other combination of a request
+media type and a response shape is a method named after the operation plus a suffix per side, request first.
+
+| Side | Media type | Suffix | Option |
+| --- | --- | --- | --- |
+| request body | `application/json`, `*/*+json` | `_json` | `contentTypeMethods` |
+| request body | `multipart/form-data` | `_multipart` | `contentTypeMethods` |
+| request body | `application/x-www-form-urlencoded` | `_form` | `contentTypeMethods` |
+| request body | `text/plain` | `_text` | `contentTypeMethods` |
+| request body | `application/octet-stream` | `_bytes` | `contentTypeMethods` |
+| request body | anything else | its subtype (`application/sdp`: `_sdp`), a string body sent as is with that media type | `contentTypeMethods` |
+| success response | `text/event-stream` | `_stream`, a typed stream | `typedEventStreams` |
+| success response | JSON, other `text/*`, anything else | `_json`, `_text`, `_bytes`: one per shape, since the media types of a shape render to the same Rust type | `contentTypeMethods` |
+
+On openai-client-base: `create_response` decodes the `Response`, `create_response_stream` streams the
+`ResponseStreamEvent`s; `create_image_edit` sends multipart as it did, `create_image_edit_json` the JSON body,
+`create_image_edit_stream` and `create_image_edit_json_stream` stream; `create_voice` sends JSON, `create_voice_multipart`
+multipart; `create_transcription_text` returns the `text/plain` answer; `create_realtime_call_sdp` sends the SDP offer.
+A method that is not the operation's own returns the operation's error enum (`Error<CreateResponseError>`) and renders
+none of its own, and its documentation says what it sends and decodes.
+
+**Event streams.** With `typedEventStreams` a method for a `text/event-stream` response returns
+`Result<apis::sse::EventStream<Event, OperationError>, Error<OperationError>>`; it is the operation's own method when the
+event stream is the first media type of its response (decoding JSON could never succeed there), `<operation>_stream`
+otherwise. The method sends `Accept: text/event-stream`, turns an error status into the operation's typed
+`Error::ResponseError` as the JSON method does, and fails with `Error::Serde` when the response is not an event stream
+(the request did not ask for one). `EventStream` implements `futures_core::Stream<Item = Result<Event, Error<E>>>`:
+
+- the `data:` payload of every event decodes to the event schema: a union picks its variant from the payload's `type`
+  field (`unionDispatch`), and the SSE `event:` name is not used;
+- `data: [DONE]` ends the stream, as does the end of the body; an event without data, a comment and an empty payload
+  yield nothing;
+- a payload that does not decode yields `Err(Error::Serde(_))` and the stream goes on; a failure reading the body yields
+  `Err(Error::Reqwest(_))` and ends it.
+
+`EventStream::from_response` and `EventStream::from_bytes` make a stream of a body read elsewhere, and
+`apis::sse::Decoder` is the parser underneath (CR, LF and CRLF line ends, multi-line data, comments, a byte order mark, an
+unterminated event dropped at the end), for code that reads events itself. The crate needs `futures-core` and reqwest's
+`stream` feature, which the generated `Cargo.toml` declares.
+
+An event schema that models the SSE envelope, objects with required `event` and `data` properties as the Assistants API's
+`AssistantStreamEvent`, gets no stream: the `data:` payload holds only the `data` part, and the event name it would take
+to rebuild the envelope is what the stream does not use. The generator logs these operations.
+
 ## Supported configuration
 
 `timvw-rust` accepts exactly one configuration. Every option below is applied as the default when
@@ -233,6 +281,8 @@ Our own options:
 | `unionDispatch` | `false` | with `modelUnions`: a union with a tag decodes by that tag |
 | `openEnums` | `false` | with `modelUnions`: what a response or webhook payload can hold has a catch-all for values the spec does not list |
 | `unionPlanFile` | unset | with `modelUnions`: output-relative path the union plan is written to, as JSON |
+| `typedEventStreams` | `false` | a `text/event-stream` response is a method returning a typed stream, see [above](#content-type-methods-and-event-streams) |
+| `contentTypeMethods` | `false` | one method per request body media type and response shape, named with a suffix, see [above](#content-type-methods-and-event-streams) |
 | `boxResponseError` | `false` | box the `ResponseError` payload |
 | `apiLintAllows` | unset | `#![allow(..)]` contents for API modules and `configuration.rs` |
 | `userAgentFromPackage` | `false` | default user agent from `packageName` and the crate version |

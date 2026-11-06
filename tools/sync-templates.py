@@ -246,6 +246,7 @@ API_SUPER_IMPORT_HELPER = (
 
 # mod.rs declares the helper right after the configuration module.
 API_MOD_HELPER = "{{#multipartHelper}}\n\n// Internal helper module for multipart file handling\npub(crate) mod multipart_helper;\n\n{{/multipartHelper}}"
+API_MOD_SSE = "{{#typedEventStreams}}\n\npub mod sse;\n\n{{/typedEventStreams}}"
 
 
 def multipart_block(text: str, what: str) -> str:
@@ -379,6 +380,96 @@ def struct_json_sites(t: str, w: str) -> str:
     return t
 
 
+
+# Milestone 3.6. typedEventStreams and contentTypeMethods (ContentTypeMethods): an operation can have more than one
+# method. The methods of one operation share its error enum (x-rust-error-enum, set on every operation), and only the
+# operation's own method renders it (x-rust-content-variant marks the others). A method that streams a text/event-stream
+# response (x-rust-event-stream) returns sse::EventStream, asks for the stream with Accept, checks the status and the
+# content type and hands the body to the stream. A string body of another media type (x-rust-text-body, application/sdp
+# say) is sent as text with that media type instead of as JSON.
+ERROR_ENUM_STOCK = "{{{operationIdCamelCase}}}Error"
+ERROR_ENUM = "{{{vendorExtensions.x-rust-error-enum}}}"
+ERROR_ENUM_DEF_START = "/// struct for typed errors of method [`{{operationId}}`]\n"
+ERROR_ENUM_DEF_END = "    UnknownValue(serde_json::Value),\n}\n\n"
+FN_DOC_NOTES = "{{#notes}}\n/// {{#rustdoc}}{{{.}}}{{/rustdoc}}\n{{/notes}}\n"
+VARIANT_DOC = "{{#vendorExtensions.x-rust-variant-doc}}\n///\n/// {{{.}}}\n{{/vendorExtensions.x-rust-variant-doc}}\n"
+RETURN_TYPE_STOCK = (
+    "}}{{^supportMultipleResponses}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/supportMultipleResponses}}"
+)
+RETURN_TYPE = (
+    "}}{{^supportMultipleResponses}}{{#vendorExtensions.x-rust-event-stream}}super::sse::EventStream<{{{returnType}}}, "
+    + ERROR_ENUM + ">{{/vendorExtensions.x-rust-event-stream}}{{^vendorExtensions.x-rust-event-stream}}"
+    "{{^returnType}}(){{/returnType}}{{{returnType}}}{{/vendorExtensions.x-rust-event-stream}}{{/supportMultipleResponses}}"
+)
+BUILD_REQUEST = "    let req = req_builder.build()?;\n"
+ACCEPT_EVENT_STREAM = (
+    "    {{#vendorExtensions.x-rust-event-stream}}\n"
+    '    req_builder = req_builder.header(reqwest::header::ACCEPT, "text/event-stream");\n'
+    "    {{/vendorExtensions.x-rust-event-stream}}\n"
+)
+STATUS = "    let status = resp.status();\n"
+FN_END = "    }\n}\n\n{{/operation}}\n{{/operations}}\n"
+EVENT_STREAM_RESPONSE = """    {{#vendorExtensions.x-rust-event-stream}}
+    if status.is_client_error() || status.is_server_error() {
+        let content = resp.text(){{#supportAsync}}.await{{/supportAsync}}?;
+        let entity: Option<""" + ERROR_ENUM + """> = serde_json::from_str(&content).ok();
+        return Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}));
+    }
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    if !content_type.starts_with("text/event-stream") {
+        return Err(Error::from(serde_json::Error::custom(format!("Received `{content_type}` content type response where a `text/event-stream` of `{{{returnType}}}` was expected (does the request ask for a stream?)"))));
+    }
+    Ok(super::sse::EventStream::from_response(resp))
+}
+    {{/vendorExtensions.x-rust-event-stream}}
+    {{^vendorExtensions.x-rust-event-stream}}
+"""
+JSON_BODY = "    {{^isFile}}\n    req_builder = req_builder.json(&{{{vendorExtensions.x-rust-param-identifier}}});\n    {{/isFile}}\n"
+TEXT_OR_JSON_BODY = """    {{^isFile}}
+    {{#vendorExtensions.x-rust-text-body}}
+    {{#required}}
+    req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, "{{{.}}}").body({{{vendorExtensions.x-rust-param-identifier}}}.to_owned());
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, "{{{.}}}").body(param_value.to_owned());
+    }
+    {{/required}}
+    {{/vendorExtensions.x-rust-text-body}}
+    {{^vendorExtensions.x-rust-text-body}}
+    req_builder = req_builder.json(&{{{vendorExtensions.x-rust-param-identifier}}});
+    {{/vendorExtensions.x-rust-text-body}}
+    {{/isFile}}
+"""
+
+
+def content_type_methods(t: str, w: str) -> str:
+    start = t.find(ERROR_ENUM_DEF_START)
+    end = t.find(ERROR_ENUM_DEF_END, start)
+    if start < 0 or t.count(ERROR_ENUM_DEF_START) != 1 or end < 0:
+        raise SystemExit(f"{w}: expected one error enum definition")
+    end += len(ERROR_ENUM_DEF_END)
+    t = (t[:start] + "{{^vendorExtensions.x-rust-content-variant}}\n" + t[start:end]
+         + "{{/vendorExtensions.x-rust-content-variant}}\n" + t[end:])
+    t = t.replace("pub enum " + ERROR_ENUM_STOCK + " {", "pub enum {{{operationIdCamelCase}}}Error {", 1)
+    t = replace_exactly(t, "}}, Error<" + ERROR_ENUM_STOCK + ">> {", "}}, Error<" + ERROR_ENUM + ">> {", 2, w)
+    t = replace_exactly(t, "Option<" + ERROR_ENUM_STOCK + ">", "Option<" + ERROR_ENUM + ">", 1, w)
+    t = replace_exactly(t, FN_DOC_NOTES, FN_DOC_NOTES + VARIANT_DOC, 1, w)
+    t = replace_exactly(t, RETURN_TYPE_STOCK, RETURN_TYPE, 2, w)
+    t = replace_exactly(t, BUILD_REQUEST, ACCEPT_EVENT_STREAM + BUILD_REQUEST, 1, w)
+    t = replace_exactly(t, JSON_BODY, TEXT_OR_JSON_BODY, 1, w)
+    s = t.find(STATUS)
+    e = t.rfind(FN_END)
+    if t.count(STATUS) != 1 or e < s:
+        raise SystemExit(f"{w}: expected one response block ending the function")
+    e += len("    }\n}\n")
+    return t[:s] + STATUS + EVENT_STREAM_RESPONSE + t[s + len(STATUS):e] + "    {{/vendorExtensions.x-rust-event-stream}}\n" + t[e:]
+
+
 def api_template(t: str, w: str) -> str:
     # The enum text-part edit first: the multipart helper block copies the (edited) stock non-file branch.
     t = replace_at_most_once(t, MULTIPART_JSON_TEXT, MULTIPART_ENUM_TEXT, w)
@@ -398,6 +489,7 @@ def api_template(t: str, w: str) -> str:
     t = replace_exactly(t, API_SUPER_IMPORT, API_SUPER_IMPORT_HELPER, 1, w)
     t = replace_exactly(t, MODELS_PREFIX, MODELS_PREFIX_ONCE, 2, w)
     t = struct_json_sites(t, w)
+    t = content_type_methods(t, w)
     return t
 
 
@@ -507,6 +599,20 @@ def open_enums(text: str, what: str) -> str:
     )
 
 
+# typedEventStreams: sse.rs implements futures_core::Stream and reads the body with reqwest's bytes_stream.
+CARGO_SERDE_JSON = 'serde_json = "^1.0"\n'
+CARGO_FUTURES_CORE = '{{#typedEventStreams}}\nfutures-core = "^0.3"\n{{/typedEventStreams}}\n'
+CARGO_REQWEST_NO_STREAM = re.compile(r'(\{\{\^useAsyncFileStream\}\}\nreqwest = \{[^\n]*features = \["json", "multipart")')
+
+
+def cargo_event_streams(t: str, w: str) -> str:
+    t = replace_exactly(t, CARGO_SERDE_JSON, CARGO_SERDE_JSON + CARGO_FUTURES_CORE, 1, w)
+    t, n = CARGO_REQWEST_NO_STREAM.subn(r'\1{{#typedEventStreams}}, "stream"{{/typedEventStreams}}', t)
+    if n != 1:
+        raise SystemExit(f"{w}: expected one reqwest dependency without the stream feature, found {n}")
+    return t
+
+
 EDITS = {
     "lib.mustache": lambda t, w: CRATE_DOCS + t,
     "model.mustache": lambda t, w: union_block(open_enums(gate_enum_defaults(per_property_box(wrap_doc_lines(
@@ -518,14 +624,14 @@ EDITS = {
     "reqwest/api.mustache": lambda t, w: api_template(t, w),
     "reqwest/api_mod.mustache": lambda t, w: replace_exactly(replace_exactly(
         replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w), API_MOD_CONFIGURATION,
-        API_MOD_CONFIGURATION + API_MOD_HELPER + API_MOD_WEBHOOKS[len(API_MOD_CONFIGURATION):], 1, w
+        API_MOD_CONFIGURATION + API_MOD_HELPER + API_MOD_SSE + API_MOD_WEBHOOKS[len(API_MOD_CONFIGURATION):], 1, w
     ), RESPONSE_ERROR_VARIANT, RESPONSE_ERROR_VARIANT_BOXED, 1, w),
     "reqwest/configuration.mustache": lambda t, w: replace_exactly(
         replace_exactly(t, PARTIAL_HEADER, PARTIAL_HEADER_ALLOWS, 1, w), USER_AGENT_STOCK, USER_AGENT_PACKAGE, 1, w
     ),
-    "Cargo.mustache": lambda t, w: replace_exactly(
+    "Cargo.mustache": lambda t, w: cargo_event_streams(replace_exactly(
         t, "[dependencies]\n", '[dependencies]\n{{#bonBuilders}}\nbon = "^3"\n{{/bonBuilders}}\n', 1, w
-    ),
+    ), w),
 }
 
 
@@ -538,7 +644,7 @@ def version_of(jar: zipfile.ZipFile) -> str:
 
 
 # Files that are not stock templates, copied verbatim into every set (tools/static/<name>).
-STATIC_FILES = ["multipart_helper.mustache"]
+STATIC_FILES = ["multipart_helper.mustache", "sse.mustache"]
 
 
 def sync(jar_path: Path) -> None:

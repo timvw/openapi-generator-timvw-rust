@@ -78,7 +78,10 @@ import java.util.Set;
  *   <li>{@code unionDispatch} makes a union with a tag decode by that tag (Milestone 3.3, see
  *       {@link UnionRules#dispatch});</li>
  *   <li>{@code openEnums} gives what a response can hold a catch-all for values the spec does not list (Milestone 3.5,
- *       see {@link OpenEnums}).</li>
+ *       see {@link OpenEnums});</li>
+ *   <li>{@code typedEventStreams} renders a method returning a typed stream for a {@code text/event-stream} response, and
+ *       {@code contentTypeMethods} one method per request body media type and response shape (Milestone 3.6, see
+ *       {@link ContentTypeMethods}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -154,6 +157,26 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String OPEN_ENUMS = "openEnums";
     /** Output-relative path the union plan of {@code modelUnions} is written to, as JSON (for tools and debugging). */
     public static final String UNION_PLAN_FILE = "unionPlanFile";
+    /**
+     * A {@code text/event-stream} success response is a method returning a stream of the event schema, decoded from
+     * each {@code data:} payload (Milestone 3.6, see {@link ContentTypeMethods}).
+     */
+    public static final String TYPED_EVENT_STREAMS = "typedEventStreams";
+    /**
+     * One method per request body media type and per success response shape, named with a suffix (Milestone 3.6, see
+     * {@link ContentTypeMethods}).
+     */
+    public static final String CONTENT_TYPE_METHODS = "contentTypeMethods";
+    /** Set on an operation whose method returns {@code sse::EventStream}. */
+    static final String EVENT_STREAM = "x-rust-event-stream";
+    /** Set on every operation: the error enum its method returns, shared by the methods of one operation. */
+    static final String ERROR_ENUM = "x-rust-error-enum";
+    /** Set on a method that is not the operation's own: it renders no error enum of its own. */
+    static final String CONTENT_VARIANT = "x-rust-content-variant";
+    /** A doc line saying what a method of an operation sends and returns. */
+    static final String VARIANT_DOC = "x-rust-variant-doc";
+    /** Set on a string body parameter sent as text with this media type (application/sdp, text/plain). */
+    static final String TEXT_BODY = "x-rust-text-body";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
     /** Set on a parameter whose dataType already carries {@code models::}. */
@@ -214,6 +237,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private OpenEnums.Census openEnumsCensus;
     private String unionPlanFile;
     private final Map<String, CodegenModel> unionModels = new HashMap<>();
+    private boolean typedEventStreams;
+    private boolean contentTypeMethods;
+    /** The methods added for an operation, by its own method, which gets its auth methods only after it was grouped. */
+    private final Map<CodegenOperation, List<CodegenOperation>> contentVariants = new java.util.IdentityHashMap<>();
+    /** The methods per API module ({@code tag#operationId}), to fail on a suffixed name another operation has. */
+    private final Map<String, String> methodNames = new HashMap<>();
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -345,6 +374,15 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newString(UNION_PLAN_FILE,
                 "With modelUnions: write the variants of every union and the schemas they refer to to this "
                         + "output-relative path, as JSON"));
+        cliOptions.add(CliOption.newBoolean(TYPED_EVENT_STREAMS,
+                "A text/event-stream success response is a method returning sse::EventStream<Event, OperationError>: "
+                        + "each data: payload decodes to the event schema (a union by its type field; the SSE event "
+                        + "name is not used) and data: [DONE] ends it. The operation's own method when the event "
+                        + "stream is its first response media type, <operation>_stream otherwise", false));
+        cliOptions.add(CliOption.newBoolean(CONTENT_TYPE_METHODS,
+                "One method per request body media type and per success response shape (JSON, text, bytes): the "
+                        + "operation's method keeps the first of each, the others are <operation>_<suffix> "
+                        + "(_json, _multipart, _form, _text, _bytes or the media subtype)", false));
         cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
                 "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
                         + "object-typed query parameter is sent as a string"));
@@ -638,6 +676,15 @@ public class TimvwRustCodegen extends RustClientCodegen {
             throw new IllegalArgumentException(GENERATOR_NAME + ": " + OPEN_ENUMS + " requires " + MODEL_UNIONS
                     + ": which values stay closed depends on the variants and the order that option settles");
         }
+        typedEventStreams = additionalProperties.containsKey(TYPED_EVENT_STREAMS)
+                && convertPropertyToBooleanAndWriteBack(TYPED_EVENT_STREAMS);
+        additionalProperties.put(TYPED_EVENT_STREAMS, typedEventStreams);
+        if (typedEventStreams) {
+            supportingFiles.add(new SupportingFile("sse.mustache", apiFolder, "sse.rs"));
+        }
+        contentTypeMethods = additionalProperties.containsKey(CONTENT_TYPE_METHODS)
+                && convertPropertyToBooleanAndWriteBack(CONTENT_TYPE_METHODS);
+        additionalProperties.put(CONTENT_TYPE_METHODS, contentTypeMethods);
         Object plan = additionalProperties.get(UNION_PLAN_FILE);
         unionPlanFile = plan == null || String.valueOf(plan).isEmpty() ? null : String.valueOf(plan);
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
@@ -977,6 +1024,125 @@ public class TimvwRustCodegen extends RustClientCodegen {
         return (holder, target) -> BoxRules.inCycle(components, holder, target);
     }
 
+    /**
+     * With {@code contentTypeMethods} or {@code typedEventStreams}, adds the other methods of the operation next to its
+     * own (see {@link ContentTypeMethods}): each is the operation restricted to its media types, rendered by the stock
+     * {@code fromOperation} under a suffixed operation id. Variants share the operation's error enum.
+     */
+    @Override
+    public void addOperationToGroup(String tag, String resourcePath, io.swagger.v3.oas.models.Operation operation,
+            CodegenOperation co, Map<String, List<CodegenOperation>> operations) {
+        super.addOperationToGroup(tag, resourcePath, operation, co, operations);
+        // The stock grouping renames a method whose name another method of the tag has.
+        co.vendorExtensions.put(ERROR_ENUM, co.operationIdCamelCase + "Error");
+        if (!contentTypeMethods && !typedEventStreams) {
+            return;
+        }
+        claimName(tag, co, false);
+        io.swagger.v3.oas.models.responses.ApiResponse methodResponse = operation.getResponses() == null ? null
+                : findMethodResponse(operation.getResponses());
+        List<ContentTypeMethods.Method> methods = ContentTypeMethods.plan(openAPI, operation, methodResponse,
+                contentTypeMethods, typedEventStreams, msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME,
+                        TYPED_EVENT_STREAMS, msg));
+        ContentTypeMethods.Method own = methods.get(0);
+        shapeMethod(co, own, null);
+        if (methods.size() == 1) {
+            return;
+        }
+        List<io.swagger.v3.oas.models.servers.Server> servers = openAPI.getPaths() == null
+                || openAPI.getPaths().get(resourcePath) == null ? null : openAPI.getPaths().get(resourcePath).getServers();
+        List<CodegenOperation> variants = new ArrayList<>();
+        for (ContentTypeMethods.Method method : methods.subList(1, methods.size())) {
+            io.swagger.v3.oas.models.Operation restricted = method.operation();
+            String id = getOrGenerateOperationId(operation, resourcePath, co.httpMethod);
+            restricted.setOperationId(id + method.suffix());
+            CodegenOperation variant = fromOperation(resourcePath, co.httpMethod, restricted, servers);
+            variant.tags = co.tags;
+            shapeMethod(variant, method, co);
+            String wanted = variant.operationId;
+            super.addOperationToGroup(tag, resourcePath, restricted, variant, operations);
+            if (!wanted.equals(variant.operationId)) {
+                throw new IllegalArgumentException(String.format("%s: %s: method %s of %s collides with another "
+                        + "operation of tag %s", GENERATOR_NAME, CONTENT_TYPE_METHODS, wanted, co.operationId, tag));
+            }
+            claimName(tag, variant, true);
+            variants.add(variant);
+        }
+        contentVariants.put(co, variants);
+        LOGGER.info("{}: {}: {} has {} more method(s): {}", GENERATOR_NAME, CONTENT_TYPE_METHODS, co.operationId,
+                variants.size(), variants.stream().map(v -> v.operationId).collect(java.util.stream.Collectors.toList()));
+    }
+
+    /** Fails when a suffixed method takes the name of another method of the same API module. */
+    private void claimName(String tag, CodegenOperation co, boolean variant) {
+        String key = tag + "#" + co.operationId;
+        String before = methodNames.putIfAbsent(key, variant ? "variant" : "operation");
+        if (before != null && (variant || "variant".equals(before))) {
+            throw new IllegalArgumentException(String.format("%s: %s: two methods of tag %s are named %s",
+                    GENERATOR_NAME, CONTENT_TYPE_METHODS, tag, co.operationId));
+        }
+    }
+
+    /** Marks what the template needs to render one method: a stream, a text body, the shared error enum, a doc line. */
+    private void shapeMethod(CodegenOperation co, ContentTypeMethods.Method method, CodegenOperation of) {
+        boolean stream = method.eventStream() && co.returnType != null && !co.isResponseFile;
+        if (stream) {
+            co.vendorExtensions.put(EVENT_STREAM, true);
+        }
+        String request = method.requestMediaType();
+        if (contentTypeMethods && request != null && !ContentTypeMethods.stockBody(request)) {
+            for (List<CodegenParameter> params : Arrays.asList(co.allParams, co.bodyParams, co.requiredParams,
+                    co.optionalParams)) {
+                if (params == null) {
+                    continue;
+                }
+                for (CodegenParameter p : params) {
+                    if (p.isBodyParam && p.isString && !p.isFile && !p.isBinary) {
+                        p.vendorExtensions.put(TEXT_BODY, request);
+                    }
+                }
+            }
+        }
+        List<String> doc = new ArrayList<>();
+        if (of != null) {
+            co.vendorExtensions.put(CONTENT_VARIANT, true);
+            co.vendorExtensions.put(ERROR_ENUM, of.operationIdCamelCase + "Error");
+            String ownRequest = firstConsumes(of);
+            if (request != null && !request.equals(ownRequest)) {
+                doc.add("Sends the request body as `" + request + "`; `" + of.operationId + "` sends it as `"
+                        + ownRequest + "`.");
+            }
+        }
+        if (stream) {
+            doc.add("Streams the `" + ContentTypeMethods.EVENT_STREAM + "` response: the `data:` payload of every event "
+                    + "decodes to `" + co.returnType + "`, whatever the event's SSE `event:` name, and `data: [DONE]` or "
+                    + "the end of the body ends the stream. The request has to ask for a stream.");
+        } else if (of != null && method.otherResponse()) {
+            doc.add("Decodes the `" + firstProduces(co) + "` form of the response; `" + of.operationId + "` decodes `"
+                    + firstProduces(of) + "`.");
+        }
+        if (!doc.isEmpty()) {
+            co.vendorExtensions.put(VARIANT_DOC, doc);
+        }
+    }
+
+    private static String firstConsumes(CodegenOperation co) {
+        return co.consumes == null || co.consumes.isEmpty() ? "" : String.valueOf(co.consumes.get(0).get("mediaType"));
+    }
+
+    private static String firstProduces(CodegenOperation co) {
+        return co.produces == null || co.produces.isEmpty() ? "" : String.valueOf(co.produces.get(0).get("mediaType"));
+    }
+
+    /** Every method names the error enum it returns: its own unless it is another method of an operation. */
+    @Override
+    public CodegenOperation fromOperation(String path, String httpMethod, io.swagger.v3.oas.models.Operation operation,
+            List<io.swagger.v3.oas.models.servers.Server> servers) {
+        CodegenOperation co = super.fromOperation(path, httpMethod, operation, servers);
+        co.vendorExtensions.put(ERROR_ENUM, co.operationIdCamelCase + "Error");
+        return co;
+    }
+
     /** {@code default_api} re-exports the webhook module when {@code webhookModuleReexport} is set. */
     @Override
     public OperationsMap postProcessOperationsWithModels(OperationsMap objs, List<ModelMap> allModels) {
@@ -985,6 +1151,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
         Set<String> structs = noStructDisplay ? renderedStructs(allModels, legacyModelRewrites) : Set.of();
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             for (CodegenOperation op : objs.getOperations().getOperation()) {
+                op.vendorExtensions.putIfAbsent(ERROR_ENUM, op.operationIdCamelCase + "Error");
+                for (CodegenOperation variant : contentVariants.getOrDefault(op, List.of())) {
+                    variant.authMethods = op.authMethods;
+                    variant.hasAuthMethods = op.hasAuthMethods;
+                    variant.vendorExtensions.put(ERROR_ENUM, op.operationIdCamelCase + "Error");
+                }
                 for (List<CodegenParameter> params : Arrays.asList(op.allParams, op.formParams, op.bodyParams,
                         op.queryParams, op.pathParams, op.headerParams, op.requiredParams, op.optionalParams)) {
                     if (params == null) {

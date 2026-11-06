@@ -20,7 +20,11 @@ FROM eclipse-temurin:25-jdk AS fetch
 ARG OPENAPI_GENERATOR_VERSION
 ARG OPENAPI_GENERATOR_CLI_SHA1
 WORKDIR /fetch
+# temurin 25 images no longer ship curl; it is only needed in this throwaway stage.
 RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    rm -rf /var/lib/apt/lists/*; \
     url="https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/${OPENAPI_GENERATOR_VERSION}/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar"; \
     curl -fsSL -o "openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar" "$url"; \
     sha1="${OPENAPI_GENERATOR_CLI_SHA1:-$(curl -fsSL "${url}.sha1")}"; \

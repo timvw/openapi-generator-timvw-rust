@@ -478,6 +478,83 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     }
     {{/required}}
     {{/vendorExtensions.x-multipart-text-media-type}}
+    {{#vendorExtensions.x-multipart-file-union-required}}
+    match &{{{vendorExtensions.x-rust-param-identifier}}} {
+    {{#vendorExtensions.x-multipart-file-union}}
+        {{{pattern}}}(value) => {
+            {{#isFilePart}}
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            {{/isFilePart}}
+            {{#isFileParts}}
+            for path in value {
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+            }
+            {{/isFileParts}}
+            {{#isValuePart}}
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(value)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+            {{/isValuePart}}
+        }
+    {{/vendorExtensions.x-multipart-file-union}}
+    }
+    {{/vendorExtensions.x-multipart-file-union-required}}
+    {{#vendorExtensions.x-multipart-file-union-nullable}}
+    match &{{{vendorExtensions.x-rust-param-identifier}}} {
+        None => { multipart_form = multipart_form.text("{{{baseName}}}", ""); },
+        Some(param_value) => match param_value {
+    {{#vendorExtensions.x-multipart-file-union}}
+        {{{pattern}}}(value) => {
+            {{#isFilePart}}
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            {{/isFilePart}}
+            {{#isFileParts}}
+            for path in value {
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+            }
+            {{/isFileParts}}
+            {{#isValuePart}}
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(value)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+            {{/isValuePart}}
+        }
+    {{/vendorExtensions.x-multipart-file-union}}
+        },
+    }
+    {{/vendorExtensions.x-multipart-file-union-nullable}}
+    {{#vendorExtensions.x-multipart-file-union-optional}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        match param_value {
+    {{#vendorExtensions.x-multipart-file-union}}
+        {{{pattern}}}(value) => {
+            {{#isFilePart}}
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            {{/isFilePart}}
+            {{#isFileParts}}
+            for path in value {
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+            }
+            {{/isFileParts}}
+            {{#isValuePart}}
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(value)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+            {{/isValuePart}}
+        }
+    {{/vendorExtensions.x-multipart-file-union}}
+        }
+    }
+    {{/vendorExtensions.x-multipart-file-union-optional}}
     {{#vendorExtensions.x-multipart-stock}}
     {{#required}}
     {{^isNullable}}
@@ -500,7 +577,12 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
     {{/isEnumRef}}
     {{^isEnumRef}}
+    {{#vendorExtensions.x-rust-union-text}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
+    {{/vendorExtensions.x-rust-union-text}}
+    {{^vendorExtensions.x-rust-union-text}}
         multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);
+    {{/vendorExtensions.x-rust-union-text}}
     {{/isEnumRef}}
     {{/isPrimitiveType}}
     }
@@ -625,7 +707,12 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
     {{/isEnumRef}}
     {{^isEnumRef}}
+    {{#vendorExtensions.x-rust-union-text}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
+    {{/vendorExtensions.x-rust-union-text}}
+    {{^vendorExtensions.x-rust-union-text}}
         multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);
+    {{/vendorExtensions.x-rust-union-text}}
     {{/isEnumRef}}
     {{/isPrimitiveType}}
     }

@@ -87,6 +87,8 @@ components:
         tiny: {$ref: "#/components/schemas/Small"}
         opt: {type: integer}
         opt_small: {type: integer, format: int32}
+        opt_byte: {type: integer, format: int8}
+        opt_unsigned: {type: integer, format: uint64}
         nullable_opt: {type: integer, nullable: true}
         list: {type: array, items: {type: integer}}
         list_small: {type: array, items: {type: integer, format: int32}}

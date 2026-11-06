@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.openapitools.codegen.ClientOptInput;
 import org.openapitools.codegen.DefaultGenerator;
 import org.openapitools.codegen.config.CodegenConfigurator;
+import org.openapitools.codegen.utils.ImplementationVersion;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,6 +35,17 @@ class QualifiedInlineNamesTest {
 
     @TempDir
     static Path other;
+
+    /**
+     * Before openapi-generator 7.27, an inline schema carrying the title of its union or parent replaced that
+     * model, losing its own fields. 7.27 keeps them; qualifiedInlineNames still renames it either way.
+     */
+    private static final boolean STOCK_LOSES_TITLED_FIELDS = minorVersion() < 27;
+
+    /** The minor version of the running openapi-generator 7.x. */
+    private static int minorVersion() {
+        return Integer.parseInt(ImplementationVersion.read().split("\\.")[1]);
+    }
 
     @BeforeAll
     static void generate() {
@@ -82,8 +94,14 @@ class QualifiedInlineNamesTest {
 
     @Test
     void aBranchWithTheTitleOfItsUnionKeepsItsFields() throws IOException {
-        // Stock: the object is overwritten by the union, which then references itself.
-        assertTrue(read(stock, "tracing_configuration").contains("models::TracingConfiguration"));
+        String stockModel = read(stock, "tracing_configuration");
+        if (STOCK_LOSES_TITLED_FIELDS) {
+            // Stock: the object is overwritten by the union, which then references itself.
+            assertTrue(stockModel.contains("models::TracingConfiguration"), stockModel);
+        } else {
+            // openapi-generator 7.27 keeps the object's fields under the title.
+            assertTrue(stockModel.contains("pub workflow_name:"), stockModel);
+        }
         assertFalse(exists(qualified, "tracing_configuration"));
 
         String union = read(qualified, "session_tracing");
@@ -94,9 +112,14 @@ class QualifiedInlineNamesTest {
 
     @Test
     void aPropertyWithTheTitleOfItsParentKeepsItsFields() throws IOException {
-        // Stock: the object requires a box of itself, and can never decode.
         String stockModel = read(stock, "grammar_format");
-        assertTrue(stockModel.contains("pub grammar: Box<models::GrammarFormat>,"), stockModel);
+        if (STOCK_LOSES_TITLED_FIELDS) {
+            // Stock: the object requires a box of itself, and can never decode.
+            assertTrue(stockModel.contains("pub grammar: Box<models::GrammarFormat>,"), stockModel);
+        } else {
+            // openapi-generator 7.27 keeps the inner object's fields under the title.
+            assertTrue(stockModel.contains("pub definition:"), stockModel);
+        }
         assertFalse(exists(qualified, "grammar_format"));
 
         String outer = read(qualified, "session_format");

@@ -32,9 +32,7 @@ import java.util.TreeSet;
  *
  * <p><b>Reachable.</b> Everything a response body can hold, in any media type (so server-sent events too), of any
  * status, and what a webhook delivers: its request body, which the API sends. The walk follows the spec's schemas, not
- * the models: a {@code jsonValueSchemas} schema is a {@code serde_json::Value} in the models, so the model graph ends
- * there, while the value still holds what the spec says, for a caller to decode. {@link #keepRefs} keeps those edges.
- * A schema a response takes in through {@code allOf} counts too, since its fields are in that response.</p>
+ * the models. A schema a response takes in through {@code allOf} counts too, since its fields are in that response.</p>
  *
  * <p><b>Guarded.</b> Decoding that tries variants in turn (an untagged union, or the variants of a tagged union that
  * share a value) relies on an earlier variant rejecting what a later one is for. Often only an enum rejects it: a
@@ -46,12 +44,6 @@ final class OpenEnums {
 
     /** On a value enum, or a property holding an inline one: its catch-all, a {@link CatchAll}. */
     static final String CATCH_ALL = "x-rust-open-enum";
-
-    /**
-     * On a {@code jsonValueSchemas} schema: the schemas below it before the rule replaced it. An extension, since the
-     * parser that runs after the rules copies a free-form object into what refers to it, which leaves no reference.
-     */
-    static final String BEHIND_VALUE = "x-rust-behind-value";
 
     private static final String VEC = "Vec<";
     private static final String SET = "std::collections::HashSet<";
@@ -103,35 +95,9 @@ final class OpenEnums {
         return new CatchAll(variantName(names), unique("unknown", "unknown_value", wires));
     }
 
-    /**
-     * What each {@code jsonValueSchemas} schema refers to, read before the rule replaces it: schema name to the schemas
-     * below it, under the names they end up with. {@link #keepRefs} stores it.
-     */
-    @SuppressWarnings("rawtypes")
-    static Map<String, List<String>> refsBehind(OpenAPI openAPI, Collection<String> names) {
-        Map<String, Schema> schemas = SpecRules.schemas(openAPI);
-        Map<String, List<String>> behind = new LinkedHashMap<>();
-        for (String name : names) {
-            Schema<?> schema = schemas.get(name);
-            if (schema != null) {
-                Walk walk = new Walk(Map.of(), false);
-                walk.visit(schema);
-                behind.put(name, walk.reached.stream().map(SpecRules::withoutHyphens).toList());
-            }
-        }
-        return behind;
-    }
-
-    /** Puts what {@link #refsBehind} read on the schemas the rule left in place. */
-    @SuppressWarnings("rawtypes")
-    static void keepRefs(OpenAPI openAPI, Map<String, List<String>> behind) {
-        Map<String, Schema> schemas = SpecRules.schemas(openAPI);
-        behind.forEach((name, refs) -> schemas.get(name).addExtension(BEHIND_VALUE, refs));
-    }
-
     /** The schemas a response body or a webhook payload can hold, by schema name. */
-    static Set<String> reachable(OpenAPI openAPI, boolean behindValues) {
-        Walk walk = new Walk(SpecRules.schemas(openAPI), behindValues);
+    static Set<String> reachable(OpenAPI openAPI) {
+        Walk walk = new Walk(SpecRules.schemas(openAPI));
         if (openAPI.getPaths() != null) {
             for (PathItem item : openAPI.getPaths().values()) {
                 for (Operation operation : item.readOperationsMap().values()) {
@@ -169,12 +135,10 @@ final class OpenEnums {
     private static final class Walk {
         final Set<String> reached = new LinkedHashSet<>();
         private final Map<String, Schema> schemas;
-        private final boolean behindValues;
         private final Set<Schema> seen = Collections.newSetFromMap(new IdentityHashMap<>());
 
-        Walk(Map<String, Schema> schemas, boolean behindValues) {
+        Walk(Map<String, Schema> schemas) {
             this.schemas = schemas;
-            this.behindValues = behindValues;
         }
 
         void content(Content content) {
@@ -199,9 +163,6 @@ final class OpenEnums {
             if (schema.get$ref() != null) {
                 reach(SpecRules.refName(schema.get$ref()));
             }
-            if (behindValues && schema.getExtensions() != null && schema.getExtensions().get(BEHIND_VALUE) instanceof List) {
-                ((List<String>) schema.getExtensions().get(BEHIND_VALUE)).forEach(this::reach);
-            }
             visit(schema.getItems());
             if (schema.getAdditionalProperties() instanceof Schema) {
                 visit((Schema<?>) schema.getAdditionalProperties());
@@ -221,7 +182,7 @@ final class OpenEnums {
     record Census(Set<String> enums, Set<String> reachableEnums, Set<String> openEnums, Set<String> guardedEnums,
                   Set<String> taggedUnions, Set<String> reachableTagged, Set<String> openUnions,
                   Set<String> guardedUnions, Set<String> untaggedUnions, Set<String> reachableUntagged,
-                  int reachableSchemas, int reachableWithoutValueSchemas) {
+                  int reachableSchemas) {
 
         Map<String, Object> describe() {
             Map<String, Object> plan = new LinkedHashMap<>();
@@ -238,7 +199,6 @@ final class OpenEnums {
             plan.put("untaggedUnions", untaggedUnions.size());
             plan.put("reachableUntaggedUnions", reachableUntagged);
             plan.put("schemasReachable", reachableSchemas);
-            plan.put("schemasReachableWithoutValueSchemas", reachableWithoutValueSchemas);
             return plan;
         }
 
@@ -255,7 +215,7 @@ final class OpenEnums {
      */
     static Census mark(Map<String, ModelsMap> allModels, Map<String, CodegenModel> unions, OpenAPI openAPI) {
         Map<String, CodegenModel> byName = UnionRules.byName(allModels);
-        Set<String> reachable = reachable(openAPI, true);
+        Set<String> reachable = reachable(openAPI);
         Guards guards = new Guards(byName, unions);
         guards.run();
 
@@ -313,7 +273,7 @@ final class OpenEnums {
             }
         }
         return new Census(enums, reachableEnums, openEnums, guardedEnums, tagged, reachableTagged, openUnions,
-                guardedUnions, untagged, reachableUntagged, reachable.size(), reachable(openAPI, false).size());
+                guardedUnions, untagged, reachableUntagged, reachable.size());
     }
 
     private static void sort(String name, boolean reached, boolean open, Set<String> all, Set<String> reachable,

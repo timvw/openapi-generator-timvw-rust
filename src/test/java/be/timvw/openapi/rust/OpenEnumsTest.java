@@ -65,7 +65,6 @@ class OpenEnumsTest {
         props.put(TimvwRustCodegen.MODEL_UNIONS, "true");
         props.put(TimvwRustCodegen.UNION_DISPATCH, "true");
         props.put(TimvwRustCodegen.UNION_PLAN_FILE, "target/union_plan.json");
-        props.put(TimvwRustCodegen.JSON_VALUE_SCHEMAS, List.of("Opaque"));
         props.putAll(extra);
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
@@ -124,8 +123,8 @@ class OpenEnumsTest {
     }
 
     @Test
-    void theWalkGoesBehindAJsonValueSchema() throws IOException {
-        assertTrue(read(on, "envelope").contains("pub opaque: Option<serde_json::Value>"), read(on, "envelope"));
+    void theWalkGoesThroughAOneBranchUnion() throws IOException {
+        assertTrue(read(on, "envelope").contains("pub opaque: Option<models::OpaqueBranch>"), read(on, "envelope"));
         assertTrue(open("opaque_kind"));
     }
 

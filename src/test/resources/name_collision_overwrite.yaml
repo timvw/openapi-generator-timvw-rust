@@ -1,0 +1,23 @@
+openapi: 3.1.0
+info:
+  title: Two locations, one key
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Foo:
+      type: object
+      properties:
+        a_b:
+          type: object
+          properties:
+            one:
+              type: string
+        a:
+          type: object
+          properties:
+            b:
+              type: object
+              properties:
+                two:
+                  type: string

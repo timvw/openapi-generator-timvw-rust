@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,6 +39,20 @@ class LegacyModelRewritesTest {
         ClientOptInput input = configurator.toClientOptInput();
         new DefaultGenerator().opts(input).generate();
         return dir;
+    }
+
+    @Test
+    void modelUnionsLeavesOutTheUnionRewrites() {
+        List<String> scripts = LegacyModelRewrites.pipeline(true, true).stream().map(LegacyModelRewrites.Named::script)
+                .toList();
+        for (String script : List.of("fix_empty_enums.py", "fix_enum_attributes.py", "fix_tool_enum_tagging.py",
+                "fix_untagged_unions.py", "fix_helper_impl_mismatches.py", "fix_generator_artifacts.py")) {
+            assertFalse(scripts.contains(script), script);
+            assertTrue(LegacyModelRewrites.pipeline(true, false).stream().anyMatch(s -> s.script().equals(script)), script);
+        }
+        assertTrue(scripts.contains("fix_generated_code.py"));
+        assertTrue(scripts.contains("fix_default_issues.py"));
+        assertTrue(scripts.contains("fix_unused_imports.py"));
     }
 
     @Test

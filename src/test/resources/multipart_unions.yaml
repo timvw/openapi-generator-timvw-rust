@@ -1,0 +1,156 @@
+openapi: 3.1.0
+info:
+  title: Multipart unions fixture
+  version: "1"
+paths:
+  /videos:
+    post:
+      operationId: video_create
+      tags: [videos]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/VideoBody"
+      responses:
+        "200":
+          description: ok
+  /skills:
+    post:
+      operationId: skill_create
+      tags: [skills]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/SkillBody"
+      responses:
+        "200":
+          description: ok
+  /skills/versions:
+    post:
+      operationId: skill_version_create
+      tags: [skills]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/SkillVersionBody"
+      responses:
+        "200":
+          description: ok
+  /mixed:
+    post:
+      operationId: mixed_create
+      tags: [mixed]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [source, nullable_source]
+              properties:
+                source:
+                  oneOf:
+                    - type: string
+                      format: binary
+                    - type: integer
+                labelled:
+                  oneOf:
+                    - type: string
+                      format: binary
+                    - type: string
+                nullable_source:
+                  type: [object, string, "null"]
+                  oneOf:
+                    - type: string
+                      format: binary
+                    - $ref: "#/components/schemas/Reference"
+                    - type: "null"
+                encoded:
+                  oneOf:
+                    - type: string
+                      format: binary
+                    - $ref: "#/components/schemas/Reference"
+            encoding:
+              encoded:
+                contentType: application/vnd.fixture+json
+      responses:
+        "200":
+          description: ok
+  /plain:
+    post:
+      operationId: plain_create
+      tags: [plain]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                model:
+                  anyOf:
+                    - type: string
+                    - $ref: "#/components/schemas/ModelName"
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    VideoBody:
+      type: object
+      required: [video, prompt]
+      properties:
+        video:
+          oneOf:
+            - type: string
+              format: binary
+            - $ref: "#/components/schemas/Reference"
+        reference:
+          oneOf:
+            - $ref: "#/components/schemas/Reference"
+            - type: string
+              format: binary
+        prompt:
+          type: string
+    SkillBody:
+      type: object
+      required: [files]
+      description: Uploads a skill either as a directory (multipart `files[]`) or as a single zip file.
+      properties:
+        files:
+          oneOf:
+            - type: array
+              items:
+                type: string
+                format: binary
+            - type: string
+              format: binary
+    SkillVersionBody:
+      type: object
+      required: [files]
+      description: Uploads a new version of a skill.
+      properties:
+        files:
+          oneOf:
+            - type: array
+              items:
+                type: string
+                format: binary
+            - type: string
+              format: binary
+        default:
+          type: boolean
+    Reference:
+      type: object
+      properties:
+        id:
+          type: string
+    ModelName:
+      type: string
+      enum: [small, large]

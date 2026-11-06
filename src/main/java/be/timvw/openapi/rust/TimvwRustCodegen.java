@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,7 +67,18 @@ import java.util.Set;
  *   <li>{@code enumFromStr} gives closed enums {@code FromStr} and {@code TryFrom} (Milestone 3.2, see
  *       {@link EnumFromStr});</li>
  *   <li>{@code noStructDisplay} leaves structs without a JSON {@code Display} and has the API code serialize them
- *       explicitly (Milestone 3.2).</li>
+ *       explicitly (Milestone 3.2);</li>
+ *   <li>{@code integersAsI64} renders an integer as {@code i64} unless the spec says {@code format: int32}
+ *       (Milestone 3.4, see {@link #getSchemaType});</li>
+ *   <li>{@code qualifiedInlineNames} names an inline schema after its title when that is unique and after where
+ *       it stands otherwise, and fails generation when two different schemas would share a Rust model or file (Milestone 3.3, see {@link InlineNames} and
+ *       {@link NameCollisions});</li>
+ *   <li>{@code modelUnions} renders unions from the model instead of through the text rewrites of
+ *       {@code legacyModelRewrites} (Milestone 3.3, see {@link UnionRules});</li>
+ *   <li>{@code unionDispatch} makes a union with a tag decode by that tag (Milestone 3.3, see
+ *       {@link UnionRules#dispatch});</li>
+ *   <li>{@code openEnums} gives what a response can hold a catch-all for values the spec does not list (Milestone 3.5,
+ *       see {@link OpenEnums}).</li>
  * </ul>
  *
  * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
@@ -127,6 +139,18 @@ public class TimvwRustCodegen extends RustClientCodegen {
     static final String STRUCT_JSON = "x-rust-struct-json";
     /** Set on a parameter holding an array of structs, whose items the api template serializes as JSON. */
     static final String STRUCT_JSON_ITEMS = "x-rust-struct-json-items";
+    /** Render an integer as {@code i64} unless the spec says {@code format: int32} (Milestone 3.4). */
+    public static final String INTEGERS_AS_I64 = "integersAsI64";
+    /** Name inline schemas after a unique title or their location; a real name collision fails generation (Milestone 3.3). */
+    public static final String QUALIFIED_INLINE_NAMES = "qualifiedInlineNames";
+    /** Unions render from the model; the union text rewrites of {@code legacyModelRewrites} do not run (Milestone 3.3). */
+    public static final String MODEL_UNIONS = "modelUnions";
+    /** A union with a tag decodes by that tag; it requires {@link #MODEL_UNIONS} (Milestone 3.3). */
+    public static final String UNION_DISPATCH = "unionDispatch";
+    /** Enums and tagged unions a response can hold have a catch-all; it requires {@link #MODEL_UNIONS} (Milestone 3.5). */
+    public static final String OPEN_ENUMS = "openEnums";
+    /** Output-relative path the union plan of {@code modelUnions} is written to, as JSON (for tools and debugging). */
+    public static final String UNION_PLAN_FILE = "unionPlanFile";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
     /** Set on a parameter whose dataType already carries {@code models::}. */
@@ -174,11 +198,20 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private String preprocessedSpecJson;
     private List<String> fileProperties = new ArrayList<>();
     private boolean boxOnlyCycles;
+    private boolean integersAsI64;
     private Map<String, Integer> boxComponents = Map.of();
     private boolean defaultOnlyWhereValid;
     private boolean enumFromStr;
     private boolean noStructDisplay;
     private final Set<String> structJsonModels = new java.util.TreeSet<>();
+    private boolean qualifiedInlineNames;
+    private boolean modelUnions;
+    private boolean unionDispatch;
+    private boolean anyDispatch;
+    private boolean openEnums;
+    private OpenEnums.Census openEnumsCensus;
+    private String unionPlanFile;
+    private final Map<String, CodegenModel> unionModels = new HashMap<>();
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
@@ -264,6 +297,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 "Send multipart bodies through a generated src/apis/multipart_helper.rs: files are read into a part "
                         + "named after the file, optional arrays send one part per item and optional objects one JSON "
                         + "part, and an encoding contentType of a scalar part is applied", false));
+        cliOptions.add(CliOption.newBoolean(QUALIFIED_INLINE_NAMES,
+                "An inline schema's title names its model only when it is unique; every other inline schema that "
+                        + "becomes a model is named after where it stands (Parent_property, Parent_inner, Parent_value, "
+                        + "Parent_<branch title>). Generation fails when two structurally different schemas would "
+                        + "produce the same Rust model or file", false));
         cliOptions.add(CliOption.newString(FILE_PROPERTIES,
                 "Schema.property entries rendered as a file (type: string, format: binary)"));
         cliOptions.add(CliOption.newBoolean(DEFAULT_ONLY_WHERE_VALID,
@@ -278,6 +316,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newBoolean(USER_AGENT_FROM_PACKAGE,
                 "Default user agent <packageName>/<crate version> (CARGO_PKG_VERSION) instead of "
                         + "OpenAPI-Generator/<spec version>/rust; httpUserAgent still wins", false));
+        cliOptions.add(CliOption.newBoolean(INTEGERS_AS_I64,
+                "Render an integer as i64 unless the spec says format: int32, wherever it appears; spec bounds never "
+                        + "pick a type. Without the option an integer without a format, or with one other than int64, "
+                        + "is i32, as in stock -g rust", false));
         cliOptions.add(CliOption.newString(PREPROCESSED_SPEC_FILE,
                 "Write the spec as it stands after the spec rules (before inline schemas are named) to this "
                         + "output-relative path, as JSON"));
@@ -287,6 +329,22 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newBoolean(NO_STRUCT_DISPLAY,
                 "Structs have no JSON Display (legacyModelRewrites adds one otherwise); API code serializes parameters "
                         + "of struct type with serde_json::to_string, with the same bytes on the wire", false));
+        cliOptions.add(CliOption.newBoolean(MODEL_UNIONS,
+                "Render every oneOf and anyOf as an untagged enum from the model: variants named after the branch and "
+                        + "ordered so that decoding takes the narrowest one. The union rewrites of legacyModelRewrites "
+                        + "do not run", false));
+        cliOptions.add(CliOption.newBoolean(UNION_DISPATCH,
+                "With modelUnions: a union with a discriminator, or whose branches all require one property with fixed "
+                        + "values, decodes the variant its tag selects instead of trying them all. It serializes as "
+                        + "before: each struct holds its tag", false));
+        cliOptions.add(CliOption.newBoolean(OPEN_ENUMS,
+                "With modelUnions: a value enum or tagged union that a response body or webhook payload can hold accepts "
+                        + "values the spec does not list. An enum gets a unit variant Unknown, which serializes as "
+                        + "\"unknown\" and which FromStr does not parse to; a tagged union gets Unknown(serde_json::Value), "
+                        + "which serializes as it came. What other variants rely on to reject a value stays closed", false));
+        cliOptions.add(CliOption.newString(UNION_PLAN_FILE,
+                "With modelUnions: write the variants of every union and the schemas they refer to to this "
+                        + "output-relative path, as JSON"));
         cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
                 "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
                         + "object-typed query parameter is sent as a string"));
@@ -309,6 +367,20 @@ public class TimvwRustCodegen extends RustClientCodegen {
         return GENERATOR_NAME;
     }
 
+    /**
+     * With {@code integersAsI64}, an integer the stock generator renders as {@code i32} is {@code i64} unless its
+     * format is {@code int32}. Every location (fields, container items, parameters, responses, union variants) gets
+     * its type from here. The stock flags are left alone, so {@code isInteger} still selects the integer enum
+     * rendering. {@code preferUnsignedInt} and {@code bestFitInt} are pinned to false, so the stock mapping can only
+     * answer {@code i32} or {@code i64} for an integer.
+     */
+    @Override
+    @SuppressWarnings("rawtypes")
+    public String getSchemaType(Schema p) {
+        String type = super.getSchemaType(p);
+        return integersAsI64 && "i32".equals(type) && !"int32".equals(p.getFormat()) ? "i64" : type;
+    }
+
     /** The model name the stock generator gives a composed schema without typed branches ({@code anyOf<>}). */
     static final String UNTYPED_COMPOSED = "AnyOfLessThanGreaterThan";
     static final String UNTYPED_COMPOSED_TYPE = "models::" + UNTYPED_COMPOSED;
@@ -323,6 +395,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
     @SuppressWarnings("rawtypes")
     public CodegenModel fromModel(String name, Schema model) {
         CodegenModel mdl = super.fromModel(name, model);
+        if (modelUnions) {
+            retypeUntypedVariants(mdl);
+            UnionRules.nameVariants(mdl, name, model, this::toModelName);
+            return mdl;
+        }
         if (mdl.getComposedSchemas() != null && mdl.getComposedSchemas().getOneOf() != null) {
             List<CodegenProperty> kept = new ArrayList<>();
             Set<String> seen = new HashSet<>();
@@ -352,9 +429,54 @@ public class TimvwRustCodegen extends RustClientCodegen {
     @Override
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
         objs = super.postProcessAllModels(objs);
+        Map<String, CodegenModel> unions = modelUnions
+                ? UnionRules.plan(objs, msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, MODEL_UNIONS, msg)) : Map.of();
         boxComponents = BoxRules.mark(objs, boxOnlyCycles);
+        if (modelUnions) {
+            UnionRules.payloads(unions, objs);
+            unionModels.putAll(unions);
+            if (unionDispatch) {
+                UnionRules.DispatchCounts counts = UnionRules.dispatch(unions, objs, openAPI);
+                anyDispatch = counts.explicit() + counts.implicit() > 0;
+                LOGGER.info("{}: {}: {} tagged ({} by a discriminator, {} implicitly), {} untagged; {} have a value on "
+                                + "two variants, {} allow the tag to be missing", GENERATOR_NAME, UNION_DISPATCH,
+                        counts.explicit() + counts.implicit(), counts.explicit(), counts.implicit(), counts.untagged(),
+                        counts.sharedValue(), counts.optional());
+            }
+            if (openEnums) {
+                openEnumsCensus = OpenEnums.mark(objs, unions, openAPI);
+                LOGGER.info("{}: {}: {} enums, {} reachable, {} of them guarded; {} tagged unions, {} reachable, {} of them "
+                                + "guarded; {} untagged unions left as they are", GENERATOR_NAME, OPEN_ENUMS,
+                        openEnumsCensus.enums().size(), openEnumsCensus.reachableEnums().size(),
+                        openEnumsCensus.guardedEnums().size(), openEnumsCensus.taggedUnions().size(),
+                        openEnumsCensus.reachableTagged().size(), openEnumsCensus.guardedUnions().size(),
+                        openEnumsCensus.untaggedUnions().size());
+            }
+            writeUnionPlan(unions);
+        }
         DefaultRules.mark(objs, defaultOnlyWhereValid);
         return objs;
+    }
+
+    private void writeUnionPlan(Map<String, CodegenModel> unions) {
+        if (unionPlanFile == null) {
+            return;
+        }
+        java.nio.file.Path target = java.nio.file.Paths.get(outputFolder, unionPlanFile);
+        boolean v31 = openAPI.getOpenapi() != null
+                && new org.openapitools.codegen.utils.SemVer(openAPI.getOpenapi()).atLeast("3.1.0");
+        try {
+            java.nio.file.Files.createDirectories(target.getParent());
+            Map<String, Object> described = UnionRules.describe(unions, openAPI, unionDispatch);
+            if (openEnumsCensus != null) {
+                described.put(OPEN_ENUMS, openEnumsCensus.describe());
+            }
+            (v31 ? io.swagger.v3.core.util.Json31.pretty() : io.swagger.v3.core.util.Json.pretty())
+                    .writeValue(target.toFile(), described);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("cannot write " + target, e);
+        }
+        LOGGER.info("{}: wrote the union plan to {}", GENERATOR_NAME, target);
     }
 
     @Override
@@ -376,6 +498,19 @@ public class TimvwRustCodegen extends RustClientCodegen {
             }
         }
         return objs;
+    }
+
+    /** A union variant can hold an untyped {@code anyOf} too, directly or as its map value or array item. */
+    private static void retypeUntypedVariants(CodegenModel model) {
+        if (model.getComposedSchemas() == null) {
+            return;
+        }
+        for (List<CodegenProperty> variants : Arrays.asList(model.getComposedSchemas().getOneOf(),
+                model.getComposedSchemas().getAnyOf())) {
+            if (variants != null) {
+                variants.forEach(TimvwRustCodegen::retypeUntypedComposed);
+            }
+        }
     }
 
     private static boolean retypeUntypedComposed(CodegenProperty property) {
@@ -478,6 +613,25 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 && convertPropertyToBooleanAndWriteBack(ENUM_FROM_STR);
         noStructDisplay = additionalProperties.containsKey(NO_STRUCT_DISPLAY)
                 && convertPropertyToBooleanAndWriteBack(NO_STRUCT_DISPLAY);
+        integersAsI64 = additionalProperties.containsKey(INTEGERS_AS_I64)
+                && convertPropertyToBooleanAndWriteBack(INTEGERS_AS_I64);
+        qualifiedInlineNames = additionalProperties.containsKey(QUALIFIED_INLINE_NAMES)
+                && convertPropertyToBooleanAndWriteBack(QUALIFIED_INLINE_NAMES);
+        modelUnions = additionalProperties.containsKey(MODEL_UNIONS)
+                && convertPropertyToBooleanAndWriteBack(MODEL_UNIONS);
+        unionDispatch = additionalProperties.containsKey(UNION_DISPATCH)
+                && convertPropertyToBooleanAndWriteBack(UNION_DISPATCH);
+        if (unionDispatch && !modelUnions) {
+            throw new IllegalArgumentException(GENERATOR_NAME + ": " + UNION_DISPATCH + " requires " + MODEL_UNIONS
+                    + ": it decodes the unions that option renders");
+        }
+        openEnums = additionalProperties.containsKey(OPEN_ENUMS) && convertPropertyToBooleanAndWriteBack(OPEN_ENUMS);
+        if (openEnums && !modelUnions) {
+            throw new IllegalArgumentException(GENERATOR_NAME + ": " + OPEN_ENUMS + " requires " + MODEL_UNIONS
+                    + ": which values stay closed depends on the variants and the order that option settles");
+        }
+        Object plan = additionalProperties.get(UNION_PLAN_FILE);
+        unionPlanFile = plan == null || String.valueOf(plan).isEmpty() ? null : String.valueOf(plan);
         for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
             additionalProperties.put(flag, additionalProperties.containsKey(flag)
                     && convertPropertyToBooleanAndWriteBack(flag));
@@ -534,6 +688,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
             }
         }
         copyInto(openAPI, parse(json, true));
+        if (modelUnions) {
+            UnionRules.pinArrayTitles(openAPI);
+        }
         if (super.getUseOpenapiNormalizer()) {
             Map<String, String> rules = new LinkedHashMap<>(openapiNormalizer());
             if (openAPI.getOpenapi() != null && new org.openapitools.codegen.utils.SemVer(openAPI.getOpenapi()).atLeast("3.1.0")) {
@@ -552,11 +709,47 @@ public class TimvwRustCodegen extends RustClientCodegen {
                     GENERATOR_NAME, TITLE_NAMING, stripped.size());
         }
         if (super.getUseInlineModelResolver()) {
-            InlineModelResolverAccess.flatten(openAPI, inlineSchemaNameMapping(), inlineSchemaOption());
+            if (qualifiedInlineNames) {
+                flattenWithQualifiedNames(openAPI);
+            } else {
+                InlineModelResolverAccess.flatten(openAPI, inlineSchemaNameMapping(), inlineSchemaOption());
+            }
+        }
+        if (modelUnions) {
+            LOGGER.info("{}: {}: {} string enum branches became models", GENERATOR_NAME, MODEL_UNIONS,
+                    UnionRules.hoistEnumBranches(openAPI, this::toModelName));
         }
         super.preprocessOpenAPI(openAPI);
         for (String where : SpecNormalizer.integerWithFloatFormatToNumber(openAPI)) {
             LOGGER.warn("{}: read 'type: integer' with a float format as 'type: number' at {}", GENERATOR_NAME, where);
+        }
+    }
+
+    /**
+     * Names the inline schemas, then runs the resolver between two checks: the first sees the schemas the resolver
+     * would overwrite, the second the models it really made.
+     */
+    private void flattenWithQualifiedNames(OpenAPI openAPI) {
+        InlineNames.Plan plan = InlineNames.qualify(openAPI, inlineSchemaOption(), this::toModelName,
+                this::toModelFilename);
+        LOGGER.info("{}: {}: {} models planned, {} titles name a model, {} inline schemas are one instance: {}",
+                GENERATOR_NAME, QUALIFIED_INLINE_NAMES, plan.sites().size(), plan.kept().size(), plan.shared().size(),
+                plan.shared());
+        plan.qualified().forEach((title, why) -> LOGGER.info("{}: {}: title {} names no model: {}", GENERATOR_NAME,
+                QUALIFIED_INLINE_NAMES, title, why));
+        failOnCollisions(NameCollisions.beforeFlattening(openAPI, plan.sites(), this::toModelName,
+                this::toModelFilename));
+        InlineModelResolverAccess.flatten(openAPI, inlineSchemaNameMapping(), inlineSchemaOption());
+        failOnCollisions(NameCollisions.afterFlattening(openAPI, plan.sites(), this::toModelName,
+                this::toModelFilename));
+    }
+
+    private static void failOnCollisions(List<String> collisions) {
+        if (!collisions.isEmpty()) {
+            throw new IllegalArgumentException(String.format("%s: %s: different schemas would produce the same Rust "
+                            + "name (%d); fix this upstream, the generator does not pick a winner:%n  %s",
+                    GENERATOR_NAME, QUALIFIED_INLINE_NAMES, collisions.size(),
+                    String.join(System.lineSeparator() + "  ", collisions)));
         }
     }
 
@@ -625,19 +818,29 @@ public class TimvwRustCodegen extends RustClientCodegen {
         SpecRules.stringIdProperties(openAPI, stringIdProperties, SpecRules.names(stringIdSchemas), log);
         int inlined = SpecRules.inlineStringRefsInUnions(openAPI);
         int pruned = SpecRules.pruneGeneratorHostileKeywords(openAPI);
-        List<String> retitled = SpecRules.disambiguateInlineTitles(openAPI, this::toModelName);
-        for (String r : retitled) {
-            LOGGER.warn("{}: inline title collides with a component schema, renamed: {}", GENERATOR_NAME, r);
+        if (!qualifiedInlineNames) {
+            List<String> retitled = SpecRules.disambiguateInlineTitles(openAPI, this::toModelName);
+            for (String r : retitled) {
+                LOGGER.warn("{}: inline title collides with a component schema, renamed: {}", GENERATOR_NAME, r);
+            }
         }
         int stripped = SpecRules.stripRefSiblings(openAPI);
         int collapsed = SpecRules.collapseRequiredOnlyUnions(openAPI);
         int titled = SpecRules.titleUnnamedUnionVariants(openAPI);
+        if (modelUnions && !qualifiedInlineNames) {
+            for (String r : UnionRules.retitleNestedTwins(openAPI, this::toModelName)) {
+                LOGGER.info("{}: {}: inline title repeats the enclosing one, renamed: {}", GENERATOR_NAME, MODEL_UNIONS,
+                        r);
+            }
+        }
         List<String> hoisted = SpecRules.hoistInlineUnions(openAPI);
         for (String h : hoisted) {
             LOGGER.info("{}: hoisted inline union {}", GENERATOR_NAME, h);
         }
         SpecRules.stringProperties(openAPI, stringProperties, log);
+        Map<String, List<String>> behindValues = openEnums ? OpenEnums.refsBehind(openAPI, jsonValueSchemas) : Map.of();
         SpecRules.jsonValueSchemas(openAPI, jsonValueSchemas, log);
+        OpenEnums.keepRefs(openAPI, behindValues);
         SpecRules.fileProperties(openAPI, fileProperties, log);
         // A hoisted union may carry a stringIdSchemas name: apply the string rendering to it as well.
         SpecRules.stringSchemas(openAPI, stringIdSchemas, log);
@@ -688,8 +891,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         preprocessedSpecJson);
                 be.timvw.openapi.rust.legacy.LegacyModelRewrites.run(
                         new be.timvw.openapi.rust.legacy.LegacyContext(java.nio.file.Paths.get(outputFolder), raw,
-                                preprocessed, boxPolicy(), defaultOnlyWhereValid),
-                        !noStructDisplay,
+                                preprocessed, boxPolicy(), defaultOnlyWhereValid, integersAsI64),
+                        !noStructDisplay, modelUnions,
                         msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg));
             } catch (java.io.IOException e) {
                 throw new IllegalStateException(GENERATOR_NAME + ": legacy model rewrites failed", e);
@@ -698,6 +901,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
         java.nio.file.Path models = java.nio.file.Paths.get(outputFolder, "src", "models");
         try {
             checkStructJsonModels(models, structJsonModels);
+            if (anyDispatch) {
+                UnionRules.writeDispatchModule(models, openEnums);
+            }
             if (enumFromStr) {
                 EnumFromStr.Result result = EnumFromStr.run(models,
                         msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, ENUM_FROM_STR, msg));
@@ -749,7 +955,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         Set<String> structs = new HashSet<>();
         for (ModelMap map : allModels) {
             CodegenModel cm = map.getModel();
-            boolean union = legacyModelRewrites && cm.anyOf != null && !cm.anyOf.isEmpty();
+            boolean union = UnionRules.isUnion(cm) || (legacyModelRewrites && cm.anyOf != null && !cm.anyOf.isEmpty());
             if (!cm.isEnum && cm.discriminator == null && (cm.oneOf == null || cm.oneOf.isEmpty()) && !union) {
                 structs.add(cm.classname);
             }
@@ -789,10 +995,13 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS)) {
                             structJsonModels.add(p.items.dataType.replaceFirst("^models::", ""));
                         }
+                        if (p.dataType != null && unionModels.containsKey(p.dataType.replaceFirst("^models::", ""))) {
+                            p.vendorExtensions.put(UnionRules.UNION_TEXT, true);
+                        }
                     }
                 }
                 if (multipartHelper && op.isMultipart && op.formParams != null && !op.formParams.isEmpty()) {
-                    MultipartRules.classify(openAPI, op,
+                    MultipartRules.classify(openAPI, op, unionModels,
                             msg -> LOGGER.warn("{}: multipart: {}", GENERATOR_NAME, msg));
                     for (CodegenParameter p : op.formParams) {
                         if (p.isFile || !p.vendorExtensions.containsKey(MultipartRules.STOCK)) {

@@ -7,16 +7,22 @@ import io.swagger.v3.oas.models.media.Encoding;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.RequestBody;
+import org.openapitools.codegen.CodegenModel;
 import org.openapitools.codegen.CodegenOperation;
 import org.openapitools.codegen.CodegenParameter;
+import org.openapitools.codegen.CodegenProperty;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Milestone 2.5: how each multipart form parameter is serialized when {@code multipartHelper} is on. Files go through
@@ -30,6 +36,8 @@ import java.util.function.Consumer;
  *       part;</li>
  *   <li>{@code x-multipart-text-media-type}: a scalar with an explicit {@code contentType}, sent with that media
  *       type;</li>
+ *   <li>{@code x-multipart-file-union}: with {@code modelUnions}, a union with file variants, matched on; see
+ *       {@link #fileUnion};</li>
  *   <li>{@code x-multipart-stock}: anything else, rendered by the stock branch.</li>
  * </ul>
  *
@@ -43,19 +51,33 @@ final class MultipartRules {
     static final String TEXT_MEDIA_TYPE = "x-multipart-text-media-type";
     static final String STOCK = "x-multipart-stock";
     static final String CONTENT_TYPE = "x-multipart-content-type";
+    /** The arms of the match on a union with file variants; one of the three flags below says how it is unwrapped. */
+    static final String FILE_UNION = "x-multipart-file-union";
+    static final String FILE_UNION_REQUIRED = "x-multipart-file-union-required";
+    static final String FILE_UNION_NULLABLE = "x-multipart-file-union-nullable";
+    static final String FILE_UNION_OPTIONAL = "x-multipart-file-union-optional";
+
+    private static final String FILE_TYPE = "std::path::PathBuf";
+    private static final String FILES_TYPE = "Vec<" + FILE_TYPE + ">";
+    private static final Pattern MODEL_REFERENCE = Pattern.compile("models::(\\w+)");
 
     private static final Set<String> SCALARS = new HashSet<>(Arrays.asList("string", "integer", "number", "boolean"));
 
     private MultipartRules() {
     }
 
-    /** Sets the multipart vendor extensions on every non-file form parameter of a multipart operation. */
-    static void classify(OpenAPI openAPI, CodegenOperation op, Consumer<String> warn) {
+    /**
+     * Sets the multipart vendor extensions on every non-file form parameter of a multipart operation.
+     *
+     * @param unions the unions of {@code modelUnions} by class name, empty without the option
+     */
+    static void classify(OpenAPI openAPI, CodegenOperation op, Map<String, CodegenModel> unions, Consumer<String> warn) {
         Map<String, Schema> properties = null;
         Map<String, Encoding> encodings = null;
+        Schema<?> root = null;
         MediaType media = multipartMedia(openAPI, op);
         if (media != null) {
-            Schema<?> root = resolve(openAPI, media.getSchema());
+            root = resolve(openAPI, media.getSchema());
             if (root != null) {
                 properties = root.getProperties();
             }
@@ -67,6 +89,9 @@ final class MultipartRules {
             }
             Schema<?> schema = properties == null ? null : resolve(openAPI, properties.get(p.baseName));
             Encoding encoding = encodings == null ? null : encodings.get(p.baseName);
+            if (fileUnion(openAPI, op, p, unions, root, schema, encoding, warn)) {
+                continue;
+            }
             String rule = rule(openAPI, schema, encoding, p.required);
             String contentType = encoding == null ? null : encoding.getContentType();
             if (JSON_ITEMS.equals(rule) && encoding != null && encoding.getStyle() != null) {
@@ -81,6 +106,100 @@ final class MultipartRules {
                         + " is not applied to this parameter shape");
             }
         }
+    }
+
+    /**
+     * A parameter whose union has file variants: its {@code Display} would send a path as text, so the template matches
+     * on the union. A file is what an ordinary file parameter is (part named after the property, file name, no content
+     * type), and an array of files is one such part per file. Every other variant is a schema value, as an optional
+     * object or scalar parameter is: a string is plain text, an object a JSON part. An {@code encoding} {@code contentType}
+     * is for those: ordinary file parts do not apply one, and one media type cannot describe a file and an object.
+     *
+     * @return whether this is such a parameter
+     */
+    private static boolean fileUnion(OpenAPI openAPI, CodegenOperation op, CodegenParameter p,
+            Map<String, CodegenModel> unions, Schema<?> root, Schema<?> schema, Encoding encoding,
+            Consumer<String> warn) {
+        CodegenModel union = p.dataType == null ? null : unions.get(p.dataType.replaceFirst("^models::", ""));
+        if (union == null || !holdsFile(p.dataType, unions, new HashSet<>())) {
+            return false;
+        }
+        String contentType = encoding == null ? null : encoding.getContentType();
+        String partName = arrayPartName(openAPI, p.baseName, root, schema);
+        List<Map<String, Object>> arms = new ArrayList<>();
+        for (CodegenProperty v : UnionRules.variants(union)) {
+            boolean file = FILE_TYPE.equals(v.dataType);
+            boolean files = FILES_TYPE.equals(v.dataType);
+            if (!file && !files && holdsFile(v.dataType, unions, new HashSet<>())) {
+                throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": multipart parameter "
+                        + op.operationId + "." + p.baseName + ": variant " + v.name + " of " + union.classname
+                        + " holds files as " + v.dataType + ", which has no multipart form: only a file and an array of"
+                        + " files can be sent, and anything else would go out as the text of a path");
+            }
+            Map<String, Object> arm = new LinkedHashMap<>();
+            arm.put("pattern", "models::" + union.classname + "::" + v.name);
+            arm.put("isFilePart", file);
+            arm.put("isFileParts", files);
+            arm.put("isValuePart", !file && !files);
+            arm.put("partName", partName);
+            arms.add(arm);
+        }
+        if (contentType != null) {
+            p.vendorExtensions.put(CONTENT_TYPE, contentType);
+            warn.accept(op.operationId + "." + p.baseName + ": encoding contentType " + contentType
+                    + " is not applied to the file variants of " + union.classname);
+        }
+        p.vendorExtensions.put(FILE_UNION, arms);
+        p.vendorExtensions.put(!p.required ? FILE_UNION_OPTIONAL : p.isNullable ? FILE_UNION_NULLABLE : FILE_UNION_REQUIRED,
+                true);
+        return true;
+    }
+
+    /** Whether a Rust type holds a file, directly, in a container, or through a union. */
+    private static boolean holdsFile(String type, Map<String, CodegenModel> unions, Set<String> seen) {
+        if (type.contains(FILE_TYPE)) {
+            return true;
+        }
+        Matcher references = MODEL_REFERENCE.matcher(type);
+        while (references.find()) {
+            CodegenModel union = unions.get(references.group(1));
+            if (union != null && seen.add(union.classname)) {
+                for (CodegenProperty v : UnionRules.variants(union)) {
+                    if (holdsFile(v.dataType, unions, seen)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The name of the parts of an array of files. OpenAPI has no way to rename them, so an API that wants
+     * {@code files[]} can only say so in prose: that name in backticks, in the description of the request body's
+     * schema, of the property or of one of its branches. Otherwise they carry the name of the property.
+     */
+    @SuppressWarnings("rawtypes")
+    private static String arrayPartName(OpenAPI openAPI, String name, Schema<?> root, Schema<?> property) {
+        String documented = "`" + name + "[]`";
+        List<Schema> documents = new ArrayList<>(Arrays.asList(root, property));
+        if (property != null) {
+            for (List<Schema> branches : Arrays.asList(property.getOneOf(), property.getAnyOf())) {
+                if (branches != null) {
+                    for (Schema branch : branches) {
+                        documents.add(branch);
+                        documents.add(resolve(openAPI, branch));
+                    }
+                }
+            }
+        }
+        for (Schema document : documents) {
+            if (document != null && document.getDescription() != null
+                    && document.getDescription().contains(documented)) {
+                return name + "[]";
+            }
+        }
+        return name;
     }
 
     private static String rule(OpenAPI openAPI, Schema<?> schema, Encoding encoding, boolean required) {

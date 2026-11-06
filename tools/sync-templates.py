@@ -74,7 +74,13 @@ MULTIPART_ENUM_TEXT = (
     '        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());\n'
     "    {{/isEnumRef}}\n"
     "    {{^isEnumRef}}\n"
+    # modelUnions: a union's Display prints a string variant as the string, and anything else as JSON.
+    "    {{#vendorExtensions.x-rust-union-text}}\n"
+    '        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());\n'
+    "    {{/vendorExtensions.x-rust-union-text}}\n"
+    "    {{^vendorExtensions.x-rust-union-text}}\n"
     '        multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);\n'
+    "    {{/vendorExtensions.x-rust-union-text}}\n"
     "    {{/isEnumRef}}\n"
     "    {{/isPrimitiveType}}\n"
 )
@@ -84,6 +90,50 @@ MULTIPART_ENUM_TEXT = (
 # `f.map(Box::new)` is the same value and is what clippy's manual_map asks for.
 CTOR_IF_LET = "if let Some(x) = {{{name}}} {Some(Box::new(x))} else {None}"
 CTOR_MAP = "{{{name}}}.map(Box::new)"
+
+
+# modelUnions: a multipart parameter whose union has file variants matches on the union (x-multipart-file-union, set by
+# MultipartRules.fileUnion). A file goes through the helper as an ordinary file parameter does, an array of files sends one
+# part per file, and any other variant is a schema value: a string stays plain text, an object is one JSON part.
+MULTIPART_FILE_UNION_ARMS = """    {{#vendorExtensions.x-multipart-file-union}}
+        {{{pattern}}}(value) => {
+            {{#isFilePart}}
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            {{/isFilePart}}
+            {{#isFileParts}}
+            for path in value {
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+            }
+            {{/isFileParts}}
+            {{#isValuePart}}
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(value)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+            {{/isValuePart}}
+        }
+    {{/vendorExtensions.x-multipart-file-union}}
+"""
+MULTIPART_FILE_UNION = f"""    {{{{#vendorExtensions.x-multipart-file-union-required}}}}
+    match &{{{{{{vendorExtensions.x-rust-param-identifier}}}}}} {{
+{MULTIPART_FILE_UNION_ARMS}    }}
+    {{{{/vendorExtensions.x-multipart-file-union-required}}}}
+    {{{{#vendorExtensions.x-multipart-file-union-nullable}}}}
+    match &{{{{{{vendorExtensions.x-rust-param-identifier}}}}}} {{
+        None => {{ multipart_form = multipart_form.text("{{{{{{baseName}}}}}}", ""); }},
+        Some(param_value) => match param_value {{
+{MULTIPART_FILE_UNION_ARMS}        }},
+    }}
+    {{{{/vendorExtensions.x-multipart-file-union-nullable}}}}
+    {{{{#vendorExtensions.x-multipart-file-union-optional}}}}
+    if let Some(ref param_value) = {{{{{{vendorExtensions.x-rust-param-identifier}}}}}} {{
+        match param_value {{
+{MULTIPART_FILE_UNION_ARMS}        }}
+    }}
+    {{{{/vendorExtensions.x-multipart-file-union-optional}}}}
+"""
 
 
 # Milestone 2.5. multipartHelper: multipart bodies go through src/apis/multipart_helper.rs. Files are read into a
@@ -165,7 +215,7 @@ MULTIPART_HELPER_BLOCK = """{{#multipartHelper}}
     }
     {{/required}}
     {{/vendorExtensions.x-multipart-text-media-type}}
-    {{#vendorExtensions.x-multipart-stock}}
+{{FILE_UNION}}    {{#vendorExtensions.x-multipart-stock}}
 {{STOCK_NON_FILE}}
     {{/vendorExtensions.x-multipart-stock}}
     {{/isFile}}
@@ -213,7 +263,9 @@ def multipart_block(text: str, what: str) -> str:
     if nf_start < 0 or nf_end < 0:
         raise SystemExit(f"{what}: no non-file branch in the multipart block")
     stock_non_file = stock[nf_start + len(NON_FILE_OPEN):nf_end].rstrip("\n")
-    helper = MULTIPART_HELPER_BLOCK.replace("{{STOCK_NON_FILE}}", stock_non_file)
+    helper = MULTIPART_HELPER_BLOCK.replace("{{STOCK_NON_FILE}}", stock_non_file).replace(
+        "{{FILE_UNION}}", MULTIPART_FILE_UNION
+    )
     return text[:start] + helper + stock + "{{/multipartHelper}}\n" + text[end:]
 
 
@@ -379,14 +431,90 @@ def gate_enum_defaults(text: str, what: str) -> str:
     return text
 
 
+# Milestone 3.3. modelUnions: a union (UnionRules sets x-rust-enum) renders from tools/static/model_union.mustache, in
+# place of the stock discriminated and untagged enums, which stay as they are for the other models.
+UNION_BLOCK_START = "{{!-- for schemas that have a discriminator --}}\n"
+UNION_BLOCK_END = "{{!-- for properties that are of enum type --}}\n"
+UNION_GATE_OPEN = "{{^vendorExtensions.x-rust-enum}}\n"
+UNION_GATE_CLOSE = "{{/vendorExtensions.x-rust-enum}}\n"
+
+
+def union_block(text: str, what: str) -> str:
+    text = replace_exactly(
+        text,
+        UNION_BLOCK_START,
+        (ROOT / "tools/static/model_union.mustache").read_text() + UNION_GATE_OPEN + UNION_BLOCK_START,
+        1,
+        what,
+    )
+    return replace_exactly(text, UNION_BLOCK_END, UNION_GATE_CLOSE + UNION_BLOCK_END, 1, what)
+
+
+# Milestone 3.5. openEnums: the generator sets x-rust-open-enum on an enum a response can hold (model enums and inline
+# property enums alike), and the enum gets a catch-all variant after the listed values. A string enum's serializes as a
+# string no value has; an integer enum's as a number no value has. 7.15 renders an integer property enum as a string one.
+OPEN_ENUM_OPEN = "{{#vendorExtensions.x-rust-open-enum}}\n"
+OPEN_ENUM_CLOSE = "{{/vendorExtensions.x-rust-open-enum}}\n"
+OPEN_ENUM_STRING_VARIANT = (
+    OPEN_ENUM_OPEN
+    + '    /// A value this client does not know. It is not kept: this serializes as `"{{{wire}}}"`, which the API does not list.\n'
+    + '    #[serde(rename = "{{{wire}}}", other)]\n'
+    + "    {{{name}}},\n"
+    + OPEN_ENUM_CLOSE
+)
+OPEN_ENUM_INTEGER_VARIANT = (
+    OPEN_ENUM_OPEN
+    + "    /// A value this client does not know. It is not kept: this serializes as `i64::MAX`, which the API does not list.\n"
+    + "    #[serde(other)]\n"
+    + "    {{{name}}} = i64::MAX,\n"
+    + OPEN_ENUM_CLOSE
+)
+OPEN_ENUM_DISPLAY_OPEN = "            {{#vendorExtensions.x-rust-open-enum}}\n"
+OPEN_ENUM_DISPLAY_CLOSE = "            {{/vendorExtensions.x-rust-open-enum}}\n"
+
+
+def open_enums(text: str, what: str) -> str:
+    enum_vars_end = "{{/enumVars}}{{/allowableValues}}\n}\n"
+    property_vars_end = "{{/enumVars}}\n{{/allowableValues}}\n}\n"
+    string_variant = '    #[serde(rename = "{{{value}}}")]\n    {{{name}}},\n'
+    integer_variant = "    {{{name}}} = {{{value}}},\n"
+    for variant, vars_end, catch_all, sites in (
+        (string_variant, enum_vars_end, OPEN_ENUM_STRING_VARIANT, 1),
+        (string_variant, property_vars_end, OPEN_ENUM_STRING_VARIANT, 1),
+        (integer_variant, enum_vars_end, OPEN_ENUM_INTEGER_VARIANT, 1),
+    ):
+        text = replace_exactly(text, variant + vars_end, variant + vars_end[:-2] + catch_all + "}\n", sites, what)
+    text = replace_at_most_once(
+        text, integer_variant + property_vars_end, integer_variant + property_vars_end[:-2] + OPEN_ENUM_INTEGER_VARIANT + "}\n", what
+    )
+    # Display: only value enums have one in the template; EnumFromStr writes the one of a property enum from serde's name.
+    vars_close = "            {{/enumVars}}\n            {{/allowableValues}}\n"
+    string_arm = '            Self::{{{name}}} => write!(f, "{{{value}}}"),\n'
+    text = replace_exactly(
+        text,
+        string_arm + vars_close,
+        string_arm + vars_close + OPEN_ENUM_DISPLAY_OPEN + '            Self::{{{name}}} => write!(f, "{{{wire}}}"),\n' + OPEN_ENUM_DISPLAY_CLOSE,
+        1,
+        what,
+    )
+    integer_arm = '            Self::{{{name}}} => "{{{value}}}",\n'
+    found = text.count(integer_arm + vars_close)
+    if found not in (1, 2):
+        raise SystemExit(f"{what}: expected 1 or 2 integer enum Display impls, found {found}")
+    return text.replace(
+        integer_arm + vars_close,
+        integer_arm + vars_close + OPEN_ENUM_DISPLAY_OPEN + '            Self::{{{name}}} => "{{{wire}}}",\n' + OPEN_ENUM_DISPLAY_CLOSE,
+    )
+
+
 EDITS = {
     "lib.mustache": lambda t, w: CRATE_DOCS + t,
-    "model.mustache": lambda t, w: gate_enum_defaults(per_property_box(wrap_doc_lines(
+    "model.mustache": lambda t, w: union_block(open_enums(gate_enum_defaults(per_property_box(wrap_doc_lines(
         replace_exactly(
             replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), CTOR_IF_LET, CTOR_MAP, 1, w
         ),
         w,
-    ), w), w),
+    ), w), w), w), w),
     "reqwest/api.mustache": lambda t, w: api_template(t, w),
     "reqwest/api_mod.mustache": lambda t, w: replace_exactly(replace_exactly(
         replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w), API_MOD_CONFIGURATION,

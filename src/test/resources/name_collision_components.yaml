@@ -1,0 +1,17 @@
+openapi: 3.1.0
+info:
+  title: Two components, one model
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Static_Chunking_Strategy:
+      type: object
+      properties:
+        static:
+          type: string
+    StaticChunkingStrategy:
+      type: object
+      properties:
+        max_chunk_size_tokens:
+          type: integer

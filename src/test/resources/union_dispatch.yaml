@@ -1,0 +1,412 @@
+openapi: 3.1.0
+info:
+  title: Union dispatch
+  version: 1.0.0
+paths:
+  /things:
+    get:
+      operationId: getThing
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InputItem'
+components:
+  schemas:
+    # A discriminator with a mapping: each value selects one variant.
+    Shape:
+      oneOf:
+        - $ref: '#/components/schemas/Circle'
+        - $ref: '#/components/schemas/Square'
+      discriminator:
+        propertyName: kind
+        mapping:
+          circle: '#/components/schemas/Circle'
+          square: '#/components/schemas/Square'
+    Circle:
+      type: object
+      required: [kind, radius]
+      properties:
+        kind:
+          type: string
+          enum: [circle]
+        radius:
+          type: integer
+          format: int64
+    Square:
+      type: object
+      required: [kind, side]
+      properties:
+        kind:
+          type: string
+          enum: [square]
+        side:
+          type: number
+    # A discriminator on anyOf, without a mapping: the structs have the values.
+    Event:
+      anyOf:
+        - $ref: '#/components/schemas/StartedEvent'
+        - $ref: '#/components/schemas/StoppedEvent'
+      discriminator:
+        propertyName: type
+    StartedEvent:
+      type: object
+      required: [type, at]
+      properties:
+        type:
+          type: string
+          enum: [started]
+        at:
+          type: integer
+    StoppedEvent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [stopped]
+        reason:
+          type: string
+    # A model that is allOf one union is that union, tag included.
+    EventAlias:
+      allOf:
+        - $ref: '#/components/schemas/Event'
+    # No discriminator, but every branch requires `type` with a fixed value.
+    Part:
+      oneOf:
+        - $ref: '#/components/schemas/TextPart'
+        - $ref: '#/components/schemas/ImagePart'
+    TextPart:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+    ImagePart:
+      type: object
+      required: [type, url]
+      properties:
+        type:
+          type: string
+          enum: [image]
+        url:
+          type: string
+    # Several values select one variant, and a branch that is a union counts through its arms.
+    Tool:
+      oneOf:
+        - $ref: '#/components/schemas/WebSearchTool'
+        - $ref: '#/components/schemas/FunctionTool'
+      discriminator:
+        propertyName: type
+    WebSearchTool:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [web_search, web_search_2025_08_26]
+    FunctionTool:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          enum: [function]
+        name:
+          type: string
+    # Implicitly tagged through arms: Part and Tool's values tell the branches apart.
+    Content:
+      oneOf:
+        - $ref: '#/components/schemas/Part'
+        - $ref: '#/components/schemas/Tool'
+    # "message" is on two variants, and only InputMessage allows the tag to be missing.
+    Item:
+      oneOf:
+        - $ref: '#/components/schemas/InputMessage'
+        - $ref: '#/components/schemas/OutputMessage'
+        - $ref: '#/components/schemas/ToolCall'
+      discriminator:
+        propertyName: type
+    InputMessage:
+      type: object
+      required: [role, content]
+      properties:
+        type:
+          type: string
+          enum: [message]
+        role:
+          type: string
+          enum: [user, system]
+        content:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+    OutputMessage:
+      type: object
+      required: [type, role, content]
+      properties:
+        type:
+          type: string
+          enum: [message]
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          type: array
+          items:
+            type: string
+    ToolCall:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          enum: [tool_call]
+        name:
+          type: string
+    # A variant that is a union, next to a struct with the same value and one with a nullable tag.
+    InputItem:
+      oneOf:
+        - $ref: '#/components/schemas/EasyMessage'
+        - $ref: '#/components/schemas/Item'
+        - $ref: '#/components/schemas/ItemReference'
+      discriminator:
+        propertyName: type
+    EasyMessage:
+      type: object
+      required: [role, content]
+      properties:
+        type:
+          type: string
+          enum: [message]
+        role:
+          type: string
+          enum: [user, system]
+        content:
+          type: string
+    ItemReference:
+      type: object
+      required: [id]
+      properties:
+        type:
+          anyOf:
+            - type: string
+              enum: [item_reference]
+            - type: 'null'
+        id:
+          type: string
+    # A discriminator with branches that are no objects, which decode what the tag cannot apply to.
+    ToolChoice:
+      oneOf:
+        - type: string
+          enum: [auto, none]
+        - type: array
+          items:
+            type: string
+        - $ref: '#/components/schemas/NamedChoice'
+      discriminator:
+        propertyName: type
+    NamedChoice:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          enum: [named]
+        name:
+          type: string
+    # Numbers go through the buffer the way they would go to the struct.
+    Measure:
+      oneOf:
+        - $ref: '#/components/schemas/IntegerMeasure'
+        - $ref: '#/components/schemas/NumberMeasure'
+        - $ref: '#/components/schemas/RawMeasure'
+      discriminator:
+        propertyName: type
+    IntegerMeasure:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [integer]
+        value:
+          type: integer
+          format: int64
+    NumberMeasure:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [number]
+        value:
+          type: number
+          format: double
+    RawMeasure:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [raw]
+        value: {}
+    # Branches that are inline objects, in a union that is itself a branch.
+    Stream:
+      oneOf:
+        - $ref: '#/components/schemas/RunEvent'
+        - $ref: '#/components/schemas/DoneEvent'
+    RunEvent:
+      oneOf:
+        - type: object
+          required: [event, data]
+          properties:
+            event:
+              type: string
+              enum: [run.created]
+            data:
+              type: string
+          x-oaiMeta:
+            dataDescription: a run
+        - type: object
+          required: [event, data]
+          properties:
+            event:
+              type: string
+              enum: [run.done]
+            data:
+              type: string
+    DoneEvent:
+      type: object
+      required: [event]
+      properties:
+        event:
+          type: string
+          enum: [done]
+    # No tag: these stay untagged.
+    Scalar:
+      oneOf:
+        - type: string
+        - type: integer
+    NoCommonField:
+      oneOf:
+        - $ref: '#/components/schemas/Left'
+        - $ref: '#/components/schemas/Right'
+    Left:
+      type: object
+      required: [left]
+      properties:
+        left:
+          type: string
+    Right:
+      type: object
+      required: [right]
+      properties:
+        right:
+          type: string
+    # Required with fixed values on every branch, but the same ones: it tells nothing apart.
+    SameRoles:
+      oneOf:
+        - $ref: '#/components/schemas/RoleA'
+        - $ref: '#/components/schemas/RoleB'
+    RoleA:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [user, system]
+    RoleB:
+      type: object
+      required: [role, extra]
+      properties:
+        role:
+          type: string
+          enum: [user, system]
+        extra:
+          type: string
+    # The tag is required only on some branches.
+    SomeOptional:
+      oneOf:
+        - $ref: '#/components/schemas/OptionalKind'
+        - $ref: '#/components/schemas/RequiredKind'
+    OptionalKind:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [a]
+    RequiredKind:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [b]
+    # An object next to a string: the union is not every-branch implicit.
+    Mixed:
+      oneOf:
+        - type: string
+        - $ref: '#/components/schemas/TextPart'
+    # A fixed integer is no tag.
+    NumberedKinds:
+      oneOf:
+        - $ref: '#/components/schemas/KindOne'
+        - $ref: '#/components/schemas/KindTwo'
+    KindOne:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          enum: [1]
+    KindTwo:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          enum: [2]
+    # Two properties qualify: the one that shares fewest values wins over one with a nicer name.
+    TwoCandidates:
+      oneOf:
+        - $ref: '#/components/schemas/CandidateA'
+        - $ref: '#/components/schemas/CandidateB'
+        - $ref: '#/components/schemas/CandidateC'
+    CandidateA:
+      type: object
+      required: [type, object]
+      properties:
+        type:
+          type: string
+          enum: [same]
+        object:
+          type: string
+          enum: [a]
+    CandidateB:
+      type: object
+      required: [type, object]
+      properties:
+        type:
+          type: string
+          enum: [same]
+        object:
+          type: string
+          enum: [b]
+    CandidateC:
+      type: object
+      required: [type, object]
+      properties:
+        type:
+          type: string
+          enum: [other]
+        object:
+          type: string
+          enum: [c]

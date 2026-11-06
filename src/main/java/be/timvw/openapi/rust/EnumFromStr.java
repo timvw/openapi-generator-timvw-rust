@@ -40,9 +40,16 @@ final class EnumFromStr {
     private static final Pattern SERDE_RENAME = Pattern.compile("serde\\(.*\\brename\\s*=\\s*" + STRING_LITERAL);
     private static final Pattern SERDE_RENAME_ALL = Pattern.compile("serde\\(.*\\brename_all\\s*=\\s*" + STRING_LITERAL);
     private static final Pattern NOT_CLOSED = Pattern.compile("serde\\(.*\\b(untagged|tag)\\b");
+    private static final Pattern SERDE_OTHER = Pattern.compile("serde\\(.*\\bother\\b");
 
-    /** One unit variant: its identifier and the string that names it. */
-    record Variant(String name, String wire) {
+    /**
+     * One unit variant: its identifier and the string that names it. The catch-all of {@code openEnums} has a
+     * {@code Display} like the others, but no string parses to it, since parsing is a caller's strict check.
+     */
+    record Variant(String name, String wire, boolean catchAll) {
+        Variant(String name, String wire) {
+            this(name, wire, false);
+        }
     }
 
     /** A closed enum as it stands in the file; {@code hasDisplay} tells whether its {@code Display} is there. */
@@ -131,7 +138,7 @@ final class EnumFromStr {
                             : v.discriminant() != null ? v.discriminant()
                             : applyRenameAll(renameAll, v.name());
                 }
-                Variant variant = new Variant(v.name(), wire);
+                Variant variant = new Variant(v.name(), wire, v.catchAll());
                 Variant first = byWire.putIfAbsent(wire, variant);
                 if (first != null) {
                     warn.accept(name + "::" + v.name() + " prints the same string as " + first.name()
@@ -144,7 +151,7 @@ final class EnumFromStr {
         return found;
     }
 
-    private record RawVariant(String name, String rename, String discriminant) {
+    private record RawVariant(String name, String rename, String discriminant, boolean catchAll) {
     }
 
     /** The attribute and doc lines directly above an item. */
@@ -166,6 +173,7 @@ final class EnumFromStr {
     private static List<RawVariant> unitVariants(String body) {
         List<RawVariant> variants = new ArrayList<>();
         String rename = null;
+        boolean catchAll = false;
         int i = 0;
         while (i < body.length()) {
             char c = body.charAt(i);
@@ -182,8 +190,11 @@ final class EnumFromStr {
                 if (end < 0) {
                     return null;
                 }
-                String found = group(SERDE_RENAME, body.substring(i, end + 1));
+                String attribute = body.substring(i, end + 1);
+                String found = group(SERDE_RENAME, attribute);
                 rename = found != null ? found : rename;
+                // A variant renamed to "other" is no catch-all.
+                catchAll |= SERDE_OTHER.matcher(attribute.replaceAll(STRING_LITERAL, "\"\"")).find();
                 i = end + 1;
             } else {
                 int start = i;
@@ -207,8 +218,9 @@ final class EnumFromStr {
                 } else if (i < body.length() && body.charAt(i) != ',') {
                     return null;
                 }
-                variants.add(new RawVariant(name, rename, discriminant));
+                variants.add(new RawVariant(name, rename, discriminant, catchAll));
                 rename = null;
+                catchAll = false;
             }
         }
         return variants;
@@ -313,7 +325,7 @@ final class EnumFromStr {
                 .append("        match value {\n");
         List<String> seen = new ArrayList<>();
         for (Variant v : e.variants()) {
-            if (!seen.contains(v.wire())) {
+            if (!v.catchAll() && !seen.contains(v.wire())) {
                 seen.add(v.wire());
                 out.append("            \"").append(v.wire()).append("\" => Ok(Self::").append(v.name()).append("),\n");
             }

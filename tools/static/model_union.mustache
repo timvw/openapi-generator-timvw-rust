@@ -1,0 +1,124 @@
+{{!-- modelUnions: a union, as UnionRules decided it --}}
+{{#vendorExtensions.x-rust-enum}}
+{{#vendorExtensions.x-rust-enum-variants}}
+{{#vendorExtensions.x-rust-enum-model}}
+pub use crate::models::{{{.}}};
+{{/vendorExtensions.x-rust-enum-model}}
+{{/vendorExtensions.x-rust-enum-variants}}
+
+{{!-- unionDispatch: a tagged union serializes untagged, since each struct holds its tag, and gets the Deserialize further down. --}}
+#[derive(Clone, Debug, PartialEq, Serialize{{^vendorExtensions.x-rust-enum-dispatch}}, Deserialize{{/vendorExtensions.x-rust-enum-dispatch}})]
+#[serde(untagged)]
+pub enum {{{classname}}} {
+{{#vendorExtensions.x-rust-enum-variants}}
+    {{#description}}
+    /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
+    {{/description}}
+    {{{name}}}({{{vendorExtensions.x-rust-enum-payload}}}),
+{{/vendorExtensions.x-rust-enum-variants}}
+{{#vendorExtensions.x-rust-enum-dispatch}}
+{{#catchAll}}
+    /// A `{{{tagName}}}` this client does not know, holding the value as it came, which is what it serializes to.
+    {{{.}}}(serde_json::Value),
+{{/catchAll}}
+{{/vendorExtensions.x-rust-enum-dispatch}}
+}
+
+{{#vendorExtensions.x-rust-enum-dispatch}}
+impl<'de> Deserialize<'de> for {{{classname}}} {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        Self::dispatch(value).map_err(serde::de::Error::custom)
+    }
+}
+
+impl {{{classname}}} {
+    /// Decodes the variant that `{{{tagName}}}` selects, so an error is that variant's.
+    {{!-- Inline, so that like a derived Deserialize it is compiled where something decodes this type. Without it the client's rlib grows by 65% and its build by 14%. --}}
+    #[inline]
+    fn dispatch(value: serde_json::Value) -> Result<Self, String> {
+        use models::union_dispatch::{self as dispatch, Tag};
+        const UNION: &str = "{{{classname}}}";
+        const TAG: &str = {{{tagLiteral}}};
+        match dispatch::tag(&value, UNION, TAG)? {
+            {{#arms}}
+            {{{pattern}}} => {{#single}}dispatch::decode(value, UNION, "{{{name}}}").map(Self::{{{name}}}),{{/single}}{{#attempts}}{{#-first}}dispatch::first_of(value, UNION, TAG, &[{{/-first}}("{{{name}}}", |v| serde_json::from_value(v).map(Self::{{{name}}})),{{#-last}}]),{{/-last}}{{/attempts}}
+            {{/arms}}
+            {{#catchAll}}
+            Tag::Value(_) => Ok(Self::{{{.}}}(value)),
+            {{/catchAll}}
+            {{^catchAll}}
+            Tag::Value(other) => Err(dispatch::unknown_tag(UNION, TAG, other)),
+            {{/catchAll}}
+            {{^allowsMissing}}
+            Tag::Missing => Err(dispatch::missing_tag(UNION, TAG)),
+            {{/allowsMissing}}
+            {{^acceptsNonObject}}
+            Tag::NotObject => Err(dispatch::not_an_object(&value, UNION, TAG)),
+            {{/acceptsNonObject}}
+        }
+    }
+}
+
+{{/vendorExtensions.x-rust-enum-dispatch}}
+{{^defaultOnlyWhereValid}}
+impl Default for {{{classname}}} {
+    fn default() -> Self {
+        {{#vendorExtensions.x-rust-enum-variants}}{{#-first}}Self::{{{name}}}(Default::default()){{/-first}}{{/vendorExtensions.x-rust-enum-variants}}
+    }
+}
+
+{{/defaultOnlyWhereValid}}
+{{#vendorExtensions.x-rust-enum-text}}
+impl {{{classname}}} {
+    pub fn new_text(text: String) -> Self {
+        Self::{{{.}}}(text)
+    }
+    {{#vendorExtensions.x-rust-enum-variants}}
+    {{#vendorExtensions.x-rust-enum-new-fn}}
+    pub fn {{{.}}}(items: {{{vendorExtensions.x-rust-enum-payload}}}) -> Self {
+        Self::{{{name}}}(items)
+    }
+    {{/vendorExtensions.x-rust-enum-new-fn}}
+    {{/vendorExtensions.x-rust-enum-variants}}
+}
+
+impl From<String> for {{{classname}}} {
+    fn from(s: String) -> Self {
+        Self::{{{.}}}(s)
+    }
+}
+
+impl From<&str> for {{{classname}}} {
+    fn from(s: &str) -> Self {
+        Self::{{{.}}}(s.to_string())
+    }
+}
+
+{{/vendorExtensions.x-rust-enum-text}}
+impl std::fmt::Display for {{{classname}}} {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            {{#vendorExtensions.x-rust-enum-variants}}
+            {{#vendorExtensions.x-rust-enum-plain-display}}
+            Self::{{{name}}}(value) => write!(f, "{}", value),
+            {{/vendorExtensions.x-rust-enum-plain-display}}
+            {{^vendorExtensions.x-rust-enum-plain-display}}
+            Self::{{{name}}}(value) => match serde_json::to_string(value) {
+                Ok(s) => write!(f, "{}", s),
+                Err(_) => Err(std::fmt::Error),
+            },
+            {{/vendorExtensions.x-rust-enum-plain-display}}
+            {{/vendorExtensions.x-rust-enum-variants}}
+            {{#vendorExtensions.x-rust-enum-dispatch}}
+            {{#catchAll}}
+            Self::{{{.}}}(value) => write!(f, "{}", value),
+            {{/catchAll}}
+            {{/vendorExtensions.x-rust-enum-dispatch}}
+        }
+    }
+}
+{{/vendorExtensions.x-rust-enum}}

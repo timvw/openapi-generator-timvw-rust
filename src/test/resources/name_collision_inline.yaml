@@ -1,0 +1,20 @@
+openapi: 3.1.0
+info:
+  title: An inline schema named like a component
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    AuditLog:
+      type: object
+      properties:
+        actor:
+          type: object
+          properties:
+            session:
+              type: string
+    AuditLogActor:
+      type: object
+      properties:
+        api_key:
+          type: string

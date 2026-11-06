@@ -22,10 +22,11 @@ import java.util.Map;
  *   <li>{@code defaultOnlyWhereValid}: the generator decides {@code Default} from the required fields, so the
  *       rewrites that infer it from the rendered text stay out and the ones that write an enum give it no
  *       {@code Default} impl.</li>
+ *   <li>{@code integersAsI64}: integers a rewrite writes are {@code i64} unless {@code format: int32}.</li>
  * </ul>
  */
 public record LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec,
-                            BoxPolicy boxPolicy, boolean defaultOnlyWhereValid) {
+                            BoxPolicy boxPolicy, boolean defaultOnlyWhereValid, boolean integersAsI64) {
 
     /** A context in which every model payload a rewrite writes is boxed, as in the scripts. */
     public LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec) {
@@ -36,6 +37,12 @@ public record LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, 
     public LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec,
                          BoxPolicy boxPolicy) {
         this(root, rawSpec, preprocessedSpec, boxPolicy, false);
+    }
+
+    /** A context in which every integer a rewrite writes is {@code i32}, as in the scripts. */
+    public LegacyContext(Path root, Map<String, Object> rawSpec, Map<String, Object> preprocessedSpec,
+                         BoxPolicy boxPolicy, boolean defaultOnlyWhereValid) {
+        this(root, rawSpec, preprocessedSpec, boxPolicy, defaultOnlyWhereValid, false);
     }
 
     public Path src() {

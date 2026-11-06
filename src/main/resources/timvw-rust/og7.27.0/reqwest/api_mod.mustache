@@ -189,6 +189,10 @@ pub mod configuration;
 // Internal helper module for multipart file handling
 pub(crate) mod multipart_helper;
 
-{{/multipartHelper}}{{#webhookModules}}
+{{/multipartHelper}}{{#typedEventStreams}}
+
+pub mod sse;
+
+{{/typedEventStreams}}{{#webhookModules}}
 pub mod {{{.}}};
 {{/webhookModules}}

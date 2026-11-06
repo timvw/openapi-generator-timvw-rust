@@ -73,6 +73,7 @@ pub enum {{{operationIdCamelCase}}}Success {
 {{/supportMultipleResponses}}
 {{#operations}}
 {{#operation}}
+{{^vendorExtensions.x-rust-content-variant}}
 /// struct for typed errors of method [`{{operationId}}`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -91,6 +92,7 @@ pub enum {{{operationIdCamelCase}}}Error {
     UnknownValue(serde_json::Value),
 }
 
+{{/vendorExtensions.x-rust-content-variant}}
 {{/operation}}
 {{/operations}}
 
@@ -102,6 +104,10 @@ pub enum {{{operationIdCamelCase}}}Error {
 {{#notes}}
 /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
 {{/notes}}
+{{#vendorExtensions.x-rust-variant-doc}}
+///
+/// {{{.}}}
+{{/vendorExtensions.x-rust-variant-doc}}
 {{#vendorExtensions.x-group-parameters}}
 {{#bonBuilders}}
 #[bon::builder]
@@ -118,9 +124,9 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
 ### Multi response support
 }}{{#supportMultipleResponses}}ResponseContent<{{{operationIdCamelCase}}}Success>{{/supportMultipleResponses}}{{!
 ### Regular return type
-}}{{^supportMultipleResponses}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/supportMultipleResponses}}{{/isResponseFile}}{{!
+}}{{^supportMultipleResponses}}{{#vendorExtensions.x-rust-event-stream}}super::sse::EventStream<{{{returnType}}}, {{{vendorExtensions.x-rust-error-enum}}}>{{/vendorExtensions.x-rust-event-stream}}{{^vendorExtensions.x-rust-event-stream}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/vendorExtensions.x-rust-event-stream}}{{/supportMultipleResponses}}{{/isResponseFile}}{{!
 ### Error Type
-}}, Error<{{{operationIdCamelCase}}}Error>> {
+}}, Error<{{{vendorExtensions.x-rust-error-enum}}}>> {
 {{/vendorExtensions.x-group-parameters}}
 {{^vendorExtensions.x-group-parameters}}
 {{#bonBuilders}}
@@ -148,9 +154,9 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
 ### Multi response support
 }}{{#supportMultipleResponses}}ResponseContent<{{{operationIdCamelCase}}}Success>{{/supportMultipleResponses}}{{!
 ### Regular return type
-}}{{^supportMultipleResponses}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/supportMultipleResponses}}{{/isResponseFile}}{{!
+}}{{^supportMultipleResponses}}{{#vendorExtensions.x-rust-event-stream}}super::sse::EventStream<{{{returnType}}}, {{{vendorExtensions.x-rust-error-enum}}}>{{/vendorExtensions.x-rust-event-stream}}{{^vendorExtensions.x-rust-event-stream}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/vendorExtensions.x-rust-event-stream}}{{/supportMultipleResponses}}{{/isResponseFile}}{{!
 ### Error Type
-}}, Error<{{{operationIdCamelCase}}}Error>> {
+}}, Error<{{{vendorExtensions.x-rust-error-enum}}}>> {
     {{#allParams.0}}
     // add a prefix to parameters to efficiently prevent name collisions
     {{/allParams.0}}
@@ -658,15 +664,48 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     {{/supportAsync}}
     {{/isFile}}
     {{^isFile}}
+    {{#vendorExtensions.x-rust-text-body}}
+    {{#required}}
+    req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, "{{{.}}}").body({{{vendorExtensions.x-rust-param-identifier}}}.to_owned());
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, "{{{.}}}").body(param_value.to_owned());
+    }
+    {{/required}}
+    {{/vendorExtensions.x-rust-text-body}}
+    {{^vendorExtensions.x-rust-text-body}}
     req_builder = req_builder.json(&{{{vendorExtensions.x-rust-param-identifier}}});
+    {{/vendorExtensions.x-rust-text-body}}
     {{/isFile}}
     {{/bodyParams}}
     {{/hasBodyParam}}
 
+    {{#vendorExtensions.x-rust-event-stream}}
+    req_builder = req_builder.header(reqwest::header::ACCEPT, "text/event-stream");
+    {{/vendorExtensions.x-rust-event-stream}}
     let req = req_builder.build()?;
     let resp = configuration.client.execute(req){{#supportAsync}}.await{{/supportAsync}}?;
 
     let status = resp.status();
+    {{#vendorExtensions.x-rust-event-stream}}
+    if status.is_client_error() || status.is_server_error() {
+        let content = resp.text(){{#supportAsync}}.await{{/supportAsync}}?;
+        let entity: Option<{{{vendorExtensions.x-rust-error-enum}}}> = serde_json::from_str(&content).ok();
+        return Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}));
+    }
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    if !content_type.starts_with("text/event-stream") {
+        return Err(Error::from(serde_json::Error::custom(format!("Received `{content_type}` content type response where a `text/event-stream` of `{{{returnType}}}` was expected (does the request ask for a stream?)"))));
+    }
+    Ok(super::sse::EventStream::from_response(resp))
+}
+    {{/vendorExtensions.x-rust-event-stream}}
+    {{^vendorExtensions.x-rust-event-stream}}
     {{^supportMultipleResponses}}
     {{^isResponseFile}}
     {{#returnType}}
@@ -716,10 +755,11 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         {{/supportMultipleResponses}}
     } else {
         let content = resp.text(){{#supportAsync}}.await{{/supportAsync}}?;
-        let entity: Option<{{{operationIdCamelCase}}}Error> = serde_json::from_str(&content).ok();
+        let entity: Option<{{{vendorExtensions.x-rust-error-enum}}}> = serde_json::from_str(&content).ok();
         Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}))
     }
 }
+    {{/vendorExtensions.x-rust-event-stream}}
 
 {{/operation}}
 {{/operations}}

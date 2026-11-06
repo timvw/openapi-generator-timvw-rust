@@ -40,6 +40,9 @@ serde = { version = "^1.0", features = ["derive"] }
 serde_with = { version = "^3.8", default-features = false, features = ["base64", "std", "macros"] }
 {{/serdeWith}}
 serde_json = "^1.0"
+{{#typedEventStreams}}
+futures-core = "^0.3"
+{{/typedEventStreams}}
 serde_repr = "^0.1"
 {{#useSerdePathToError}}
 serde_path_to_error = "^0.1"
@@ -84,7 +87,7 @@ tokio-util = { version = "^0.7", features = ["codec"] }
 reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart", "stream", "query", "form"] }
 {{/useAsyncFileStream}}
 {{^useAsyncFileStream}}
-reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart", "query", "form"] }
+reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart"{{#typedEventStreams}}, "stream"{{/typedEventStreams}}, "query", "form"] }
 {{/useAsyncFileStream}}
 {{#supportMiddleware}}
 reqwest-middleware = { version = "^0.5", features = ["json", "multipart", "query", "form"] }

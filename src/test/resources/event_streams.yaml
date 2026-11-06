@@ -1,0 +1,333 @@
+openapi: 3.1.0
+info:
+  title: Event streams
+  version: 1.0.0
+# The shapes of openai-client-base's operations with more than one media type: a JSON response that can be streamed
+# (createResponse), an operation that only streams (listEvents), a plain struct streamed with a [DONE] sentinel
+# (createChat), a binary response that can be streamed (createSpeech), JSON, text and a stream (createTranscription), a
+# request body as multipart or JSON with a streamable response (createEdit), JSON or multipart (createVoice), multipart
+# or an SDP text body (createCall), and the Assistants envelope (createRun), whose data: payload is not the event schema.
+paths:
+  /responses:
+    post:
+      operationId: createResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResponse'
+      responses:
+        '200':
+          description: The response, or its events when streamed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ResponseStreamEvent'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /sessions/{session_id}/events:
+    get:
+      operationId: listEvents
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The session's events
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ResponseStreamEvent'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /chat:
+    post:
+      operationId: createChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResponse'
+      responses:
+        '200':
+          description: A completion, or chunks when streamed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chunk'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/Chunk'
+  /speech:
+    post:
+      operationId: createSpeech
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResponse'
+      responses:
+        '200':
+          description: Audio, or audio events when streamed
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ResponseStreamEvent'
+  /transcriptions:
+    post:
+      operationId: createTranscription
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                stream:
+                  type: boolean
+      responses:
+        '200':
+          description: A transcription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcription'
+            text/plain:
+              schema:
+                type: string
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ResponseStreamEvent'
+  /edits:
+    post:
+      operationId: createEdit
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                prompt:
+                  type: string
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEditJson'
+      responses:
+        '200':
+          description: The edited image, or its events when streamed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcription'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ResponseStreamEvent'
+  /voices:
+    post:
+      operationId: createVoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEditJson'
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+      responses:
+        '200':
+          description: The voice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcription'
+  /calls:
+    post:
+      operationId: create-call
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [sdp]
+              properties:
+                sdp:
+                  type: string
+          application/sdp:
+            schema:
+              type: string
+      responses:
+        '201':
+          description: The SDP answer
+          content:
+            text/plain:
+              schema:
+                type: string
+  /runs:
+    post:
+      operationId: createRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResponse'
+      responses:
+        '200':
+          description: A run, or its events when streamed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcription'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/AssistantStreamEvent'
+components:
+  schemas:
+    CreateResponse:
+      type: object
+      required: [model]
+      properties:
+        model:
+          type: string
+        stream:
+          type: boolean
+    CreateEditJson:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+    Response:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+    Transcription:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+    Chunk:
+      type: object
+      required: [id, delta]
+      properties:
+        id:
+          type: string
+        delta:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message:
+              type: string
+    ResponseStreamEvent:
+      anyOf:
+        - $ref: '#/components/schemas/ResponseCreatedEvent'
+        - $ref: '#/components/schemas/ResponseTextDeltaEvent'
+        - $ref: '#/components/schemas/ResponseCompletedEvent'
+      discriminator:
+        propertyName: type
+    ResponseCreatedEvent:
+      type: object
+      required: [type, sequence_number, response]
+      properties:
+        type:
+          type: string
+          enum: [response.created]
+        sequence_number:
+          type: integer
+        response:
+          $ref: '#/components/schemas/Response'
+    ResponseTextDeltaEvent:
+      type: object
+      required: [type, sequence_number, delta]
+      properties:
+        type:
+          type: string
+          enum: [response.output_text.delta]
+        sequence_number:
+          type: integer
+        delta:
+          type: string
+    ResponseCompletedEvent:
+      type: object
+      required: [type, sequence_number, response]
+      properties:
+        type:
+          type: string
+          enum: [response.completed]
+        sequence_number:
+          type: integer
+        response:
+          $ref: '#/components/schemas/Response'
+    AssistantStreamEvent:
+      oneOf:
+        - type: object
+          required: [event, data]
+          properties:
+            event:
+              type: string
+              enum: [thread.run.created]
+            data:
+              $ref: '#/components/schemas/Transcription'
+        - type: object
+          required: [event, data]
+          properties:
+            event:
+              type: string
+              enum: [done]
+            data:
+              type: string
+              enum: ['[DONE]']

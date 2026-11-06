@@ -90,10 +90,10 @@ jobs:
       fail-fast: false
       matrix:
         # One image per openapi-generator version a client repo pins; the default
-        # (7.25.0) also gets the plain <version> and latest tags.
-        openapi-generator: ["7.15.0", "7.25.0"]
+        # (7.27.0, the newest) also gets the plain <version> and latest tags.
+        openapi-generator: ["7.15.0", "7.25.0", "7.27.0"]
         include:
-          - openapi-generator: "7.25.0"
+          - openapi-generator: "7.27.0"
             default: true
     steps:
       - uses: actions/checkout@v7

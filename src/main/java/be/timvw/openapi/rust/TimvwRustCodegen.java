@@ -217,6 +217,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("7.15", "og7.15.0");
         m.put("7.25", "og7.25.0");
+        m.put("7.27", "og7.27.0");
         return m;
     }
 
@@ -317,8 +318,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         + "OpenAPI-Generator/<spec version>/rust; httpUserAgent still wins", false));
         cliOptions.add(CliOption.newBoolean(INTEGERS_AS_I64,
                 "Render an integer as i64 unless the spec says format: int32, wherever it appears; spec bounds never "
-                        + "pick a type. Without the option an integer without a format, or with one other than int64, "
-                        + "is i32, as in stock -g rust", false));
+                        + "pick a type. Without the option integers render as in stock -g rust (an integer without a "
+                        + "format is i32)", false));
         cliOptions.add(CliOption.newString(PREPROCESSED_SPEC_FILE,
                 "Write the spec as it stands after the spec rules (before inline schemas are named) to this "
                         + "output-relative path, as JSON"));
@@ -370,15 +371,20 @@ public class TimvwRustCodegen extends RustClientCodegen {
      * With {@code integersAsI64}, an integer the stock generator renders as {@code i32} is {@code i64} unless its
      * format is {@code int32}. Every location (fields, container items, parameters, responses, union variants) gets
      * its type from here. The stock flags are left alone, so {@code isInteger} still selects the integer enum
-     * rendering. {@code preferUnsignedInt} and {@code bestFitInt} are pinned to false, so the stock mapping can only
-     * answer {@code i32} or {@code i64} for an integer.
+     * rendering. {@code preferUnsignedInt} and {@code bestFitInt} are pinned to false; up to openapi-generator 7.25
+     * the stock mapping then only answers {@code i32} or {@code i64} for an integer, 7.27 also maps the formats
+     * {@code int8}, {@code int16} and {@code uint8} to {@code uint64} to sized and unsigned types, which the option
+     * turns into {@code i64} as well.
      */
     @Override
     @SuppressWarnings("rawtypes")
     public String getSchemaType(Schema p) {
         String type = super.getSchemaType(p);
-        return integersAsI64 && "i32".equals(type) && !"int32".equals(p.getFormat()) ? "i64" : type;
+        return integersAsI64 && NARROW_INTEGER_TYPES.contains(type) && !"int32".equals(p.getFormat()) ? "i64" : type;
     }
+
+    /** The integer types other than {@code i64} the stock mapping can answer, which {@code integersAsI64} widens. */
+    private static final Set<String> NARROW_INTEGER_TYPES = Set.of("i8", "i16", "i32", "u8", "u16", "u32", "u64");
 
     /** The model name the stock generator gives a composed schema without typed branches ({@code anyOf<>}). */
     static final String UNTYPED_COMPOSED = "AnyOfLessThanGreaterThan";

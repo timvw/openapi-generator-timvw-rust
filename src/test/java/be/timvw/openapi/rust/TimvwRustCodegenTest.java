@@ -186,6 +186,8 @@ class TimvwRustCodegenTest {
             "7.15.3,og7.15.0",
             "7.25.0,og7.25.0",
             "7.25.1,og7.25.0",
+            "7.27.0,og7.27.0",
+            "7.27.1,og7.27.0",
     })
     void picksTheTemplateSetOfTheRunningOpenApiGenerator(String version, String set) {
         TimvwRustCodegen c = new TimvwRustCodegen(version);

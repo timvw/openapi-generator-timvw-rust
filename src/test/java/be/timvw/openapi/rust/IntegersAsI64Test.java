@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.openapitools.codegen.ClientOptInput;
 import org.openapitools.codegen.DefaultGenerator;
 import org.openapitools.codegen.config.CodegenConfigurator;
+import org.openapitools.codegen.utils.ImplementationVersion;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -79,6 +80,12 @@ class IntegersAsI64Test {
                 "pub plain: i64,", "pub big: i64,", "pub stamp: i64,", "pub odd: i64,", "pub bounded: i64,",
                 "pub opt: Option<i64>,", "pub nullable_opt: Option<Option<i64>>,",
                 "pub small: i32,", "pub opt_small: Option<i32>,"));
+    }
+
+    @Test
+    void sizedAndUnsignedFormatsAreI64() throws IOException {
+        // openapi-generator 7.27 maps these formats to i8 and u64; older versions to i32.
+        assertContainsAll(model(on, "thing"), List.of("pub opt_byte: Option<i64>,", "pub opt_unsigned: Option<i64>,"));
     }
 
     @Test
@@ -161,8 +168,10 @@ class IntegersAsI64Test {
 
     @Test
     void withoutTheOptionIntegersStayAsInStock() throws IOException {
+        // openapi-generator 7.27 maps format: int16 to i16; before, every format other than int64 was i32.
+        String odd = Integer.parseInt(ImplementationVersion.read().split("\\.")[1]) < 27 ? "i32" : "i16";
         assertContainsAll(model(off, "thing"), List.of(
-                "pub plain: i32,", "pub small: i32,", "pub big: i64,", "pub stamp: i32,", "pub odd: i32,",
+                "pub plain: i32,", "pub small: i32,", "pub big: i64,", "pub stamp: i32,", "pub odd: " + odd + ",",
                 "pub bounded: i32,", "pub count: i32,", "pub list: Option<Vec<i32>>,"));
         assertContainsAll(function(off, "get_thing"), List.of("id: i32,", "limit: Option<i32>,", "after: Option<i64>,"));
         assertTrue(model(off, "epochs").contains("Integer(i32),"), model(off, "epochs"));

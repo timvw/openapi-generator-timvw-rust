@@ -21,7 +21,7 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
 | Maven | `be.timvw:openapi-generator-timvw-rust` on Maven Central |
 | Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>` |
 | Generator name | `timvw-rust` (`-g timvw-rust`) |
-| Supported openapi-generator | 7.15.x and 7.25.x (one image per version) |
+| Supported openapi-generator | 7.15.x, 7.25.x and 7.27.x (one image per version) |
 
 The Docker image is a drop-in replacement for `openapitools/openapi-generator-cli`: same arguments,
 same `/local` mount convention, same `JAVA_OPTS` environment variable.
@@ -29,10 +29,10 @@ same `/local` mount convention, same `JAVA_OPTS` environment variable.
 ## Usage in the client repos
 
 Images are published per openapi-generator version, tagged `<generator version>-og<openapi-generator version>`
-(for example `0.2.0-og7.15.0` and `0.2.0-og7.25.0`). The plain `<generator version>` and `latest` tags
-point at the newest supported openapi-generator (7.25.0). A client repo pins the openapi-generator
-version its pipeline is tuned for; both client repos now use `-og7.25.0`, and `-og7.15.0` stays published
-for pipelines that have not upgraded yet.
+(for example `0.2.0-og7.15.0`, `0.2.0-og7.25.0` and `0.2.0-og7.27.0`). The plain `<generator version>` and
+`latest` tags point at the newest supported openapi-generator (7.27.0). A client repo pins the openapi-generator
+version its pipeline is tuned for: openai-client-base uses `-og7.25.0`, langfuse-client-base `-og7.27.0`, and
+`-og7.15.0` stays published for pipelines that have not upgraded yet.
 
 Replace the image in `scripts/generate.sh`:
 

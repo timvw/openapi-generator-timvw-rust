@@ -184,6 +184,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("7.15", "og7.15.0");
         m.put("7.25", "og7.25.0");
+        m.put("7.27", "og7.27.0");
         return m;
     }
 

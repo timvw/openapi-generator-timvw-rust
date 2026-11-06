@@ -10,7 +10,7 @@
 
 # One image per openapi-generator version: the client repos pin the version whose output their
 # pipeline is tuned for (tags are <generator version>-og<openapi-generator version>).
-ARG OPENAPI_GENERATOR_VERSION=7.25.0
+ARG OPENAPI_GENERATOR_VERSION=7.27.0
 # SHA-1 of the stock CLI jar. Empty = fetch the .sha1 published next to the jar on Maven Central;
 # set it explicitly to pin a known checksum.
 ARG OPENAPI_GENERATOR_CLI_SHA1=

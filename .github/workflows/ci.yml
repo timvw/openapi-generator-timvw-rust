@@ -15,12 +15,12 @@ jobs:
     name: Test with the pom's openapi-generator version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "25"
           cache: maven
 
       - name: Maven test
@@ -38,12 +38,12 @@ jobs:
     env:
       OPENAPI_GENERATOR_VERSION: ${{ matrix.openapi-generator }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "25"
           cache: maven
 
       - name: Maven verify

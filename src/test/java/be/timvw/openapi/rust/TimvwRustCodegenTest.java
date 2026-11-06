@@ -8,6 +8,7 @@ import org.openapitools.codegen.CodegenConfig;
 import org.openapitools.codegen.CodegenConfigLoader;
 import org.openapitools.codegen.CodegenConstants;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -123,6 +124,18 @@ class TimvwRustCodegenTest {
             assertTrue(e.getMessage().contains("'" + option + "'"), e.getMessage());
             assertTrue(e.getMessage().contains("not supported"), e.getMessage());
         }
+    }
+
+    /** jsonValueSchemas was removed: a config that still sets it fails rather than silently changing the models. */
+    @Test
+    void rejectsTheRemovedJsonValueSchemas() {
+        TimvwRustCodegen c = codegen();
+        c.additionalProperties().put(TimvwRustCodegen.JSON_VALUE_SCHEMAS, List.of("ResponseStreamEvent"));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
+        assertTrue(e.getMessage().contains("jsonValueSchemas was removed"), e.getMessage());
+        TimvwRustCodegen empty = codegen();
+        empty.additionalProperties().put(TimvwRustCodegen.JSON_VALUE_SCHEMAS, List.of());
+        empty.processOpts();
     }
 
     @Test

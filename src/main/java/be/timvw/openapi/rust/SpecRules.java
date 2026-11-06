@@ -5,7 +5,6 @@ import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
-import io.swagger.v3.oas.models.media.ObjectSchema;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.parameters.Parameter;
@@ -38,7 +37,7 @@ import java.util.regex.Pattern;
  * {@link #inlineStringRefsInUnions}, {@link #normalizeHyphenatedSchemaNames}, {@link #disambiguateInlineTitles} and
  * {@link #simplifyObjectQueryParameters}. The <em>spec decisions</em> are driven by options and name the schemas
  * or properties they apply to: {@link #routeWebhooks}, {@link #stringSchemas}, {@link #stringIdProperties},
- * {@link #stringProperties}, {@link #jsonValueSchemas} and the deep-object allow list of
+ * {@link #stringProperties} and the deep-object allow list of
  * {@link #simplifyObjectQueryParameters}.</p>
  *
  * <p>Every rule reports what it changed through a {@code Consumer<String>} so the generator can log it.</p>
@@ -273,20 +272,6 @@ final class SpecRules {
             file.setDescription(old.getDescription());
             schema.getProperties().put(prop, file);
             log.accept("fileProperties: " + entry + " is now a file");
-        }
-    }
-
-    /** Replaces each named component schema by a free-form object, rendered as {@code serde_json::Value}. */
-    @SuppressWarnings("rawtypes")
-    static void jsonValueSchemas(OpenAPI openAPI, Collection<String> names, Consumer<String> log) {
-        Map<String, Schema> schemas = schemas(openAPI);
-        for (String name : names) {
-            if (!schemas.containsKey(name)) {
-                log.accept("jsonValueSchemas: no component schema named " + name);
-                continue;
-            }
-            schemas.put(name, new ObjectSchema());
-            log.accept("jsonValueSchemas: " + name + " is now a free-form object");
         }
     }
 

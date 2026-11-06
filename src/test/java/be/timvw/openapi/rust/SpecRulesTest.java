@@ -44,7 +44,6 @@ class SpecRulesTest {
         props.put(TimvwRustCodegen.STRING_ID_SCHEMAS, Arrays.asList("ModelIds"));
         props.put(TimvwRustCodegen.STRING_ID_PROPERTIES, "model=ID_of_the_model_to_use|voice");
         props.put(TimvwRustCodegen.STRING_PROPERTIES, "Event.kind");
-        props.put(TimvwRustCodegen.JSON_VALUE_SCHEMAS, "Payload");
         props.put(TimvwRustCodegen.DEEP_OBJECT_QUERY_PARAMETERS, "/things?filter");
         props.put(TimvwRustCodegen.RESET_QUERY_PARAMETER_STYLE, "true");
         props.put(TimvwRustCodegen.PREPROCESSED_SPEC_FILE, "target/specs/preprocessed.json");
@@ -122,11 +121,9 @@ class SpecRulesTest {
     }
 
     @Test
-    void stringPropertiesAndJsonValueSchemas() throws IOException {
+    void stringProperties() throws IOException {
         String event = read("src/models/event.rs");
         assertTrue(event.contains("pub kind: Option<String>,"), event);
-        assertTrue(event.contains("pub payload: Option<serde_json::Value>,"), event);
-        assertFalse(Files.exists(output.resolve("src/models/payload.rs")));
     }
 
     @Test

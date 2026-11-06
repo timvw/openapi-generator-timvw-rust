@@ -1,0 +1,228 @@
+openapi: 3.1.0
+info:
+  title: Event unions
+  version: 1.0.0
+# The shapes of the unions openai-client-base used to render as serde_json::Value through jsonValueSchemas:
+# OutputItem (oneOf, a discriminator, a branch that is allOf), ComputerAction (oneOf, a field and a list of it),
+# ResponseStreamEvent and CreateTranscriptionResponseStreamEvent (anyOf with a discriminator, server-sent events),
+# RealtimeServerEvent and RealtimeClientEvent (anyOf with a discriminator that no operation reaches).
+paths:
+  /responses:
+    post:
+      operationId: createResponse
+      responses:
+        '200':
+          description: The response, or its events when streamed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ResponseStreamEvent'
+  /transcriptions:
+    post:
+      operationId: createTranscription
+      responses:
+        '200':
+          description: Transcription events
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/TranscriptionStreamEvent'
+components:
+  schemas:
+    Response:
+      type: object
+      required: [id, output]
+      properties:
+        id:
+          type: string
+        output:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutputItem'
+    OutputItem:
+      oneOf:
+        - $ref: '#/components/schemas/OutputMessage'
+        - $ref: '#/components/schemas/FunctionCall'
+        - $ref: '#/components/schemas/FunctionCallOutputResource'
+        - $ref: '#/components/schemas/ComputerCall'
+      discriminator:
+        propertyName: type
+    OutputMessage:
+      type: object
+      required: [type, id, text]
+      properties:
+        type:
+          type: string
+          enum: [message]
+        id:
+          type: string
+        text:
+          type: string
+    FunctionCall:
+      type: object
+      required: [type, call_id, name, arguments]
+      properties:
+        type:
+          type: string
+          enum: [function_call]
+        call_id:
+          type: string
+        name:
+          type: string
+        arguments:
+          type: string
+    FunctionCallOutput:
+      type: object
+      required: [type, call_id, output]
+      properties:
+        type:
+          type: string
+          enum: [function_call_output]
+        call_id:
+          type: string
+        output:
+          type: string
+    # A branch that is allOf: it carries its tag through the schema it extends.
+    FunctionCallOutputResource:
+      allOf:
+        - $ref: '#/components/schemas/FunctionCallOutput'
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: string
+    ComputerCall:
+      type: object
+      required: [type, id]
+      properties:
+        type:
+          type: string
+          enum: [computer_call]
+        id:
+          type: string
+        action:
+          $ref: '#/components/schemas/ComputerAction'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComputerAction'
+    ComputerAction:
+      oneOf:
+        - $ref: '#/components/schemas/ClickParam'
+        - $ref: '#/components/schemas/WaitParam'
+      discriminator:
+        propertyName: type
+    ClickParam:
+      type: object
+      required: [type, x, y]
+      properties:
+        type:
+          type: string
+          enum: [click]
+        x:
+          type: integer
+        y:
+          type: integer
+    WaitParam:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [wait]
+    ResponseStreamEvent:
+      anyOf:
+        - $ref: '#/components/schemas/ResponseCreatedEvent'
+        - $ref: '#/components/schemas/ResponseOutputItemAddedEvent'
+        - $ref: '#/components/schemas/ResponseTextDeltaEvent'
+      discriminator:
+        propertyName: type
+    ResponseCreatedEvent:
+      type: object
+      required: [type, sequence_number, response]
+      properties:
+        type:
+          type: string
+          enum: [response.created]
+        sequence_number:
+          type: integer
+        response:
+          $ref: '#/components/schemas/Response'
+    ResponseOutputItemAddedEvent:
+      type: object
+      required: [type, sequence_number, output_index, item]
+      properties:
+        type:
+          type: string
+          enum: [response.output_item.added]
+        sequence_number:
+          type: integer
+        output_index:
+          type: integer
+        item:
+          $ref: '#/components/schemas/OutputItem'
+    ResponseTextDeltaEvent:
+      type: object
+      required: [type, sequence_number, delta]
+      properties:
+        type:
+          type: string
+          enum: [response.output_text.delta]
+        sequence_number:
+          type: integer
+        delta:
+          type: string
+    TranscriptionStreamEvent:
+      anyOf:
+        - $ref: '#/components/schemas/TranscriptTextDeltaEvent'
+        - $ref: '#/components/schemas/TranscriptTextDoneEvent'
+      discriminator:
+        propertyName: type
+    TranscriptTextDeltaEvent:
+      type: object
+      required: [type, delta]
+      properties:
+        type:
+          type: string
+          enum: [transcript.text.delta]
+        delta:
+          type: string
+    TranscriptTextDoneEvent:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [transcript.text.done]
+        text:
+          type: string
+    # Sent over a WebSocket, which no operation describes: typed and dispatched, but nothing opens it.
+    RealtimeServerEvent:
+      anyOf:
+        - $ref: '#/components/schemas/RealtimeSessionCreated'
+        - $ref: '#/components/schemas/RealtimeError'
+      discriminator:
+        propertyName: type
+    RealtimeSessionCreated:
+      type: object
+      required: [type, event_id]
+      properties:
+        type:
+          type: string
+          enum: [session.created]
+        event_id:
+          type: string
+    RealtimeError:
+      type: object
+      required: [type, event_id, message]
+      properties:
+        type:
+          type: string
+          enum: [error]
+        event_id:
+          type: string
+        message:
+          type: string

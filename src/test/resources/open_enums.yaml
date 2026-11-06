@@ -385,7 +385,7 @@ components:
     Level:
       type: string
       enum: [low, high]
-    # jsonValueSchemas makes this a Value, which still holds these.
+    # A union with one branch is that branch; the walk reaches the enum through it.
     Opaque:
       oneOf:
         - $ref: '#/components/schemas/OpaqueBranch'

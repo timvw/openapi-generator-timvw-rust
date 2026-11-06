@@ -141,16 +141,8 @@ components:
     Event:
       type: object
       properties:
-        payload:
-          $ref: "#/components/schemas/Payload"
         kind:
           type: string
-    Payload:
-      oneOf:
-        - $ref: "#/components/schemas/Thing"
-        - $ref: "#/components/schemas/Event"
-      discriminator:
-        propertyName: kind
     Derived:
       allOf:
         - $ref: "#/components/schemas/Thing"

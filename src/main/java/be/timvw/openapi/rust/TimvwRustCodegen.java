@@ -52,7 +52,7 @@ import java.util.Set;
  *       if-let/else expression (Milestone 2.2);</li>
  *   <li>spec rules run before naming (Milestone 2.3, see {@link SpecRules}): generic repairs of constructs the stock
  *       generator mishandles, and the options {@code webhookModule}, {@code webhookModuleReexport},
- *       {@code stringIdSchemas}, {@code stringIdProperties}, {@code stringProperties}, {@code jsonValueSchemas},
+ *       {@code stringIdSchemas}, {@code stringIdProperties}, {@code stringProperties},
  *       {@code deepObjectQueryParameters} and {@code resetQueryParameterStyle} for decisions a client takes about its spec;</li>
  *   <li>{@code boxResponseError}, {@code apiLintAllows} and {@code userAgentFromPackage} shape the API modules
  *       (Milestone 2.6);</li>
@@ -107,7 +107,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String STRING_ID_PROPERTIES = "stringIdProperties";
     /** {@code Schema.property} entries rendered as a bare {@code String}. */
     public static final String STRING_PROPERTIES = "stringProperties";
-    /** Component schemas rendered as {@code serde_json::Value}. */
+    /**
+     * Removed: component schemas rendered as {@code serde_json::Value}. Unions render as typed enums now
+     * ({@code modelUnions}, {@code unionDispatch}), so setting it is an error rather than ignored.
+     */
     public static final String JSON_VALUE_SCHEMAS = "jsonValueSchemas";
     /** {@code <path>?<name>} query parameters kept as objects sent in deepObject style. */
     public static final String DEEP_OBJECT_QUERY_PARAMETERS = "deepObjectQueryParameters";
@@ -189,7 +192,6 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private List<String> stringIdSchemas = new ArrayList<>();
     private List<String> stringIdProperties = new ArrayList<>();
     private List<String> stringProperties = new ArrayList<>();
-    private List<String> jsonValueSchemas = new ArrayList<>();
     private List<String> deepObjectQueryParameters = new ArrayList<>();
     private String preprocessedSpecFile;
     private boolean resetQueryParameterStyle;
@@ -285,8 +287,6 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         + "stringIdSchemas schema or are a union, directly or through allOf"));
         cliOptions.add(CliOption.newString(STRING_PROPERTIES,
                 "Schema.property entries rendered as a bare String, directly or in an allOf component"));
-        cliOptions.add(CliOption.newString(JSON_VALUE_SCHEMAS,
-                "Component schemas rendered as a free-form object (serde_json::Value)"));
         cliOptions.add(CliOption.newBoolean(RESET_QUERY_PARAMETER_STYLE,
                 "Give every query parameter not listed in deepObjectQueryParameters the default style (form, "
                         + "exploded), so arrays are sent as repeated parameters whatever the spec says", false));
@@ -596,7 +596,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
         stringIdSchemas = SpecRules.entries(additionalProperties.get(STRING_ID_SCHEMAS));
         stringIdProperties = SpecRules.entries(additionalProperties.get(STRING_ID_PROPERTIES));
         stringProperties = SpecRules.entries(additionalProperties.get(STRING_PROPERTIES));
-        jsonValueSchemas = SpecRules.entries(additionalProperties.get(JSON_VALUE_SCHEMAS));
+        if (!SpecRules.entries(additionalProperties.get(JSON_VALUE_SCHEMAS)).isEmpty()) {
+            throw new IllegalArgumentException(String.format("%s: %s was removed: unions render as typed enums with "
+                    + "%s and %s; drop the option", GENERATOR_NAME, JSON_VALUE_SCHEMAS, MODEL_UNIONS, UNION_DISPATCH));
+        }
         deepObjectQueryParameters = SpecRules.entries(additionalProperties.get(DEEP_OBJECT_QUERY_PARAMETERS));
         resetQueryParameterStyle = additionalProperties.containsKey(RESET_QUERY_PARAMETER_STYLE)
                 && convertPropertyToBooleanAndWriteBack(RESET_QUERY_PARAMETER_STYLE);
@@ -843,9 +846,6 @@ public class TimvwRustCodegen extends RustClientCodegen {
             LOGGER.info("{}: hoisted inline union {}", GENERATOR_NAME, h);
         }
         SpecRules.stringProperties(openAPI, stringProperties, log);
-        Map<String, List<String>> behindValues = openEnums ? OpenEnums.refsBehind(openAPI, jsonValueSchemas) : Map.of();
-        SpecRules.jsonValueSchemas(openAPI, jsonValueSchemas, log);
-        OpenEnums.keepRefs(openAPI, behindValues);
         SpecRules.fileProperties(openAPI, fileProperties, log);
         // A hoisted union may carry a stringIdSchemas name: apply the string rendering to it as well.
         SpecRules.stringSchemas(openAPI, stringIdSchemas, log);

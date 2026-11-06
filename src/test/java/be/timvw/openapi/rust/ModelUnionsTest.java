@@ -53,7 +53,6 @@ class ModelUnionsTest {
         props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
         props.put(TimvwRustCodegen.DEFAULT_ONLY_WHERE_VALID, "true");
         props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
-        props.put(TimvwRustCodegen.JSON_VALUE_SCHEMAS, "Whatever");
         if (modelUnions) {
             props.put(TimvwRustCodegen.MODEL_UNIONS, "true");
             props.put(TimvwRustCodegen.UNION_PLAN_FILE, "target/union_plan.json");

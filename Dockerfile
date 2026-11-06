@@ -16,7 +16,7 @@ ARG OPENAPI_GENERATOR_VERSION=7.27.0
 ARG OPENAPI_GENERATOR_CLI_SHA1=
 
 # ---- build stage: fetch and verify the stock CLI jar --------------------------------------------
-FROM eclipse-temurin:17-jdk AS fetch
+FROM eclipse-temurin:25-jdk AS fetch
 ARG OPENAPI_GENERATOR_VERSION
 ARG OPENAPI_GENERATOR_CLI_SHA1
 WORKDIR /fetch
@@ -33,7 +33,7 @@ RUN set -eux; \
     cp "$jar" /fetch/openapi-generator-timvw-rust.jar
 
 # ---- runtime stage ------------------------------------------------------------------------------
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:25-jre
 ARG OPENAPI_GENERATOR_VERSION
 LABEL org.opencontainers.image.source="https://github.com/timvw/openapi-generator-timvw-rust" \
       org.opencontainers.image.description="openapi-generator CLI ${OPENAPI_GENERATOR_VERSION} with the timvw-rust generator" \

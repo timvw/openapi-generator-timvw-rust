@@ -347,6 +347,34 @@ def wrap_doc_lines(text: str, what: str) -> str:
     return text
 
 
+# An enum's `/// {{{description}}}` line is printed whether or not there is a description, which leaves an empty `///`
+# (clippy `empty_docs`). Print it only with a description, as the stock template already does for structs.
+BARE_DESCRIPTION_DOC = re.compile(
+    r"^(?<!\{\{#description\}\}\n)(?P<indent>[ \t]*)/// \{\{#rustdoc\}\}\{\{\{description\}\}\}\{\{/rustdoc\}\}\n",
+    re.MULTILINE,
+)
+
+
+# deprecatedAttributes: a property marked x-rust-deprecated gets #[deprecated] (ExtraRules.markDeprecated).
+STRUCT_FIELD_SERDE = '    #[serde(rename = "{{{baseName}}}"{{#isDiscriminator}}'
+STRUCT_FIELD_DEPRECATED = (
+    "    {{#vendorExtensions.x-rust-deprecated}}\n    #[deprecated]\n    {{/vendorExtensions.x-rust-deprecated}}\n"
+    + STRUCT_FIELD_SERDE
+)
+
+
+def deprecated_fields(text: str, what: str) -> str:
+    return replace_exactly(text, STRUCT_FIELD_SERDE, STRUCT_FIELD_DEPRECATED, 1, what)
+
+
+def doc_only_with_description(text: str, what: str) -> str:
+    text, n = BARE_DESCRIPTION_DOC.subn(
+        r"{{#description}}\n\g<indent>/// {{#rustdoc}}{{{description}}}{{/rustdoc}}\n{{/description}}\n", text)
+    if n == 0:
+        raise SystemExit(f"{what}: no unguarded description doc lines found")
+    return text
+
+
 # Milestone 3.2. noStructDisplay: a struct has no Display, so a parameter of struct type (x-rust-struct-json) or an array
 # of structs (x-rust-struct-json-items), which the generator marks, goes through serde_json::to_string where the stock
 # template calls to_string(). Struct Display was serde_json::to_string, so the bytes stay the same. The other branches
@@ -641,12 +669,12 @@ def cargo_event_streams(t: str, w: str) -> str:
 
 EDITS = {
     "lib.mustache": lambda t, w: CRATE_DOCS + t,
-    "model.mustache": lambda t, w: union_block(open_enums(gate_enum_defaults(per_property_box(wrap_doc_lines(
+    "model.mustache": lambda t, w: deprecated_fields(doc_only_with_description(union_block(open_enums(gate_enum_defaults(per_property_box(wrap_doc_lines(
         replace_exactly(replace_exactly(
             replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), CTOR_IF_LET, CTOR_MAP, 1, w
         ), MODEL_IMPORTS, MODEL_IMPORTS_USED, 1, w),
         w,
-    ), w), w), w), w),
+    ), w), w), w), w), w), w),
     "reqwest/api.mustache": lambda t, w: api_template(t, w),
     "reqwest/api_mod.mustache": lambda t, w: replace_exactly(replace_exactly(
         replace_exactly(t, DEEP_OBJECT_PANIC, DEEP_OBJECT_FIX, 1, w), API_MOD_CONFIGURATION,

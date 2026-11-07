@@ -171,6 +171,27 @@ public class TimvwRustCodegen extends RustClientCodegen {
      * {@link ContentTypeMethods}).
      */
     public static final String CONTENT_TYPE_METHODS = "contentTypeMethods";
+    /**
+     * Inline enums of parameters and of form or multipart body properties become component enums, so the API function
+     * takes the enum instead of {@code &str} (see {@link ExtraRules#typedEnumParameters}).
+     */
+    public static final String TYPED_ENUM_PARAMETERS = "typedEnumParameters";
+    /**
+     * With {@link #MODEL_UNIONS}: a field whose union is nullable is {@code Option<Option<U>>} like any other nullable
+     * field, so a request can send {@code null}.
+     */
+    public static final String NULLABLE_UNION_FIELDS = "nullableUnionFields";
+    /**
+     * The unused-helper pruning also drops helpers marked {@code #[allow(dead_code)]}, which are otherwise kept as part
+     * of the helper module's API (see {@link HelperPruning}).
+     */
+    public static final String PRUNE_ALL_HELPERS = "pruneAllHelpers";
+    /** A property's or parameter's schema {@code default} is noted in its documentation. */
+    public static final String SCHEMA_DEFAULT_DOCS = "schemaDefaultDocs";
+    /** Deprecated properties and schemas get {@code #[deprecated]}; generated files allow it among themselves. */
+    public static final String DEPRECATED_ATTRIBUTES = "deprecatedAttributes";
+    /** Set on a property or model that the model template marks {@code #[deprecated]}. */
+    static final String DEPRECATED = "x-rust-deprecated";
     /** Set on an operation whose method returns {@code sse::EventStream}. */
     static final String EVENT_STREAM = "x-rust-event-stream";
     /** Set on every operation: the error enum its method returns, shared by the methods of one operation. */
@@ -236,6 +257,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private boolean unionDispatch;
     private boolean anyDispatch;
     private boolean openEnums;
+    private boolean typedEnumParameters;
+    private boolean nullableUnionFields;
+    private boolean schemaDefaultDocs;
+    private boolean deprecatedAttributes;
+    private boolean pruneAllHelpers;
+    private final Set<String> deprecatedModels = new java.util.TreeSet<>();
     private OpenEnums.Census openEnumsCensus;
     private String unionPlanFile;
     private final Map<String, CodegenModel> unionModels = new HashMap<>();
@@ -381,6 +408,22 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 "One method per request body media type and per success response shape (JSON, text, bytes): the "
                         + "operation's method keeps the first of each, the others are <operation>_<suffix> "
                         + "(_json, _multipart, _form, _text, _bytes or the media subtype)", false));
+        cliOptions.add(CliOption.newBoolean(TYPED_ENUM_PARAMETERS,
+                "Inline enums of query, path, header and cookie parameters, and of the properties of form and "
+                        + "multipart bodies, become component enums (<operationId>_<parameter>, <Schema>_<property>), so "
+                        + "the API function takes the enum instead of &str", false));
+        cliOptions.add(CliOption.newBoolean(NULLABLE_UNION_FIELDS,
+                "With modelUnions: a field whose union is nullable is Option<Option<U>> like any other nullable field, "
+                        + "so a request can send null; without it the field is Option<U>", false));
+        cliOptions.add(CliOption.newBoolean(PRUNE_ALL_HELPERS,
+                "Helpers of union_dispatch.rs and multipart_helper.rs that nothing calls are always left out; with "
+                        + "this option also those marked #[allow(dead_code)], which are otherwise kept", false));
+        cliOptions.add(CliOption.newBoolean(SCHEMA_DEFAULT_DOCS,
+                "A property's or parameter's schema default is noted in its documentation (Defaults to `value`.)",
+                false));
+        cliOptions.add(CliOption.newBoolean(DEPRECATED_ATTRIBUTES,
+                "Deprecated properties and schemas get #[deprecated]; every generated model and API file starts with "
+                        + "#![allow(deprecated)], so only callers are warned", false));
         cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
                 "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
                         + "object-typed query parameter is sent as a string"));
@@ -472,6 +515,13 @@ public class TimvwRustCodegen extends RustClientCodegen {
         objs = super.postProcessAllModels(objs);
         Map<String, CodegenModel> unions = modelUnions
                 ? UnionRules.plan(objs, msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, MODEL_UNIONS, msg)) : Map.of();
+        if (nullableUnionFields) {
+            LOGGER.info("{}: {}: {} fields of a nullable union made nullable", GENERATOR_NAME, NULLABLE_UNION_FIELDS,
+                    ExtraRules.nullableUnionFields(objs, unions, openAPI));
+        }
+        if (deprecatedAttributes) {
+            deprecatedModels.addAll(ExtraRules.markDeprecated(objs));
+        }
         BoxRules.mark(objs, boxOnlyCycles);
         if (modelUnions) {
             UnionRules.payloads(unions, objs);
@@ -678,6 +728,20 @@ public class TimvwRustCodegen extends RustClientCodegen {
             throw new IllegalArgumentException(GENERATOR_NAME + ": " + OPEN_ENUMS + " requires " + MODEL_UNIONS
                     + ": which values stay closed depends on the variants and the order that option settles");
         }
+        typedEnumParameters = additionalProperties.containsKey(TYPED_ENUM_PARAMETERS)
+                && convertPropertyToBooleanAndWriteBack(TYPED_ENUM_PARAMETERS);
+        nullableUnionFields = additionalProperties.containsKey(NULLABLE_UNION_FIELDS)
+                && convertPropertyToBooleanAndWriteBack(NULLABLE_UNION_FIELDS);
+        if (nullableUnionFields && !modelUnions) {
+            throw new IllegalArgumentException(GENERATOR_NAME + ": " + NULLABLE_UNION_FIELDS + " requires "
+                    + MODEL_UNIONS + ": it changes the fields of the unions that option renders");
+        }
+        schemaDefaultDocs = additionalProperties.containsKey(SCHEMA_DEFAULT_DOCS)
+                && convertPropertyToBooleanAndWriteBack(SCHEMA_DEFAULT_DOCS);
+        deprecatedAttributes = additionalProperties.containsKey(DEPRECATED_ATTRIBUTES)
+                && convertPropertyToBooleanAndWriteBack(DEPRECATED_ATTRIBUTES);
+        pruneAllHelpers = additionalProperties.containsKey(PRUNE_ALL_HELPERS)
+                && convertPropertyToBooleanAndWriteBack(PRUNE_ALL_HELPERS);
         typedEventStreams = additionalProperties.containsKey(TYPED_EVENT_STREAMS)
                 && convertPropertyToBooleanAndWriteBack(TYPED_EVENT_STREAMS);
         additionalProperties.put(TYPED_EVENT_STREAMS, typedEventStreams);
@@ -866,6 +930,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
      */
     private void applySpecRules(OpenAPI openAPI) {
         java.util.function.Consumer<String> log = msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg);
+        if (schemaDefaultDocs) {
+            LOGGER.info("{}: {}: {} defaults noted in the documentation", GENERATOR_NAME, SCHEMA_DEFAULT_DOCS,
+                    ExtraRules.documentDefaults(openAPI));
+        }
         if (webhookModule != null) {
             int routed = SpecRules.routeWebhooks(openAPI, webhookModule);
             LOGGER.info("{}: {}: routed {} webhook operations to tag {}", GENERATOR_NAME, WEBHOOK_MODULE, routed,
@@ -890,7 +958,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         r);
             }
         }
-        List<String> hoisted = SpecRules.hoistInlineUnions(openAPI);
+        List<String> hoisted = SpecRules.hoistInlineUnions(openAPI, nullableUnionFields);
         for (String h : hoisted) {
             LOGGER.info("{}: hoisted inline union {}", GENERATOR_NAME, h);
         }
@@ -906,6 +974,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 resetQueryParameterStyle);
         for (String q : params) {
             LOGGER.info("{}: query parameter {}", GENERATOR_NAME, q);
+        }
+        if (typedEnumParameters) {
+            for (String e : ExtraRules.typedEnumParameters(openAPI, this::toModelName)) {
+                LOGGER.info("{}: {}: {}", GENERATOR_NAME, TYPED_ENUM_PARAMETERS, e);
+            }
         }
         LOGGER.info("{}: spec rules: {} string refs inlined in unions, {} default/propertyNames removed, {} $ref "
                         + "siblings stripped, {} validation-only unions collapsed, {} union variants titled, {} inline "
@@ -949,6 +1022,23 @@ public class TimvwRustCodegen extends RustClientCodegen {
             checkStructJsonModels(models, structJsonModels);
             if (anyDispatch) {
                 UnionRules.writeDispatchModule(models, openEnums);
+                logPruned(UnionRules.DISPATCH_MODULE, HelperPruning.prune(
+                        models.resolve(UnionRules.DISPATCH_MODULE + ".rs"), List.of(models), !pruneAllHelpers));
+            }
+            if (multipartHelper) {
+                java.nio.file.Path apis = java.nio.file.Paths.get(outputFolder, "src", "apis");
+                logPruned("multipart_helper", HelperPruning.prune(apis.resolve("multipart_helper.rs"), List.of(apis),
+                        !pruneAllHelpers));
+            }
+            if (deprecatedAttributes) {
+                for (String model : deprecatedModels) {
+                    java.nio.file.Path file = models.resolve(toModelFilename(model) + ".rs");
+                    if (java.nio.file.Files.exists(file)) {
+                        java.nio.file.Files.writeString(file,
+                                ExtraRules.deprecateItem(java.nio.file.Files.readString(file), model));
+                    }
+                }
+                ExtraRules.allowDeprecated(models, java.nio.file.Paths.get(outputFolder, "src", "apis"));
             }
             if (enumFromStr) {
                 EnumFromStr.Result result = EnumFromStr.run(models,
@@ -960,6 +1050,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
             throw new IllegalStateException(GENERATOR_NAME + ": cannot process " + models, e);
         }
         super.postProcess();
+    }
+
+    private static void logPruned(String module, List<String> dropped) {
+        if (!dropped.isEmpty()) {
+            LOGGER.info("{}: {}.rs: nothing calls {}, left out", GENERATOR_NAME, module, dropped);
+        }
     }
 
     /**

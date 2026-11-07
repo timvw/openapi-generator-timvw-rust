@@ -28,16 +28,16 @@ they started from, are in the design doc,
 | A value the spec does not list (`finish_reason: content_filter`) | error, the whole response is lost | `Unknown` (`openEnums`) | error |
 | `integer` without a format | `i32` (overflows at 2^31) | `i64` (`integersAsI64`) | `i64` |
 | Boxing | every model reference | only on a cycle (`boxOnlyCycles`) | only on a cycle |
-| `nullable` field | `Option<Option<T>>`: absent and `null` differ | `Option<Option<T>>` | `Option<T>`: `null` is sent as absent |
+| `nullable` field | `Option<Option<T>>`: absent and `null` differ | `Option<Option<T>>`; a nullable union `Option<U>` unless `nullableUnionFields` | `Option<T>`: `null` is sent as absent |
 | `Default` | on everything, first enum variant picked arbitrarily | only on structs whose fields are all optional (`defaultOnlyWhereValid`) | the same; a schema `default` becomes a serde default |
-| Enum query parameter (`order`) | `Option<&str>` | `Option<&str>` | `ListModelsOrder` |
+| Enum query parameter (`order`) | `Option<&str>` | `Option<&str>`; `ListModelsOrder` with `typedEnumParameters` | `ListModelsOrder` |
 | Builders | none | `bon::Builder` on structs, `#[bon::builder]` on API functions | generated builders for types and requests |
 | Event streams | the JSON method only | `create_chat_completion_stream` yields typed `ChatCompletionChunk`s | not supported |
 | Multipart | stock rendering | helper module, files, arrays, enum text parts | rejected |
 | Return value | `T` | `T` | `ResponseValue<T>` (body, status, headers) |
 | Call shape | free functions taking `&Configuration` | the same, plus a builder per function | methods on one `Client` |
-| `cargo clippy` warnings | 45 | 30 (3 of them unused generated helpers, see [Open points](#open-points)) | 0 |
-| Lines of Rust | 1,666 | 2,926 | 3,320 (one file) |
+| `cargo clippy` warnings | 45 | 13, all `needless_return`, which openai-client-base allows (`apiLintAllows`) | 0 |
+| Lines of Rust | 1,666 | 2,847 | 3,320 (one file) |
 
 The rest of the page shows each row in code.
 
@@ -194,11 +194,11 @@ progenitor also implements `FromStr` and `TryFrom` on its enums, and has no catc
 | `max_tokens: integer, nullable` (no format) | `Option<Option<i32>>` | `Option<Option<i64>>` | `Option<i64>` |
 | `seed: integer, int64` | `Option<i64>` | `Option<i64>` | `Option<i64>` |
 | `n: integer, int32` | `Option<i32>` | `Option<i32>` | `Option<i32>` |
-| `stream: boolean, default false` | `Option<bool>` | `Option<bool>` | `bool` with `#[serde(default)]` |
-| `stop: nullable oneOf` | `Option<Option<Box<Stop>>>` | `Option<Stop>` | `Option<Stop>` |
+| `stream: boolean, default false` | `Option<bool>` | `Option<bool>`; `schemaDefaultDocs` adds ``Defaults to `false`.`` | `bool` with `#[serde(default)]` |
+| `stop: nullable oneOf` | `Option<Option<Box<Stop>>>` | `Option<Stop>`; `Option<Option<Stop>>` with `nullableUnionFields` | `Option<Stop>` |
 | `metadata: map` | `Option<HashMap<String, String>>` | `Option<HashMap<String, String>>` | `HashMap<String, String>`, skipped when empty |
 | `response_format` | `Option<Box<ResponseFormat>>` | `Option<ResponseFormat>` | `Option<ResponseFormat>` |
-| `legacy_user`, `deprecated` | `Option<String>`, no marker | `Option<String>`, no marker | `Option<String>`, no marker |
+| `legacy_user`, `deprecated` | `Option<String>`, no marker | `Option<String>`; `#[deprecated]` with `deprecatedAttributes` | `Option<String>`, no marker |
 
 Notes:
 
@@ -207,8 +207,8 @@ Notes:
   encoded without the field (see [What decodes](#what-decodes)).
 - A nullable union in timvw-rust is an `Option` of the union, not an `Option<Option<..>>`: with `modelUnions` a
   `nullable` or `type: null` branch is no variant, and the union is an `Option` where it is nullable. So `stop` cannot
-  be sent as an explicit `null`.
-- None of the three marks a deprecated field `#[deprecated]`.
+  be sent as an explicit `null`, unless `nullableUnionFields` is on.
+- Only timvw-rust, with `deprecatedAttributes`, marks a deprecated field `#[deprecated]`.
 
 ## Boxing and recursion
 
@@ -244,8 +244,8 @@ progenitor validates arguments in the builder (`TryInto<ListModelsOrder>`) and r
   quiet, and starts `lib.rs` with `#![doc = include_str!("../README.md")]`.
 - progenitor writes no Markdown. Types carry their description, or their name when there is none, and every client
   method has a usage example of its builder.
-- Both openapi-generator variants leave an empty `///` above an enum without a description (clippy
-  `empty_docs`, 14 to 16 times here).
+- Stock leaves an empty `///` above an enum without a description (clippy `empty_docs`, 16 times here); timvw-rust
+  did too (14) and no longer does.
 
 ## Generated code quality
 
@@ -254,9 +254,9 @@ progenitor validates arguments in the builder (`TryInto<ListModelsOrder>`) and r
 | Warning | stock | timvw-rust | progenitor |
 | --- | --- | --- | --- |
 | this `impl` can be derived (`Default` of enums) | 16 | 0 | 0 |
-| empty doc comment | 16 | 14 | 0 |
+| empty doc comment | 16 | 0 (14 before the fix below) | 0 |
 | unneeded `return` statement | 13 | 13 | 0 |
-| unused generated helper | 0 | 3 | 0 |
+| unused generated helper | 0 | 0 (3 before the fix below) | 0 |
 
 openai-client-base silences `needless_return` through `apiLintAllows`; this comparison leaves that option out.
 
@@ -275,17 +275,21 @@ openai-client-base silences `needless_return` through `apiLintAllows`; this comp
 
 ## Open points
 
-What the comparison shows timvw-rust could still improve:
+The comparison found six things timvw-rust rendered worse than stock or progenitor. All six are addressed; the
+[README](../../README.md#renderings-from-the-generator-comparison) shows each rendering before and after.
 
-- **Unused generated helpers.** `union_dispatch.rs` writes `first_of` and `Attempt`, and `multipart_helper.rs` writes
-  `add_schema_value_to_form`, even when nothing in the crate calls them (3 `dead_code` warnings here). Imports are
-  already decided per use (`Imports`); the helper functions are not.
-- **Enum query and form parameters** are `&str` in stock and timvw-rust (`order`, `purpose`); progenitor types them.
-- **Empty doc comments** on enums without a description.
-- **Explicit `null` for nullable unions**: timvw-rust's `Option<Union>` cannot send `null`, while a nullable plain
-  field (`Option<Option<T>>`) can.
-- **Schema defaults** (`stream: default false`) are ignored; progenitor uses them as serde defaults.
-- **Deprecated** fields and operations get no `#[deprecated]` in any of the three.
+| Gap | Fix | Default |
+| --- | --- | --- |
+| Unused generated helpers (`first_of`, `Attempt`, `add_schema_value_to_form`): 3 `dead_code` warnings | left out when nothing calls them; `pruneAllHelpers` also drops those marked `#[allow(dead_code)]` | on (no API change) |
+| Empty `///` above enums without a description | the line is only written with a description | on (no API change) |
+| Enum query and form parameters are `&str` (`order`, `purpose`) | `typedEnumParameters` | off |
+| A nullable union field cannot send `null` | `nullableUnionFields` | off |
+| Schema defaults (`stream: default false`) are lost | `schemaDefaultDocs` notes them in the docs; the types stay | off |
+| No `#[deprecated]` on deprecated fields | `deprecatedAttributes` | off |
+
+The options are off because each changes the public API or what a `-D warnings` consumer sees, and the comparison
+config ([`timvw-rust-config.json`](timvw-rust-config.json)) keeps the options openai-client-base runs. With all four on,
+the comparison crate renders as in the README's examples and clippy reports the same 13 `needless_return`s.
 
 ## Reproducing
 

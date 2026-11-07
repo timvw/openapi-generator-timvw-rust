@@ -1,0 +1,21 @@
+{
+  "packageName": "comparison-timvw",
+  "packageVersion": "0.1.0",
+  "useChrono": false,
+  "titleNaming": false,
+  "multipartHelper": true,
+  "boxOnlyCycles": true,
+  "defaultOnlyWhereValid": true,
+  "enumFromStr": true,
+  "noStructDisplay": true,
+  "boxResponseError": true,
+  "userAgentFromPackage": true,
+  "resetQueryParameterStyle": true,
+  "qualifiedInlineNames": true,
+  "modelUnions": true,
+  "unionDispatch": true,
+  "integersAsI64": true,
+  "openEnums": true,
+  "typedEventStreams": true,
+  "contentTypeMethods": true
+}

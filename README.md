@@ -53,6 +53,9 @@ Options not listed below (`packageName`, `packageVersion`, `useChrono`, `reqwest
 
 ## What the generator renders differently from `-g rust`
 
+For a side-by-side view of stock `-g rust`, timvw-rust and progenitor on one spec (generated types, what each
+decodes, clippy, operations), see [docs/comparison](docs/comparison/README.md).
+
 | Rule | Replaces (langfuse-client-base) |
 | --- | --- |
 | `#[derive(..., bon::Builder)]` on every model struct, `#[bon::builder]` on every API function, `bon = "^3"` in `Cargo.toml` (`bonBuilders`, default on) | `add_bon_builders.py`, `patch_generated.rs.sh` |
@@ -386,6 +389,7 @@ src/main/resources/timvw-rust/og*/       template overrides, one set per openapi
 src/main/resources/META-INF/services/    registers the generator with openapi-generator
 src/test/java/                           JUnit 5 tests; src/test/resources/milestone1.yaml is the rendering fixture
 tools/sync-templates.py                  regenerates the template sets from the stock jars
+docs/comparison/                         stock -g rust vs timvw-rust vs progenitor on one spec (generate.sh)
 test-specs/petstore.yaml                 OpenAPI 3.0 smoke-test spec
 Dockerfile                               eclipse-temurin:17-jre + both jars in /opt/gen
 .github/workflows/                       ci.yml, release.yml

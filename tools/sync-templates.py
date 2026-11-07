@@ -241,7 +241,31 @@ MODELS_PREFIX_ONCE = (
 # The API module imports the helper where an operation uses it.
 API_SUPER_IMPORT = "use super::{Error, configuration, ContentType};\n"
 API_SUPER_IMPORT_HELPER = (
-    "use super::{Error, configuration, ContentType{{#multipartHelperImport}}, multipart_helper{{/multipartHelperImport}}};\n"
+    "use super::{Error, configuration{{#x-rust-import-content-type}}, ContentType{{/x-rust-import-content-type}}"
+    "{{#multipartHelperImport}}, multipart_helper{{/multipartHelperImport}}};\n"
+)
+
+# Imports only where an operation uses them (Imports.markApi), so no module imports what it does not use.
+API_SERDE_IMPORT = "use serde::{Deserialize, Serialize, de::Error as _};\n"
+API_SERDE_IMPORT_USED = (
+    "use serde::{Deserialize, Serialize{{#x-rust-import-serde-error}}, de::Error as _{{/x-rust-import-serde-error}}};\n"
+)
+API_FILE_STREAM_IMPORT = (
+    "{{#operations}}\n{{#operation}}\n{{#vendorExtensions.useAsyncFileStream}}\n"
+    "use tokio::fs::File as TokioFile;\nuse tokio_util::codec::{BytesCodec, FramedRead};\n"
+    "{{/vendorExtensions.useAsyncFileStream}}\n{{/operation}}\n{{/operations}}\n"
+)
+API_FILE_STREAM_IMPORT_USED = (
+    "{{#x-rust-import-file-stream}}\n"
+    "use tokio::fs::File as TokioFile;\nuse tokio_util::codec::{BytesCodec, FramedRead};\n"
+    "{{/x-rust-import-file-stream}}\n"
+)
+
+# A model file imports crate::models only when it refers to another model (Imports.markModels).
+MODEL_IMPORTS = "{{>partial_header}}\nuse crate::models;\nuse serde::{Deserialize, Serialize};\n{{#models}}\n{{#model}}\n"
+MODEL_IMPORTS_USED = (
+    "{{>partial_header}}\n{{#models}}\n{{#model}}\n{{#vendorExtensions.x-rust-uses-models}}\nuse crate::models;\n"
+    "{{/vendorExtensions.x-rust-uses-models}}\nuse serde::{Deserialize, Serialize};\n"
 )
 
 # mod.rs declares the helper right after the configuration module.
@@ -487,6 +511,8 @@ def api_template(t: str, w: str) -> str:
     t = replace_exactly(t, RESPONSE_ERROR_CTOR, RESPONSE_ERROR_CTOR_BOXED, 1, w)
     t = replace_exactly(t, PARTIAL_HEADER, PARTIAL_HEADER_ALLOWS, 1, w)
     t = replace_exactly(t, API_SUPER_IMPORT, API_SUPER_IMPORT_HELPER, 1, w)
+    t = replace_exactly(t, API_SERDE_IMPORT, API_SERDE_IMPORT_USED, 1, w)
+    t = replace_exactly(t, API_FILE_STREAM_IMPORT, API_FILE_STREAM_IMPORT_USED, 1, w)
     t = replace_exactly(t, MODELS_PREFIX, MODELS_PREFIX_ONCE, 2, w)
     t = struct_json_sites(t, w)
     t = content_type_methods(t, w)
@@ -616,9 +642,9 @@ def cargo_event_streams(t: str, w: str) -> str:
 EDITS = {
     "lib.mustache": lambda t, w: CRATE_DOCS + t,
     "model.mustache": lambda t, w: union_block(open_enums(gate_enum_defaults(per_property_box(wrap_doc_lines(
-        replace_exactly(
+        replace_exactly(replace_exactly(
             replace_exactly(t, STRUCT_DERIVE, STRUCT_DERIVE_BON, 1, w), CTOR_IF_LET, CTOR_MAP, 1, w
-        ),
+        ), MODEL_IMPORTS, MODEL_IMPORTS_USED, 1, w),
         w,
     ), w), w), w), w),
     "reqwest/api.mustache": lambda t, w: api_template(t, w),

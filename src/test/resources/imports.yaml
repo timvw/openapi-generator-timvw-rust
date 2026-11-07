@@ -1,0 +1,118 @@
+openapi: 3.0.3
+info:
+  title: imports
+  version: "1.0"
+paths:
+  /things:
+    get:
+      operationId: listThings
+      tags: [read]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Holder"
+    delete:
+      operationId: deleteThings
+      tags: [gone]
+      responses:
+        "204":
+          description: gone
+  /uploads:
+    post:
+      operationId: upload
+      tags: [uploads]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "204":
+          description: done
+  /raw:
+    put:
+      operationId: putRaw
+      tags: [raw]
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "204":
+          description: done
+components:
+  schemas:
+    Plain:
+      description: Only primitives and a property enum, so no other model.
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: string
+          enum: [small, large]
+        tags:
+          type: array
+          items:
+            type: string
+    Color:
+      type: string
+      enum: [red, green]
+    Holder:
+      description: Refers to other models directly, in a list and through an enum.
+      type: object
+      required: [plain]
+      properties:
+        plain:
+          $ref: "#/components/schemas/Plain"
+        many:
+          type: array
+          items:
+            $ref: "#/components/schemas/Plain"
+        color:
+          $ref: "#/components/schemas/Color"
+    TextOrNumber:
+      description: A union of primitives only.
+      oneOf:
+        - type: string
+        - type: integer
+    PlainOrText:
+      description: A union holding a model.
+      oneOf:
+        - $ref: "#/components/schemas/Plain"
+        - type: string
+    Cat:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [cat]
+    Dog:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [dog]
+    Pet:
+      description: A tagged union, whose Deserialize uses models::union_dispatch.
+      oneOf:
+        - $ref: "#/components/schemas/Cat"
+        - $ref: "#/components/schemas/Dog"
+      discriminator:
+        propertyName: kind
+        mapping:
+          cat: "#/components/schemas/Cat"
+          dog: "#/components/schemas/Dog"

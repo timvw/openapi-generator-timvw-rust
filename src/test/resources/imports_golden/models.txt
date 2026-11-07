@@ -1,0 +1,17 @@
+== plain
+use serde::{Deserialize, Serialize};
+== color
+use serde::{Deserialize, Serialize};
+== holder
+use crate::models;
+use serde::{Deserialize, Serialize};
+== text_or_number
+use serde::{Deserialize, Serialize};
+== plain_or_text
+use crate::models;
+use serde::{Deserialize, Serialize};
+== cat
+use serde::{Deserialize, Serialize};
+== pet
+use crate::models;
+use serde::{Deserialize, Serialize};

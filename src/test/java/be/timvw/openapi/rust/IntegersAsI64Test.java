@@ -29,19 +29,10 @@ class IntegersAsI64Test {
     @TempDir
     static Path off;
 
-    @TempDir
-    static Path legacyOn;
-
-    @TempDir
-    static Path legacyOff;
-
     @BeforeAll
     static void generate() {
         generate(on, Map.of(TimvwRustCodegen.INTEGERS_AS_I64, "true"));
         generate(off, Map.of());
-        generate(legacyOn, Map.of(TimvwRustCodegen.INTEGERS_AS_I64, "true",
-                TimvwRustCodegen.LEGACY_MODEL_REWRITES, "true"));
-        generate(legacyOff, Map.of(TimvwRustCodegen.LEGACY_MODEL_REWRITES, "true"));
     }
 
     private static void generate(Path output, Map<String, Object> options) {
@@ -157,16 +148,6 @@ class IntegersAsI64Test {
     }
 
     @Test
-    void unionsTheLegacyRewritesWriteFollowTheRule() throws IOException {
-        String tokens = model(legacyOn, "tokens");
-        assertContainsAll(tokens, List.of("ArrayOfIntegers(Vec<i64>),", "ArrayOfIntegerArrays(Vec<Vec<i64>>),",
-                "impl Default for Tokens"));
-        assertFalse(tokens.contains("i32"), tokens);
-        assertContainsAll(model(legacyOn, "small_tokens"), List.of("ArrayOfIntegers(Vec<i32>),",
-                "ArrayOfIntegerArrays(Vec<Vec<i32>>),", "impl Default for SmallTokens"));
-    }
-
-    @Test
     void withoutTheOptionIntegersStayAsInStock() throws IOException {
         // openapi-generator 7.27 maps format: int16 to i16; before, every format other than int64 was i32.
         String odd = Integer.parseInt(ImplementationVersion.read().split("\\.")[1]) < 27 ? "i32" : "i16";
@@ -175,8 +156,6 @@ class IntegersAsI64Test {
                 "pub bounded: i32,", "pub count: i32,", "pub list: Option<Vec<i32>>,"));
         assertContainsAll(function(off, "get_thing"), List.of("id: i32,", "limit: Option<i32>,", "after: Option<i64>,"));
         assertTrue(model(off, "epochs").contains("Integer(i32),"), model(off, "epochs"));
-        assertContainsAll(model(legacyOff, "tokens"), List.of("ArrayOfIntegers(Vec<i32>),",
-                "ArrayOfIntegerArrays(Vec<Vec<i32>>),"));
     }
 
     @Test

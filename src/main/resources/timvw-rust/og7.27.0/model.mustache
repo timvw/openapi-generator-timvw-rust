@@ -1,8 +1,10 @@
 {{>partial_header}}
-use crate::models;
-use serde::{Deserialize, Serialize};
 {{#models}}
 {{#model}}
+{{#vendorExtensions.x-rust-uses-models}}
+use crate::models;
+{{/vendorExtensions.x-rust-uses-models}}
+use serde::{Deserialize, Serialize};
 {{^isEnum}}{{#vendorExtensions.x-rust-has-byte-array}}
 use serde_with::serde_as;
 {{/vendorExtensions.x-rust-has-byte-array}}{{#vendorExtensions.x-rust-has-integer-property-enum}}

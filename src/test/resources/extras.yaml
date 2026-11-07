@@ -1,0 +1,147 @@
+openapi: 3.0.3
+# typedEnumParameters, nullableUnionFields, schemaDefaultDocs, deprecatedAttributes (ExtraRulesTest).
+info:
+  title: Extras
+  version: 1.0.0
+paths:
+  /things:
+    get:
+      operationId: listThings
+      parameters:
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: include[]
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [owner, tags]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: The things.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Thing'
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateThing'
+      responses:
+        '200':
+          description: The thing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thing'
+  /uploads:
+    post:
+      operationId: upload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Upload'
+      responses:
+        '204':
+          description: Uploaded.
+components:
+  schemas:
+    Thing:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+          deprecated: true
+        old:
+          $ref: '#/components/schemas/OldThing'
+        shape:
+          $ref: '#/components/schemas/Shape'
+    Shape:
+      oneOf:
+        - $ref: '#/components/schemas/Circle'
+        - $ref: '#/components/schemas/Square'
+      discriminator:
+        propertyName: kind
+    Circle:
+      type: object
+      required: [kind, radius]
+      properties:
+        kind:
+          type: string
+          enum: [Circle]
+        radius:
+          type: number
+    Square:
+      type: object
+      required: [kind, side]
+      properties:
+        kind:
+          type: string
+          enum: [Square]
+        side:
+          type: number
+    OldThing:
+      type: object
+      deprecated: true
+      properties:
+        name:
+          type: string
+    CreateThing:
+      type: object
+      required: [name, stop]
+      properties:
+        name:
+          type: string
+        stream:
+          type: boolean
+          description: Stream the answer.
+          default: false
+        stop:
+          nullable: true
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        hint:
+          nullable: true
+          oneOf:
+            - type: string
+            - type: object
+              properties:
+                text:
+                  type: string
+    Upload:
+      type: object
+      required: [file, purpose]
+      properties:
+        file:
+          type: string
+          format: binary
+        purpose:
+          type: string
+          enum: [batch, vision]
+        mode:
+          type: string
+          enum: [fast, slow]

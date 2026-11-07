@@ -21,7 +21,9 @@ use serde_repr::{Serialize_repr,Deserialize_repr};
 {{!-- for repr(int) enum schemas --}}
 {{#isEnum}}
 {{#isInteger}}
+{{#description}}
 /// {{#rustdoc}}{{{description}}}{{/rustdoc}}
+{{/description}}
 #[repr(i64)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize_repr, Deserialize_repr)]
 pub enum {{{classname}}} {
@@ -55,7 +57,9 @@ impl std::fmt::Display for {{{classname}}} {
 {{!-- for enum schemas --}}
 {{#isEnum}}
 {{^isInteger}}
+{{#description}}
 /// {{#rustdoc}}{{{description}}}{{/rustdoc}}
+{{/description}}
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum {{{classname}}} {
 {{#allowableValues}}
@@ -287,6 +291,9 @@ pub struct {{{classname}}} {
     {{#vendorExtensions.isMandatory}}#[serde_as(as = "serde_with::base64::Base64")]{{/vendorExtensions.isMandatory}}{{^vendorExtensions.isMandatory}}#[serde_as(as = "{{^serdeAsDoubleOption}}Option{{/serdeAsDoubleOption}}{{#serdeAsDoubleOption}}super::DoubleOption{{/serdeAsDoubleOption}}<serde_with::base64::Base64>")]{{/vendorExtensions.isMandatory}}
     {{/isByteArray}}
     {{!-- a mapped child's discriminator is the union's consumed serde tag: default it, skip it while unset --}}
+    {{#vendorExtensions.x-rust-deprecated}}
+    #[deprecated]
+    {{/vendorExtensions.x-rust-deprecated}}
     #[serde(rename = "{{{baseName}}}"{{#isDiscriminator}}{{#required}}, default{{#isNullable}}, skip_serializing_if = "Option::is_none"{{/isNullable}}{{^isNullable}}{{#isString}}{{^isEnum}}, skip_serializing_if = "String::is_empty"{{/isEnum}}{{/isString}}{{/isNullable}}{{/required}}{{/isDiscriminator}}{{^required}}{{#isNullable}}, default{{^isByteArray}}, with = "::serde_with::rust::double_option"{{/isByteArray}}{{/isNullable}}{{/required}}{{^required}}, skip_serializing_if = "Option::is_none"{{/required}}{{#required}}{{#isNullable}}{{^isDiscriminator}}, deserialize_with = "Option::deserialize"{{/isDiscriminator}}{{/isNullable}}{{/required}})]
     pub {{{name}}}: {{!
     ### Option Start
@@ -360,7 +367,9 @@ impl Default for {{classname}} {
 {{#vars}}
 {{#isEnum}}
 {{#isInteger}}
+{{#description}}
 /// {{#rustdoc}}{{{description}}}{{/rustdoc}}
+{{/description}}
 #[repr(i64)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize_repr, Deserialize_repr)]
 pub enum {{{enumName}}} {
@@ -392,7 +401,9 @@ impl std::fmt::Display for {{{enumName}}} {
 }
 {{/isInteger}}
 {{^isInteger}}
+{{#description}}
 /// {{#rustdoc}}{{{description}}}{{/rustdoc}}
+{{/description}}
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum {{{enumName}}} {
 {{#allowableValues}}

@@ -84,6 +84,9 @@ decodes, clippy, operations), see [docs/comparison](docs/comparison/README.md).
 | `unionDispatch=true`, with `modelUnions`: a union with a tag decodes the variant that tag selects, and serializes as before; see [below](#union-tag-dispatch). Set without `modelUnions` it fails generation. | nothing: decoding that used to try every variant, and the error `data did not match any variant` |
 | `openEnums=true`, with `modelUnions`: a value enum or tagged union that a response or webhook payload can hold accepts values the spec does not list; see [below](#open-enums). Set without `modelUnions` it fails generation. | nothing: one new value failing the whole response |
 | `boxResponseError=true`: `Error::ResponseError` holds `Box<ResponseContent<T>>` and every API function builds it with `Box::new` (clippy `result_large_err`). `apiLintAllows=<lints>`: API modules and `configuration.rs` start with `#![allow(<lints>)]`. `userAgentFromPackage=true`: the default user agent is `<packageName>/<crate version>` (`env!("CARGO_PKG_VERSION")`) instead of `OpenAPI-Generator/<spec version>/rust`. | `box_response_errors.py`, `fix_clippy_warnings.py`, the user-agent edit of `patch_generated.rs.sh` (openai-client-base) |
+| Helpers nobody calls are left out: `src/models/union_dispatch.rs` without `first_of` and `Attempt` when no union tries several variants, `src/apis/multipart_helper.rs` without the functions no API module calls. Items marked `#[allow(dead_code)]` stay unless `pruneAllHelpers=true`. Both modules are `pub(crate)`. Always on; see [below](#renderings-from-the-generator-comparison). | nothing: removes `dead_code` warnings |
+| An enum without a description has no empty `///` above it (clippy `empty_docs`). Always on. | nothing: removes `empty_docs` warnings |
+| `typedEnumParameters`, `nullableUnionFields`, `schemaDefaultDocs`, `deprecatedAttributes`: typed enum parameters, `null` for nullable union fields, schema defaults in the docs, `#[deprecated]`. Off by default; see [below](#renderings-from-the-generator-comparison). | nothing: closes gaps the [generator comparison](docs/comparison/README.md) found |
 | `preprocessedSpecFile=<output-relative path>`: the spec as it stands after the rules above is written there as JSON, for scripts that still read it and for debugging. | the `target/specs/l2_rust_compatible.*` files the scripts produced |
 
 Spec-level decisions stay in the client repos. Spec validation runs in the CLI before any generator
@@ -246,6 +249,151 @@ An event schema that models the SSE envelope, objects with required `event` and 
 `AssistantStreamEvent`, gets no stream: the `data:` payload holds only the `data` part, and the event name it would take
 to rebuild the envelope is what the stream does not use. The generator logs these operations.
 
+## Renderings from the generator comparison
+
+The [comparison with stock `-g rust` and progenitor](docs/comparison/README.md) listed what timvw-rust still rendered
+worse than one of them. Two fixes change no public API and are always on; the other four change the API or its
+documentation, so each is an option that is off by default. With the options off, openai-client-base and
+langfuse-client-base regenerate with only the two always-on differences (checked by regenerating both crates before
+and after: 379 and 97 empty `///` lines removed, and langfuse's unused `first_of`/`Attempt`).
+
+The snippets below come from `docs/comparison/spec.yaml`, generated with openai-client-base's options, without and
+with each option.
+
+### Unused helpers are left out (always on)
+
+The helper modules were written whole, whatever the crate used. Now an item of `union_dispatch.rs` or
+`multipart_helper.rs` that no model or API module names, directly or through another kept item, is left out, and so is
+a `use` name only it needed. Both modules are `pub(crate)`, so the public API is the same.
+
+```diff
+ // src/models/union_dispatch.rs, in a crate where no union tries several variants for one tag value
+-/// A variant to try: its name, and how to decode it.
+-pub(crate) type Attempt<U> = (&'static str, fn(Value) -> Result<U, serde_json::Error>);
+-
+-/// Tries the variants selected in order, and keeps the error of each when none decodes.
+-pub(crate) fn first_of<U>(
+-    ...
+-}
+```
+
+Helpers marked `#[allow(dead_code)]` were kept unused on purpose, so they stay. `pruneAllHelpers=true` leaves them out
+too:
+
+```diff
+ // src/apis/multipart_helper.rs with pruneAllHelpers
+-use std::path::{Path, PathBuf};
++use std::path::Path;
+-/// Create a multipart Part from a PathBuf
+-#[allow(dead_code)]
+-pub fn file_part_from_pathbuf(path: PathBuf) -> Result<multipart::Part, std::io::Error> {
+-    file_part_from_path(&path)
+-}
+ (also file_part_from_bytes and add_pathbuf_to_form)
+```
+
+openai-client-base: no change (it calls every helper that has no `#[allow(dead_code)]`, and its
+`tests/oa06_postprocess_wire.rs` includes `multipart_helper.rs` and calls `add_schema_value_to_form`, which its API
+modules call too). langfuse-client-base: `first_of` and `Attempt` go.
+
+### No empty doc comment on enums (always on)
+
+```diff
+-/// 
+ #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+ pub enum FinishReason {
+```
+
+An enum with a description keeps it. openai-client-base: 379 lines removed; langfuse-client-base: 97.
+
+### `typedEnumParameters`: enum parameters take the enum
+
+An inline `enum` of a query, path, header or cookie parameter, or of a property of a `multipart/form-data` or
+`application/x-www-form-urlencoded` body, becomes a component enum before inline schemas are named:
+`<operationId>_<parameter>` for a parameter, `<Schema>_<property>` for a body property (`<operationId>_request_<property>`
+when the body is inline), with `_item` for the items of an array. The function takes the enum, which has `Display`
+(and `FromStr` with `enumFromStr`):
+
+```diff
+-pub async fn list_models(configuration: &configuration::Configuration, limit: Option<i64>, order: Option<&str>, after: Option<&str>) -> ...
++pub async fn list_models(configuration: &configuration::Configuration, limit: Option<i64>, order: Option<models::ListModelsOrder>, after: Option<&str>) -> ...
+
+-pub async fn upload_file(configuration: &configuration::Configuration, file: std::path::PathBuf, purpose: &str) -> ...
++pub async fn upload_file(configuration: &configuration::Configuration, file: std::path::PathBuf, purpose: models::UploadFileRequestPurpose) -> ...
+```
+
+```rust
+// src/models/list_models_order.rs (new)
+pub enum ListModelsOrder {
+    #[serde(rename = "asc")]
+    Asc,
+    #[serde(rename = "desc")]
+    Desc,
+}
+```
+
+The wire is the same: a query parameter and a multipart text part send the enum's `Display`, which is its wire value
+(`multipart_form.text("purpose", p_form_purpose.to_string())`). A body property's model field changes type with it:
+`UploadFileRequest.purpose` was the enum `upload_file_request::Purpose` and is now `models::UploadFileRequestPurpose`.
+Parameters declared on the path item or under `components/parameters` are shared by operations and keep their type.
+A name that is already a component's (after Rust normalization) fails generation, naming both.
+
+### `nullableUnionFields`: a nullable union field can hold `null` (requires `modelUnions`)
+
+With `modelUnions` a field whose union is nullable was `Option<U>`, so a request could not send `null`, and a `null`
+that came in went out as an absent field. With the option it renders like any other nullable field: optional ones
+`Option<Option<U>>`, required ones `Option<U>` that must be present:
+
+```diff
+-    #[serde(rename = "stop", skip_serializing_if = "Option::is_none")]
+-    pub stop: Option<models::CreateChatCompletionRequestStop>,
++    #[serde(rename = "stop", default, with = "::serde_with::rust::double_option", skip_serializing_if = "Option::is_none")]
++    pub stop: Option<Option<models::CreateChatCompletionRequestStop>>,
+```
+
+`None` leaves the field out, `Some(None)` sends `"stop": null`, `Some(Some(v))` sends the value. A required nullable union
+field goes from `U` to `Option<U>`. The union keeps the property's `nullable` when the always-on spec rule hoists an
+inline union into a component (that rule dropped it until now; it still does without the option).
+
+### `schemaDefaultDocs`: defaults in the documentation
+
+openapi-generator does not print a property's `default`, and the spec rules remove `default` from component schemas
+(the stock generator renders some badly). With the option the default is noted first, in the property's or parameter's
+description:
+
+```diff
+     #[serde(rename = "n", skip_serializing_if = "Option::is_none")]
+     pub n: Option<i32>,
++    /// Defaults to `false`.
+     #[serde(rename = "stream", skip_serializing_if = "Option::is_none")]
+     pub stream: Option<bool>,
+```
+
+The value is the default's JSON. Types do not change: progenitor makes such a field `bool` with `#[serde(default)]`,
+which would be a breaking change and would send `false` where the caller set nothing.
+
+### `deprecatedAttributes`: `#[deprecated]` on deprecated fields and schemas
+
+A property or schema with `deprecated: true` gets `#[deprecated]`, so a caller that uses it gets a warning. Operations
+already had it (stock). Generated code refers to deprecated items itself (constructors, builders, serde, `mod.rs`), so
+every model and API file starts with `#![allow(deprecated)]`, and the crate builds without warnings:
+
+```diff
++#![allow(deprecated)]
+ /*
+  * Comparison API
+...
+     #[serde(rename = "response_format", skip_serializing_if = "Option::is_none")]
+     pub response_format: Option<models::ResponseFormat>,
++    #[deprecated]
+     #[serde(rename = "legacy_user", skip_serializing_if = "Option::is_none")]
+     pub legacy_user: Option<String>,
+```
+
+A deprecated schema gets `#[deprecated]` above its `#[derive(..)]`. This is not a breaking change in Rust terms, but a
+consumer built with `-D warnings` fails where it uses a deprecated item, so turn it on in a client repo together with
+any fixes its downstream wrapper needs.
+
 ## Supported configuration
 
 `timvw-rust` accepts exactly one configuration. Every option below is applied as the default when
@@ -285,6 +433,11 @@ Our own options:
 | `unionPlanFile` | unset | with `modelUnions`: output-relative path the union plan is written to, as JSON |
 | `typedEventStreams` | `false` | a `text/event-stream` response is a method returning a typed stream, see [above](#content-type-methods-and-event-streams); `sse.rs` is only written when some operation streams |
 | `contentTypeMethods` | `false` | one method per request body media type and response shape, named with a suffix, see [above](#content-type-methods-and-event-streams) |
+| `typedEnumParameters` | `false` | inline enums of parameters and form/multipart body properties become component enums the functions take, see [above](#typedenumparameters-enum-parameters-take-the-enum) |
+| `nullableUnionFields` | `false` | with `modelUnions`: a field whose union is nullable is `Option<Option<U>>` (optional) or `Option<U>` (required), so `null` can be sent |
+| `schemaDefaultDocs` | `false` | a property's or parameter's `default` is noted in its documentation |
+| `deprecatedAttributes` | `false` | `#[deprecated]` on deprecated properties and schemas; generated files start with `#![allow(deprecated)]` |
+| `pruneAllHelpers` | `false` | helpers nobody calls are always left out; with this option also those marked `#[allow(dead_code)]` |
 | `boxResponseError` | `false` | box the `ResponseError` payload |
 | `apiLintAllows` | unset | `#![allow(..)]` contents for API modules and `configuration.rs` |
 | `userAgentFromPackage` | `false` | default user agent from `packageName` and the crate version |
@@ -384,7 +537,8 @@ The pom's version on `main` stays a `-SNAPSHOT`; the release workflow never comm
 ```
 pom.xml                                  be.timvw:openapi-generator-timvw-rust, Java 17
 src/main/java/be/timvw/openapi/rust/     TimvwRustCodegen (configuration, options), RustDoc (URL wrapping),
-                                         SpecNormalizer (spec repair)
+                                         SpecNormalizer (spec repair), HelperPruning (unused helpers),
+                                         ExtraRules (the opt-in renderings from the generator comparison)
 src/main/resources/timvw-rust/og*/       template overrides, one set per openapi-generator minor version
 src/main/resources/META-INF/services/    registers the generator with openapi-generator
 src/test/java/                           JUnit 5 tests; src/test/resources/milestone1.yaml is the rendering fixture

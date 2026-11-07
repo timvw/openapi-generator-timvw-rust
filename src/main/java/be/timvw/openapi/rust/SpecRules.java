@@ -429,9 +429,16 @@ final class SpecRules {
      * {@code <Schema><Property>} and references it, when every branch is inline (no {@code $ref}), none is
      * {@code type: null} and at least one is an array or object. The stock generator fails on the flattened
      * composed model of such a property.
+     *
+     * @param keepNullable the union keeps the property's {@code nullable} (for {@code nullableUnionFields}); without it
+     *                     a nullable property loses its nullability, as it always did
      */
-    @SuppressWarnings({"rawtypes", "unchecked"})
     static List<String> hoistInlineUnions(OpenAPI openAPI) {
+        return hoistInlineUnions(openAPI, false);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static List<String> hoistInlineUnions(OpenAPI openAPI, boolean keepNullable) {
         List<String> hoisted = new ArrayList<>();
         Map<String, Schema> schemas = schemas(openAPI);
         Map<String, Schema> added = new LinkedHashMap<>();
@@ -474,6 +481,10 @@ final class SpecRules {
                     }
                     union.setTitle(name);
                     union.setDescription(prop.getDescription());
+                    if (keepNullable && (Boolean.TRUE.equals(prop.getNullable())
+                            || (prop.getTypes() != null && prop.getTypes().contains("null")))) {
+                        union.setNullable(true);
+                    }
                     added.put(name, union);
                     p.setValue(new Schema().$ref(SCHEMA_REF_PREFIX + name));
                     hoisted.add(e.getKey() + "." + p.getKey() + " -> " + name);

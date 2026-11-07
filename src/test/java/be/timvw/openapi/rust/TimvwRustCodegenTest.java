@@ -195,10 +195,6 @@ class TimvwRustCodegenTest {
 
     @ParameterizedTest(name = "openapi-generator {0} uses {1}")
     @CsvSource({
-            "7.15.0,og7.15.0",
-            "7.15.3,og7.15.0",
-            "7.25.0,og7.25.0",
-            "7.25.1,og7.25.0",
             "7.27.0,og7.27.0",
             "7.27.1,og7.27.0",
     })
@@ -211,12 +207,12 @@ class TimvwRustCodegenTest {
     }
 
     @ParameterizedTest(name = "openapi-generator {0} is rejected")
-    @ValueSource(strings = {"7.14.0", "7.26.0", "8.0.0", "unset"})
+    @ValueSource(strings = {"7.14.0", "7.15.0", "7.25.0", "7.26.0", "8.0.0", "unset"})
     void failsOnAnOpenApiGeneratorWithoutTemplates(String version) {
         TimvwRustCodegen c = new TimvwRustCodegen(version);
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
         assertTrue(e.getMessage().contains(version), e.getMessage());
-        assertTrue(e.getMessage().contains("7.25"), e.getMessage());
+        assertTrue(e.getMessage().contains("7.27"), e.getMessage());
     }
 
     @Test

@@ -2,7 +2,7 @@
 """Rebuild the template overrides under src/main/resources/timvw-rust/ from the stock templates.
 
 The generator keeps one override set per supported openapi-generator minor version
-(``og7.15.0``, ``og7.25.0``, ``og7.27.0``): every file in a set starts as a verbatim copy of the stock
+(currently only ``og7.27.0``): every file in a set starts as a verbatim copy of the stock
 ``rust`` template of that version and then receives the same, small edits. Anything the
 set does not contain falls back to the stock template at run time, so only edited files
 are checked in.

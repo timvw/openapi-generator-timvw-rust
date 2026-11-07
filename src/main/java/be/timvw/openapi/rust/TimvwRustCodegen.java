@@ -58,8 +58,10 @@ import java.util.Set;
  *       (Milestone 2.6);</li>
  *   <li>{@code multipartHelper} sends multipart bodies through a generated helper module (see {@link MultipartRules}),
  *       and {@code fileProperties} declares properties to be files (Milestone 2.5);</li>
- *   <li>{@code legacyModelRewrites} runs transitional Java ports of openai-client-base's model scripts over the
- *       rendered crate (Milestone 2.4, see {@code be.timvw.openapi.rust.legacy});</li>
+ *   <li>{@code use crate::models;} is written only into a model file that refers to another model, and an API
+ *       module imports {@code ContentType}, {@code de::Error} and the file stream types only where an operation uses
+ *       them (see {@link Imports}); this replaced the {@code legacyModelRewrites} text rewrites (Milestone 2.4), which
+ *       are gone;</li>
  *   <li>{@code boxOnlyCycles} boxes a model reference only where the model graph needs it to break a cycle
  *       (Milestone 3.1, see {@link BoxRules});</li>
  *   <li>{@code defaultOnlyWhereValid} keeps {@code Default} only where its value is one the API would accept
@@ -73,8 +75,7 @@ import java.util.Set;
  *   <li>{@code qualifiedInlineNames} names an inline schema after its title when that is unique and after where
  *       it stands otherwise, and fails generation when two different schemas would share a Rust model or file (Milestone 3.3, see {@link InlineNames} and
  *       {@link NameCollisions});</li>
- *   <li>{@code modelUnions} renders unions from the model instead of through the text rewrites of
- *       {@code legacyModelRewrites} (Milestone 3.3, see {@link UnionRules});</li>
+ *   <li>{@code modelUnions} renders unions from the model (Milestone 3.3, see {@link UnionRules});</li>
  *   <li>{@code unionDispatch} makes a union with a tag decode by that tag (Milestone 3.3, see
  *       {@link UnionRules#dispatch});</li>
  *   <li>{@code openEnums} gives what a response can hold a catch-all for values the spec does not list (Milestone 3.5,
@@ -127,7 +128,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String API_LINT_ALLOWS = "apiLintAllows";
     /** The default user agent is {@code <packageName>/<crate version>}. */
     public static final String USER_AGENT_FROM_PACKAGE = "userAgentFromPackage";
-    /** Run the transitional model rewrites of Milestone 2.4 over the rendered crate (openai-client-base). */
+    /**
+     * Removed: the transitional text rewrites of Milestone 2.4 (Java ports of openai-client-base's scripts). Model-level
+     * rules replaced them, so setting it is an error rather than ignored.
+     */
     public static final String LEGACY_MODEL_REWRITES = "legacyModelRewrites";
     /** Multipart bodies go through a generated {@code src/apis/multipart_helper.rs} (Milestone 2.5). */
     public static final String MULTIPART_HELPER = "multipartHelper";
@@ -149,7 +153,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String INTEGERS_AS_I64 = "integersAsI64";
     /** Name inline schemas after a unique title or their location; a real name collision fails generation (Milestone 3.3). */
     public static final String QUALIFIED_INLINE_NAMES = "qualifiedInlineNames";
-    /** Unions render from the model; the union text rewrites of {@code legacyModelRewrites} do not run (Milestone 3.3). */
+    /** Unions render from the model (Milestone 3.3). */
     public static final String MODEL_UNIONS = "modelUnions";
     /** A union with a tag decodes by that tag; it requires {@link #MODEL_UNIONS} (Milestone 3.3). */
     public static final String UNION_DISPATCH = "unionDispatch";
@@ -219,12 +223,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private String preprocessedSpecFile;
     private boolean resetQueryParameterStyle;
     private boolean multipartHelper;
-    private boolean legacyModelRewrites;
     private String preprocessedSpecJson;
     private List<String> fileProperties = new ArrayList<>();
     private boolean boxOnlyCycles;
     private boolean integersAsI64;
-    private Map<String, Integer> boxComponents = Map.of();
     private boolean defaultOnlyWhereValid;
     private boolean enumFromStr;
     private boolean noStructDisplay;
@@ -238,6 +240,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
     private String unionPlanFile;
     private final Map<String, CodegenModel> unionModels = new HashMap<>();
     private boolean typedEventStreams;
+    /** Some operation got a typed event stream: only then are {@code sse.rs} and its {@code mod} line written. */
+    private boolean anyEventStream;
     private boolean contentTypeMethods;
     /** The methods added for an operation, by its own method, which gets its auth methods only after it was grouped. */
     private final Map<CodegenOperation, List<CodegenOperation>> contentVariants = new java.util.IdentityHashMap<>();
@@ -317,9 +321,6 @@ public class TimvwRustCodegen extends RustClientCodegen {
         cliOptions.add(CliOption.newBoolean(RESET_QUERY_PARAMETER_STYLE,
                 "Give every query parameter not listed in deepObjectQueryParameters the default style (form, "
                         + "exploded), so arrays are sent as repeated parameters whatever the spec says", false));
-        cliOptions.add(CliOption.newBoolean(LEGACY_MODEL_REWRITES,
-                "Run the transitional rewrites that reproduce openai-client-base's scripted model output (union "
-                        + "enums, Default and Display impls, imports); they go in Milestone 3", false));
         cliOptions.add(CliOption.newBoolean(MULTIPART_HELPER,
                 "Send multipart bodies through a generated src/apis/multipart_helper.rs: files are read into a part "
                         + "named after the file, optional arrays send one part per item and optional objects one JSON "
@@ -354,12 +355,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 "Closed enums implement FromStr and TryFrom<&str>, TryFrom<&String> and TryFrom<String>, accepting "
                         + "exactly what their Display prints; property enums get the Display they lack", false));
         cliOptions.add(CliOption.newBoolean(NO_STRUCT_DISPLAY,
-                "Structs have no JSON Display (legacyModelRewrites adds one otherwise); API code serializes parameters "
+                "Structs have no JSON Display; API code serializes parameters "
                         + "of struct type with serde_json::to_string, with the same bytes on the wire", false));
         cliOptions.add(CliOption.newBoolean(MODEL_UNIONS,
                 "Render every oneOf and anyOf as an untagged enum from the model: variants named after the branch and "
-                        + "ordered so that decoding takes the narrowest one. The union rewrites of legacyModelRewrites "
-                        + "do not run", false));
+                        + "ordered so that decoding takes the narrowest one", false));
         cliOptions.add(CliOption.newBoolean(UNION_DISPATCH,
                 "With modelUnions: a union with a discriminator, or whose branches all require one property with fixed "
                         + "values, decodes the variant its tag selects instead of trying them all. It serializes as "
@@ -472,7 +472,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         objs = super.postProcessAllModels(objs);
         Map<String, CodegenModel> unions = modelUnions
                 ? UnionRules.plan(objs, msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, MODEL_UNIONS, msg)) : Map.of();
-        boxComponents = BoxRules.mark(objs, boxOnlyCycles);
+        BoxRules.mark(objs, boxOnlyCycles);
         if (modelUnions) {
             UnionRules.payloads(unions, objs);
             unionModels.putAll(unions);
@@ -496,6 +496,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
             writeUnionPlan(unions);
         }
         DefaultRules.mark(objs, defaultOnlyWhereValid);
+        Imports.markModels(objs, modelUnions);
         return objs;
     }
 
@@ -639,8 +640,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
         deepObjectQueryParameters = SpecRules.entries(additionalProperties.get(DEEP_OBJECT_QUERY_PARAMETERS));
         resetQueryParameterStyle = additionalProperties.containsKey(RESET_QUERY_PARAMETER_STYLE)
                 && convertPropertyToBooleanAndWriteBack(RESET_QUERY_PARAMETER_STYLE);
-        legacyModelRewrites = additionalProperties.containsKey(LEGACY_MODEL_REWRITES)
-                && convertPropertyToBooleanAndWriteBack(LEGACY_MODEL_REWRITES);
+        if (additionalProperties.containsKey(LEGACY_MODEL_REWRITES)) {
+            throw new IllegalArgumentException(String.format("%s: %s was removed: the model-level rules replaced the "
+                    + "text rewrites (unused imports are no longer written, see %s); drop the option",
+                    GENERATOR_NAME, LEGACY_MODEL_REWRITES, "x-rust-uses-models"));
+        }
         multipartHelper = additionalProperties.containsKey(MULTIPART_HELPER)
                 && convertPropertyToBooleanAndWriteBack(MULTIPART_HELPER);
         additionalProperties.put(MULTIPART_HELPER, multipartHelper);
@@ -924,30 +928,22 @@ public class TimvwRustCodegen extends RustClientCodegen {
             }
             objs.put(WEBHOOK_MODULES_KEY, Arrays.asList(toApiFilename(webhookModule)));
         }
+        if (typedEventStreams && !anyEventStream) {
+            // No operation streams: no sse.rs, no `pub mod sse;` and no stream dependencies in Cargo.toml.
+            objs.put(TYPED_EVENT_STREAMS, false);
+            supportingFiles.removeIf(f -> "sse.rs".equals(f.getDestinationFilename()));
+            LOGGER.info("{}: {}: no operation has a text/event-stream response, so sse.rs is not written",
+                    GENERATOR_NAME, TYPED_EVENT_STREAMS);
+        }
         return objs;
     }
 
     /**
-     * Runs the transitional model rewrites ({@code legacyModelRewrites}) over the written crate, then the stock
+     * Runs the steps that need the written crate (the union dispatch module, {@code enumFromStr}), then the stock
      * post-processing.
      */
     @Override
     public void postProcess() {
-        if (legacyModelRewrites) {
-            try {
-                java.util.Map<String, Object> raw = be.timvw.openapi.rust.legacy.LegacyContext.load(
-                        java.nio.file.Paths.get(getInputSpec()));
-                java.util.Map<String, Object> preprocessed = be.timvw.openapi.rust.legacy.LegacyContext.parseJson(
-                        preprocessedSpecJson);
-                be.timvw.openapi.rust.legacy.LegacyModelRewrites.run(
-                        new be.timvw.openapi.rust.legacy.LegacyContext(java.nio.file.Paths.get(outputFolder), raw,
-                                preprocessed, boxPolicy(), defaultOnlyWhereValid, integersAsI64),
-                        !noStructDisplay, modelUnions,
-                        msg -> LOGGER.info("{}: {}", GENERATOR_NAME, msg));
-            } catch (java.io.IOException e) {
-                throw new IllegalStateException(GENERATOR_NAME + ": legacy model rewrites failed", e);
-            }
-        }
         java.nio.file.Path models = java.nio.file.Paths.get(outputFolder, "src", "models");
         try {
             checkStructJsonModels(models, structJsonModels);
@@ -967,9 +963,9 @@ public class TimvwRustCodegen extends RustClientCodegen {
     }
 
     /**
-     * A parameter marked {@link #STRUCT_JSON} was a struct when the API module was rendered. If a legacy rewrite turned
-     * that model into a union afterwards, its {@code Display} is not its JSON (a string variant prints unquoted), so the
-     * explicit serialization would change the bytes on the wire: fail instead.
+     * A parameter marked {@link #STRUCT_JSON} was a struct when the API module was rendered. If the written model is
+     * something else (a union, whose {@code Display} is not its JSON), the explicit serialization would change the bytes
+     * on the wire: fail instead. A safety net: nothing rewrites models after rendering any more.
      */
     void checkStructJsonModels(java.nio.file.Path models, Set<String> names) throws java.io.IOException {
         List<String> notStructs = new ArrayList<>();
@@ -998,28 +994,18 @@ public class TimvwRustCodegen extends RustClientCodegen {
     }
 
     /**
-     * The models that end up as a struct: no enum, discriminated union or {@code oneOf}, as in the model template. The
-     * template also renders an {@code anyOf} as an empty struct, but the legacy rewrites turn it into a union.
+     * The models that end up as a struct: no enum, discriminated union or {@code oneOf}, as in the model template.
      */
-    private static Set<String> renderedStructs(List<ModelMap> allModels, boolean legacyModelRewrites) {
+    private static Set<String> renderedStructs(List<ModelMap> allModels) {
         Set<String> structs = new HashSet<>();
         for (ModelMap map : allModels) {
             CodegenModel cm = map.getModel();
-            boolean union = UnionRules.isUnion(cm) || (legacyModelRewrites && cm.anyOf != null && !cm.anyOf.isEmpty());
+            boolean union = UnionRules.isUnion(cm);
             if (!cm.isEnum && cm.discriminator == null && (cm.oneOf == null || cm.oneOf.isEmpty()) && !union) {
                 structs.add(cm.classname);
             }
         }
         return structs;
-    }
-
-    /** What the legacy rewrites box: every model payload, or with {@code boxOnlyCycles} only those on a cycle. */
-    private be.timvw.openapi.rust.legacy.BoxPolicy boxPolicy() {
-        if (!boxOnlyCycles) {
-            return be.timvw.openapi.rust.legacy.BoxPolicy.ALWAYS;
-        }
-        Map<String, Integer> components = boxComponents;
-        return (holder, target) -> BoxRules.inCycle(components, holder, target);
     }
 
     /**
@@ -1071,6 +1057,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
                 variants.size(), variants.stream().map(v -> v.operationId).collect(java.util.stream.Collectors.toList()));
     }
 
+    private boolean flag(String option) {
+        return Boolean.parseBoolean(String.valueOf(additionalProperties.get(option)));
+    }
+
     /** Fails when a suffixed method takes the name of another method of the same API module. */
     private void claimName(String tag, CodegenOperation co, boolean variant) {
         String key = tag + "#" + co.operationId;
@@ -1086,6 +1076,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         boolean stream = method.eventStream() && co.returnType != null && !co.isResponseFile;
         if (stream) {
             co.vendorExtensions.put(EVENT_STREAM, true);
+            anyEventStream = true;
         }
         String request = method.requestMediaType();
         if (contentTypeMethods && request != null && !ContentTypeMethods.stockBody(request)) {
@@ -1146,7 +1137,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public OperationsMap postProcessOperationsWithModels(OperationsMap objs, List<ModelMap> allModels) {
         objs = super.postProcessOperationsWithModels(objs, allModels);
         boolean helperUsed = false;
-        Set<String> structs = noStructDisplay ? renderedStructs(allModels, legacyModelRewrites) : Set.of();
+        Set<String> structs = noStructDisplay ? renderedStructs(allModels) : Set.of();
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             for (CodegenOperation op : objs.getOperations().getOperation()) {
                 op.vendorExtensions.putIfAbsent(ERROR_ENUM, op.operationIdCamelCase + "Error");
@@ -1189,6 +1180,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         if (helperUsed) {
             objs.put(MULTIPART_HELPER_IMPORT, true);
         }
+        Imports.markApi(objs, flag(SUPPORT_ASYNC), multipartHelper, flag(SUPPORT_MULTIPLE_RESPONSES));
         if (webhookModuleReexport && objs.getOperations() != null
                 && toApiName("default").equals(objs.getOperations().getClassname())) {
             objs.put(WEBHOOK_REEXPORT_KEY, toApiFilename(webhookModule));

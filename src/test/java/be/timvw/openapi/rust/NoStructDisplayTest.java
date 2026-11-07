@@ -38,7 +38,6 @@ class NoStructDisplayTest {
     private static void generate(Path output, boolean noStructDisplay, boolean multipartHelper) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "enums");
-        props.put(TimvwRustCodegen.LEGACY_MODEL_REWRITES, "true");
         props.put(TimvwRustCodegen.DEEP_OBJECT_QUERY_PARAMETERS, "/things/deep?filter");
         if (noStructDisplay) {
             props.put(TimvwRustCodegen.NO_STRUCT_DISPLAY, "true");
@@ -64,7 +63,9 @@ class NoStructDisplayTest {
 
     @Test
     void structsHaveNoDisplay() throws IOException {
-        assertTrue(model(off, "filter").contains("impl std::fmt::Display for Filter"));
+        // Only the removed legacyModelRewrites gave structs a JSON Display; without the option the API code still
+        // calls to_string() on them, as stock does.
+        assertFalse(model(off, "filter").contains("Display"));
         assertFalse(model(on, "filter").contains("Display"));
     }
 
@@ -163,16 +164,6 @@ class NoStructDisplayTest {
         assertTrue(e.getMessage().contains("Filter"), e.getMessage());
         Files.writeString(models.resolve("filter.rs"), "pub struct Filter {\n}\n");
         codegen.checkStructJsonModels(models, java.util.Set.of("Filter"));
-    }
-
-    @Test
-    void anAnyOfTheRewritesMakeAUnionKeepsItsOwnDisplay() throws IOException {
-        // Its Display prints a text variant unquoted, so JSON would change the bytes; generating at all proves the
-        // guard accepts it.
-        assertTrue(model(on, "thing_size").contains("pub enum ThingSize"), model(on, "thing_size"));
-        assertTrue(model(on, "thing_size").contains("impl std::fmt::Display for ThingSize"), model(on, "thing_size"));
-        assertTrue(api(on).contains("multipart_form.text(\"size\", p_form_size.to_string());"), api(on));
-        assertTrue(api(off).contains("multipart_form.text(\"size\", p_form_size.to_string());"), api(off));
     }
 
     @Test

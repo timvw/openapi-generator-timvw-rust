@@ -34,20 +34,16 @@ class ModelUnionsTest {
     static Path qualified;
 
     @TempDir
-    static Path legacy;
-
-    @TempDir
     static Path off;
 
     @BeforeAll
     static void generate() {
-        generate(on, true, false, false);
-        generate(qualified, true, true, false);
-        generate(legacy, true, false, true);
-        generate(off, false, false, false);
+        generate(on, true, false);
+        generate(qualified, true, true);
+        generate(off, false, false);
     }
 
-    private static void generate(Path output, boolean modelUnions, boolean qualifiedNames, boolean rewrites) {
+    private static void generate(Path output, boolean modelUnions, boolean qualifiedNames) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "unions");
         props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
@@ -59,9 +55,6 @@ class ModelUnionsTest {
         }
         if (qualifiedNames) {
             props.put(TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true");
-        }
-        if (rewrites) {
-            props.put(TimvwRustCodegen.LEGACY_MODEL_REWRITES, "true");
         }
         CodegenConfigurator configurator = new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
@@ -125,7 +118,7 @@ class ModelUnionsTest {
 
     @Test
     void aNullableReferenceDoesNotRewriteItsTarget() throws IOException {
-        for (Path output : List.of(on, legacy)) {
+        for (Path output : List.of(on)) {
             String log = read(output, "log");
             assertTrue(log.contains("pub actor: Option<models::LogActor>,"), log);
             assertTrue(log.contains("pub error: Option<Option<models::LogError>>,"), log);
@@ -137,7 +130,7 @@ class ModelUnionsTest {
 
     @Test
     void anObjectNextToNullIsAStruct() throws IOException {
-        for (Path output : List.of(on, legacy)) {
+        for (Path output : List.of(on)) {
             String prompt = read(output, "prompt");
             assertTrue(prompt.contains("pub struct Prompt {"), prompt);
             assertTrue(prompt.contains("pub id: String,"), prompt);
@@ -270,13 +263,6 @@ class ModelUnionsTest {
         assertEquals(List.of("Leaf(models::Leaf)", "Branch(Box<models::Branch>)"), variants(read(on, "tree"), "Tree"));
         String branch = read(on, "branch");
         assertTrue(branch.contains("pub left: Box<models::Tree>,"), branch);
-    }
-
-    @Test
-    void theRewritesDoNotTouchAModelUnion() throws IOException {
-        assertEquals(variants(read(on, "message"), "Message"), variants(read(legacy, "message"), "Message"));
-        assertEquals(variants(read(on, "format"), "Format"), variants(read(legacy, "format"), "Format"));
-        assertTrue(read(legacy, "log_actor").contains("pub struct LogActor {"));
     }
 
     @Test

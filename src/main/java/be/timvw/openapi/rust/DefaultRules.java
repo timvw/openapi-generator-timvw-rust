@@ -12,13 +12,12 @@ import java.util.Map;
  * <p>A {@code Default} value must be one the API would accept. A struct qualifies only when it has no required field;
  * a required nullable field is required too, since leaving it out is not the same as sending {@code null}. The types of
  * the optional fields do not matter: they are all {@code Option<T>}, which is {@code Default} whatever {@code T} is.
- * No enum has a {@code Default}, as no variant is the API's default; the templates and the legacy rewrites that write
- * enums read the option itself for that.</p>
+ * No enum has a {@code Default}, as no variant is the API's default; the templates read the option itself for that.</p>
  *
  * <p>The decision is stored per model as the vendor extension {@value #DERIVE_DEFAULT}, which the model template
  * reads. It looks at the model's own fields only, never at type names, so it cannot collide across modules the way the
- * text-based analysis of the legacy rewrites does. Without the option every model gets {@code true}, which is the stock
- * rendering, and those rewrites remove the derive afterwards.</p>
+ * text-based analysis of the removed legacy rewrites did. Without the option every model gets {@code true}, which is the
+ * stock rendering.</p>
  */
 final class DefaultRules {
 

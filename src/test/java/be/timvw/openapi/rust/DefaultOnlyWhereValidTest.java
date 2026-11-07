@@ -29,26 +29,19 @@ class DefaultOnlyWhereValidTest {
 
     private static Path rule;
     private static Path stock;
-    private static Path legacyRule;
-    private static Path legacyStock;
 
     @BeforeAll
     static void generate() {
-        rule = generate("rule", true, false);
-        stock = generate("stock", false, false);
-        legacyRule = generate("legacy-rule", true, true);
-        legacyStock = generate("legacy-stock", false, true);
+        rule = generate("rule", true);
+        stock = generate("stock", false);
     }
 
-    private static Path generate(String name, boolean option, boolean legacy) {
+    private static Path generate(String name, boolean option) {
         Path output = root.resolve(name);
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "defaults");
         if (option) {
             props.put(TimvwRustCodegen.DEFAULT_ONLY_WHERE_VALID, "true");
-        }
-        if (legacy) {
-            props.put(TimvwRustCodegen.LEGACY_MODEL_REWRITES, "true");
         }
         CodegenConfigurator configurator = new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
@@ -72,7 +65,7 @@ class DefaultOnlyWhereValidTest {
 
     @Test
     void aRequiredFieldTakesTheDeriveAway() throws IOException {
-        for (Path output : List.of(rule, legacyRule)) {
+        for (Path output : List.of(rule)) {
             String thing = read(output, "create_thing");
             assertTrue(thing.contains(DERIVE_PLAIN), thing);
             assertFalse(thing.contains(DERIVE_DEFAULT), thing);
@@ -82,7 +75,7 @@ class DefaultOnlyWhereValidTest {
 
     @Test
     void aRequiredNullableFieldCountsAsRequired() throws IOException {
-        for (Path output : List.of(rule, legacyRule)) {
+        for (Path output : List.of(rule)) {
             String note = read(output, "nullable_note");
             assertTrue(note.contains("pub note: Option<String>,"), note);
             assertFalse(note.contains("Default"), note);
@@ -91,7 +84,7 @@ class DefaultOnlyWhereValidTest {
 
     @Test
     void anAllOptionalStructKeepsItWhateverItsFieldTypes() throws IOException {
-        for (Path output : List.of(rule, legacyRule)) {
+        for (Path output : List.of(rule)) {
             String options = read(output, "options");
             assertTrue(options.contains(DERIVE_DEFAULT), options);
             // A union, a value enum, a property enum and a struct that has no Default themselves.
@@ -104,7 +97,7 @@ class DefaultOnlyWhereValidTest {
 
     @Test
     void noEnumImplementsDefaultWhateverItsKind() throws IOException {
-        for (Path output : List.of(rule, legacyRule)) {
+        for (Path output : List.of(rule)) {
             assertTrue(read(output, "color").contains("pub enum Color {"));
             assertTrue(read(output, "shape").contains("pub enum Shape {"));
             assertTrue(read(output, "pet").contains("pub enum Pet {"));
@@ -117,24 +110,11 @@ class DefaultOnlyWhereValidTest {
     }
 
     @Test
-    void theCollisionIsGoneUnderTheOption() throws IOException {
-        // A union Object without Default strips every struct with a local Object field in the legacy analysis...
-        assertTrue(read(legacyStock, "object").contains("pub enum Object {"));
-        String collided = read(legacyStock, "holder");
-        assertTrue(collided.contains("pub object: Option<Object>,"), collided);
-        assertFalse(collided.contains("Default,"), collided);
-        // ...which the option replaces with the struct's own required fields.
-        String holder = read(legacyRule, "holder");
+    void aStructWithALocalFieldNamedLikeAUnionKeepsItsDerive() throws IOException {
+        // The rule looks at the struct's own required fields, not at bare type names elsewhere.
+        String holder = read(rule, "holder");
         assertTrue(holder.contains("pub object: Option<Object>,"), holder);
         assertTrue(holder.contains(DERIVE_DEFAULT), holder);
-    }
-
-    @Test
-    void aUnionWrittenByTheLegacyRewritesHasNoDefaultEither() throws IOException {
-        assertTrue(read(legacyStock, "text_or_parts").contains("impl Default for TextOrParts"));
-        String union = read(legacyRule, "text_or_parts");
-        assertTrue(union.contains("pub enum TextOrParts {"), union);
-        assertFalse(union.contains("Default"), union);
     }
 
     @Test

@@ -4,17 +4,13 @@
 {{/apiLintAllows}}
 
 use reqwest;
-use serde::{Deserialize, Serialize, de::Error as _};
+use serde::{Deserialize, Serialize{{#x-rust-import-serde-error}}, de::Error as _{{/x-rust-import-serde-error}}};
 use crate::{apis::ResponseContent, models};
-use super::{Error, configuration, ContentType{{#multipartHelperImport}}, multipart_helper{{/multipartHelperImport}}};
-{{#operations}}
-{{#operation}}
-{{#vendorExtensions.useAsyncFileStream}}
+use super::{Error, configuration{{#x-rust-import-content-type}}, ContentType{{/x-rust-import-content-type}}{{#multipartHelperImport}}, multipart_helper{{/multipartHelperImport}}};
+{{#x-rust-import-file-stream}}
 use tokio::fs::File as TokioFile;
 use tokio_util::codec::{BytesCodec, FramedRead};
-{{/vendorExtensions.useAsyncFileStream}}
-{{/operation}}
-{{/operations}}
+{{/x-rust-import-file-stream}}
 
 {{#operations}}
 {{#operation}}

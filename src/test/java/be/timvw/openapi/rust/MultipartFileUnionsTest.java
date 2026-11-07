@@ -107,7 +107,8 @@ class MultipartFileUnionsTest {
 
     @Test
     void aModuleWithOnlyFileUnionsImportsTheHelper() throws IOException {
-        assertTrue(api(on, "skills").contains("use super::{Error, configuration, ContentType, multipart_helper};"));
+        // No operation decodes a response, so ContentType is not imported (Imports).
+        assertTrue(api(on, "skills").contains("use super::{Error, configuration, multipart_helper};"), api(on, "skills"));
     }
 
     @Test

@@ -17,9 +17,8 @@ import java.util.stream.Stream;
  * Milestone 3.2 ({@code enumFromStr}): gives every closed value enum {@code FromStr} and {@code TryFrom<&str>},
  * {@code TryFrom<&String>} and {@code TryFrom<String>}, accepting exactly the strings its {@code Display} prints.
  *
- * <p>This runs over the written crate, after the legacy rewrites, rather than in the model template. Those rewrites
- * rename variants and write enums of their own, in another layout, so only the final text says which enums exist and
- * what they print; and nothing that runs later can disturb what is written here. An enum is closed when every variant
+ * <p>This runs over the written crate rather than in the model template: the final text says which enums exist and
+ * what they print, and nothing that runs later can disturb what is written here. An enum is closed when every variant
  * is a unit variant and it is neither untagged nor internally tagged, so unions stay out.</p>
  *
  * <p>The strings come from the enum's own {@code Display} arms. An enum without {@code Display} (a property enum

@@ -11,7 +11,7 @@ design doc: [Custom Rust generator: rendering design](https://claude.ai/artifact
 
 **Status: Milestone 3 (API cleanup), step 3.1.** Milestone 2 is complete: openai-client-base generates without scripts. The generator renders what stock `-g rust` renders
 plus the conventions below, which langfuse-client-base used to patch in after generation (its public API is
-byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that keeps
+byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that kept
 openai-client-base's type names stable across the openapi-generator 7.15 to 7.25 upgrade.
 
 ## Artifacts
@@ -21,7 +21,7 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
 | Maven | `be.timvw:openapi-generator-timvw-rust` on Maven Central |
 | Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>` |
 | Generator name | `timvw-rust` (`-g timvw-rust`) |
-| Supported openapi-generator | 7.15.x, 7.25.x and 7.27.x (one image per version) |
+| Supported openapi-generator | 7.27.x (one image per supported version) |
 
 The Docker image is a drop-in replacement for `openapitools/openapi-generator-cli`: same arguments,
 same `/local` mount convention, same `JAVA_OPTS` environment variable.
@@ -29,16 +29,16 @@ same `/local` mount convention, same `JAVA_OPTS` environment variable.
 ## Usage in the client repos
 
 Images are published per openapi-generator version, tagged `<generator version>-og<openapi-generator version>`
-(for example `0.2.0-og7.15.0`, `0.2.0-og7.25.0` and `0.2.0-og7.27.0`). The plain `<generator version>` and
-`latest` tags point at the newest supported openapi-generator (7.27.0). A client repo pins the openapi-generator
-version its pipeline is tuned for: openai-client-base uses `-og7.25.0`, langfuse-client-base `-og7.27.0`, and
-`-og7.15.0` stays published for pipelines that have not upgraded yet.
+(for example `0.17.0-og7.27.0`). The plain `<generator version>` and `latest` tags point at the newest supported
+openapi-generator (7.27.0). A client repo pins the openapi-generator version its pipeline is tuned for: openai-client-base
+and langfuse-client-base both use `-og7.27.0`. Up to v0.16.0 images were also published for 7.15.0 and 7.25.0; those
+template sets were removed once no client pinned them.
 
 Replace the image in `scripts/generate.sh`:
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.2.0-og7.25.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:0.17.0-og7.27.0 generate \
   -g timvw-rust \
   -i /local/openapi.yml \
   -o /local \
@@ -312,7 +312,7 @@ of the openapi-generator jars and applies the edits, failing if an anchor no lon
 refresh a version:
 
 ```bash
-python3 tools/sync-templates.py ~/.m2/repository/org/openapitools/openapi-generator/7.25.0/openapi-generator-7.25.0.jar
+python3 tools/sync-templates.py ~/.m2/repository/org/openapitools/openapi-generator/7.27.0/openapi-generator-7.27.0.jar
 ```
 
 ## Development
@@ -325,28 +325,28 @@ wrapper.
 ```
 
 Tests cover the configuration checks, the rendering rules on `src/test/resources/milestone1.yaml`
-(generated in-process with whichever openapi-generator is on the classpath) and the spec repair. Run
-them against the other supported version with `./mvnw -Dopenapi-generator.version=7.15.0 verify`.
+(generated in-process with whichever openapi-generator is on the classpath) and the spec repair. When a new
+openapi-generator version gets a template set, run them against it with `./mvnw -Dopenapi-generator.version=<version> verify`.
 
 Check that the generator is picked up by the stock CLI (download the CLI jar into `target/`, it is
 git-ignored):
 
 ```bash
-curl -fsSLo target/openapi-generator-cli-7.25.0.jar https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/7.25.0/openapi-generator-cli-7.25.0.jar
+curl -fsSLo target/openapi-generator-cli-7.27.0.jar https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/7.27.0/openapi-generator-cli-7.27.0.jar
 ```
 
 ```bash
-java -cp target/openapi-generator-timvw-rust-0.2.0-SNAPSHOT.jar:target/openapi-generator-cli-7.25.0.jar org.openapitools.codegen.OpenAPIGenerator list | grep timvw-rust
+java -cp target/openapi-generator-timvw-rust-0.2.0-SNAPSHOT.jar:target/openapi-generator-cli-7.27.0.jar org.openapitools.codegen.OpenAPIGenerator list | grep timvw-rust
 ```
 
 Build the image and smoke-test it on the bundled petstore spec:
 
 ```bash
-docker build --build-arg OPENAPI_GENERATOR_VERSION=7.25.0 -t timvw-rust:dev .
+docker build --build-arg OPENAPI_GENERATOR_VERSION=7.27.0 -t timvw-rust:dev .
 ```
 
 To build against another openapi-generator version, pass the same version to Maven first
-(`./mvnw -Dopenapi-generator.version=7.15.0 package`) and to `--build-arg`.
+(`./mvnw -Dopenapi-generator.version=<version> package`) and to `--build-arg`.
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" timvw-rust:dev generate -g timvw-rust -i /local/test-specs/petstore.yaml -o /local/target/petstore --additional-properties=packageName=petstore

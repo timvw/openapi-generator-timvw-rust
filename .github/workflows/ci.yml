@@ -32,9 +32,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Every version a client repo pins. openai-client-base: 7.25.0; langfuse-client-base: 7.27.0;
-        # 7.15.0 stays for pipelines that have not upgraded.
-        openapi-generator: ["7.15.0", "7.25.0", "7.27.0"]
+        # Every version a client repo pins: openai-client-base and langfuse-client-base use 7.27.0.
+        openapi-generator: ["7.27.0"]
     env:
       OPENAPI_GENERATOR_VERSION: ${{ matrix.openapi-generator }}
     steps:

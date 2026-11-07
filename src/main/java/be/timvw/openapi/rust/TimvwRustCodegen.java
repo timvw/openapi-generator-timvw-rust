@@ -246,8 +246,6 @@ public class TimvwRustCodegen extends RustClientCodegen {
 
     private static Map<String, String> templateSets() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("7.15", "og7.15.0");
-        m.put("7.25", "og7.25.0");
         m.put("7.27", "og7.27.0");
         return m;
     }
@@ -269,7 +267,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         this(ImplementationVersion.read());
     }
 
-    /** @param openApiGeneratorVersion the openapi-generator version the generator runs in, e.g. {@code 7.25.0} */
+    /** @param openApiGeneratorVersion the openapi-generator version the generator runs in, e.g. {@code 7.27.0} */
     TimvwRustCodegen(String openApiGeneratorVersion) {
         super();
         this.openApiGeneratorVersion = openApiGeneratorVersion;

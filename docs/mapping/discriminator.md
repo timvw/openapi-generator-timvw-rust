@@ -13,7 +13,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Rust | the enum of [`schema.oneOf`](schema.md#schemaoneof), with a generated `Deserialize` that reads the tag and decodes the variant it selects. It keeps `#[derive(Serialize)]` and `#[serde(untagged)]`. Each branch struct keeps the tag as a field. The helpers are in the crate-private module `src/models/union_dispatch.rs`; a schema with that name fails generation |
 | Wire | encodes as the variant's struct, which writes the tag once. Decoding: see below |
 | Options | `unionDispatch` (baseline). Without it the enum decodes in [variant order](schema.md#schemaoneofvariant-order). Without `modelUnions`: stock `#[serde(tag = "<tag>")]`, which does not decode when the branch structs keep the tag field, and writes it twice |
-| Tests | `UnionDispatchTest#aDiscriminatorOnOneOfOrAnyOfIsATag`, `#itSerializesAsBeforeAndEachStructKeepsItsTag`, `#whatItDoesAtRunTime`, `#withoutTheOptionThereIsNoDispatch`, `ModelUnionsTest#aDiscriminatedOneOfIsUntaggedSoTheTagIsWrittenOnce` |
+| Tests | [`UnionDispatchTest#aDiscriminatorOnOneOfOrAnyOfIsATag`](../../src/test/java/be/timvw/openapi/rust/UnionDispatchTest.java#L107), [`#itSerializesAsBeforeAndEachStructKeepsItsTag`](../../src/test/java/be/timvw/openapi/rust/UnionDispatchTest.java#L188), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/UnionDispatchTest.java#L277), [`#withoutTheOptionThereIsNoDispatch`](../../src/test/java/be/timvw/openapi/rust/UnionDispatchTest.java#L232), [`ModelUnionsTest#aDiscriminatedOneOfIsUntaggedSoTheTagIsWrittenOnce`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L91) |
 
 What decodes:
 
@@ -41,7 +41,7 @@ messages.
 | Rust | the variant `Unknown(serde_json::Value)`, holding what came (`UnknownValue(...)` when a branch is called `Unknown`) |
 | Wire | encodes back as the same JSON. In a union only requests use: the error `` Shape: unknown `kind` value "triangle" `` |
 | Options | `openEnums` (baseline). Without it the unknown value is an error everywhere. A tagged union in front of a struct whose tag is free stays closed |
-| Tests | `OpenEnumsTest#whatAResponseHoldsIsOpen`, `#whatOnlyARequestHoldsStaysClosed`, `#whatTellsVariantsApartIsGuarded`, `#theCatchAllTakesANameAndAStringNoValueHas`, `#whatItDoesAtRunTime` |
+| Tests | [`OpenEnumsTest#whatAResponseHoldsIsOpen`](../../src/test/java/be/timvw/openapi/rust/OpenEnumsTest.java#L92), [`#whatOnlyARequestHoldsStaysClosed`](../../src/test/java/be/timvw/openapi/rust/OpenEnumsTest.java#L101), [`#whatTellsVariantsApartIsGuarded`](../../src/test/java/be/timvw/openapi/rust/OpenEnumsTest.java#L132), [`#theCatchAllTakesANameAndAStringNoValueHas`](../../src/test/java/be/timvw/openapi/rust/OpenEnumsTest.java#L153), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/OpenEnumsTest.java#L212) |
 
 ### `discriminator.mapping`
 
@@ -51,4 +51,4 @@ messages.
 | Rust | each value selects the variant of the referenced schema, and the mapping key names the variant ([`schema.oneOf.variant-names`](schema.md#schemaoneofvariant-names)). Without a `mapping`, a branch's values are the fixed (`enum`) values of its tag property. A variant can have several values; a value can select several variants |
 | Wire | a variant decodes from any of its values and holds the value it was given |
 | Options | `unionDispatch` (baseline). A variant that no value selects, or whose struct has no tag field, fails generation |
-| Tests | `UnionDispatchTest#aDiscriminatorOnOneOfOrAnyOfIsATag`, `#everyValueOfAVariantSelectsIt`, `#aValueOnTwoVariantsListsThemInDecodingOrder`, `#aVariantNoValueSelectsFailsGeneration`, `#aVariantWithoutTheFieldFailsGeneration` |
+| Tests | [`UnionDispatchTest#aDiscriminatorOnOneOfOrAnyOfIsATag`](../../src/test/java/be/timvw/openapi/rust/UnionDispatchTest.java#L107), [`#everyValueOfAVariantSelectsIt`](../../src/test/java/be/timvw/openapi/rust/UnionDispatchTest.java#L162), [`#aValueOnTwoVariantsListsThemInDecodingOrder`](../../src/test/java/be/timvw/openapi/rust/UnionDispatchTest.java#L168), [`#aVariantNoValueSelectsFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/UnionDispatchTest.java#L256), [`#aVariantWithoutTheFieldFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/UnionDispatchTest.java#L249) |

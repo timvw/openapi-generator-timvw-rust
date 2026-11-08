@@ -13,7 +13,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | a success response with `application/json` content |
 | Rust | the function returns `Result<T, Error<..>>`, `T` the schema's type, decoded from the body. A body of another content type is `Error::Serde` |
-| Tests | `OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString` |
+| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L136) |
 
 ### `response.content.text`
 
@@ -21,7 +21,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | a success response with `text/plain` content |
 | Rust | `String`, the body as it came |
-| Tests | `OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString` |
+| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L136) |
 
 ### `response.content.binary`
 
@@ -30,7 +30,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a success response with `application/octet-stream` (or another binary media type) and `format: binary` |
 | Rust | `reqwest::Response`, to read as bytes or a stream ([`schema.format.binary`](schema.md#schemaformatbinary)) |
 | Library | `reqwest::Response` |
-| Tests | `SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead` |
+| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L113) |
 
 ### `response.content.none`
 
@@ -38,7 +38,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | a success response without `content` (`204`) |
 | Rust | `Result<(), Error<..>>` |
-| Tests | `OperationMappingTest#aResponseWithoutABodyIsUnit` |
+| Tests | [`OperationMappingTest#aResponseWithoutABodyIsUnit`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L143) |
 
 ### `response.content`
 
@@ -47,7 +47,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a success response whose `content` lists one or more media types |
 | Rust | the operation's function decodes the first media type the spec lists |
 | Options | `contentTypeMethods` (openai-client-base) adds a function per other response shape: `_json` (JSON), `_text` (other `text/*`), `_bytes` (anything else). One per shape, since the media types of a shape render to the same Rust type. `text/event-stream` is [`response.content.event-stream`](#responsecontentevent-stream) |
-| Tests | `EventStreamsTest#everyMediaTypeHasAMethodNamedWithItsSuffix`, `#suffixes`, `#withoutTheOptionsNothingChanges` |
+| Tests | [`EventStreamsTest#everyMediaTypeHasAMethodNamedWithItsSuffix`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L106), [`#suffixes`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L201), [`#withoutTheOptionsNothingChanges`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L191) |
 
 ### `response.content.event-stream`
 
@@ -58,4 +58,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Wire | sends `Accept: text/event-stream`. An error status is the operation's typed `Error::ResponseError`; a response that is no event stream is `Error::Serde`. Each event's `data:` payload decodes to the event schema (a union by its `type` tag); the SSE `event:` name is not used. `data: [DONE]` or the end of the body ends the stream; an event without data, a comment or an empty payload yields nothing. A payload that does not decode yields `Err(Error::Serde(_))` and the stream goes on; a failure reading the body yields `Err(Error::Reqwest(_))` and ends it. The parser handles CR, LF and CRLF, multi-line data, comments and a byte order mark, and drops an unterminated event at the end |
 | Library | the stream reads the `reqwest::Response`'s bytes; a read failure is `Error::Reqwest` |
 | Options | `typedEventStreams` (openai-client-base). Without it the response is decoded as JSON, which fails. An event schema that models the SSE envelope (objects with required `event` and `data`, like the Assistants API's `AssistantStreamEvent`) gets no stream, since the payload holds only `data`; the generator logs these operations |
-| Tests | `EventStreamsTest#aStreamAsksForItAndChecksTheContentType`, `#theSseEnvelopeGetsNoStream`, `#streamsWithoutContentTypeMethods`, `#whatItDoesAtRunTime`, `#withoutTheOptionsNothingChanges` |
+| Tests | [`EventStreamsTest#aStreamAsksForItAndChecksTheContentType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L157), [`#theSseEnvelopeGetsNoStream`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L172), [`#streamsWithoutContentTypeMethods`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L183), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L221), [`#withoutTheOptionsNothingChanges`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L191) |

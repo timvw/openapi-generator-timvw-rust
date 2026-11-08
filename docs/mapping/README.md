@@ -33,7 +33,7 @@ Each rule has:
 | Rust | what the generator renders |
 | Wire | what decodes and what is written, where that is not obvious from the Rust |
 | Options | the options that change it, and what it renders without the baseline |
-| Tests | the tests that show the rendering |
+| Tests | the tests that show the rendering, linked to their line (`tools/link-mapping-tests.py` writes the links) |
 | Library | only where the Rust depends on the HTTP library: which types come from it (see [HTTP library](#http-library)) |
 | Gap | only for a known gap: what is missing |
 
@@ -47,7 +47,7 @@ modelUnions unionDispatch openEnums schemaDefaultDocs nullableUnionFields
 ```
 
 with the stock options `timvw-rust` fixes (`library=reqwest`, `supportAsync=true`, `supportMiddleware=true`, ...;
-see the README's [supported configuration](../../README.md#supported-configuration)). openai-client-base also sets `multipartHelper`, `typedEventStreams`,
+see the README's [configuration](../../README.md#configuration)). openai-client-base also sets `multipartHelper`, `typedEventStreams`,
 `contentTypeMethods`, `boxResponseError` and `useChrono=false`; langfuse-client-base also sets `typedEnumParameters` and
 `deprecatedAttributes`. The **Options** entry describes those and every other option as a variation of the baseline.
 

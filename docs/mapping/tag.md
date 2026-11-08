@@ -11,4 +11,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | the spec's `tags` list: a tag's `description` and `externalDocs` |
 | Rust | nothing: the module of a tag gets no documentation from it |
-| Tests | `OtherObjectsTest#aTagNamesItsModuleAndNothingElseOfItIsRendered` |
+| Tests | [`OtherObjectsTest#aTagNamesItsModuleAndNothingElseOfItIsRendered`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L104) |

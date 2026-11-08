@@ -11,4 +11,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `externalDocs` on the spec, a tag, an operation or a schema |
 | Rust | nothing: no link in the documentation |
-| Tests | `OtherObjectsTest#externalDocumentationIsIgnored` |
+| Tests | [`OtherObjectsTest#externalDocumentationIsIgnored`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L111) |

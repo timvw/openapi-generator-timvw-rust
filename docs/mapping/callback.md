@@ -11,4 +11,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `callbacks` of an operation: requests the API makes to a URL the client gave it |
 | Rust | no function: the client does not receive requests. The schemas a callback uses are models like any other |
-| Tests | `OtherObjectsTest#aCallbackHasNoFunctionButItsSchemasAreModels` |
+| Tests | [`OtherObjectsTest#aCallbackHasNoFunctionButItsSchemasAreModels`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L82) |

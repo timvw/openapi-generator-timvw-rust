@@ -11,4 +11,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `example`, `examples` on a schema, property, parameter or media type |
 | Rust | nothing: not in the types, their documentation or the generated Markdown |
-| Tests | `OtherObjectsTest#examplesAreIgnored` |
+| Tests | [`OtherObjectsTest#examplesAreIgnored`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L97) |

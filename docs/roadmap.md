@@ -13,6 +13,8 @@ could reuse the mapping.
 
 ## 1. Document the mapping of the current generator
 
+**Status: done.** Every object of the OpenAPI Specification has its rules in [docs/mapping/](mapping/README.md#objects).
+
 Write down what `timvw-rust` renders today, as it is, without changing anything. The mapping grows out of
 [type-mapping.md](type-mapping.md) and lives in [docs/mapping/](mapping/README.md), one file per object of the
 OpenAPI Specification. `MappingDocsTest` checks that every rule names tests that exist.

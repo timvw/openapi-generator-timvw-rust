@@ -25,6 +25,14 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Options | `bonBuilders` (default `true`) adds `#[bon::builder]`. `contentTypeMethods` and `typedEventStreams` add functions with a suffix ([`requestBody.content`](request-body.md#requestbodycontent), [`response.content`](response.md#responsecontent)) |
 | Tests | `OperationMappingTest#anOperationIsAnAsyncFunctionWithABuilder`, `GenerationTest#apiFunctionsGetBonBuilderAfterDeprecated` |
 
+### `operation.description`
+
+| | |
+| --- | --- |
+| OpenAPI | an operation's `description` and `summary` |
+| Rust | the `description` is the function's `///` documentation. The `summary` is only in the generated Markdown (`docs/<Tag>Api.md` and the crate's `README.md`), not in the Rust |
+| Tests | `OtherObjectsTest#anOperationsDescriptionDocumentsItsFunctionAndItsSummaryOnlyTheMarkdown` |
+
 ### `operation.parameters`
 
 | | |

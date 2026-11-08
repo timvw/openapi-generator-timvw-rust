@@ -1,0 +1,109 @@
+openapi: 3.0.3
+info:
+  title: Other objects
+  version: 1.0.0
+tags:
+  - name: Hooks
+    description: TAGDESC operations that register callbacks.
+    externalDocs:
+      url: https://example.com/tag-docs
+externalDocs:
+  description: Top-level docs
+  url: https://example.com/docs
+paths:
+  /subscriptions:
+    post:
+      operationId: subscribe
+      tags: [Hooks]
+      summary: SUMMARYTEXT Subscribe.
+      description: OPDESC Registers a callback.
+      externalDocs:
+        url: https://example.com/op-docs
+      security:
+        - oauth: [write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Subscription'
+            example:
+              url: EXAMPLEVALUE
+      responses:
+        "201":
+          description: created
+          headers:
+            X-Rate-Limit:
+              description: HEADERDESC requests left.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          links:
+            GetSubscription:
+              operationId: getSubscription
+              parameters:
+                id: '$response.body#/id'
+      callbacks:
+        onEvent:
+          '{$request.body#/url}':
+            post:
+              operationId: onEventCallback
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/CallbackEvent'
+              responses:
+                "200":
+                  description: ok
+  /subscriptions/{id}:
+    get:
+      operationId: getSubscription
+      tags: [Hooks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: PARAMEXAMPLE
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+components:
+  securitySchemes:
+    oauth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://example.com/authorize
+          tokenUrl: https://example.com/token
+          scopes:
+            write: SCOPEDESC write access
+  schemas:
+    Subscription:
+      type: object
+      externalDocs:
+        url: https://example.com/schema-docs
+      xml:
+        name: subscription-xml
+      example:
+        url: SCHEMAEXAMPLE
+      properties:
+        id:
+          type: string
+          example: PROPEXAMPLE
+        url:
+          type: string
+    CallbackEvent:
+      type: object
+      properties:
+        kind:
+          type: string

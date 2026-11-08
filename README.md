@@ -15,6 +15,7 @@ meant for any OpenAPI 3.0 spec.
 | [docs/type-mapping.md](docs/type-mapping.md) | the same as one overview table, including what is not yet a rule |
 | [docs/comparison](docs/comparison/README.md) | stock `-g rust`, timvw-rust and progenitor side by side on one spec |
 | [docs/roadmap.md](docs/roadmap.md) | the plan: document the mapping, decide what to change, make the generator conform |
+| [docs/design](docs/design/partial-decoding-and-ownership.md) | design proposals with measurements: decoding only what is needed, and ownership |
 | [docs/history.md](docs/history.md) | how the generator replaced the clients' post-processing scripts |
 
 ## Artifacts
@@ -63,10 +64,12 @@ openapi-generator (7.27.0). openai-client-base and langfuse-client-base pin `-og
 
 ## Supported configuration
 
-`timvw-rust` accepts exactly one configuration. Every option below is applied as the default when
-unset, and generation fails with a message naming the option when a different value is given.
+These stock options are pinned: each has exactly one allowed value, applied when the option is unset. Any other value
+fails generation with a message naming the option (`supportAsync=false` gives
+``option 'supportAsync' must be 'true' (got 'false')``). The generator only maintains the async reqwest-middleware
+client, so a blocking client or a single request parameter struct is not available.
 
-| Option | Supported value | Notes |
+| Option | Only allowed value | Notes |
 | --- | --- | --- |
 | `library` | `reqwest` | `hyper`, `hyper0x` and `reqwest-trait` are rejected |
 | `supportAsync` | `true` | |
@@ -215,6 +218,7 @@ docs/type-mapping.md                     each OpenAPI construct and its Rust ren
 docs/mapping/                            the mapping as rules, one file per OpenAPI Specification object;
                                          MappingDocsTest checks that each rule names tests that exist
 docs/history.md                          what each rendering replaced in the client repos
+docs/design/                             design proposals; decode-bench measures decoding costs
 docs/roadmap.md                          the plan: document the mapping, decide changes, conform
 docs/comparison/                         stock -g rust vs timvw-rust vs progenitor on one spec (generate.sh)
 test-specs/petstore.yaml                 OpenAPI 3.0 smoke-test spec

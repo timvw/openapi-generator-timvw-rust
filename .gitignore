@@ -4,3 +4,5 @@ target/
 *.iml
 .vscode/
 .DS_Store
+docs/design/decode-bench/target/
+docs/design/decode-bench/Cargo.lock

@@ -38,6 +38,8 @@ links the mapping instead of describing renderings itself.
 
 ## 2. Decide what to change
 
+Proposals so far: [decoding only what is needed, and ownership](design/partial-decoding-and-ownership.md).
+
 Compare the mapping rule by rule with stock `-g rust`, progenitor (and typify, which it uses for types), and other Rust
 generators. The [generator comparison](comparison/README.md) already does this for one spec. The result is a list of
 proposed changes, each with:

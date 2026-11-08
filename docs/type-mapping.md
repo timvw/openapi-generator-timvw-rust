@@ -70,6 +70,9 @@ Every example here was generated from [`comparison/spec.yaml`](comparison/spec.y
 
 ### Unions: `oneOf`, `anyOf`, discriminators
 
+These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
+[mapping/discriminator.md](mapping/discriminator.md) give each one with its tests. The table below is the summary.
+
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
 | `oneOf` / `anyOf` | `#[serde(untagged)]` enum with a variant per branch, ordered so the narrower one decodes first ([variant order](../README.md#union-variant-order)) | `modelUnions`; without it stock renders `oneOf` only, and a discriminator as `#[serde(tag)]`, which does not decode when the branch structs keep the tag field |

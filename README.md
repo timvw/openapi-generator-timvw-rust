@@ -546,6 +546,8 @@ src/main/resources/META-INF/services/    registers the generator with openapi-ge
 src/test/java/                           JUnit 5 tests; src/test/resources/milestone1.yaml is the rendering fixture
 tools/sync-templates.py                  regenerates the template sets from the stock jars
 docs/type-mapping.md                     each OpenAPI construct and its Rust rendering
+docs/mapping/                            the same as rules, one file per OpenAPI Specification object;
+                                         MappingDocsTest checks that each rule names tests that exist
 docs/roadmap.md                          the plan: document the mapping, decide changes, conform
 docs/comparison/                         stock -g rust vs timvw-rust vs progenitor on one spec (generate.sh)
 test-specs/petstore.yaml                 OpenAPI 3.0 smoke-test spec

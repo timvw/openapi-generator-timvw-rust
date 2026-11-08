@@ -14,9 +14,11 @@ could reuse the mapping.
 ## 1. Document the mapping of the current generator
 
 Write down what `timvw-rust` renders today, as it is, without changing anything. The mapping grows out of
-[type-mapping.md](type-mapping.md) and lives in this repository.
+[type-mapping.md](type-mapping.md) and lives in [docs/mapping/](mapping/README.md), one file per object of the
+OpenAPI Specification. `MappingDocsTest` checks that every rule names tests that exist.
 
-- Each construct is a rule with a stable ID, for example `UNION-DISCRIMINATED-01`. A rule names:
+- Each construct is a rule with a stable ID, taken from the specification's objects and fields, for example
+  `discriminator.propertyName`. A rule names:
   - the OpenAPI input;
   - the Rust it renders;
   - how it behaves on the wire (what decodes and what is written);

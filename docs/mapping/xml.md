@@ -11,4 +11,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `xml` on a schema or property |
 | Rust | nothing: bodies are JSON (or form, multipart, text and bytes); XML is neither sent nor decoded |
-| Tests | `OtherObjectsTest#xmlIsIgnored` |
+| Tests | [`OtherObjectsTest#xmlIsIgnored`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L118) |

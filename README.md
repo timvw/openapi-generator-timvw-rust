@@ -36,15 +36,16 @@ Generate a client with the Docker image, from the directory that holds the spec:
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.18.1-og7.27.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:0.19.0-og7.27.0 generate \
   -g timvw-rust \
   -i /local/openapi.yml \
   -o /local \
   --additional-properties=packageName=my-client,packageVersion=0.1.0
 ```
 
-Without options the output is close to stock `-g rust`. The options openai-client-base and langfuse-client-base both
-set are the mapping's [baseline](docs/mapping/README.md#baseline), and the recommended starting point:
+Without options you get an async reqwest client with reqwest-middleware and bon builders, with the models of stock
+`-g rust`. The options openai-client-base and langfuse-client-base both set are the mapping's
+[baseline](docs/mapping/README.md#baseline), and the recommended starting point:
 
 ```bash
 --additional-properties=boxOnlyCycles=true,defaultOnlyWhereValid=true,enumFromStr=true,noStructDisplay=true,\
@@ -55,32 +56,16 @@ schemaDefaultDocs=true,nullableUnionFields=true
 Hand-maintained files (`Cargo.toml`, `README.md`, `.gitignore`) go in the output directory's
 `.openapi-generator-ignore`, which the generator honours like any openapi-generator run.
 
-Options not listed below (`packageName`, `packageVersion`, `useChrono`, `reqwestDefaultFeatures`,
+Stock options not listed under [Configuration](#configuration) (`packageName`, `packageVersion`, `useChrono`, `reqwestDefaultFeatures`,
 `supportMultipleResponses`, `useSerdePathToError`, ...) pass through to the stock generator unchanged.
 
 Images are published per openapi-generator version, tagged `<generator version>-og<openapi-generator version>`
-(for example `0.18.1-og7.27.0`). The plain `<generator version>` and `latest` tags point at the newest supported
+(for example `0.19.0-og7.27.0`). The plain `<generator version>` and `latest` tags point at the newest supported
 openapi-generator (7.27.0). openai-client-base and langfuse-client-base pin `-og7.27.0` in their generation scripts.
 
-## Supported configuration
+## Configuration
 
-These stock options are not configurable: `timvw-rust` always uses the value below, and setting the option, to any
-value, fails generation with a message naming it (``option 'supportAsync' is not configurable: timvw-rust always
-uses 'true'; remove it``). They are not listed by `config-help`. The generator only maintains the async
-reqwest-middleware client, so a blocking client or a single request parameter struct is not available.
-
-| Option | Value | Notes |
-| --- | --- | --- |
-| `library` | `reqwest` | also through `--library` |
-| `supportAsync` | `true` | |
-| `supportMiddleware` | `true` | `reqwest-middleware` is always wired in |
-| `useSingleRequestParameter` | `false` | one function argument per parameter |
-| `preferUnsignedInt` | `false` | |
-| `bestFitInt` | `false` | |
-| `enumNameSuffix` | `` (empty) | |
-| `hideGenerationTimestamp` | `true` | |
-
-Our own options. The Rule column links the mapping rule that describes what an option renders; the
+The options of `timvw-rust`. The Rule column links the mapping rule that describes what an option renders; the
 [history](docs/history.md) describes the others.
 
 | Option | Default | Notes | Rule |
@@ -97,7 +82,7 @@ Our own options. The Rule column links the mapping rule that describes what an o
 | `defaultOnlyWhereValid` | `false` | `Default` only where its value is one the API would accept | [`schema.properties.default-impl`](docs/mapping/schema.md#schemapropertiesdefault-impl) |
 | `enumFromStr` | `false` | closed enums implement `FromStr` and `TryFrom`; property enums get the `Display` they lack | [`schema.enum.from-str`](docs/mapping/schema.md#schemaenumfrom-str) |
 | `noStructDisplay` | `false` | structs have no JSON `Display`; API code serializes them with `serde_json::to_string` | [`schema.properties.display`](docs/mapping/schema.md#schemapropertiesdisplay) |
-| `integersAsI64` | `false` | integers are `i64` unless `format: int32`; `preferUnsignedInt` and `bestFitInt` are fixed to `false` | [`schema.type.integer`](docs/mapping/schema.md#schematypeinteger) |
+| `integersAsI64` | `false` | integers are `i64` unless `format: int32` | [`schema.type.integer`](docs/mapping/schema.md#schematypeinteger) |
 | `modelUnions` | `false` | unions render from the model as untagged enums | [`schema.oneOf`](docs/mapping/schema.md#schemaoneof) |
 | `unionDispatch` | `false` | with `modelUnions`: a union with a tag decodes by that tag | [`discriminator.propertyName`](docs/mapping/discriminator.md#discriminatorpropertyname) |
 | `openEnums` | `false` | with `modelUnions`: what a response or webhook payload can hold has a catch-all for values the spec does not list | [`schema.enum.open`](docs/mapping/schema.md#schemaenumopen) |
@@ -114,14 +99,15 @@ Our own options. The Rule column links the mapping rule that describes what an o
 | `userAgentFromPackage` | `false` | default user agent from `packageName` and the crate version | |
 | `preprocessedSpecFile` | unset | output-relative path the preprocessed spec is written to, as JSON | |
 
-These options are rejected whenever they are set, whatever the value:
-`avoidBoxedModels`, `mockall`, `topLevelApiClient`, `withAWSV4Signature`, `supportTokenSource`,
-`useBonBuilder` (replaced by `bonBuilders`), `templateDir` (`-t`; the templates are part of the generator).
-
-Example failure:
+`timvw-rust` maintains only the async reqwest-middleware client, so it passes these values to the stock generator
+and does not accept the options: `library=reqwest`, `supportAsync=true`, `supportMiddleware=true`,
+`useSingleRequestParameter=false`, `preferUnsignedInt=false`, `bestFitInt=false`, `enumNameSuffix=` (empty),
+`hideGenerationTimestamp=true`. Stock options it does not support are rejected too: `avoidBoxedModels`, `mockall`,
+`topLevelApiClient`, `withAWSV4Signature`, `supportTokenSource`, `useBonBuilder` (replaced by `bonBuilders`),
+`templateDir` (`-t`; the templates are part of the generator). Setting any of them fails generation:
 
 ```
-Exception in thread "main" java.lang.IllegalArgumentException: timvw-rust: option 'library' must be 'reqwest' (got 'hyper')
+Exception in thread "main" java.lang.IllegalArgumentException: timvw-rust: option 'supportAsync' is not configurable: timvw-rust always uses 'true'; remove it (it was set to 'true')
 ```
 
 ## Templates
@@ -214,9 +200,10 @@ src/main/resources/timvw-rust/og*/       template overrides, one set per openapi
 src/main/resources/META-INF/services/    registers the generator with openapi-generator
 src/test/java/                           JUnit 5 tests; src/test/resources/milestone1.yaml is the rendering fixture
 tools/sync-templates.py                  regenerates the template sets from the stock jars
+tools/link-mapping-tests.py              links the test names of docs/mapping to their lines
 docs/type-mapping.md                     each OpenAPI construct and its Rust rendering
 docs/mapping/                            the mapping as rules, one file per OpenAPI Specification object;
-                                         MappingDocsTest checks that each rule names tests that exist
+                                         MappingDocsTest checks that each rule links tests that exist
 docs/history.md                          what each rendering replaced in the client repos
 docs/design/                             design proposals; decode-bench measures decoding costs
 docs/roadmap.md                          the plan: document the mapping, decide changes, conform

@@ -17,7 +17,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Library | `status` is a `reqwest::StatusCode` |
 | Gap | the variant is chosen by the body's shape, not the status: two responses of one type always give the first. Read `status` to tell them apart |
 | Options | `boxResponseError` (openai-client-base) makes it `ResponseError(Box<ResponseContent<T>>)` (clippy `result_large_err`) |
-| Tests | `OperationMappingTest#errorResponsesAreAnUntaggedEnumPerOperation`, `ErrorsAndLintsTest#responseErrorIsBoxed` |
+| Tests | [`OperationMappingTest#errorResponsesAreAnUntaggedEnumPerOperation`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L148), [`ErrorsAndLintsTest#responseErrorIsBoxed`](../../src/test/java/be/timvw/openapi/rust/ErrorsAndLintsTest.java#L46) |
 
 ### `responses.statusCode.transport-error`
 
@@ -26,4 +26,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | any operation |
 | Rust | `Error<T>` also has `Reqwest(reqwest::Error)` and `ReqwestMiddleware(reqwest_middleware::Error)` (sending or reading failed), `Serde(serde_json::Error)` (a success body did not decode, or a struct parameter did not serialize) and `Io(std::io::Error)` (a file to send could not be read) |
 | Library | `Error::Reqwest` and `Error::ReqwestMiddleware` |
-| Tests | `OperationMappingTest#errorResponsesAreAnUntaggedEnumPerOperation` |
+| Tests | [`OperationMappingTest#errorResponsesAreAnUntaggedEnumPerOperation`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L148) |

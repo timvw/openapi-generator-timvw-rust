@@ -15,4 +15,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `encoding: {<property>: {contentType: ..}}` of a `multipart/form-data` body |
 | Rust | ignored |
 | Options | `multipartHelper` (openai-client-base) applies it to scalar and object parts; a file part keeps the file's own type |
-| Tests | `MultipartTest#helperRulesPerParameterShape`, `MultipartFileUnionsTest#anEncodingContentTypeIsForTheOtherVariantsNotTheFile` |
+| Tests | [`MultipartTest#helperRulesPerParameterShape`](../../src/test/java/be/timvw/openapi/rust/MultipartTest.java#L73), [`MultipartFileUnionsTest#anEncodingContentTypeIsForTheOtherVariantsNotTheFile`](../../src/test/java/be/timvw/openapi/rust/MultipartFileUnionsTest.java#L114) |

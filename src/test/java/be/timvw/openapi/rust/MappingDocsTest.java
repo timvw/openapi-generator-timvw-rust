@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
  * Keeps the rules of {@code docs/mapping/} tied to the tests. A rule is a level-3 heading holding its ID,
  * {@code <object>.<field>[.<case>]}, followed by a table. Each ID must be well formed and unique, each rule must have a
  * Tests row, and every test it names ({@code Class#method}, or {@code #method} for the class named before it) must
- * exist.
+ * exist and link to the line that declares it. {@code tools/link-mapping-tests.py} writes those links.
  */
 class MappingDocsTest {
 
@@ -30,6 +30,8 @@ class MappingDocsTest {
     private static final Pattern RULE_ID =
             Pattern.compile("^[a-z][A-Za-z]*\\.[A-Za-z$][A-Za-z0-9$]*(\\.[a-z0-9]+(-[a-z0-9]+)*)?$");
     private static final Pattern TEST_REF = Pattern.compile("`([A-Za-z0-9]*)#(\\w+)`");
+    private static final Pattern TEST_LINK = Pattern.compile(
+            "\\[`([A-Za-z0-9]*)#(\\w+)`]\\(\\.\\./\\.\\./src/test/java/be/timvw/openapi/rust/(\\w+)\\.java#L(\\d+)\\)");
 
     @Test
     void everyRuleNamesTestsThatExist() throws IOException {
@@ -79,15 +81,43 @@ class MappingDocsTest {
                         String method = ref.group(2);
                         if (cls == null) {
                             problems.add(file + ":" + (i + 1) + ": #" + method + " names no class");
-                        } else if (!Pattern.compile("\\bvoid " + Pattern.quote(method) + "\\(")
-                                .matcher(sources.getOrDefault(cls, "")).find()) {
+                        } else if (declaration(sources.getOrDefault(cls, ""), method) < 0) {
                             problems.add(file + ":" + (i + 1) + ": " + rule + ": no test " + cls + "#" + method);
                         }
+                    }
+                    int linked = 0;
+                    String linkedClass = null;
+                    Matcher link = TEST_LINK.matcher(line);
+                    while (link.find()) {
+                        linked++;
+                        linkedClass = link.group(1).isEmpty() ? linkedClass : link.group(1);
+                        int expected = declaration(sources.getOrDefault(link.group(3), ""), link.group(2));
+                        if (!link.group(3).equals(linkedClass) || expected != Integer.parseInt(link.group(4))) {
+                            problems.add(file + ":" + (i + 1) + ": " + rule + ": the link of #" + link.group(2)
+                                    + " is stale; run tools/link-mapping-tests.py");
+                        }
+                    }
+                    int named = (int) TEST_REF.matcher(line).results().count();
+                    if (linked != named) {
+                        problems.add(file + ":" + (i + 1) + ": " + rule + ": " + (named - linked)
+                                + " test(s) not linked; run tools/link-mapping-tests.py");
                     }
                 }
             }
         }
         assertFalse(seen.isEmpty(), "no rules found in " + MAPPING.toAbsolutePath());
         assertEquals(List.of(), problems);
+    }
+
+    /** The 1-based line that declares {@code void method(}, or -1. */
+    private static int declaration(String source, String method) {
+        Pattern declaration = Pattern.compile("\\bvoid " + Pattern.quote(method) + "\\(");
+        String[] lines = source.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            if (declaration.matcher(lines[i]).find()) {
+                return i + 1;
+            }
+        }
+        return -1;
     }
 }

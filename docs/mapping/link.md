@@ -11,4 +11,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `links` of a response |
 | Rust | nothing: the caller passes the value to the linked operation itself |
-| Tests | `OtherObjectsTest#linksAreIgnored` |
+| Tests | [`OtherObjectsTest#linksAreIgnored`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L90) |

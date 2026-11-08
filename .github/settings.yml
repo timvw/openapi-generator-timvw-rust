@@ -1,0 +1,8 @@
+# Repository settings, applied by the GitHub Settings App (https://github.com/apps/settings) when it is installed
+# on the repository. Only the keys listed here are managed; the values match the current settings.
+repository:
+  allow_squash_merge: true
+  allow_merge_commit: true
+  allow_rebase_merge: true
+  # Delete a pull request's branch once it is merged.
+  delete_branch_on_merge: true

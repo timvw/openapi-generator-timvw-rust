@@ -6,10 +6,11 @@ built as a Java subclass of the stock `rust` generator (`RustClientCodegen`).
 Its purpose is to replace the post-processing scripts that
 [openai-client-base](https://github.com/genai-rs/openai-client-base) and
 [langfuse-client-base](https://github.com/genai-rs/langfuse-client-base) run on top of `-g rust`,
-by moving every fix into the generator itself. The design, type rules and delivery plan live in the
-design doc: [Custom Rust generator: rendering design](https://claude.ai/artifact/ABar8Up91gjVMDHgHL1GE3).
+by moving every fix into the generator itself. How each OpenAPI construct becomes Rust is in
+[docs/type-mapping.md](docs/type-mapping.md); how that compares with stock `-g rust` and progenitor is in
+[docs/comparison](docs/comparison/README.md).
 
-**Status: Milestone 3 (API cleanup), step 3.1.** Milestone 2 is complete: openai-client-base generates without scripts. The generator renders what stock `-g rust` renders
+**Status: Milestones 2 and 3 are complete.** openai-client-base and langfuse-client-base generate without scripts. The generator renders what stock `-g rust` renders
 plus the conventions below, which langfuse-client-base used to patch in after generation (its public API is
 byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that kept
 openai-client-base's type names stable across the openapi-generator 7.15 to 7.25 upgrade.
@@ -336,7 +337,8 @@ The wire is the same: a query parameter and a multipart text part send the enum'
 (`multipart_form.text("purpose", p_form_purpose.to_string())`). A body property's model field changes type with it:
 `UploadFileRequest.purpose` was the enum `upload_file_request::Purpose` and is now `models::UploadFileRequestPurpose`.
 Parameters declared on the path item or under `components/parameters` are shared by operations and keep their type.
-A name that is already a component's (after Rust normalization) fails generation, naming both.
+A name that is already a component's (after Rust normalization) fails generation, naming both. A header or path
+parameter that is an array of such enums is joined from the values' `Display` (`.join(",")` alone joins only strings).
 
 ### `nullableUnionFields`: a nullable union field can hold `null` (requires `modelUnions`)
 
@@ -543,6 +545,7 @@ src/main/resources/timvw-rust/og*/       template overrides, one set per openapi
 src/main/resources/META-INF/services/    registers the generator with openapi-generator
 src/test/java/                           JUnit 5 tests; src/test/resources/milestone1.yaml is the rendering fixture
 tools/sync-templates.py                  regenerates the template sets from the stock jars
+docs/type-mapping.md                     each OpenAPI construct and its Rust rendering
 docs/comparison/                         stock -g rust vs timvw-rust vs progenitor on one spec (generate.sh)
 test-specs/petstore.yaml                 OpenAPI 3.0 smoke-test spec
 Dockerfile                               eclipse-temurin:17-jre + both jars in /opt/gen

@@ -190,6 +190,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
     public static final String SCHEMA_DEFAULT_DOCS = "schemaDefaultDocs";
     /** Deprecated properties and schemas get {@code #[deprecated]}; generated files allow it among themselves. */
     public static final String DEPRECATED_ATTRIBUTES = "deprecatedAttributes";
+    /**
+     * Set on an array parameter of models (enums with {@link #TYPED_ENUM_PARAMETERS}): a header or path value joins the
+     * items' {@code Display}, as {@code .join(",")} only joins strings.
+     */
+    static final String DISPLAY_ITEMS = "x-rust-display-items";
     /** Set on a property or model that the model template marks {@code #[deprecated]}. */
     static final String DEPRECATED = "x-rust-deprecated";
     /** Set on an operation whose method returns {@code sse::EventStream}. */
@@ -1259,6 +1264,10 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         }
                         if (p.dataType != null && unionModels.containsKey(p.dataType.replaceFirst("^models::", ""))) {
                             p.vendorExtensions.put(UnionRules.UNION_TEXT, true);
+                        }
+                        if (p.isArray && p.items != null && (p.items.isModel || p.items.isEnumRef
+                                || (p.items.dataType != null && p.items.dataType.startsWith("models::")))) {
+                            p.vendorExtensions.put(DISPLAY_ITEMS, true);
                         }
                     }
                 }

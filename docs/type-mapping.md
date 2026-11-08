@@ -7,6 +7,10 @@ openai-client-base also sets `multipartHelper`, `typedEventStreams` and `content
 what changes it, and what it renders without the option where that differs. The [README](../README.md) explains each
 option; the [generator comparison](comparison/README.md) holds the same constructs against stock `-g rust` and progenitor.
 
+The rendering assumes `library=reqwest`, the only HTTP library `timvw-rust` supports. Rows marked *(reqwest)*
+render types that come from the HTTP library; the others do not depend on it
+([mapping: HTTP library](mapping/README.md#http-library)).
+
 Every example here was generated from [`comparison/spec.yaml`](comparison/spec.yaml) or a spec like it.
 
 ## Schemas
@@ -19,7 +23,7 @@ Every example here was generated from [`comparison/spec.yaml`](comparison/spec.y
 | `format: date`, `date-time` | `String` | `useChrono=true` gives `chrono` types; the clients keep `String` |
 | `format: uuid` | `uuid::Uuid` in a model; `&str` as a header or query parameter | |
 | `format: byte` | `Vec<u8>`, base64 through `#[serde_as(as = "serde_with::base64::Base64")]` | |
-| `format: binary` | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response | |
+| `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response | |
 | `format: email`, `uri`, any other | `String` | |
 | `type: number` | `f64`; `format: float` gives `f32` | |
 | `type: integer` | `i64`; `format: int32` gives `i32` | `integersAsI64`; without it `i32` unless `format: int64` |
@@ -128,9 +132,9 @@ These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
 | Media type | Rust | Option |
 | --- | --- | --- |
 | `application/json` | the schema's type, serialized with `.json(..)` | |
-| `multipart/form-data` | an argument per property; files as `std::path::PathBuf`, text as `&str` or the type | `multipartHelper`: files through `apis::multipart_helper`, arrays as a part per item, objects as JSON parts, `encoding.contentType` honoured; `fileProperties` turns listed properties into files |
+| `multipart/form-data` *(reqwest)* | an argument per property; files as `std::path::PathBuf`, text as `&str` or the type | `multipartHelper`: files through `apis::multipart_helper`, arrays as a part per item, objects as JSON parts, `encoding.contentType` honoured; `fileProperties` turns listed properties into files |
 | `application/x-www-form-urlencoded` | an argument per property, sent with `.form(..)` | |
-| `application/octet-stream` | `std::path::PathBuf`, streamed | |
+| `application/octet-stream` *(reqwest)* | `std::path::PathBuf`, streamed | |
 | `text/plain`, other | the operation's own method sends the first media type | `contentTypeMethods`: one method per media type (`_json`, `_multipart`, `_form`, `_text`, `_bytes`, `_<subtype>`) |
 
 ### Responses
@@ -140,11 +144,11 @@ These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
 | success with a JSON schema | `Result<T, Error<<Op>Error>>`, the body decoded as `T` | |
 | success without a body | `Result<(), ..>` | |
 | `text/plain` success | `String` | |
-| `application/octet-stream` success | `reqwest::Response`, to read as bytes or a stream | |
-| `text/event-stream` success | decoded as JSON, which fails | `typedEventStreams`: `apis::sse::EventStream<Event, <Op>Error>`, each `data:` decoded to the event schema, `[DONE]` ends it |
+| `application/octet-stream` success *(reqwest)* | `reqwest::Response`, to read as bytes or a stream | |
+| `text/event-stream` success *(reqwest)* | decoded as JSON, which fails | `typedEventStreams`: `apis::sse::EventStream<Event, <Op>Error>`, each `data:` decoded to the event schema, `[DONE]` ends it |
 | several success media types | the first | `contentTypeMethods`: `_json`, `_text`, `_bytes`, `_stream` methods |
 | error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content` and `entity: Option<<Op>Error>`; the error enum has a variant per response (`Status404(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The variant is chosen by the body's shape, not the status: two responses of one type always give the first | `boxResponseError` boxes `ResponseContent` |
-| transport and decoding errors | `Error::Reqwest`, `Error::ReqwestMiddleware`, `Error::Serde`, `Error::Io` | |
+| transport and decoding errors *(reqwest)* | `Error::Reqwest`, `Error::ReqwestMiddleware`, `Error::Serde`, `Error::Io` | |
 
 ### Configuration and authentication
 
@@ -157,7 +161,7 @@ These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
 | `oauth2` | `configuration.oauth_access_token` |
 | which scheme an operation uses | the operation's `security`, or the spec's |
 | user agent | `OpenAPI-Generator/<spec version>/rust`; `userAgentFromPackage` gives `<package>/<crate version>` |
-| HTTP client | `reqwest_middleware::ClientWithMiddleware`, so retries and tracing plug in as middleware |
+| HTTP client *(reqwest)* | `reqwest_middleware::ClientWithMiddleware`, so retries and tracing plug in as middleware |
 
 ## Known gaps
 

@@ -34,6 +34,7 @@ Each rule has:
 | Wire | what decodes and what is written, where that is not obvious from the Rust |
 | Options | the options that change it, and what it renders without the baseline |
 | Tests | the tests that show the rendering |
+| Library | only where the Rust depends on the HTTP library: which types come from it (see [HTTP library](#http-library)) |
 | Gap | only for a known gap: what is missing |
 
 ## Baseline
@@ -49,6 +50,25 @@ with `library=reqwest`, `supportAsync=true`, `supportMiddleware=true`, `preferUn
 `useSingleRequestParameter=false`. openai-client-base also sets `multipartHelper`, `typedEventStreams`,
 `contentTypeMethods` and `boxResponseError`; langfuse-client-base also sets `typedEnumParameters` and
 `deprecatedAttributes`. The **Options** entry describes those and every other option as a variation of the baseline.
+
+## HTTP library
+
+`timvw-rust` generates for one HTTP library, [reqwest](https://docs.rs/reqwest) (with
+[reqwest-middleware](https://docs.rs/reqwest-middleware)). The stock generator's other libraries (`hyper`, `hyper0x`,
+`reqwest-trait`) are rejected. The generated code uses reqwest directly; there is no transport layer in between.
+
+Most of the mapping does not depend on that choice: the models, their names, and how they encode and decode are
+serde types. Some types come from the HTTP library, and would differ with another one. A rule that renders such a type
+has a **Library** row that names it. These are:
+
+| Where | Type from the HTTP library |
+| --- | --- |
+| a binary response (`format: binary`, `application/octet-stream`) | `reqwest::Response`, read as bytes or a stream |
+| a binary request body or file part | `std::path::PathBuf`; the file is opened with tokio and streamed as a `reqwest::Body` or a `reqwest::multipart::Part` |
+| a `multipart/form-data` body | built as a `reqwest::multipart::Form` |
+| a `text/event-stream` response (`typedEventStreams`) | a stream over the response's bytes |
+| the client | `reqwest_middleware::ClientWithMiddleware` in `Configuration` |
+| transport errors | `Error::Reqwest(reqwest::Error)`, `Error::ReqwestMiddleware(reqwest_middleware::Error)` |
 
 ## Objects
 

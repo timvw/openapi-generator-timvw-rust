@@ -53,3 +53,29 @@ Spec-level decisions stay in the client repos. Spec validation runs in the CLI b
 code, so a keyword the 3.0 validator rejects (Langfuse uses the 3.1 `const`) cannot be repaired here;
 langfuse-client-base drops it while composing the generator input (`prepare_compatible_spec.py`, which
 also adds the v3 compatibility layer). Any other invalid construct fails generation and is fixed upstream.
+
+## From a subclass of `-g rust` to its own Rust layer
+
+Up to 0.19.0 `TimvwRustCodegen` extended openapi-generator's `RustClientCodegen` and rendered the stock `rust`
+templates, overriding some of them per openapi-generator minor version (`timvw-rust/og7.27.0/`, produced by
+`tools/sync-templates.py` from the stock jar); every other template fell back to the stock one in the
+openapi-generator jar, and a run in an openapi-generator without a template set failed.
+
+After 0.19.0 the plugin owns its Rust side. It still builds on openapi-generator (`DefaultCodegen`, the parser,
+`DefaultGenerator`, the CLI), but:
+
+- what it used of `AbstractRustCodegen` and `RustClientCodegen` 7.27.0 (type mapping, identifier sanitizing and keyword
+  escaping, the `oneOf` variant names, the model and operation post-processing, the supporting files, and the crate
+  options `packageName`, `packageVersion`, `useChrono`, `useSerdePathToError`, `supportMultipleResponses` and
+  `reqwestDefaultFeatures`, with their names and defaults) is ported into `RustCodegenBase`;
+- every template is in `src/main/resources/timvw-rust/`, one set whatever the openapi-generator version, with the
+  branches for the clients it never generates (hyper, hyper0x, reqwest-trait, blocking, without middleware, the
+  single request parameter, token source, AWS v4 signatures, mockall) removed; `tools/sync-templates.py` is gone;
+- the options of those clients stay rejected, `--library` other than `reqwest` is rejected, and an operation with
+  `x-group-parameters` fails generation (with the single request parameter fixed off, stock rendered code for it that
+  did not compile);
+- a run in an openapi-generator minor version other than the one in the pom logs a warning instead of failing.
+
+The output did not change: every spec in `test-specs/` and `src/test/resources/` under four option sets (none, the
+baseline, the baseline with openai-client-base's and langfuse-client-base's extra options, and the crate options), and
+both client repos, generate byte-identical with 0.19.0's image.

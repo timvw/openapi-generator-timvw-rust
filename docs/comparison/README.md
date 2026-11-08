@@ -2,7 +2,7 @@
 
 This page compares three ways to generate a Rust client from the same spec:
 
-- **stock**: openapi-generator 7.27.0, `-g rust`, with the settings timvw-rust pins (`library=reqwest`, `supportAsync`,
+- **stock**: openapi-generator 7.27.0, `-g rust`, with the settings timvw-rust always generates for (`library=reqwest`, `supportAsync`,
   `supportMiddleware`, `useChrono=false`).
 - **timvw-rust**: this generator, with the options openai-client-base runs, minus its OpenAI-specific lists
   ([`timvw-rust-config.json`](timvw-rust-config.json)).

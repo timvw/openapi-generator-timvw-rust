@@ -1,7 +1,9 @@
 # openapi-generator-timvw-rust
 
-`timvw-rust` is an OpenAPI-to-Rust client generator: a plugin for [openapi-generator](https://openapi-generator.tech),
-built as a Java subclass of the stock `rust` generator (`RustClientCodegen`). It renders models whose serde
+`timvw-rust` is an OpenAPI-to-Rust client generator: a plugin for [openapi-generator](https://openapi-generator.tech).
+openapi-generator parses the spec and drives the generation (`DefaultCodegen`, `DefaultGenerator`, the CLI); the Rust
+side is the plugin's own: the type mapping, naming, model and operation processing (`RustCodegenBase`, ported from
+openapi-generator's `-g rust` and then extended) and every template. It renders models whose serde
 behaviour matches the spec (unions that decode by their tag, enums that accept values the spec does not list yet, boxes
 only where a type contains itself) and a reqwest client with one async function per operation.
 
@@ -25,7 +27,7 @@ meant for any OpenAPI 3.0 spec.
 | Maven | `be.timvw:openapi-generator-timvw-rust` on Maven Central |
 | Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>` |
 | Generator name | `timvw-rust` (`-g timvw-rust`) |
-| Supported openapi-generator | 7.27.x (one image per supported version) |
+| openapi-generator | built and tested against 7.27.0 (the pom's version), which the image bundles |
 
 The Docker image is a drop-in replacement for `openapitools/openapi-generator-cli`: same arguments,
 same `/local` mount convention, same `JAVA_OPTS` environment variable.
@@ -43,8 +45,8 @@ docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
   --additional-properties=packageName=my-client,packageVersion=0.1.0
 ```
 
-Without options you get an async reqwest client with reqwest-middleware and bon builders, with the models of stock
-`-g rust`. The options openai-client-base and langfuse-client-base both set are the mapping's
+Without options you get an async reqwest client with reqwest-middleware and bon builders, with the same models stock
+`-g rust` renders. The options openai-client-base and langfuse-client-base both set are the mapping's
 [baseline](docs/mapping/README.md#baseline), and the recommended starting point:
 
 ```bash
@@ -56,17 +58,28 @@ schemaDefaultDocs=true,nullableUnionFields=true
 Hand-maintained files (`Cargo.toml`, `README.md`, `.gitignore`) go in the output directory's
 `.openapi-generator-ignore`, which the generator honours like any openapi-generator run.
 
-Stock options not listed under [Configuration](#configuration) (`packageName`, `packageVersion`, `useChrono`, `reqwestDefaultFeatures`,
-`supportMultipleResponses`, `useSerdePathToError`, ...) pass through to the stock generator unchanged.
-
 Images are published per openapi-generator version, tagged `<generator version>-og<openapi-generator version>`
 (for example `0.19.0-og7.27.0`). The plain `<generator version>` and `latest` tags point at the newest supported
 openapi-generator (7.27.0). openai-client-base and langfuse-client-base pin `-og7.27.0` in their generation scripts.
 
 ## Configuration
 
-The options of `timvw-rust`. The Rule column links the mapping rule that describes what an option renders; the
-[history](docs/history.md) describes the others.
+The options of `timvw-rust` (`config-help -g timvw-rust` lists them too). The Rule column links the mapping rule that
+describes what an option renders; the [history](docs/history.md) describes the others.
+
+The crate options keep the names and defaults they have in stock `-g rust`, so a configuration taken over from it keeps
+working:
+
+| Option | Default | Notes | Rule |
+| --- | --- | --- | --- |
+| `packageName` | `openapi` | crate name; `-` becomes `_` where the crate is imported | |
+| `packageVersion` | the spec's `info.version`, else `1.0.0` | crate version (`v1.2` becomes `1.2.0`) | |
+| `useChrono` | `true` | `date` and `date-time` as `chrono` types; `false` renders both as `String` | [`schema.format.date-time`](docs/mapping/schema.md#schemaformatdate-time) |
+| `useSerdePathToError` | `false` | responses decode through `serde_path_to_error`, so an error names the path of the value | |
+| `supportMultipleResponses` | `false` | a function returns `ResponseContent<<Operation>Success>`, an enum of the 2xx responses | |
+| `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none) | |
+
+The options of the generator itself:
 
 | Option | Default | Notes | Rule |
 | --- | --- | --- | --- |
@@ -99,12 +112,15 @@ The options of `timvw-rust`. The Rule column links the mapping rule that describ
 | `userAgentFromPackage` | `false` | default user agent from `packageName` and the crate version | |
 | `preprocessedSpecFile` | unset | output-relative path the preprocessed spec is written to, as JSON | |
 
-`timvw-rust` maintains only the async reqwest-middleware client, so it passes these values to the stock generator
-and does not accept the options: `library=reqwest`, `supportAsync=true`, `supportMiddleware=true`,
-`useSingleRequestParameter=false`, `preferUnsignedInt=false`, `bestFitInt=false`, `enumNameSuffix=` (empty),
-`hideGenerationTimestamp=true`. Stock options it does not support are rejected too: `avoidBoxedModels`, `mockall`,
+`timvw-rust` generates only the async reqwest-middleware client. The options stock `-g rust` has for other clients
+are not options here: it always generates as with `library=reqwest`, `supportAsync=true`, `supportMiddleware=true`,
+`useSingleRequestParameter=false`, `preferUnsignedInt=false`, `bestFitInt=false`, `enumNameSuffix=` (empty) and
+`hideGenerationTimestamp=true`, and setting any of them, to any value, fails generation, as does `--library` with
+anything but `reqwest`. Stock options it does not support are rejected too: `avoidBoxedModels`, `mockall`,
 `topLevelApiClient`, `withAWSV4Signature`, `supportTokenSource`, `useBonBuilder` (replaced by `bonBuilders`),
-`templateDir` (`-t`; the templates are part of the generator). Setting any of them fails generation:
+`templateDir` (`-t`; the templates are part of the generator). An operation with the `x-group-parameters` extension
+(one parameter struct per operation in stock `-g rust`) fails generation as well. A configuration taken over from
+`-g rust` therefore fails instead of being silently ignored:
 
 ```
 Exception in thread "main" java.lang.IllegalArgumentException: timvw-rust: option 'supportAsync' is not configurable: timvw-rust always uses 'true'; remove it (it was set to 'true')
@@ -112,20 +128,17 @@ Exception in thread "main" java.lang.IllegalArgumentException: timvw-rust: optio
 
 ## Templates
 
-The stock `rust` templates differ between openapi-generator minor versions, so the overrides live in
-one set per supported version, `src/main/resources/timvw-rust/og<major.minor>.0/`, chosen at run
-time from the openapi-generator the generator runs in. A set holds only the files that differ from
-stock (`lib.mustache`, `model.mustache`, `Cargo.mustache`, `reqwest/api.mustache`,
-`reqwest/api_mod.mustache`); everything else falls back to the stock template. Running in an
-openapi-generator without a set fails with a message naming the supported versions.
+Every template the generator renders is its own, in `src/main/resources/timvw-rust/`: the crate files
+(`Cargo.mustache`, `lib.mustache`, `README.mustache`, `gitignore.mustache`, `git_push.sh.mustache`, `.travis.yml`),
+the models (`model.mustache`, `model_mod.mustache`, `model_doc.mustache`), the API modules (`api.mustache`,
+`api_mod.mustache`, `configuration.mustache`, `api_doc.mustache`), the helper modules (`multipart_helper.mustache`,
+`sse.mustache`) and `partial_header.mustache`. None is looked up in the openapi-generator jar, and `-t` is rejected.
+They started from the `rust` templates of openapi-generator 7.27.0 (see [NOTICE](NOTICE)) and are edited by hand
+like the Java code; they only hold the branches of the one client `timvw-rust` generates.
 
-The sets are produced, never edited by hand: `tools/sync-templates.py` copies the stock templates out
-of the openapi-generator jars and applies the edits, failing if an anchor no longer matches. To add or
-refresh a version:
-
-```bash
-python3 tools/sync-templates.py ~/.m2/repository/org/openapitools/openapi-generator/7.27.0/openapi-generator-7.27.0.jar
-```
+The Java code builds on openapi-generator's API (`DefaultCodegen`, the parser, `DefaultGenerator`), compiled against
+the version in the pom. A run in another openapi-generator minor version logs a warning, as what `DefaultCodegen`
+hands the generator can change between versions.
 
 ## Development
 
@@ -136,9 +149,9 @@ wrapper.
 ./mvnw verify
 ```
 
-Tests cover the configuration checks, the rendering rules on `src/test/resources/milestone1.yaml`
-(generated in-process with whichever openapi-generator is on the classpath) and the spec repair. When a new
-openapi-generator version gets a template set, run them against it with `./mvnw -Dopenapi-generator.version=<version> verify`.
+Tests cover the configuration checks, the rendering rules of the [mapping](docs/mapping/README.md) (generated
+in-process from `src/test/resources/`) and the spec repair. To try another openapi-generator version, run them against
+it with `./mvnw -Dopenapi-generator.version=<version> verify`, and compare the clients' output before moving the pom.
 
 Check that the generator is picked up by the stock CLI (download the CLI jar into `target/`, it is
 git-ignored):
@@ -168,8 +181,8 @@ docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" timvw-rust:dev generate 
 cargo build --manifest-path target/petstore/Cargo.toml
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same steps on every push and pull request, for every
-supported openapi-generator version.
+CI (`.github/workflows/ci.yml`) runs the same steps on every push and pull request, with the pom's
+openapi-generator version and with every version the client repos pin (7.27.0).
 
 ## Releasing
 
@@ -193,13 +206,16 @@ The pom's version on `main` stays a `-SNAPSHOT`; the release workflow never comm
 
 ```
 pom.xml                                  be.timvw:openapi-generator-timvw-rust, Java 17
-src/main/java/be/timvw/openapi/rust/     TimvwRustCodegen (configuration, options), RustDoc (URL wrapping),
-                                         SpecNormalizer (spec repair), HelperPruning (unused helpers),
-                                         ExtraRules (the opt-in renderings from the generator comparison)
-src/main/resources/timvw-rust/og*/       template overrides, one set per openapi-generator minor version
+src/main/java/be/timvw/openapi/rust/     RustCodegenBase (Rust types, naming, model and operation processing,
+                                         crate options; ported from -g rust), TimvwRustCodegen (the generator's
+                                         options and rules), RustDoc (URL wrapping), SpecNormalizer (spec repair),
+                                         HelperPruning (unused helpers), ExtraRules (the opt-in renderings from the
+                                         generator comparison), ...
+src/main/java/org/openapitools/codegen/  same-package access to the inline-model resolver and the normalizer
+src/main/resources/timvw-rust/           every template the generator renders
+src/main/resources-filtered/             timvw-rust.properties: the openapi-generator version built against
 src/main/resources/META-INF/services/    registers the generator with openapi-generator
 src/test/java/                           JUnit 5 tests; src/test/resources/milestone1.yaml is the rendering fixture
-tools/sync-templates.py                  regenerates the template sets from the stock jars
 tools/link-mapping-tests.py              links the test names of docs/mapping to their lines
 docs/type-mapping.md                     each OpenAPI construct and its Rust rendering
 docs/mapping/                            the mapping as rules, one file per OpenAPI Specification object;
@@ -209,7 +225,8 @@ docs/design/                             design proposals; decode-bench measures
 docs/roadmap.md                          the plan: document the mapping, decide changes, conform
 docs/comparison/                         stock -g rust vs timvw-rust vs progenitor on one spec (generate.sh)
 test-specs/petstore.yaml                 OpenAPI 3.0 smoke-test spec
-Dockerfile                               eclipse-temurin:17-jre + both jars in /opt/gen
+Dockerfile                               eclipse-temurin JRE + the openapi-generator CLI jar and this jar in /opt/gen
+NOTICE                                   what is derived from openapi-generator (Apache-2.0)
 .github/workflows/                       ci.yml, release.yml
 ```
 

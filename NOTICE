@@ -1,0 +1,19 @@
+openapi-generator-timvw-rust
+Copyright 2026 Tim Van Wassenhove
+
+This product includes software derived from OpenAPI Generator
+(https://openapi-generator.tech, https://github.com/OpenAPITools/openapi-generator),
+version 7.27.0, licensed under the Apache License, Version 2.0:
+
+  Copyright 2018 OpenAPI-Generator Contributors (https://openapi-generator.tech)
+  Copyright 2018 SmartBear Software
+
+Derived parts:
+
+- src/main/java/be/timvw/openapi/rust/RustCodegenBase.java is ported from
+  org.openapitools.codegen.languages.AbstractRustCodegen and
+  org.openapitools.codegen.languages.RustClientCodegen.
+- The templates in src/main/resources/timvw-rust/ started from the `rust` templates
+  (and `_common/git_push.sh.mustache`) of openapi-generator and were modified.
+
+These parts are distributed under the Apache License, Version 2.0 (see LICENSE-APACHE).

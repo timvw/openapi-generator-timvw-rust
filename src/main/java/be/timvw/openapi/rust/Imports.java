@@ -98,8 +98,7 @@ final class Imports {
     }
 
     /** Sets the import flags of one API module from its operations. */
-    static void markApi(OperationsMap objs, boolean supportAsync, boolean multipartHelper,
-                        boolean multipleResponses) {
+    static void markApi(OperationsMap objs, boolean multipartHelper, boolean multipleResponses) {
         boolean contentType = false;
         boolean serdeError = false;
         boolean fileStream = false;
@@ -109,8 +108,7 @@ final class Imports {
                 boolean decodes = !stream && !multipleResponses && op.returnType != null && !op.isResponseFile;
                 contentType |= decodes;
                 serdeError |= decodes || stream;
-                fileStream |= supportAsync && (hasFile(op.bodyParams)
-                        || (!multipartHelper && op.isMultipart && hasFile(op.formParams)));
+                fileStream |= hasFile(op.bodyParams) || (!multipartHelper && op.isMultipart && hasFile(op.formParams));
             }
         }
         put(objs, CONTENT_TYPE, contentType);

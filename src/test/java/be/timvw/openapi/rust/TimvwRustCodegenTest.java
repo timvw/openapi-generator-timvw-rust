@@ -30,7 +30,7 @@ class TimvwRustCodegenTest {
     }
 
     @Test
-    void appliesTheFixedValues() {
+    void generatesTheOneConfiguration() {
         TimvwRustCodegen c = codegen();
         c.additionalProperties().put(CodegenConstants.PACKAGE_NAME, "petstore");
         c.processOpts();
@@ -38,15 +38,60 @@ class TimvwRustCodegenTest {
         Map<String, Object> props = c.additionalProperties();
         assertEquals("reqwest", c.getLibrary());
         assertEquals("petstore", props.get(CodegenConstants.PACKAGE_NAME));
-        assertEquals("true", String.valueOf(props.get("reqwest")));
-        assertEquals(true, props.get(RustClientCodegenConstants.SUPPORT_ASYNC));
-        assertEquals(true, props.get(RustClientCodegenConstants.SUPPORT_MIDDLEWARE));
-        assertEquals(false, props.get(CodegenConstants.USE_SINGLE_REQUEST_PARAMETER));
-        assertEquals(false, props.get(RustClientCodegenConstants.PREFER_UNSIGNED_INT));
-        assertEquals(false, props.get(RustClientCodegenConstants.BEST_FIT_INT));
-        assertEquals("", props.get(CodegenConstants.ENUM_NAME_SUFFIX));
+        assertEquals("petstore", props.get(RustCodegenBase.EXTERN_CRATE_NAME));
         assertEquals(true, props.get(CodegenConstants.HIDE_GENERATION_TIMESTAMP));
         assertTrue(c.isHideGenerationTimestamp());
+        // The templates have no branches for the fixed options, so nothing passes them on.
+        for (String fixed : TimvwRustCodegen.FIXED_VALUES.keySet()) {
+            if (!CodegenConstants.HIDE_GENERATION_TIMESTAMP.equals(fixed)) {
+                assertTrue(!props.containsKey(fixed), fixed);
+            }
+        }
+    }
+
+    /** The options timvw-rust took over from stock -g rust keep their names and defaults. */
+    @Test
+    void crateOptionsKeepTheirDefaults() {
+        TimvwRustCodegen c = codegen();
+        c.processOpts();
+        Map<String, Object> props = c.additionalProperties();
+        assertEquals("openapi", props.get(RustCodegenBase.PACKAGE_NAME));
+        assertEquals("1.0.0", props.get(RustCodegenBase.PACKAGE_VERSION));
+        assertEquals(true, props.get(RustCodegenBase.USE_CHRONO));
+        assertEquals(false, props.get(RustCodegenBase.USE_SERDE_PATH_TO_ERROR));
+        assertEquals(false, props.get(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES));
+        assertEquals(List.of("native-tls"), props.get(RustCodegenBase.REQWEST_DEFAULT_FEATURES));
+        java.util.Map<String, String> advertised = new java.util.HashMap<>();
+        for (org.openapitools.codegen.CliOption o : c.cliOptions()) {
+            advertised.put(o.getOpt(), o.getDefault());
+        }
+        assertEquals("openapi", advertised.get(RustCodegenBase.PACKAGE_NAME));
+        assertEquals("1.0.0", advertised.get(RustCodegenBase.PACKAGE_VERSION));
+        assertEquals("true", advertised.get(RustCodegenBase.USE_CHRONO));
+        assertEquals("false", advertised.get(RustCodegenBase.USE_SERDE_PATH_TO_ERROR));
+        assertEquals("false", advertised.get(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES));
+        assertEquals("native-tls", advertised.get(RustCodegenBase.REQWEST_DEFAULT_FEATURES));
+    }
+
+    @Test
+    void useChronoFalseRendersDatesAsStrings() {
+        TimvwRustCodegen c = codegen();
+        c.additionalProperties().put(RustCodegenBase.USE_CHRONO, "false");
+        c.processOpts();
+        assertEquals("String", c.typeMapping().get("date"));
+        assertEquals("String", c.typeMapping().get("DateTime"));
+    }
+
+    @Test
+    void reqwestDefaultFeaturesTakesAListOrACommaSeparatedString() {
+        TimvwRustCodegen c = codegen();
+        c.additionalProperties().put(RustCodegenBase.REQWEST_DEFAULT_FEATURES, "rustls, native-tls");
+        c.processOpts();
+        assertEquals(List.of("rustls", "native-tls"), c.additionalProperties().get(RustCodegenBase.REQWEST_DEFAULT_FEATURES));
+        TimvwRustCodegen empty = codegen();
+        empty.additionalProperties().put(RustCodegenBase.REQWEST_DEFAULT_FEATURES, "");
+        empty.processOpts();
+        assertEquals(List.of(), empty.additionalProperties().get(RustCodegenBase.REQWEST_DEFAULT_FEATURES));
     }
 
     /** A fixed option is rejected when set, also to the value timvw-rust uses: it is not configurable. */
@@ -85,13 +130,22 @@ class TimvwRustCodegenTest {
         assertTrue(e.getMessage().contains("'supportAsync' is not configurable"), e.getMessage());
     }
 
-    @Test
-    void rejectsAnotherLibrarySetThroughTheCliSetter() {
+    @ParameterizedTest(name = "--library {0} is rejected")
+    @ValueSource(strings = {"hyper", "hyper0x", "reqwest-trait", "unknown"})
+    void rejectsAnotherLibrarySetThroughTheCliSetter(String library) {
         TimvwRustCodegen c = codegen();
-        c.setLibrary("hyper");
+        c.setLibrary(library);
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
         assertTrue(e.getMessage().contains("'library'"), e.getMessage());
         assertTrue(e.getMessage().contains("reqwest"), e.getMessage());
+    }
+
+    @Test
+    void acceptsLibraryReqwestThroughTheCliSetter() {
+        TimvwRustCodegen c = codegen();
+        c.setLibrary("reqwest");
+        c.processOpts();
+        assertEquals("reqwest", c.getLibrary());
     }
 
     @ParameterizedTest(name = "{0} is rejected when set")
@@ -177,33 +231,67 @@ class TimvwRustCodegenTest {
         assertTrue(e.getMessage().contains("'templateDir'"), e.getMessage());
     }
 
-    @ParameterizedTest(name = "openapi-generator {0} uses {1}")
-    @CsvSource({
-            "7.27.0,og7.27.0",
-            "7.27.1,og7.27.0",
-    })
-    void picksTheTemplateSetOfTheRunningOpenApiGenerator(String version, String set) {
+    /** Every template is the generator's own: none is looked up in the openapi-generator jar. */
+    @ParameterizedTest(name = "openapi-generator {0}")
+    @ValueSource(strings = {"7.27.0", "7.28.0", "8.0.0", "unset"})
+    void rendersOnlyItsOwnTemplates(String version) {
         TimvwRustCodegen c = new TimvwRustCodegen(version);
-        assertEquals("timvw-rust/" + set, c.templateDir());
-        assertEquals("rust", c.embeddedTemplateDir());
         c.processOpts();
-        assertEquals("timvw-rust/" + set, c.templateDir());
-    }
-
-    @ParameterizedTest(name = "openapi-generator {0} is rejected")
-    @ValueSource(strings = {"7.14.0", "7.15.0", "7.25.0", "7.26.0", "8.0.0", "unset"})
-    void failsOnAnOpenApiGeneratorWithoutTemplates(String version) {
-        TimvwRustCodegen c = new TimvwRustCodegen(version);
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
-        assertTrue(e.getMessage().contains(version), e.getMessage());
-        assertTrue(e.getMessage().contains("7.27"), e.getMessage());
+        assertEquals(RustCodegenBase.TEMPLATES, c.templateDir());
+        assertEquals(RustCodegenBase.TEMPLATES, c.embeddedTemplateDir());
+        List<String> templates = new java.util.ArrayList<>();
+        templates.addAll(c.apiTemplateFiles().keySet());
+        templates.addAll(c.modelTemplateFiles().keySet());
+        templates.addAll(c.apiDocTemplateFiles().keySet());
+        templates.addAll(c.modelDocTemplateFiles().keySet());
+        c.supportingFiles().forEach(f -> templates.add(f.getTemplateFile()));
+        templates.add("partial_header.mustache");
+        templates.add("multipart_helper.mustache");
+        templates.add("sse.mustache");
+        for (String template : templates) {
+            assertTrue(TimvwRustCodegen.class.getResource("/" + RustCodegenBase.TEMPLATES + "/" + template) != null,
+                    template);
+        }
     }
 
     @Test
-    void theRunningOpenApiGeneratorIsSupported() {
+    void isBuiltAgainstTheRunningOpenApiGenerator() {
         // ImplementationVersion comes from the openapi-generator jar's manifest, so this is the CI matrix check.
-        assertTrue(TimvwRustCodegen.templateSetFor(org.openapitools.codegen.utils.ImplementationVersion.read()) != null,
-                org.openapitools.codegen.utils.ImplementationVersion.read());
+        assertEquals(org.openapitools.codegen.utils.ImplementationVersion.read(), TimvwRustCodegen.builtAgainst());
+    }
+
+    /**
+     * Stock -g rust groups an operation's parameters into one struct for x-group-parameters; timvw-rust always passes
+     * them as arguments, so an operation that asks for the struct fails generation instead of getting another API.
+     */
+    @Test
+    void rejectsXGroupParameters(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws java.io.IOException {
+        java.nio.file.Path spec = dir.resolve("spec.yaml");
+        java.nio.file.Files.writeString(spec, String.join("\n",
+                "openapi: 3.0.3",
+                "info: {title: t, version: '1'}",
+                "paths:",
+                "  /things:",
+                "    get:",
+                "      operationId: listThings",
+                "      x-group-parameters: true",
+                "      parameters:",
+                "        - {name: limit, in: query, schema: {type: integer}}",
+                "      responses:",
+                "        '200': {description: ok}",
+                ""));
+        org.openapitools.codegen.ClientOptInput input = new org.openapitools.codegen.config.CodegenConfigurator()
+                .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
+                .setInputSpec(spec.toString())
+                .setOutputDir(dir.resolve("out").toString())
+                .toClientOptInput();
+        RuntimeException e = assertThrows(RuntimeException.class,
+                () -> new org.openapitools.codegen.DefaultGenerator().opts(input).generate());
+        Throwable cause = e;
+        while (cause.getCause() != null && !(cause instanceof IllegalArgumentException)) {
+            cause = cause.getCause();
+        }
+        assertTrue(String.valueOf(cause.getMessage()).contains("x-group-parameters"), String.valueOf(cause.getMessage()));
     }
 
     /** Local aliases so the test reads the same names the CLI user types. */

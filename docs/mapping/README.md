@@ -48,7 +48,7 @@ modelUnions unionDispatch openEnums schemaDefaultDocs nullableUnionFields
 
 with `library=reqwest`, `supportAsync=true`, `supportMiddleware=true`, `preferUnsignedInt=false` and
 `useSingleRequestParameter=false`. openai-client-base also sets `multipartHelper`, `typedEventStreams`,
-`contentTypeMethods` and `boxResponseError`; langfuse-client-base also sets `typedEnumParameters` and
+`contentTypeMethods`, `boxResponseError` and `useChrono=false`; langfuse-client-base also sets `typedEnumParameters` and
 `deprecatedAttributes`. The **Options** entry describes those and every other option as a variation of the baseline.
 
 ## HTTP library
@@ -77,16 +77,16 @@ has a **Library** row that names it. These are:
 | OpenAPI Object (`paths`, `components`, `webhooks`, `security`, ...) | | in [type-mapping.md](../type-mapping.md) |
 | Info, Contact, License | | in [type-mapping.md](../type-mapping.md) |
 | Server, Server Variable | | in [type-mapping.md](../type-mapping.md) |
-| Components Object | | in [type-mapping.md](../type-mapping.md) |
+| Components Object | [components.md](components.md) | `schemas` done; the rest in [type-mapping.md](../type-mapping.md) |
 | Paths, Path Item | | in [type-mapping.md](../type-mapping.md) |
 | Operation Object | | in [type-mapping.md](../type-mapping.md) |
 | Parameter Object | | in [type-mapping.md](../type-mapping.md) |
-| Request Body Object | | in [type-mapping.md](../type-mapping.md) |
+| Request Body Object | [request-body.md](request-body.md) | `content` (a function per media type) done; body renderings in [type-mapping.md](../type-mapping.md) |
 | Media Type Object, Encoding Object | | in [type-mapping.md](../type-mapping.md) |
-| Responses, Response Object | | in [type-mapping.md](../type-mapping.md) |
+| Responses, Response Object | [response.md](response.md) | `content` (shapes, event streams) done; success and error types in [type-mapping.md](../type-mapping.md) |
 | Header Object | | in [type-mapping.md](../type-mapping.md) |
 | Callback, Link, Example, Tag, External Documentation, XML | | to do |
-| Reference Object | | in [type-mapping.md](../type-mapping.md) |
-| Schema Object | [schema.md](schema.md) | composition (`oneOf`, `anyOf`, `allOf`) done; the other fields in [type-mapping.md](../type-mapping.md) |
+| Reference Object | [reference.md](reference.md) | done |
+| Schema Object | [schema.md](schema.md) | done |
 | Discriminator Object | [discriminator.md](discriminator.md) | done |
 | Security Scheme, OAuth Flows, Security Requirement | | in [type-mapping.md](../type-mapping.md) |

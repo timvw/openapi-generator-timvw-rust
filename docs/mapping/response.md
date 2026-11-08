@@ -1,0 +1,27 @@
+# Response Object
+
+Rules for the [Response Object](https://spec.openapis.org/oas/v3.0.3#response-object). The
+[baseline](README.md#baseline) options apply. Success and error types are still in
+[type-mapping.md](../type-mapping.md#responses).
+
+Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`.
+
+### `response.content`
+
+| | |
+| --- | --- |
+| OpenAPI | a success response whose `content` lists one or more media types |
+| Rust | the operation's function decodes the first media type the spec lists |
+| Options | `contentTypeMethods` (openai-client-base) adds a function per other response shape: `_json` (JSON), `_text` (other `text/*`), `_bytes` (anything else). One per shape, since the media types of a shape render to the same Rust type. `text/event-stream` is [`response.content.event-stream`](#responsecontentevent-stream) |
+| Tests | `EventStreamsTest#everyMediaTypeHasAMethodNamedWithItsSuffix`, `#suffixes`, `#withoutTheOptionsNothingChanges` |
+
+### `response.content.event-stream`
+
+| | |
+| --- | --- |
+| OpenAPI | a success response with `text/event-stream` content |
+| Rust | a function returning `Result<apis::sse::EventStream<Event, OperationError>, Error<OperationError>>`. It is the operation's own function when the event stream is the response's first media type, `<operation>_stream` otherwise. `EventStream` implements `futures_core::Stream<Item = Result<Event, Error<E>>>`; `EventStream::from_response` and `from_bytes` make one from a body read elsewhere, and `apis::sse::Decoder` is the parser underneath. The crate then depends on `futures-core` and reqwest's `stream` feature, and `src/apis/sse.rs` is written only when an operation streams |
+| Wire | sends `Accept: text/event-stream`. An error status is the operation's typed `Error::ResponseError`; a response that is no event stream is `Error::Serde`. Each event's `data:` payload decodes to the event schema (a union by its `type` tag); the SSE `event:` name is not used. `data: [DONE]` or the end of the body ends the stream; an event without data, a comment or an empty payload yields nothing. A payload that does not decode yields `Err(Error::Serde(_))` and the stream goes on; a failure reading the body yields `Err(Error::Reqwest(_))` and ends it. The parser handles CR, LF and CRLF, multi-line data, comments and a byte order mark, and drops an unterminated event at the end |
+| Library | the stream reads the `reqwest::Response`'s bytes; a read failure is `Error::Reqwest` |
+| Options | `typedEventStreams` (openai-client-base). Without it the response is decoded as JSON, which fails. An event schema that models the SSE envelope (objects with required `event` and `data`, like the Assistants API's `AssistantStreamEvent`) gets no stream, since the payload holds only `data`; the generator logs these operations |
+| Tests | `EventStreamsTest#aStreamAsksForItAndChecksTheContentType`, `#theSseEnvelopeGetsNoStream`, `#streamsWithoutContentTypeMethods`, `#whatItDoesAtRunTime`, `#withoutTheOptionsNothingChanges` |

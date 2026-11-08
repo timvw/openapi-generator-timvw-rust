@@ -15,12 +15,14 @@ Every example here was generated from [`comparison/spec.yaml`](comparison/spec.y
 
 ## Schemas
 
+Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md).
+
 ### Scalars
 
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
 | `type: string` | `String` | |
-| `format: date`, `date-time` | `String` | `useChrono=true` gives `chrono` types; the clients keep `String` |
+| `format: date`, `date-time` | `chrono::NaiveDate`, `chrono::DateTime<chrono::FixedOffset>` | `useChrono` (default `true`); `useChrono=false` gives `String` and no `chrono` dependency (openai-client-base sets it) |
 | `format: uuid` | `uuid::Uuid` in a model; `&str` as a header or query parameter | |
 | `format: byte` | `Vec<u8>`, base64 through `#[serde_as(as = "serde_with::base64::Base64")]` | |
 | `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response | |
@@ -79,7 +81,7 @@ These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
 
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
-| `oneOf` / `anyOf` | `#[serde(untagged)]` enum with a variant per branch, ordered so the narrower one decodes first ([variant order](../README.md#union-variant-order)) | `modelUnions`; without it stock renders `oneOf` only, and a discriminator as `#[serde(tag)]`, which does not decode when the branch structs keep the tag field |
+| `oneOf` / `anyOf` | `#[serde(untagged)]` enum with a variant per branch, ordered so the narrower one decodes first ([variant order](mapping/schema.md#schemaoneofvariant-order)) | `modelUnions`; without it stock renders `oneOf` only, and a discriminator as `#[serde(tag)]`, which does not decode when the branch structs keep the tag field |
 | `discriminator` | the same enum, serialized untagged, decoded by the tag: only the selected variant is tried, and its error is the error (``Message::User: missing field `content` ``) | `unionDispatch` |
 | no `discriminator`, but every branch requires one property with fixed values | dispatched on that property like a discriminator | `unionDispatch` |
 | an unknown tag in a response | `Unknown(serde_json::Value)` holding what came | `openEnums` |

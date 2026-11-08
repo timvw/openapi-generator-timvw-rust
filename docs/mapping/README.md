@@ -74,19 +74,17 @@ has a **Library** row that names it. These are:
 
 | Specification object | File | Status |
 | --- | --- | --- |
-| OpenAPI Object (`paths`, `components`, `webhooks`, `security`, ...) | | in [type-mapping.md](../type-mapping.md) |
-| Info, Contact, License | | in [type-mapping.md](../type-mapping.md) |
-| Server, Server Variable | | in [type-mapping.md](../type-mapping.md) |
-| Components Object | [components.md](components.md) | `schemas` done; the rest in [type-mapping.md](../type-mapping.md) |
-| Paths, Path Item | | in [type-mapping.md](../type-mapping.md) |
-| Operation Object | | in [type-mapping.md](../type-mapping.md) |
-| Parameter Object | | in [type-mapping.md](../type-mapping.md) |
-| Request Body Object | [request-body.md](request-body.md) | `content` (a function per media type) done; body renderings in [type-mapping.md](../type-mapping.md) |
-| Media Type Object, Encoding Object | | in [type-mapping.md](../type-mapping.md) |
-| Responses, Response Object | [response.md](response.md) | `content` (shapes, event streams) done; success and error types in [type-mapping.md](../type-mapping.md) |
-| Header Object | | in [type-mapping.md](../type-mapping.md) |
-| Callback, Link, Example, Tag, External Documentation, XML | | to do |
+| OpenAPI Object (`webhooks`), Info Object (`version`) | [openapi.md](openapi.md) | done |
+| Server Object | [server.md](server.md) | done |
+| Components Object | [components.md](components.md) | done (`schemas`; `securitySchemes` in [security-scheme.md](security-scheme.md)) |
+| Paths, Path Item, Operation Object | [operation.md](operation.md) | done |
+| Parameter Object | [parameter.md](parameter.md) | done |
+| Request Body Object | [request-body.md](request-body.md) | done |
+| Encoding Object | [encoding.md](encoding.md) | done |
+| Responses Object | [responses.md](responses.md) | done |
+| Response Object | [response.md](response.md) | done |
 | Reference Object | [reference.md](reference.md) | done |
 | Schema Object | [schema.md](schema.md) | done |
 | Discriminator Object | [discriminator.md](discriminator.md) | done |
-| Security Scheme, OAuth Flows, Security Requirement | | in [type-mapping.md](../type-mapping.md) |
+| Security Scheme Object, Security Requirement | [security-scheme.md](security-scheme.md), [`operation.security`](operation.md#operationsecurity) | done |
+| Header Object, Callback, Link, Example, Tag (beyond naming the module), External Documentation, XML, OAuth Flows | | to document |

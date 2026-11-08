@@ -106,6 +106,10 @@ These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
 
 ## Operations
 
+Each of these is a rule with its tests in [mapping/](mapping/README.md#objects): [operation.md](mapping/operation.md),
+[parameter.md](mapping/parameter.md), [request-body.md](mapping/request-body.md), [response.md](mapping/response.md),
+[responses.md](mapping/responses.md), [server.md](mapping/server.md) and [security-scheme.md](mapping/security-scheme.md).
+
 ### Functions and modules
 
 | OpenAPI | Rust | Option |

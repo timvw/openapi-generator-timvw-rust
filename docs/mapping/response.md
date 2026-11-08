@@ -1,10 +1,44 @@
 # Response Object
 
 Rules for the [Response Object](https://spec.openapis.org/oas/v3.0.3#response-object). The
-[baseline](README.md#baseline) options apply. Success and error types are still in
-[type-mapping.md](../type-mapping.md#responses).
+[baseline](README.md#baseline) options apply. These rules are about a success (`2XX`) response; error responses are
+the [Responses Object](responses.md).
 
-Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`.
+Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`. `OperationMappingTest` renders
+`src/test/resources/operation_mapping.yaml` with the baseline options.
+
+### `response.content.json`
+
+| | |
+| --- | --- |
+| OpenAPI | a success response with `application/json` content |
+| Rust | the function returns `Result<T, Error<..>>`, `T` the schema's type, decoded from the body. A body of another content type is `Error::Serde` |
+| Tests | `OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString` |
+
+### `response.content.text`
+
+| | |
+| --- | --- |
+| OpenAPI | a success response with `text/plain` content |
+| Rust | `String`, the body as it came |
+| Tests | `OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString` |
+
+### `response.content.binary`
+
+| | |
+| --- | --- |
+| OpenAPI | a success response with `application/octet-stream` (or another binary media type) and `format: binary` |
+| Rust | `reqwest::Response`, to read as bytes or a stream ([`schema.format.binary`](schema.md#schemaformatbinary)) |
+| Library | `reqwest::Response` |
+| Tests | `SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead` |
+
+### `response.content.none`
+
+| | |
+| --- | --- |
+| OpenAPI | a success response without `content` (`204`) |
+| Rust | `Result<(), Error<..>>` |
+| Tests | `OperationMappingTest#aResponseWithoutABodyIsUnit` |
 
 ### `response.content`
 

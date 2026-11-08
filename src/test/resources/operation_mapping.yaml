@@ -1,0 +1,170 @@
+openapi: 3.0.3
+info:
+  title: Operation mapping
+  version: 2.1.0
+servers:
+  - url: https://api.example.com/v1
+security:
+  - bearer: []
+paths:
+  /items/{item_id}:
+    get:
+      operationId: getItem
+      tags: [Items]
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+        - name: tag
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: ids
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: filter
+          in: query
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+        - name: X-Request-Id
+          in: header
+          schema:
+            type: string
+        - name: X-Flags
+          in: header
+          schema:
+            type: array
+            items:
+              type: string
+        - name: session
+          in: cookie
+          schema:
+            type: string
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        "404":
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        default:
+          description: error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    delete:
+      operationId: deleteItem
+      tags: [Items]
+      deprecated: true
+      security:
+        - basic: []
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: deleted
+  /items:
+    post:
+      operationId: createItem
+      tags: [Items]
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+  /login:
+    post:
+      operationId: login
+      security:
+        - oauth: []
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [user]
+              properties:
+                user:
+                  type: string
+                remember:
+                  type: boolean
+      responses:
+        "200":
+          description: ok
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+    basic:
+      type: http
+      scheme: basic
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    oauth:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://api.example.com/token
+          scopes: {}
+  schemas:
+    Item:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    Problem:
+      type: object
+      properties:
+        detail:
+          type: string

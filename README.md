@@ -8,7 +8,7 @@ Its purpose is to replace the post-processing scripts that
 [langfuse-client-base](https://github.com/genai-rs/langfuse-client-base) run on top of `-g rust`,
 by moving every fix into the generator itself. How each OpenAPI construct becomes Rust is in
 [docs/type-mapping.md](docs/type-mapping.md); how that compares with stock `-g rust` and progenitor is in
-[docs/comparison](docs/comparison/README.md).
+[docs/comparison](docs/comparison/README.md). The plan to document this mapping and then improve it is in [docs/roadmap.md](docs/roadmap.md).
 
 **Status: Milestones 2 and 3 are complete.** openai-client-base and langfuse-client-base generate without scripts. The generator renders what stock `-g rust` renders
 plus the conventions below, which langfuse-client-base used to patch in after generation (its public API is
@@ -546,6 +546,9 @@ src/main/resources/META-INF/services/    registers the generator with openapi-ge
 src/test/java/                           JUnit 5 tests; src/test/resources/milestone1.yaml is the rendering fixture
 tools/sync-templates.py                  regenerates the template sets from the stock jars
 docs/type-mapping.md                     each OpenAPI construct and its Rust rendering
+docs/mapping/                            the same as rules, one file per OpenAPI Specification object;
+                                         MappingDocsTest checks that each rule names tests that exist
+docs/roadmap.md                          the plan: document the mapping, decide changes, conform
 docs/comparison/                         stock -g rust vs timvw-rust vs progenitor on one spec (generate.sh)
 test-specs/petstore.yaml                 OpenAPI 3.0 smoke-test spec
 Dockerfile                               eclipse-temurin:17-jre + both jars in /opt/gen

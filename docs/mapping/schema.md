@@ -64,7 +64,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: integer` |
 | Rust | `i64`; `format: int32` gives `i32`. Every other format (`int64`, `unixtime`, none, unknown, `int8`, `int16`, `uint8` to `uint64`) gives `i64`. Bounds (`minimum`, `maximum`) never pick a type, and nothing is unsigned or `NonZero`. This holds everywhere an integer appears: fields, items, map values, parameters, multipart fields, responses, constructors, builders and union variants |
-| Options | `integersAsI64` (baseline). Without it the stock rendering: `i32` unless `format: int64`, and on openapi-generator 7.27 `i8`/`i16` and `u8` to `u64` for the sized formats. `preferUnsignedInt` and `bestFitInt` must stay `false` |
+| Options | `integersAsI64` (baseline). Without it the stock rendering: `i32` unless `format: int64`, and on openapi-generator 7.27 `i8`/`i16` and `u8` to `u64` for the sized formats. `preferUnsignedInt` and `bestFitInt` are fixed to `false` |
 | Tests | `SchemaMappingTest#scalarsAndFormats`, `IntegersAsI64Test#onlyInt32StaysI32OnModelFields`, `#sizedAndUnsignedFormatsAreI64`, `#containerItemsFollowTheRule`, `#pathQueryAndHeaderParametersFollowTheRule`, `#withoutTheOptionIntegersStayAsInStock` |
 
 ### `schema.type.integer-with-float-format`

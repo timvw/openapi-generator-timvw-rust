@@ -64,14 +64,14 @@ openapi-generator (7.27.0). openai-client-base and langfuse-client-base pin `-og
 
 ## Supported configuration
 
-These stock options are pinned: each has exactly one allowed value, applied when the option is unset. Any other value
-fails generation with a message naming the option (`supportAsync=false` gives
-``option 'supportAsync' must be 'true' (got 'false')``). The generator only maintains the async reqwest-middleware
-client, so a blocking client or a single request parameter struct is not available.
+These stock options are not configurable: `timvw-rust` always uses the value below, and setting the option, to any
+value, fails generation with a message naming it (``option 'supportAsync' is not configurable: timvw-rust always
+uses 'true'; remove it``). They are not listed by `config-help`. The generator only maintains the async
+reqwest-middleware client, so a blocking client or a single request parameter struct is not available.
 
-| Option | Only allowed value | Notes |
+| Option | Value | Notes |
 | --- | --- | --- |
-| `library` | `reqwest` | `hyper`, `hyper0x` and `reqwest-trait` are rejected |
+| `library` | `reqwest` | also through `--library` |
 | `supportAsync` | `true` | |
 | `supportMiddleware` | `true` | `reqwest-middleware` is always wired in |
 | `useSingleRequestParameter` | `false` | one function argument per parameter |
@@ -97,7 +97,7 @@ Our own options. The Rule column links the mapping rule that describes what an o
 | `defaultOnlyWhereValid` | `false` | `Default` only where its value is one the API would accept | [`schema.properties.default-impl`](docs/mapping/schema.md#schemapropertiesdefault-impl) |
 | `enumFromStr` | `false` | closed enums implement `FromStr` and `TryFrom`; property enums get the `Display` they lack | [`schema.enum.from-str`](docs/mapping/schema.md#schemaenumfrom-str) |
 | `noStructDisplay` | `false` | structs have no JSON `Display`; API code serializes them with `serde_json::to_string` | [`schema.properties.display`](docs/mapping/schema.md#schemapropertiesdisplay) |
-| `integersAsI64` | `false` | integers are `i64` unless `format: int32`; `preferUnsignedInt` and `bestFitInt` stay pinned to `false`, so setting either still fails generation | [`schema.type.integer`](docs/mapping/schema.md#schematypeinteger) |
+| `integersAsI64` | `false` | integers are `i64` unless `format: int32`; `preferUnsignedInt` and `bestFitInt` are fixed to `false` | [`schema.type.integer`](docs/mapping/schema.md#schematypeinteger) |
 | `modelUnions` | `false` | unions render from the model as untagged enums | [`schema.oneOf`](docs/mapping/schema.md#schemaoneof) |
 | `unionDispatch` | `false` | with `modelUnions`: a union with a tag decodes by that tag | [`discriminator.propertyName`](docs/mapping/discriminator.md#discriminatorpropertyname) |
 | `openEnums` | `false` | with `modelUnions`: what a response or webhook payload can hold has a catch-all for values the spec does not list | [`schema.enum.open`](docs/mapping/schema.md#schemaenumopen) |

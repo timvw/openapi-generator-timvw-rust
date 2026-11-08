@@ -46,8 +46,8 @@ boxOnlyCycles defaultOnlyWhereValid enumFromStr noStructDisplay integersAsI64 qu
 modelUnions unionDispatch openEnums schemaDefaultDocs nullableUnionFields
 ```
 
-with `library=reqwest`, `supportAsync=true`, `supportMiddleware=true`, `preferUnsignedInt=false` and
-`useSingleRequestParameter=false`. openai-client-base also sets `multipartHelper`, `typedEventStreams`,
+with the stock options `timvw-rust` fixes (`library=reqwest`, `supportAsync=true`, `supportMiddleware=true`, ...;
+see the README's [supported configuration](../../README.md#supported-configuration)). openai-client-base also sets `multipartHelper`, `typedEventStreams`,
 `contentTypeMethods`, `boxResponseError` and `useChrono=false`; langfuse-client-base also sets `typedEnumParameters` and
 `deprecatedAttributes`. The **Options** entry describes those and every other option as a variation of the baseline.
 

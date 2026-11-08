@@ -40,7 +40,6 @@ class MultipartFileUnionsTest {
     private static void generate(String spec, Path output, boolean modelUnions) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "multipart_unions");
-        props.put("supportAsync", "true");
         props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
         props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
         if (modelUnions) {

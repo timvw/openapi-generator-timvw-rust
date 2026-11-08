@@ -87,4 +87,11 @@ has a **Library** row that names it. These are:
 | Schema Object | [schema.md](schema.md) | done |
 | Discriminator Object | [discriminator.md](discriminator.md) | done |
 | Security Scheme Object, Security Requirement | [security-scheme.md](security-scheme.md), [`operation.security`](operation.md#operationsecurity) | done |
-| Header Object, Callback, Link, Example, Tag (beyond naming the module), External Documentation, XML, OAuth Flows | | to document |
+| Header Object | [header.md](header.md) | done |
+| Callback Object | [callback.md](callback.md) | done |
+| Link Object | [link.md](link.md) | done |
+| Example Object | [example.md](example.md) | done |
+| Tag Object | [tag.md](tag.md) | done |
+| External Documentation Object | [external-documentation.md](external-documentation.md) | done |
+| XML Object | [xml.md](xml.md) | done |
+| OAuth Flows, OAuth Flow | [security-scheme.md](security-scheme.md#oauthflowsscopes) | done |

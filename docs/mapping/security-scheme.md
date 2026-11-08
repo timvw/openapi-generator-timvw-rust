@@ -41,3 +41,11 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `type: oauth2` (any flow) |
 | Rust | `configuration.oauth_access_token: Option<String>`, sent as a bearer token. Getting or refreshing the token is up to the caller |
 | Tests | `OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity` |
+
+### `oauthFlows.scopes`
+
+| | |
+| --- | --- |
+| OpenAPI | the `flows` of an OAuth 2 scheme (`authorizationUrl`, `tokenUrl`, `scopes`), and the scopes an operation's `security` asks for |
+| Rust | nothing: the client sends `oauth_access_token` as it is, and does not get, refresh or check the scopes of a token |
+| Tests | `OtherObjectsTest#oauthFlowsAndScopesAreIgnored` |

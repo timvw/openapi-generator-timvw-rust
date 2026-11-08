@@ -172,6 +172,9 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 ## Known gaps
 
 - Cookie parameters are not sent.
+- Response headers of a JSON or text response cannot be read.
+- Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
+  ([mapping](mapping/README.md#objects)).
 - Validation keywords (`minLength`, `pattern`, `maximum`, ...) are not checked.
 - `readOnly`/`writeOnly` properties are in both directions.
 - `uniqueItems` gives a `Vec`, not a set.

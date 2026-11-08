@@ -27,6 +27,12 @@ What decodes:
 | no object | the variants that accept something else, in order; if there are none: `` Shape: expected an object with tag `kind`, got a number `` |
 | an unknown value | [`discriminator.propertyName.unknown-value`](#discriminatorpropertynameunknown-value) |
 
+Numbers go through `serde_json::Value` as they go through the buffer of `serde(untagged)`: an integer up to 64 bits
+stays that integer, a larger one and every float is an `f64`. A key repeated in one object is the last one, where a
+struct alone would reject it. `unionPlanFile` holds each union's `dispatch` (its tag, which values select which
+variants); `tools/check-union-samples.py` uses it to decode a sample per value of every variant and check the error
+messages.
+
 ### `discriminator.propertyName.unknown-value`
 
 | | |

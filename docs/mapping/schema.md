@@ -1,10 +1,340 @@
 # Schema Object
 
-Rules for the [Schema Object](https://spec.openapis.org/oas/v3.0.3#schema-object). The [baseline](README.md#baseline)
-options apply. So far this file holds composition (`oneOf`, `anyOf`, `allOf`); the other fields are still in
-[type-mapping.md](../type-mapping.md).
+Rules for the [Schema Object](https://spec.openapis.org/oas/v3.0.3#schema-object), in the order of its fields: `type`
+and `format`, the validation keywords, object fields (`properties`, `required`, `nullable`, `additionalProperties`,
+`readOnly`, `writeOnly`, `default`, `deprecated`, `description`), arrays (`items`, `uniqueItems`), `enum`, `title`, and
+composition (`allOf`, `oneOf`, `anyOf`). The [baseline](README.md#baseline) options apply. `$ref` is the
+[Reference Object](reference.md); component names are the [Components Object](components.md).
 
-Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`.
+Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`. `SchemaMappingTest` renders
+`src/test/resources/schema_mapping.yaml` with the baseline options.
+
+## `type` and `format`
+
+### `schema.type.string`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: string`, without a format below (also `format: email`, `uri`, `hostname`, or one the generator does not know) |
+| Rust | `String` |
+| Tests | `SchemaMappingTest#scalarsAndFormats` |
+
+### `schema.format.date-time`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: string` with `format: date-time` or `format: date` |
+| Rust | `chrono::DateTime<chrono::FixedOffset>` (`date-time`) and `chrono::NaiveDate` (`date`); the crate depends on `chrono` |
+| Wire | RFC 3339 text, through chrono's serde support |
+| Options | `useChrono` (stock option, default `true`). With `useChrono=false` both are `String` and the crate has no `chrono` dependency (openai-client-base sets this; langfuse-client-base keeps the default) |
+| Tests | `SchemaMappingTest#datesAreChronoUnlessUseChronoIsOff` |
+
+### `schema.format.uuid`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: string, format: uuid` |
+| Rust | `uuid::Uuid` in a model; `&str` as a path, query or header parameter |
+| Gap | a parameter takes `&str`, not `uuid::Uuid` |
+| Tests | `SchemaMappingTest#scalarsAndFormats`, `#aUuidParameterIsAString` |
+
+### `schema.format.byte`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: string, format: byte` |
+| Rust | `Vec<u8>`, with `#[serde_as(as = "serde_with::base64::Base64")]` |
+| Wire | base64 text |
+| Tests | `SchemaMappingTest#scalarsAndFormats` |
+
+### `schema.format.binary`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: string, format: binary` (a file) |
+| Rust | as a request body, multipart part or parameter: `std::path::PathBuf`, the file to send. As a response: `reqwest::Response`, to read as bytes or a stream |
+| Wire | the file's bytes, streamed from disk; the response body as it comes |
+| Library | `reqwest::Response`; the file is opened with tokio and streamed as a `reqwest::Body` or `reqwest::multipart::Part` |
+| Options | `fileProperties` renders listed `Schema.property` entries as files |
+| Tests | `SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`, `EventStreamsTest#requestBodiesGoOutAsTheirMediaType` |
+
+### `schema.type.integer`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: integer` |
+| Rust | `i64`; `format: int32` gives `i32`. Every other format (`int64`, `unixtime`, none, unknown, `int8`, `int16`, `uint8` to `uint64`) gives `i64`. Bounds (`minimum`, `maximum`) never pick a type, and nothing is unsigned or `NonZero`. This holds everywhere an integer appears: fields, items, map values, parameters, multipart fields, responses, constructors, builders and union variants |
+| Options | `integersAsI64` (baseline). Without it the stock rendering: `i32` unless `format: int64`, and on openapi-generator 7.27 `i8`/`i16` and `u8` to `u64` for the sized formats. `preferUnsignedInt` and `bestFitInt` must stay `false` |
+| Tests | `SchemaMappingTest#scalarsAndFormats`, `IntegersAsI64Test#onlyInt32StaysI32OnModelFields`, `#sizedAndUnsignedFormatsAreI64`, `#containerItemsFollowTheRule`, `#pathQueryAndHeaderParametersFollowTheRule`, `#withoutTheOptionIntegersStayAsInStock` |
+
+### `schema.type.integer-with-float-format`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: integer` with `format: float` or `format: double` |
+| Rust | read as `type: number` (logged) |
+| Options | always |
+| Tests | `GenerationTest#integerWithFloatFormatIsRenderedAsNumber`, `SpecNormalizerTest#rewritesIntegerWithFloatFormatWhereverItAppears` |
+
+### `schema.type.number`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: number` |
+| Rust | `f64`; `format: float` gives `f32` |
+| Tests | `SchemaMappingTest#scalarsAndFormats`, `IntegersAsI64Test#numbersAreUntouched` |
+
+### `schema.type.boolean`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: boolean` |
+| Rust | `bool` |
+| Tests | `SchemaMappingTest#scalarsAndFormats` |
+
+### `schema.type.scalar-component`
+
+| | |
+| --- | --- |
+| OpenAPI | a component schema that is only a scalar (`Alias: {type: string}`) |
+| Rust | no type of its own: a reference to it is the scalar, documented with the component's description |
+| Options | `stringIdSchemas` renders listed components as `String` whatever they hold; `stringIdProperties` and `stringProperties` render listed properties as `String` |
+| Tests | `SchemaMappingTest#aScalarComponentHasNoTypeOfItsOwn`, `SpecRulesTest#idSchemasAndIdPropertiesBecomeStrings`, `#stringProperties` |
+
+### `schema.pattern`
+
+| | |
+| --- | --- |
+| OpenAPI | the validation keywords: `pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `minProperties`, `maxProperties` |
+| Rust | nothing: the type is the one of the rules above, and no value is checked |
+| Gap | values outside the bounds are neither rejected when decoding nor when building a request |
+| Tests | `SchemaMappingTest#validationKeywordsAreNotChecked` |
+
+## Objects
+
+### `schema.properties`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: object` with `properties` |
+| Rust | `pub struct` with `#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]`, one `pub` field per property with `#[serde(rename = "<name>")]`, and `new(<required fields>)` that sets the optional ones to `None`. Field names are `snake_case` |
+| Options | `bonBuilders` (default `true`) adds the `bon::Builder` derive |
+| Tests | `SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields`, `GenerationTest#modelStructsDeriveBonBuilderAndEnumsDoNot` |
+
+### `schema.required`
+
+| | |
+| --- | --- |
+| OpenAPI | a property listed in `required`, or not |
+| Rust | required: `T`, a parameter of `new()`. Optional: `Option<T>` with `skip_serializing_if = "Option::is_none"` |
+| Wire | an optional field that is `None` is left out |
+| Tests | `SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields` |
+
+### `schema.nullable`
+
+| | |
+| --- | --- |
+| OpenAPI | `nullable: true` (OpenAPI 3.1: `type: [T, "null"]`) |
+| Rust | optional: `Option<Option<T>>` through `serde_with::rust::double_option`. Required: `Option<T>`, which must be present. A nullable union follows [`schema.oneOf.null-branch`](#schemaoneofnull-branch) |
+| Wire | optional: `None` leaves the field out, `Some(None)` sends `null`. Required: `None` sends `null` |
+| Tests | `SchemaMappingTest#anOptionalNullablePropertyCanSendNull`, `DefaultOnlyWhereValidTest#aRequiredNullableFieldCountsAsRequired`, `ModelUnionsTest#aNullableReferenceDoesNotRewriteItsTarget` |
+
+### `schema.properties.reference`
+
+| | |
+| --- | --- |
+| OpenAPI | a property that references another model |
+| Rust | the model, by value (`Option<models::Owner>`). A reference that closes a cycle of the model graph is boxed (`Option<Box<models::ThreadNode>>`); `Vec` and map items are never boxed, since they already are on the heap |
+| Options | `boxOnlyCycles` (baseline). Without it every model reference is boxed, as in stock |
+| Tests | `BoxOnlyCyclesTest#acyclicReferencesAreHeldByValue`, `#selfReferenceIsBoxedButNotInsideVec`, `#mutualRecursionIsBoxedBothWays`, `#withoutTheOptionEveryModelReferenceIsBoxed` |
+
+### `schema.additionalProperties`
+
+| | |
+| --- | --- |
+| OpenAPI | `additionalProperties: <schema>`, or `true` |
+| Rust | `std::collections::HashMap<String, T>`; `true` gives `HashMap<String, serde_json::Value>` |
+| Tests | `SchemaMappingTest#mapsAndFreeFormObjects` |
+
+### `schema.type.free-form-object`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: object` without `properties`, or `{}` |
+| Rust | `serde_json::Value`. `{}` is nullable as well: an optional property is `Option<Option<serde_json::Value>>` |
+| Tests | `SchemaMappingTest#mapsAndFreeFormObjects` |
+
+### `schema.readOnly`
+
+| | |
+| --- | --- |
+| OpenAPI | `readOnly: true` or `writeOnly: true` |
+| Rust | an ordinary field, in requests and in responses |
+| Gap | a read-only field can be sent, and a write-only field is expected back; a required one makes `new()` ask for it |
+| Tests | `SchemaMappingTest#readOnlyAndWriteOnlyAreFieldsInBothDirections` |
+
+### `schema.default`
+
+| | |
+| --- | --- |
+| OpenAPI | `default: <value>` |
+| Rust | not applied: the field is `Option<T>` like any optional field, and the default is noted in its documentation (``Defaults to `false`.``) |
+| Options | `schemaDefaultDocs` (baseline). Without it the default is not mentioned |
+| Tests | `ExtraRulesTest#defaultsAreDocumented` |
+
+### `schema.properties.default-impl`
+
+| | |
+| --- | --- |
+| OpenAPI | any object |
+| Rust | `Default` is derived only on a struct without required fields (a required nullable field counts as required), so a default value is one the API accepts. No enum implements `Default` (see [`schema.enum.default`](#schemaenumdefault)) |
+| Options | `defaultOnlyWhereValid` (baseline). Without it every struct derives `Default` |
+| Tests | `DefaultOnlyWhereValidTest#aRequiredFieldTakesTheDeriveAway`, `#aRequiredNullableFieldCountsAsRequired`, `#anAllOptionalStructKeepsItWhateverItsFieldTypes`, `#withoutTheOptionEverythingKeepsDefault` |
+
+### `schema.properties.display`
+
+| | |
+| --- | --- |
+| OpenAPI | any object |
+| Rust | no `Display`. Where a struct goes into a path, query, header, form or multipart text part, the API code serializes it with `serde_json::to_string` |
+| Wire | the struct's JSON; a serialization failure is `Error::Serde` |
+| Options | `noStructDisplay` (baseline). Without it API code calls `to_string()` on a struct parameter, which has no `Display`, and does not compile |
+| Tests | `NoStructDisplayTest#structsHaveNoDisplay`, `#pathParameter`, `#nothingStillCallsDisplayOnAStruct` |
+
+### `schema.deprecated`
+
+| | |
+| --- | --- |
+| OpenAPI | `deprecated: true` on a property or a schema |
+| Rust | no marker |
+| Options | `deprecatedAttributes` (langfuse-client-base) adds `#[deprecated]` to the field or type, and generated files start with `#![allow(deprecated)]` |
+| Tests | `ExtraRulesTest#deprecatedFieldsAndModelsAreMarked`, `#nothingIsDeprecatedWithoutTheOption` |
+
+### `schema.description`
+
+| | |
+| --- | --- |
+| OpenAPI | `description` |
+| Rust | `///` on the type or field; bare URLs are wrapped in `<...>` (rustdoc's `bare_urls`). A type without a description has no empty `///` |
+| Tests | `SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`, `GenerationTest#bareUrlsInDocCommentsAreWrapped`, `ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment` |
+
+## Arrays
+
+### `schema.items`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: array` with `items` |
+| Rust | `Vec<T>`; items are never boxed. Inline object items are a model named after the array ([`schema.title`](#schematitle)) |
+| Tests | `SchemaMappingTest#arraysAreVecsAndUniqueItemsChangesNothing`, `BoxOnlyCyclesTest#selfReferenceIsBoxedButNotInsideVec` |
+
+### `schema.uniqueItems`
+
+| | |
+| --- | --- |
+| OpenAPI | `uniqueItems: true` |
+| Rust | `Vec<T>`, as without it |
+| Gap | not a set: duplicates are neither rejected nor removed |
+| Tests | `SchemaMappingTest#arraysAreVecsAndUniqueItemsChangesNothing` |
+
+## `enum`
+
+### `schema.enum`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: string` with `enum`, as a component |
+| Rust | `pub enum` with a unit variant per value (`#[serde(rename = "<value>")]`), deriving `Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize`, and a `Display` that prints the value |
+| Tests | `SchemaMappingTest#aStringEnumIsAUnitEnumWithDisplay` |
+
+### `schema.enum.inline`
+
+| | |
+| --- | --- |
+| OpenAPI | an inline string `enum` as a property |
+| Rust | an enum of the same shape, in the struct's file, named after the property (`Mode`, `Role`) |
+| Options | `enumFromStr` (baseline) gives it the `Display` it otherwise lacks |
+| Tests | `SchemaMappingTest#anInlineEnumIsAnEnumInItsStructsFile`, `EnumFromStrTest#propertyEnumsInAStructFileGetDisplayToo` |
+
+### `schema.enum.integer`
+
+| | |
+| --- | --- |
+| OpenAPI | `type: integer` with `enum` |
+| Rust | `#[repr(i64)]` enum through `serde_repr`, variants `Variant1 = 1`, ... |
+| Tests | `SchemaMappingTest#anIntegerEnumIsReprI64`, `IntegersAsI64Test#integerEnumsKeepTheirRendering` |
+
+### `schema.enum.from-str`
+
+| | |
+| --- | --- |
+| OpenAPI | any enum of the rules above |
+| Rust | `FromStr`, `TryFrom<&str>`, `TryFrom<&String>` and `TryFrom<String>`, accepting exactly what `Display` prints and returning `models::ParseEnumError` otherwise. Unions and structs get none. A schema named `ParseEnumError` fails generation |
+| Options | `enumFromStr` (baseline) |
+| Tests | `EnumFromStrTest#stringEnumAcceptsWhatItsDisplayPrints`, `#integerEnumAcceptsItsNumbers`, `#unionsAndStructsGetNothing`, `#schemaTakingTheErrorNameFails`, `#emittedCodeCompilesAndRoundTrips` |
+
+### `schema.enum.open`
+
+| | |
+| --- | --- |
+| OpenAPI | an enum that a response can hold |
+| Rust | an extra unit variant `Unknown` (`#[serde(rename = "unknown", other)]`; an integer enum `Unknown = i64::MAX` through `#[serde(other)]`). It keeps `Copy`, `Eq`, `Hash` and `Ord`. An enum with a real value `unknown` keeps that as `Unknown`, and the catch-all is `UnknownValue` (`"unknown_value"`) |
+| Wire | a value the spec does not list decodes to `Unknown` instead of failing the whole response. `Unknown` serializes as `"unknown"` (an integer enum: `i64::MAX`), which no listed value spells, so the API rejects it in a request; `Display` prints `unknown`; no string parses to it |
+| Options | `openEnums` (baseline). Without it an unlisted value fails decoding |
+| Tests | `OpenEnumsTest#whatAResponseHoldsIsOpen`, `#whatOnlyARequestHoldsStaysClosed`, `#anInlineEnumFollowsItsStruct`, `#anInlineIntegerEnumOpensWhereItIsAnIntegerEnum`, `#whatTellsVariantsApartIsGuarded`, `#theCatchAllTakesANameAndAStringNoValueHas`, `#fromStrSkipsTheCatchAll`, `#whatItDoesAtRunTime` |
+
+What opens: what a response body can hold, in any media type and of any status (event streams and error bodies
+count), and what a webhook delivers. The generator walks the schemas from there through references, properties,
+items, map values, branches and `allOf`. A type that requests use too opens; a type only requests reach stays closed.
+What travels outside the API operations (a WebSocket event) is not reached.
+
+What stays closed although a response can hold it: an enum that a union relies on to tell variants apart. Decoding
+that tries variants in turn needs an earlier variant to reject what a later one is for, and a catch-all would change
+what known input decodes to. So a closed enum in front of a free string or another enum, a `role` that tells two
+structs apart, and anything in a struct in front of a map or `serde_json::Value` stay closed. Closed is decided per
+enum. `unionPlanFile` lists them under `openEnums`. A value of another JSON kind (a number for a string enum) is still
+an error. Neither enums nor unions get `#[non_exhaustive]`.
+
+A tagged union opens too: [`discriminator.propertyName.unknown-value`](discriminator.md#discriminatorpropertynameunknown-value).
+
+### `schema.enum.default`
+
+| | |
+| --- | --- |
+| OpenAPI | any enum |
+| Rust | no `Default` (stock picks the first variant, which is arbitrary) |
+| Options | `defaultOnlyWhereValid` (baseline). Without it the first variant is the default |
+| Tests | `DefaultOnlyWhereValidTest#noEnumImplementsDefaultWhateverItsKind`, `SchemaMappingTest#aStringEnumIsAUnitEnumWithDisplay` |
+
+## `title`
+
+### `schema.title`
+
+| | |
+| --- | --- |
+| OpenAPI | an inline schema that becomes a model (an object property, array items, map values, a union branch, an operation's body, parameter or response), with or without a `title` |
+| Rust | the model takes its `title` as its name only when the title is unique: no component and no other model has that Rust name, and every inline schema with the title has the same shape. Otherwise it is named after where it stands: property `p` of `P` is `PP`, items `PInner`, map values `PValue`, a branch `P<Title>` (untitled: `POneOf`/`PAnyOf`, or its position when two would share a name), an operation's body `<Op>Request`, parameter `<Op><Param>Parameter`, response `<Op><Code>Response`. The result does not depend on the order of the spec. Two structurally different schemas that would get one Rust name fail generation, naming both |
+| Options | `qualifiedInlineNames` (baseline). Without it the stock names, which number a taken title (`Object0_17`) and can overwrite one model with another. `titleNaming=false` (openai-client-base) stops component and array titles from naming, merging or replacing types |
+| Tests | `QualifiedInlineNamesTest#aUniqueTitleNamesTheModelAndWhatLiesBelowIt`, `#unnamedBranchesAreQualifiedInsteadOfNumbered`, `#itemsAndValuesAreNamedAfterTheirContainer`, `#operationSchemasAreNamedAfterTheOperation`, `#theOutcomeDoesNotDependOnTheOrderOfTheSpec`, `#anInlineSchemaNamedLikeAComponentFails`, `TitleNamingTest#withTitleNamingOffEveryComponentKeepsItsOwnTypeAndArraysNameItemsByPath` |
+
+## `allOf`
+
+### `schema.allOf`
+
+| | |
+| --- | --- |
+| OpenAPI | `allOf` of objects |
+| Rust | one struct holding the properties of every part, required where any part requires them; each referenced part keeps its own struct |
+| Tests | `SchemaMappingTest#allOfObjectsIsOneStructWithEveryPartsProperties` |
+
+### `schema.allOf.union`
+
+| | |
+| --- | --- |
+| OpenAPI | a schema that is `allOf` of exactly one union |
+| Rust | an enum with that union's variants, and its tag |
+| Options | `modelUnions` (baseline) |
+| Tests | `ModelUnionsTest#aModelThatIsAllOfOneUnionHasThatUnionsVariants`, `UnionDispatchTest#aModelThatIsAllOfOneUnionHasItsTag` |
 
 ## `oneOf`
 
@@ -117,16 +447,3 @@ object kind decides. Two variants that accept the same values decode to whicheve
 | Rust | `serde_json::Value` |
 | Options | always |
 | Tests | `ModelUnionsTest#aVariantHoldingAnUntypedAnyOfHoldsJsonValues` |
-
-## `allOf`
-
-### `schema.allOf.union`
-
-| | |
-| --- | --- |
-| OpenAPI | a schema that is `allOf` of exactly one union |
-| Rust | an enum with that union's variants, and its tag |
-| Options | `modelUnions` (baseline) |
-| Tests | `ModelUnionsTest#aModelThatIsAllOfOneUnionHasThatUnionsVariants`, `UnionDispatchTest#aModelThatIsAllOfOneUnionHasItsTag` |
-
-`allOf` of objects is still in [type-mapping.md](../type-mapping.md#composition-and-names).

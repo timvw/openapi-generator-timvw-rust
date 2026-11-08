@@ -275,7 +275,7 @@ openai-client-base silences `needless_return` through `apiLintAllows`; this comp
 ## Open points
 
 The comparison found six things timvw-rust rendered worse than stock or progenitor. All six are addressed; the
-[README](../../README.md#renderings-from-the-generator-comparison) shows each rendering before and after.
+[renderings below](#renderings-after-the-comparison) show each one before and after.
 
 | Gap | Fix | Default |
 | --- | --- | --- |
@@ -289,6 +289,152 @@ The comparison found six things timvw-rust rendered worse than stock or progenit
 The options are off because each changes the public API or what a `-D warnings` consumer sees, and the comparison
 config ([`timvw-rust-config.json`](timvw-rust-config.json)) keeps the options openai-client-base runs. With all four on,
 the comparison crate renders as in the README's examples and clippy reports the same 13 `needless_return`s.
+
+## Renderings after the comparison
+
+The comparison listed what timvw-rust still rendered
+worse than one of them. Two fixes change no public API and are always on; the other four change the API or its
+documentation, so each is an option that is off by default. With the options off, openai-client-base and
+langfuse-client-base regenerate with only the two always-on differences (checked by regenerating both crates before
+and after: 379 and 97 empty `///` lines removed, and langfuse's unused `first_of`/`Attempt`).
+
+The snippets below come from `spec.yaml`, generated with openai-client-base's options, without and
+with each option.
+
+### Unused helpers are left out (always on)
+
+The helper modules were written whole, whatever the crate used. Now an item of `union_dispatch.rs` or
+`multipart_helper.rs` that no model or API module names, directly or through another kept item, is left out, and so is
+a `use` name only it needed. Both modules are `pub(crate)`, so the public API is the same.
+
+```diff
+ // src/models/union_dispatch.rs, in a crate where no union tries several variants for one tag value
+-/// A variant to try: its name, and how to decode it.
+-pub(crate) type Attempt<U> = (&'static str, fn(Value) -> Result<U, serde_json::Error>);
+-
+-/// Tries the variants selected in order, and keeps the error of each when none decodes.
+-pub(crate) fn first_of<U>(
+-    ...
+-}
+```
+
+Helpers marked `#[allow(dead_code)]` were kept unused on purpose, so they stay. `pruneAllHelpers=true` leaves them out
+too:
+
+```diff
+ // src/apis/multipart_helper.rs with pruneAllHelpers
+-use std::path::{Path, PathBuf};
++use std::path::Path;
+-/// Create a multipart Part from a PathBuf
+-#[allow(dead_code)]
+-pub fn file_part_from_pathbuf(path: PathBuf) -> Result<multipart::Part, std::io::Error> {
+-    file_part_from_path(&path)
+-}
+ (also file_part_from_bytes and add_pathbuf_to_form)
+```
+
+openai-client-base: no change (it calls every helper that has no `#[allow(dead_code)]`, and its
+`tests/oa06_postprocess_wire.rs` includes `multipart_helper.rs` and calls `add_schema_value_to_form`, which its API
+modules call too). langfuse-client-base: `first_of` and `Attempt` go.
+
+### No empty doc comment on enums (always on)
+
+```diff
+-/// 
+ #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+ pub enum FinishReason {
+```
+
+An enum with a description keeps it. openai-client-base: 379 lines removed; langfuse-client-base: 97.
+
+### `typedEnumParameters`: enum parameters take the enum
+
+An inline `enum` of a query, path, header or cookie parameter, or of a property of a `multipart/form-data` or
+`application/x-www-form-urlencoded` body, becomes a component enum before inline schemas are named:
+`<operationId>_<parameter>` for a parameter, `<Schema>_<property>` for a body property (`<operationId>_request_<property>`
+when the body is inline), with `_item` for the items of an array. The function takes the enum, which has `Display`
+(and `FromStr` with `enumFromStr`):
+
+```diff
+-pub async fn list_models(configuration: &configuration::Configuration, limit: Option<i64>, order: Option<&str>, after: Option<&str>) -> ...
++pub async fn list_models(configuration: &configuration::Configuration, limit: Option<i64>, order: Option<models::ListModelsOrder>, after: Option<&str>) -> ...
+
+-pub async fn upload_file(configuration: &configuration::Configuration, file: std::path::PathBuf, purpose: &str) -> ...
++pub async fn upload_file(configuration: &configuration::Configuration, file: std::path::PathBuf, purpose: models::UploadFileRequestPurpose) -> ...
+```
+
+```rust
+// src/models/list_models_order.rs (new)
+pub enum ListModelsOrder {
+    #[serde(rename = "asc")]
+    Asc,
+    #[serde(rename = "desc")]
+    Desc,
+}
+```
+
+The wire is the same: a query parameter and a multipart text part send the enum's `Display`, which is its wire value
+(`multipart_form.text("purpose", p_form_purpose.to_string())`). A body property's model field changes type with it:
+`UploadFileRequest.purpose` was the enum `upload_file_request::Purpose` and is now `models::UploadFileRequestPurpose`.
+Parameters declared on the path item or under `components/parameters` are shared by operations and keep their type.
+A name that is already a component's (after Rust normalization) fails generation, naming both. A header or path
+parameter that is an array of such enums is joined from the values' `Display` (`.join(",")` alone joins only strings).
+
+### `nullableUnionFields`: a nullable union field can hold `null` (requires `modelUnions`)
+
+With `modelUnions` a field whose union is nullable was `Option<U>`, so a request could not send `null`, and a `null`
+that came in went out as an absent field. With the option it renders like any other nullable field: optional ones
+`Option<Option<U>>`, required ones `Option<U>` that must be present:
+
+```diff
+-    #[serde(rename = "stop", skip_serializing_if = "Option::is_none")]
+-    pub stop: Option<models::CreateChatCompletionRequestStop>,
++    #[serde(rename = "stop", default, with = "::serde_with::rust::double_option", skip_serializing_if = "Option::is_none")]
++    pub stop: Option<Option<models::CreateChatCompletionRequestStop>>,
+```
+
+`None` leaves the field out, `Some(None)` sends `"stop": null`, `Some(Some(v))` sends the value. A required nullable union
+field goes from `U` to `Option<U>`. The union keeps the property's `nullable` when the always-on spec rule hoists an
+inline union into a component (that rule dropped it until now; it still does without the option).
+
+### `schemaDefaultDocs`: defaults in the documentation
+
+openapi-generator does not print a property's `default`, and the spec rules remove `default` from component schemas
+(the stock generator renders some badly). With the option the default is noted first, in the property's or parameter's
+description:
+
+```diff
+     #[serde(rename = "n", skip_serializing_if = "Option::is_none")]
+     pub n: Option<i32>,
++    /// Defaults to `false`.
+     #[serde(rename = "stream", skip_serializing_if = "Option::is_none")]
+     pub stream: Option<bool>,
+```
+
+The value is the default's JSON. Types do not change: progenitor makes such a field `bool` with `#[serde(default)]`,
+which would be a breaking change and would send `false` where the caller set nothing.
+
+### `deprecatedAttributes`: `#[deprecated]` on deprecated fields and schemas
+
+A property or schema with `deprecated: true` gets `#[deprecated]`, so a caller that uses it gets a warning. Operations
+already had it (stock). Generated code refers to deprecated items itself (constructors, builders, serde, `mod.rs`), so
+every model and API file starts with `#![allow(deprecated)]`, and the crate builds without warnings:
+
+```diff
++#![allow(deprecated)]
+ /*
+  * Comparison API
+...
+     #[serde(rename = "response_format", skip_serializing_if = "Option::is_none")]
+     pub response_format: Option<models::ResponseFormat>,
++    #[deprecated]
+     #[serde(rename = "legacy_user", skip_serializing_if = "Option::is_none")]
+     pub legacy_user: Option<String>,
+```
+
+A deprecated schema gets `#[deprecated]` above its `#[derive(..)]`. This is not a breaking change in Rust terms, but a
+consumer built with `-D warnings` fails where it uses a deprecated item, so turn it on in a client repo together with
+any fixes its downstream wrapper needs.
 
 ## Reproducing
 

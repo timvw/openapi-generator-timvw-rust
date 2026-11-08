@@ -1,0 +1,156 @@
+openapi: 3.0.3
+info:
+  title: Schema Object mapping
+  version: 1.0.0
+paths:
+  /things/{id}:
+    get:
+      operationId: getThing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thing'
+  /things/{id}/file:
+    put:
+      operationId: putThingFile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: ok
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+components:
+  schemas:
+    # Scalars, required and optional, nullable, maps, free-form objects, arrays, inline enums.
+    Thing:
+      type: object
+      description: A thing. See https://example.com/things for more.
+      required: [name, id, count, ratio, active]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 10
+          pattern: '^[a-z]+$'
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        born_on:
+          type: string
+          format: date
+        email:
+          type: string
+          format: email
+        blob:
+          type: string
+          format: byte
+        count:
+          type: integer
+        small:
+          type: integer
+          format: int32
+        ratio:
+          type: number
+        weight:
+          type: number
+          format: float
+        active:
+          type: boolean
+        note:
+          type: string
+          nullable: true
+        label:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int32
+        extra:
+          type: object
+          additionalProperties: true
+        anything:
+          type: object
+        server_id:
+          type: string
+          readOnly: true
+        secret:
+          type: string
+          writeOnly: true
+        mode:
+          type: string
+          enum: [fast, slow]
+        owner:
+          $ref: '#/components/schemas/Owner'
+        color:
+          $ref: '#/components/schemas/Color'
+        level:
+          $ref: '#/components/schemas/Level'
+        alias:
+          $ref: '#/components/schemas/Alias'
+        parts:
+          type: array
+          items:
+            type: object
+            properties:
+              size:
+                type: integer
+    Owner:
+      type: object
+      properties:
+        login:
+          type: string
+    Color:
+      type: string
+      description: A color.
+      enum: [red, green]
+    Level:
+      type: integer
+      enum: [1, 2]
+    # A component that is only a scalar: no type of its own.
+    Alias:
+      type: string
+      description: An alias.
+    # allOf of objects: one struct with the properties of every part.
+    Pet:
+      allOf:
+        - $ref: '#/components/schemas/Owner'
+        - type: object
+          required: [kind]
+          properties:
+            kind:
+              type: string

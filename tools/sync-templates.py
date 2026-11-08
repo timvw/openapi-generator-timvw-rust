@@ -543,8 +543,25 @@ def api_template(t: str, w: str) -> str:
     t = replace_exactly(t, API_FILE_STREAM_IMPORT, API_FILE_STREAM_IMPORT_USED, 1, w)
     t = replace_exactly(t, MODELS_PREFIX, MODELS_PREFIX_ONCE, 2, w)
     t = struct_json_sites(t, w)
+    t = display_items(t, w)
     t = content_type_methods(t, w)
     return t
+
+
+# typedEnumParameters: a header or path parameter can be an array of enums, which `.join(",")` cannot join; such a
+# parameter (x-rust-display-items, set in TimvwRustCodegen) maps its items through Display first. An array of strings
+# renders as before.
+DISPLAY_ITEMS = (
+    "{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.to_string()).collect::<Vec<String>>()"
+    "{{/vendorExtensions.x-rust-display-items}}"
+)
+
+
+def display_items(t: str, w: str) -> str:
+    t = replace_exactly(t, '{{#isArray}}.join(","){{/isArray}}',
+                        '{{#isArray}}' + DISPLAY_ITEMS + '.join(","){{/isArray}}', 3, w)
+    return replace_exactly(t, '{{#isArray}}.join(",").as_ref(){{/isArray}}',
+                           '{{#isArray}}' + DISPLAY_ITEMS + '.join(",").as_ref(){{/isArray}}', 1, w)
 
 
 # Milestone 3.1. Every model reference is boxed unless the stock avoidBoxedModels flag is set (which timvw-rust

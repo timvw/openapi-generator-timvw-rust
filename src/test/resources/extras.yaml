@@ -26,6 +26,21 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: Beta-Features
+          in: header
+          style: simple
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [assistants=v2, responses=v1]
+        - name: Trace-Ids
+          in: header
+          style: simple
+          schema:
+            type: array
+            items:
+              type: string
       responses:
         '200':
           description: The things.

@@ -13,9 +13,8 @@ comes from running [`generate.sh`](generate.sh), which writes the three crates t
 `cargo clippy` on each, and decodes the same JSON payloads with each ([`decode.rs`](decode.rs)). Snippets have their
 file headers and blank lines removed.
 
-The design decisions behind the timvw-rust column, and the rule-by-rule comparison with typify and progenitor that
-they started from, are in the design doc,
-[Custom Rust generator: rendering design](https://claude.ai/artifact/SN1vpkMDhtG6QdFkDim4Bc).
+How timvw-rust renders every OpenAPI construct, with the option behind each rule, is in
+[docs/type-mapping.md](../type-mapping.md).
 
 ## Summary
 

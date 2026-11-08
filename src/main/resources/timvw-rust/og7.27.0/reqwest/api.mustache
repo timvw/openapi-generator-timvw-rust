@@ -164,7 +164,7 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     {{/allParams}}
 {{/vendorExtensions.x-group-parameters}}
 
-    let uri_str = format!("{}{{{path}}}", configuration.base_path{{#pathParams}}, {{{baseName}}}={{#isString}}crate::apis::urlencode({{/isString}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}{{#isArray}}.join(",").as_ref(){{/isArray}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}.to_string(){{/isContainer}}{{/isPrimitiveType}}{{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-struct-json}}{{#isString}}){{/isString}}{{/pathParams}});
+    let uri_str = format!("{}{{{path}}}", configuration.base_path{{#pathParams}}, {{{baseName}}}={{#isString}}crate::apis::urlencode({{/isString}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.to_string()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(",").as_ref(){{/isArray}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}.to_string(){{/isContainer}}{{/isPrimitiveType}}{{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-struct-json}}{{#isString}}){{/isString}}{{/pathParams}});
     let mut req_builder = configuration.client.request(reqwest::Method::{{{httpMethod}}}, &uri_str);
 
     {{#queryParams}}
@@ -348,18 +348,18 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     {{#headerParams}}
     {{#required}}
     {{^isNullable}}
-    req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}.join(","){{/isArray}}.to_string(){{/vendorExtensions.x-rust-struct-json}});
+    req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.to_string()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(","){{/isArray}}.to_string(){{/vendorExtensions.x-rust-struct-json}});
     {{/isNullable}}
     {{#isNullable}}
     match {{{vendorExtensions.x-rust-param-identifier}}} {
-        Some(param_value) => { req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}.join(","){{/isArray}}.to_string(){{/vendorExtensions.x-rust-struct-json}}); },
+        Some(param_value) => { req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.to_string()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(","){{/isArray}}.to_string(){{/vendorExtensions.x-rust-struct-json}}); },
         None => { req_builder = req_builder.header("{{{baseName}}}", ""); },
     }
     {{/isNullable}}
     {{/required}}
     {{^required}}
     if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}.join(","){{/isArray}}.to_string(){{/vendorExtensions.x-rust-struct-json}});
+        req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.to_string()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(","){{/isArray}}.to_string(){{/vendorExtensions.x-rust-struct-json}});
     }
     {{/required}}
     {{/headerParams}}

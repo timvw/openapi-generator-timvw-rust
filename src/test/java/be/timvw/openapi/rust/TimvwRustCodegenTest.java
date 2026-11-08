@@ -30,41 +30,14 @@ class TimvwRustCodegenTest {
     }
 
     @Test
-    void acceptsTheSupportedConfiguration() {
+    void appliesTheFixedValues() {
         TimvwRustCodegen c = codegen();
         c.additionalProperties().put(CodegenConstants.PACKAGE_NAME, "petstore");
-        c.additionalProperties().put(CodegenConstants.LIBRARY, "reqwest");
-        c.additionalProperties().put(RustClientCodegenConstants.SUPPORT_ASYNC, "true");
-        c.additionalProperties().put(RustClientCodegenConstants.SUPPORT_MIDDLEWARE, "true");
-        c.additionalProperties().put(CodegenConstants.USE_SINGLE_REQUEST_PARAMETER, "false");
-        c.additionalProperties().put(RustClientCodegenConstants.PREFER_UNSIGNED_INT, "false");
-        c.additionalProperties().put(RustClientCodegenConstants.BEST_FIT_INT, "false");
-        c.additionalProperties().put(CodegenConstants.ENUM_NAME_SUFFIX, "");
-        c.additionalProperties().put(CodegenConstants.HIDE_GENERATION_TIMESTAMP, "true");
-        c.processOpts();
-
-        assertEquals("reqwest", c.getLibrary());
-        assertEquals(true, c.additionalProperties().get(RustClientCodegenConstants.SUPPORT_ASYNC));
-        assertEquals(true, c.additionalProperties().get(RustClientCodegenConstants.SUPPORT_MIDDLEWARE));
-        assertEquals("petstore", c.additionalProperties().get(CodegenConstants.PACKAGE_NAME));
-    }
-
-    @Test
-    void acceptsBooleanValuesAsWellAsStrings() {
-        TimvwRustCodegen c = codegen();
-        c.additionalProperties().put(RustClientCodegenConstants.SUPPORT_ASYNC, Boolean.TRUE);
-        c.additionalProperties().put(CodegenConstants.USE_SINGLE_REQUEST_PARAMETER, Boolean.FALSE);
-        c.processOpts();
-        assertEquals(true, c.additionalProperties().get(RustClientCodegenConstants.SUPPORT_ASYNC));
-    }
-
-    @Test
-    void appliesSupportedValuesAsDefaults() {
-        TimvwRustCodegen c = codegen();
         c.processOpts();
 
         Map<String, Object> props = c.additionalProperties();
         assertEquals("reqwest", c.getLibrary());
+        assertEquals("petstore", props.get(CodegenConstants.PACKAGE_NAME));
         assertEquals("true", String.valueOf(props.get("reqwest")));
         assertEquals(true, props.get(RustClientCodegenConstants.SUPPORT_ASYNC));
         assertEquals(true, props.get(RustClientCodegenConstants.SUPPORT_MIDDLEWARE));
@@ -76,29 +49,44 @@ class TimvwRustCodegenTest {
         assertTrue(c.isHideGenerationTimestamp());
     }
 
+    /** A fixed option is rejected when set, also to the value timvw-rust uses: it is not configurable. */
     @ParameterizedTest(name = "{0}={1} is rejected")
     @CsvSource({
+            "library,reqwest",
             "library,hyper",
-            "library,reqwest-trait",
+            "supportAsync,true",
             "supportAsync,false",
+            "supportMiddleware,true",
             "supportMiddleware,false",
+            "useSingleRequestParameter,false",
             "useSingleRequestParameter,true",
+            "preferUnsignedInt,false",
             "preferUnsignedInt,true",
+            "bestFitInt,false",
             "bestFitInt,true",
+            "enumNameSuffix,''",
             "enumNameSuffix,Enum",
+            "hideGenerationTimestamp,true",
             "hideGenerationTimestamp,false",
     })
-    void rejectsUnsupportedValues(String option, String value) {
+    void rejectsFixedOptionsWhenSet(String option, String value) {
         TimvwRustCodegen c = codegen();
         c.additionalProperties().put(option, value);
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
         assertTrue(e.getMessage().contains("'" + option + "'"), e.getMessage());
-        assertTrue(e.getMessage().contains("must be"), e.getMessage());
-        assertTrue(e.getMessage().contains(value), e.getMessage());
+        assertTrue(e.getMessage().contains("not configurable"), e.getMessage());
     }
 
     @Test
-    void rejectsLibrarySetThroughTheCliSetter() {
+    void rejectsBooleanValuesOfFixedOptionsToo() {
+        TimvwRustCodegen c = codegen();
+        c.additionalProperties().put(RustClientCodegenConstants.SUPPORT_ASYNC, Boolean.TRUE);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
+        assertTrue(e.getMessage().contains("'supportAsync' is not configurable"), e.getMessage());
+    }
+
+    @Test
+    void rejectsAnotherLibrarySetThroughTheCliSetter() {
         TimvwRustCodegen c = codegen();
         c.setLibrary("hyper");
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
@@ -139,23 +127,19 @@ class TimvwRustCodegenTest {
     }
 
     @Test
-    void advertisesOnlySupportedOptions() {
+    void advertisesNeitherRejectedNorFixedOptions() {
         TimvwRustCodegen c = codegen();
         java.util.Set<String> opts = new java.util.HashSet<>();
         for (org.openapitools.codegen.CliOption o : c.cliOptions()) {
             opts.add(o.getOpt());
-            String supported = TimvwRustCodegen.SUPPORTED_VALUES.get(o.getOpt());
-            if (supported != null) {
-                assertEquals(supported, o.getDefault(), o.getOpt());
-            }
-            if (CodegenConstants.LIBRARY.equals(o.getOpt())) {
-                assertEquals(java.util.Set.of("reqwest"), o.getEnum().keySet());
-            }
         }
         for (String rejected : TimvwRustCodegen.REJECTED_OPTIONS) {
             assertTrue(!opts.contains(rejected), rejected + " should not be advertised");
         }
-        assertTrue(opts.containsAll(TimvwRustCodegen.SUPPORTED_VALUES.keySet()), opts.toString());
+        for (String fixed : TimvwRustCodegen.FIXED_VALUES.keySet()) {
+            assertTrue(!opts.contains(fixed), fixed + " should not be advertised");
+        }
+        assertTrue(opts.contains(TimvwRustCodegen.BON_BUILDERS), opts.toString());
     }
 
     @Test

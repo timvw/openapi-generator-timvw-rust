@@ -15,6 +15,7 @@ meant for any OpenAPI 3.0 spec.
 | [docs/type-mapping.md](docs/type-mapping.md) | the same as one overview table, including what is not yet a rule |
 | [docs/comparison](docs/comparison/README.md) | stock `-g rust`, timvw-rust and progenitor side by side on one spec |
 | [docs/roadmap.md](docs/roadmap.md) | the plan: document the mapping, decide what to change, make the generator conform |
+| [docs/design](docs/design/partial-decoding-and-ownership.md) | design proposals with measurements: decoding only what is needed, and ownership |
 | [docs/history.md](docs/history.md) | how the generator replaced the clients' post-processing scripts |
 
 ## Artifacts
@@ -63,12 +64,14 @@ openapi-generator (7.27.0). openai-client-base and langfuse-client-base pin `-og
 
 ## Supported configuration
 
-`timvw-rust` accepts exactly one configuration. Every option below is applied as the default when
-unset, and generation fails with a message naming the option when a different value is given.
+These stock options are not configurable: `timvw-rust` always uses the value below, and setting the option, to any
+value, fails generation with a message naming it (``option 'supportAsync' is not configurable: timvw-rust always
+uses 'true'; remove it``). They are not listed by `config-help`. The generator only maintains the async
+reqwest-middleware client, so a blocking client or a single request parameter struct is not available.
 
-| Option | Supported value | Notes |
+| Option | Value | Notes |
 | --- | --- | --- |
-| `library` | `reqwest` | `hyper`, `hyper0x` and `reqwest-trait` are rejected |
+| `library` | `reqwest` | also through `--library` |
 | `supportAsync` | `true` | |
 | `supportMiddleware` | `true` | `reqwest-middleware` is always wired in |
 | `useSingleRequestParameter` | `false` | one function argument per parameter |
@@ -94,7 +97,7 @@ Our own options. The Rule column links the mapping rule that describes what an o
 | `defaultOnlyWhereValid` | `false` | `Default` only where its value is one the API would accept | [`schema.properties.default-impl`](docs/mapping/schema.md#schemapropertiesdefault-impl) |
 | `enumFromStr` | `false` | closed enums implement `FromStr` and `TryFrom`; property enums get the `Display` they lack | [`schema.enum.from-str`](docs/mapping/schema.md#schemaenumfrom-str) |
 | `noStructDisplay` | `false` | structs have no JSON `Display`; API code serializes them with `serde_json::to_string` | [`schema.properties.display`](docs/mapping/schema.md#schemapropertiesdisplay) |
-| `integersAsI64` | `false` | integers are `i64` unless `format: int32`; `preferUnsignedInt` and `bestFitInt` stay pinned to `false`, so setting either still fails generation | [`schema.type.integer`](docs/mapping/schema.md#schematypeinteger) |
+| `integersAsI64` | `false` | integers are `i64` unless `format: int32`; `preferUnsignedInt` and `bestFitInt` are fixed to `false` | [`schema.type.integer`](docs/mapping/schema.md#schematypeinteger) |
 | `modelUnions` | `false` | unions render from the model as untagged enums | [`schema.oneOf`](docs/mapping/schema.md#schemaoneof) |
 | `unionDispatch` | `false` | with `modelUnions`: a union with a tag decodes by that tag | [`discriminator.propertyName`](docs/mapping/discriminator.md#discriminatorpropertyname) |
 | `openEnums` | `false` | with `modelUnions`: what a response or webhook payload can hold has a catch-all for values the spec does not list | [`schema.enum.open`](docs/mapping/schema.md#schemaenumopen) |
@@ -215,6 +218,7 @@ docs/type-mapping.md                     each OpenAPI construct and its Rust ren
 docs/mapping/                            the mapping as rules, one file per OpenAPI Specification object;
                                          MappingDocsTest checks that each rule names tests that exist
 docs/history.md                          what each rendering replaced in the client repos
+docs/design/                             design proposals; decode-bench measures decoding costs
 docs/roadmap.md                          the plan: document the mapping, decide changes, conform
 docs/comparison/                         stock -g rust vs timvw-rust vs progenitor on one spec (generate.sh)
 test-specs/petstore.yaml                 OpenAPI 3.0 smoke-test spec

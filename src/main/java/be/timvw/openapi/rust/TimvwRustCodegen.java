@@ -225,8 +225,11 @@ public class TimvwRustCodegen extends RustClientCodegen {
     /** openapi-generator major.minor version to the template set compiled for it. */
     static final Map<String, String> TEMPLATE_SETS = templateSets();
 
-    /** Options that must have exactly one value. Applied as defaults when unset. */
-    static final Map<String, String> SUPPORTED_VALUES = supportedValues();
+    /**
+     * Stock options that timvw-rust fixes: always applied with this value, not advertised, and rejected when set,
+     * whatever the value. The generator only maintains the async reqwest-middleware client.
+     */
+    static final Map<String, String> FIXED_VALUES = fixedValues();
 
     /** Options that must not be set at all, whatever the value. */
     static final List<String> REJECTED_OPTIONS = Arrays.asList(
@@ -286,7 +289,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         return m;
     }
 
-    private static Map<String, String> supportedValues() {
+    private static Map<String, String> fixedValues() {
         Map<String, String> m = new LinkedHashMap<>();
         m.put(CodegenConstants.LIBRARY, REQWEST_LIBRARY);
         m.put(SUPPORT_ASYNC, "true");
@@ -314,20 +317,8 @@ public class TimvwRustCodegen extends RustClientCodegen {
         String set = templateSetFor(openApiGeneratorVersion);
         templateDir = set == null ? STOCK_TEMPLATE_DIR : TEMPLATE_ROOT + "/" + set;
 
-        // Advertise only what we accept: drop rejected options from `config-help`, and show the pinned
-        // value as the default of every option that has exactly one supported value.
-        cliOptions.removeIf(o -> REJECTED_OPTIONS.contains(o.getOpt()));
-        for (CliOption o : cliOptions) {
-            String supported = SUPPORTED_VALUES.get(o.getOpt());
-            if (supported != null) {
-                o.setDefault(supported);
-                if (CodegenConstants.LIBRARY.equals(o.getOpt())) {
-                    Map<String, String> onlyReqwest = new LinkedHashMap<>();
-                    onlyReqwest.put(REQWEST_LIBRARY, supportedLibraries.get(REQWEST_LIBRARY));
-                    o.setEnum(onlyReqwest);
-                }
-            }
-        }
+        // Advertise only what can be set: drop rejected and fixed options from `config-help`.
+        cliOptions.removeIf(o -> REJECTED_OPTIONS.contains(o.getOpt()) || FIXED_VALUES.containsKey(o.getOpt()));
         cliOptions.add(CliOption.newBoolean(BON_BUILDERS,
                 "Derive bon::Builder on model structs and put #[bon::builder] on API functions", true));
         cliOptions.add(CliOption.newBoolean(TITLE_NAMING,
@@ -637,9 +628,12 @@ public class TimvwRustCodegen extends RustClientCodegen {
                     GENERATOR_NAME, openApiGeneratorVersion, TEMPLATE_SETS.keySet()));
         }
 
-        // The CLI applies `library` through setLibrary() rather than additionalProperties, so look at both.
-        if (!additionalProperties.containsKey(CodegenConstants.LIBRARY) && getLibrary() != null) {
-            additionalProperties.put(CodegenConstants.LIBRARY, getLibrary());
+        // The CLI applies `--library` through setLibrary() rather than additionalProperties. The stock constructor
+        // already sets the default library, so through the setter only another library can be told apart.
+        if (getLibrary() != null && !REQWEST_LIBRARY.equals(getLibrary())) {
+            throw new IllegalArgumentException(String.format(
+                    "%s: option '%s' is not configurable: %s always generates for '%s'; remove it (it was set to '%s')",
+                    GENERATOR_NAME, CodegenConstants.LIBRARY, GENERATOR_NAME, REQWEST_LIBRARY, getLibrary()));
         }
 
         for (String option : REJECTED_OPTIONS) {
@@ -650,20 +644,14 @@ public class TimvwRustCodegen extends RustClientCodegen {
             }
         }
 
-        for (Map.Entry<String, String> entry : SUPPORTED_VALUES.entrySet()) {
+        for (Map.Entry<String, String> entry : FIXED_VALUES.entrySet()) {
             String option = entry.getKey();
-            String supported = entry.getValue();
-            Object raw = additionalProperties.get(option);
-            if (raw == null) {
-                additionalProperties.put(option, supported);
-                continue;
-            }
-            String actual = String.valueOf(raw);
-            if (!supported.equals(actual)) {
+            if (additionalProperties.containsKey(option)) {
                 throw new IllegalArgumentException(String.format(
-                        "%s: option '%s' must be '%s' (got '%s')",
-                        GENERATOR_NAME, option, supported.isEmpty() ? "" : supported, actual));
+                        "%s: option '%s' is not configurable: %s always uses '%s'; remove it (it was set to '%s')",
+                        GENERATOR_NAME, option, GENERATOR_NAME, entry.getValue(), additionalProperties.get(option)));
             }
+            additionalProperties.put(option, entry.getValue());
         }
 
         setLibrary(REQWEST_LIBRARY);

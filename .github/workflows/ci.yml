@@ -75,7 +75,7 @@ jobs:
             -g timvw-rust \
             -i /local/test-specs/petstore.yaml \
             -o /local/target/petstore \
-            --additional-properties=packageName=petstore,library=reqwest,supportAsync=true,supportMiddleware=true
+            --additional-properties=packageName=petstore
 
       - uses: dtolnay/rust-toolchain@stable
 

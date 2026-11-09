@@ -359,6 +359,11 @@ After: no `apiLintAllows`.
 - A map cookie or header parameter (`additionalProperties`), which did not compile, is sent as its JSON.
 - An optional query parameter whose type is a union goes out as the union's `Display`: a string variant as plain
   text, no longer quoted JSON (openai-client-base's vault `status`: `status=active`, not `status=%22active%22`).
+  A `uuid` or `date-time` variant prints as plain text as well (a `date-time` in RFC 3339).
+- A union with a `uuid` or chrono variant adds the `uuid` or `chrono` dependency; a hand-kept `Cargo.toml` adds it
+  too.
+- Two property names that become the same Rust field (`user-id` and `user_id`) fail generation, naming both. Before,
+  the crate did not compile; rename one in the spec or map it with the spec rules your generation script applies.
 - `cargo test --doc` passes on a generated crate. The generated README's `Cargo.toml` line and `cargo doc --open` are
   marked `toml` and `sh`. Code blocks of the spec's `info.description` that rustdoc would compile (no language,
   `rust`, or indented) are marked `text`. A client that kept its own README or disabled doctests for this can drop

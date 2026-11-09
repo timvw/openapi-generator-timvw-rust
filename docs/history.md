@@ -133,6 +133,12 @@ the code before and after, and the steps for a client repository.
 - An optional or nullable query parameter whose type is a union is sent as the union's `Display`: a string or enum
   variant as plain text, a number or boolean as its text, any other variant as its JSON. It was sent as JSON, so a
   string went out quoted (openai-client-base's vault `status` filter: `status=%22active%22`, now `status=active`).
+  A `uuid` or `date-time` variant of a union prints as plain text too, a `date-time` in RFC 3339, wherever the
+  union's `Display` is used (parameters, form fields, multipart text parts).
+- A union with a `uuid`, `date` or `date-time` variant makes the crate depend on `uuid` or `chrono`; a crate whose
+  only use of such a type was a union variant did not compile.
+- Two spec property names that map to the same Rust field identifier (`user-id` and `user_id`, say) fail generation
+  with a message naming both properties; the crate had two fields of one name and did not compile.
 - Generation warns only where a user can act: identifier renames (`application/json` → `ApplicationSlashJson`,
   `[Done]` → `LeftSquareBracketDoneRightSquareBracket`) and each union field a variant does not carry log at debug,
   the latter with one summary warning. openai-client-base's generation log goes from 5331 to 71 warnings,

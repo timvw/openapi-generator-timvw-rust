@@ -40,7 +40,6 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of
   `date` or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a
   client that built such a request by hand to get RFC 3339 can call the generated function instead.
-
 - Every model implements a generated `Validate` trait
   ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
   [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,
@@ -50,7 +49,8 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   The crate gains `src/models/validation.rs` (declared in `models/mod.rs`, so a client's own `lib.rs` needs no change), an `impl crate::models::validation::Validate` per model, and a `regex` dependency when
   the spec has a `pattern`; every constrained field's documentation lists its constraints. A client that wants
   validation calls `validate()` (with `use <crate>::models::validation::Validate;`); one that does not want the code sets
-  `validateMethods=false`.
+  `validateMethods=false`. A client that keeps its own `Cargo.toml` (openai-client-base) adds `regex = "1"` when its
+  spec has a `pattern`.
 
 ## What the generator renders differently from `-g rust`
 

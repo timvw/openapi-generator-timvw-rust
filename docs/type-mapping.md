@@ -131,7 +131,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | query array | repeated (`?tag=a&tag=b`) or joined with `,`, as the spec's `style`/`explode` say | `resetQueryParameterStyle` sends all of them repeated |
 | query object | sent as a string | `deepObjectQueryParameters` sends listed ones as `deepObject` |
 | header | `.header(name, value)`; an array joined with `,` | |
-| cookie | **not sent** (the argument is accepted and unused, as in stock) | |
+| cookie | one `Cookie` header of the set ones (`a=1; b=2`), percent-encoded where a value is not a cookie-octet | |
 | an inline `enum` | `&str` | `typedEnumParameters`: a component enum (`models::ListModelsOrder`), sent as its value |
 
 ### Request bodies
@@ -172,7 +172,6 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 
 ## Known gaps
 
-- Cookie parameters are not sent.
 - Response headers of a JSON or text success cannot be read (an error has them, and so does a success with
   `supportMultipleResponses`).
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered

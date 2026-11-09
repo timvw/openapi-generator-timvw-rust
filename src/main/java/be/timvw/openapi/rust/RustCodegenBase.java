@@ -158,7 +158,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                         GlobalFeature.LinkObjects,
                         GlobalFeature.ParameterStyling)
                 .excludeSchemaSupportFeatures(SchemaSupportFeature.Polymorphism)
-                .excludeParameterFeatures(ParameterFeature.Cookie)
+                .includeParameterFeatures(ParameterFeature.Cookie)
                 .includeSchemaSupportFeatures(SchemaSupportFeature.oneOf)
                 .includeClientModificationFeatures(
                         ClientModificationFeature.BasePath,

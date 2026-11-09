@@ -1,0 +1,99 @@
+openapi: 3.0.3
+info:
+  title: Cookie parameters
+  version: 1.0.0
+# Cookie parameters (required, optional, a date-time, a uuid, arrays with explode true and false), alone and together
+# with an api key sent as a cookie; a map (additionalProperties) as a cookie and as a header.
+paths:
+  /items:
+    get:
+      operationId: getItems
+      security:
+        - cookieKey: []
+      parameters:
+        - name: session
+          in: cookie
+          required: true
+          schema:
+            type: string
+        - name: theme
+          in: cookie
+          schema:
+            type: string
+        - name: at
+          in: cookie
+          schema:
+            type: string
+            format: date-time
+        - name: id
+          in: cookie
+          schema:
+            type: string
+            format: uuid
+        - name: tags
+          in: cookie
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: ids
+          in: cookie
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '204':
+          description: Nothing
+  /prefs:
+    get:
+      operationId: getPrefs
+      parameters:
+        - name: theme
+          in: cookie
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Nothing
+  /keyed:
+    get:
+      operationId: getKeyed
+      security:
+        - cookieKey: []
+      responses:
+        '204':
+          description: Nothing
+  /maps:
+    get:
+      operationId: getMaps
+      parameters:
+        - name: prefs
+          in: cookie
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+        - name: X-Labels
+          in: header
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+      responses:
+        '204':
+          description: Nothing
+  /plain:
+    get:
+      operationId: getPlain
+      responses:
+        '204':
+          description: Nothing
+components:
+  securitySchemes:
+    cookieKey:
+      type: apiKey
+      in: cookie
+      name: api_token

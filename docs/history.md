@@ -67,6 +67,13 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
   not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
   makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
+- Cookie parameters are sent ([decision 3](decisions.md#3-cookie-parameters-are-not-sent)): the argument was
+  accepted and never used. The cookie parameters that are set now go out in one `Cookie` header (`a=1; b=2`), each
+  value percent-encoded where it is not an RFC 6265 cookie-octet, an exploded array as a pair per item. An api key
+  with `in: cookie`, which was not sent either, joins the same header. A map cookie or header parameter
+  (`additionalProperties`), which did not compile, is sent as its JSON. Signatures do not change. The generated header
+  replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
+  into the existing header rather than append a second one.
 - Every model implements a generated `Validate` trait
   ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
   [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,

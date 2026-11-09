@@ -12,7 +12,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | a success response with `application/json` content |
 | Rust | the function returns `Result<T, Error<..>>`, `T` the schema's type, decoded from the body. A body of another content type is `Error::Serde` |
-| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L136) |
+| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L137) |
 
 ### `response.content.text`
 
@@ -20,7 +20,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | a success response with `text/plain` content |
 | Rust | `String`, the body as it came |
-| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L136) |
+| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L137) |
 
 ### `response.content.binary`
 
@@ -37,7 +37,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | a success response without `content` (`204`) |
 | Rust | `Result<(), Error<..>>` |
-| Tests | [`OperationMappingTest#aResponseWithoutABodyIsUnit`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L143) |
+| Tests | [`OperationMappingTest#aResponseWithoutABodyIsUnit`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L144) |
 
 ### `response.content`
 

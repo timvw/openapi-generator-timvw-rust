@@ -92,7 +92,8 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
   into the existing header rather than append a second one.
 - A map whose values are an inline enum (`additionalProperties: {type: string, enum: [..]}`) is
-  `HashMap<String, <Enum>>`; it was the enum itself, which a JSON object does not decode to. The field's type changes.
+  `HashMap<String, <Enum>>`; it was the enum itself, which a JSON object does not decode to. The field's type changes,
+  and `validate()` now checks its `minProperties`/`maxProperties` (its enum values have nothing to check).
 - `contentTypeMethods` without `typedEventStreams`: the method for another request media type of an operation whose
   response is an event stream returned `sse::EventStream`, but `sse.rs` is only written with `typedEventStreams`, so
   the crate did not compile. It now decodes the response as JSON, like the operation's own method.
@@ -102,6 +103,19 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
 - `cargo test --doc` passes on a generated crate: `lib.rs` includes the README as the crate's documentation, and its
   `Cargo.toml` line and `cargo doc --open` were bare code blocks, so rustdoc compiled them as Rust. They are marked
   `toml` and `sh`.
+- Every model implements a generated `Validate` trait
+  ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
+  [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,
+  `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems`
+  (by equality; arrays stay `Vec`), `minProperties` and `maxProperties`, recursively, and returns the first
+  `models::validation::ValidationError` (path, rule, offending value). Nothing generated calls it, and `Error` is unchanged.
+  The crate gains `src/models/validation.rs` (declared in `models/mod.rs`, so a client's own `lib.rs` needs no change), an `impl crate::models::validation::Validate` per model, and a `regex` dependency when
+  the spec has a `pattern`; every constrained field's documentation lists its constraints. A client that wants
+  validation calls `validate()` (with `use <crate>::models::validation::Validate;`); one that does not want the code sets
+  `validateMethods=false`. A client that keeps its own `Cargo.toml` (openai-client-base) adds `regex = "1"` when its
+  spec has a `pattern`. The generator's own warnings (a skipped pattern, a union field that is not rendered, ...) now show in the
+  openapi-generator CLI and Docker image, which only print `org.openapitools` loggers; renames that are expected (a
+  keyword as `r#type`, a Rust type the base generator uses as a variable name) log at debug instead of warn.
 
 ## What the generator renders differently from `-g rust`
 

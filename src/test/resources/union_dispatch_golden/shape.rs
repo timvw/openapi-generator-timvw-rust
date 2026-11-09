@@ -61,3 +61,10 @@ impl std::fmt::Display for Shape {
     }
 }
 
+impl crate::models::validation::Validate for Shape {
+    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {
+        Ok(())
+    }
+}
+
+

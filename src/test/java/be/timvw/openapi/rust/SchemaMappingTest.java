@@ -89,10 +89,12 @@ class SchemaMappingTest {
     }
 
     @Test
-    void validationKeywordsAreNotChecked() throws IOException {
+    void validationKeywordsAreCheckedByValidateAndDocumented() throws IOException {
         String thing = model(out, "thing");
+        assertContains(thing, "/// Validation: `minLength: 1`, `maxLength: 10`, `pattern: ^[a-z]+$`.\n");
         assertContains(thing, "pub name: String,");
-        assertFalse(thing.contains("validate"), thing);
+        assertContains(thing, "impl crate::models::validation::Validate for Thing {");
+        assertContains(thing, "crate::models::validation::length(&self.name, Some(1), Some(10)).map_err(|e| e.at(\"name\"))?;");
     }
 
     @Test

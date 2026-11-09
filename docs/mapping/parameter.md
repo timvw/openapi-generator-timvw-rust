@@ -58,9 +58,10 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | `in: cookie` |
-| Rust | an argument like any other, which the function does not use |
-| Gap | the cookie is not sent |
-| Tests | [`OperationMappingTest#aCookieParameterIsNotSent`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L110) |
+| Rust | an argument like any other, of its format's type (`uuid::Uuid`, `chrono::DateTime<..>`, ...); every cookie parameter that is set goes into one `Cookie` header, `name=value` pairs joined with `; `, in the spec's order, then an api key sent as a cookie ([`securityScheme.type.api-key`](security-scheme.md#securityschemetypeapi-key)). An unset optional one is left out; with none set, there is no `Cookie` header |
+| Wire | the value is its text (a `date-time` RFC 3339, [`schema.format.date-time`](schema.md#schemaformatdate-time); a struct its JSON), with every byte that is not an RFC 6265 cookie-octet, and `%`, percent-encoded (`crate::apis::cookie_encode`: space, `"`, `,`, `;`, `\`, controls and non-ASCII bytes become `%XX`). An array (`style: form`): with `explode: true` (the default) a pair per item (`tag=a; tag=b`), with `explode: false` one pair with the encoded items joined by `,` (`tag=a,b`) |
+| Library | `reqwest::header::COOKIE` |
+| Tests | [`OperationMappingTest#aCookieParameterIsSentInTheCookieHeader`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L110), [`CookieParamsTest#theArgumentsKeepTheirTypes`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L63), [`#eachCookieIsAPairOfOneHeader`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L70), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L90) |
 
 ### `parameter.schema.enum`
 
@@ -69,4 +70,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a parameter whose schema is an inline `enum` (or an array of one) |
 | Rust | `&str` (`Vec<String>` for an array): the value is not checked |
 | Options | `typedEnumParameters` (langfuse-client-base) moves the enum to a component `<OperationId><Param>` (`models::ListModelsOrder`), which the function takes and sends as its value; arrays use `_item`. A name that is taken fails generation |
-| Tests | [`OperationMappingTest#anInlineEnumParameterIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L118), [`ExtraRulesTest#enumParametersTakeTheEnum`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L78), [`#enumParametersStayStringsWithoutTheOption`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L107), [`#aTakenNameFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L114) |
+| Tests | [`OperationMappingTest#anInlineEnumParameterIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L119), [`ExtraRulesTest#enumParametersTakeTheEnum`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L78), [`#enumParametersStayStringsWithoutTheOption`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L107), [`#aTakenNameFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L114) |

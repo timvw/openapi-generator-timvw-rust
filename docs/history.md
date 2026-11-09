@@ -53,6 +53,11 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
   not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
   makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
+- Cookie parameters are sent ([decision 3](decisions.md#3-cookie-parameters-are-not-sent)): the argument was
+  accepted and never used. The cookie parameters that are set now go out in one `Cookie` header (`a=1; b=2`), each
+  value percent-encoded where it is not an RFC 6265 cookie-octet, an exploded array as a pair per item. An api key
+  with `in: cookie`, which was not sent either, joins the same header. Signatures do not change; a client that set the
+  cookie itself (a default header or middleware) drops that, or it is sent twice.
 
 ## What the generator renders differently from `-g rust`
 

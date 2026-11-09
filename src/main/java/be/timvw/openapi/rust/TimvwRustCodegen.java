@@ -187,12 +187,16 @@ public class TimvwRustCodegen extends RustCodegenBase {
      */
     static final String DISPLAY_ITEMS = "x-rust-display-items";
     /**
-     * Set on every path, query, header and form parameter (an urlencoded field or a multipart text part): the method
-     * that writes its value, or each item of an array, as text. {@code to_rfc3339} for a {@code date-time}
+     * Set on every path, query, header, cookie and form parameter (an urlencoded field or a multipart text part): the
+     * method that writes its value, or each item of an array, as text. {@code to_rfc3339} for a {@code date-time}
      * ({@code chrono::DateTime}, whose {@code Display} is not RFC 3339), {@code to_string} otherwise ({@code date} is
      * {@code chrono::NaiveDate}, whose {@code Display} is {@code YYYY-MM-DD}).
      */
     static final String TO_TEXT = "x-rust-to-text";
+    /** Set on a path, query, header, cookie or form parameter whose argument is a {@code &str}: it is its own text. */
+    static final String STR = "x-rust-str";
+    /** Set on an operation that sends a {@code Cookie} header (see {@link #markCookies}). */
+    static final String COOKIES = "x-rust-cookies";
     /** Set on a path, query or header parameter whose value, or whose items, are a {@code chrono::DateTime}. */
     static final String RFC3339 = "x-rust-rfc3339";
     /** Set on a property or model that the model template marks {@code #[deprecated]}. */
@@ -1051,18 +1055,33 @@ public class TimvwRustCodegen extends RustCodegenBase {
     }
 
     /**
-     * Marks how a path, query, header or form parameter becomes text: {@code date-time} values in RFC 3339, as
+     * Marks how a path, query, header, cookie or form parameter becomes text: {@code date-time} values in RFC 3339, as
      * {@code format: date-time} requires, everything else with {@code Display}.
      */
     static void markText(CodegenParameter p) {
-        if (!p.isPathParam && !p.isQueryParam && !p.isHeaderParam && !p.isFormParam) {
+        if (!p.isPathParam && !p.isQueryParam && !p.isHeaderParam && !p.isCookieParam && !p.isFormParam) {
             return;
         }
         String type = p.isArray && p.items != null ? p.items.dataType : p.dataType;
         boolean dateTime = type != null && type.startsWith("chrono::DateTime<");
         p.vendorExtensions.put(TO_TEXT, dateTime ? "to_rfc3339" : "to_string");
+        if (!p.isArray && "String".equals(p.dataType)) {
+            p.vendorExtensions.put(STR, true);
+        }
         if (dateTime) {
             p.vendorExtensions.put(RFC3339, true);
+        }
+    }
+
+    /** Marks an operation that sends a {@code Cookie} header: it has a cookie parameter or an api key sent as one. */
+    static void markCookies(CodegenOperation op) {
+        boolean cookies = op.cookieParams != null && !op.cookieParams.isEmpty();
+        if (op.authMethods != null) {
+            cookies |= op.authMethods.stream()
+                    .anyMatch(a -> Boolean.TRUE.equals(a.isApiKey) && Boolean.TRUE.equals(a.isKeyInCookie));
+        }
+        if (cookies) {
+            op.vendorExtensions.put(COOKIES, true);
         }
     }
 
@@ -1225,17 +1244,20 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             for (CodegenOperation op : objs.getOperations().getOperation()) {
                 op.vendorExtensions.putIfAbsent(ERROR_ENUM, op.operationIdCamelCase + "Error");
+                markCookies(op);
                 for (CodegenOperation variant : contentVariants.getOrDefault(op, List.of())) {
                     variant.authMethods = op.authMethods;
                     variant.hasAuthMethods = op.hasAuthMethods;
                     variant.vendorExtensions.put(ERROR_ENUM, op.operationIdCamelCase + "Error");
+                    markCookies(variant);
                     ErrorStatus.mark(variant, op, op.operationIdCamelCase + "Error");
                 }
                 if (!op.vendorExtensions.containsKey(CONTENT_VARIANT)) {
                     ErrorStatus.mark(op, op, String.valueOf(op.vendorExtensions.get(ERROR_ENUM)));
                 }
                 for (List<CodegenParameter> params : Arrays.asList(op.allParams, op.formParams, op.bodyParams,
-                        op.queryParams, op.pathParams, op.headerParams, op.requiredParams, op.optionalParams)) {
+                        op.queryParams, op.pathParams, op.headerParams, op.cookieParams, op.requiredParams,
+                        op.optionalParams)) {
                     if (params == null) {
                         continue;
                     }

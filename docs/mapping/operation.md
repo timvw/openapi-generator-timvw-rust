@@ -55,4 +55,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | an operation's `security`, or the spec's when it has none |
 | Rust | the function sends the credentials of those schemes that are set in `Configuration` ([security-scheme.md](security-scheme.md)); a scheme the operation does not list is not sent |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L175) |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L176) |

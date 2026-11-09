@@ -31,7 +31,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: apiKey, in: header`, `in: query` or `in: cookie`, `name: <name>` |
 | Rust | `configuration.api_key: Option<ApiKey { prefix: Option<String>, key: String }>`, sent as `<prefix> <key>` or `<key>` in the scheme's header, query parameter, or cookie. A cookie goes into the operation's one `Cookie` header, after its cookie parameters, percent-encoded as they are ([`parameter.in.cookie`](parameter.md#parameterincookie)). `Debug` redacts the key |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L176), [`CookieParamsTest#eachCookieIsAPairOfOneHeader`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L70), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L90) |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L176), [`CookieParamsTest#eachCookieIsAPairOfOneHeader`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L70), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L105) |
 
 ### `securityScheme.type.oauth2`
 

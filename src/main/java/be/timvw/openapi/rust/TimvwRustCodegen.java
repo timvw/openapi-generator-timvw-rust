@@ -197,6 +197,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String STR = "x-rust-str";
     /** Set on an operation that sends a {@code Cookie} header (see {@link #markCookies}). */
     static final String COOKIES = "x-rust-cookies";
+    /** Set when an operation sends a {@code Cookie} header: {@code apis/mod.rs} then has {@code cookie_encode}. */
+    static final String USES_COOKIES = "usesCookies";
     /** Set on a path, query or header parameter whose value, or whose items, are a {@code chrono::DateTime}. */
     static final String RFC3339 = "x-rust-rfc3339";
     /** Set on a property or model that the model template marks {@code #[deprecated]}. */
@@ -1073,8 +1075,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
     }
 
-    /** Marks an operation that sends a {@code Cookie} header: it has a cookie parameter or an api key sent as one. */
-    static void markCookies(CodegenOperation op) {
+    /**
+     * Marks an operation that sends a {@code Cookie} header: it has a cookie parameter or an api key sent as one.
+     * Returns whether it does.
+     */
+    static boolean markCookies(CodegenOperation op) {
         boolean cookies = op.cookieParams != null && !op.cookieParams.isEmpty();
         if (op.authMethods != null) {
             cookies |= op.authMethods.stream()
@@ -1083,6 +1088,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (cookies) {
             op.vendorExtensions.put(COOKIES, true);
         }
+        return cookies;
     }
 
     /** Whether a Rust type is one of chrono's date types (with {@code useChrono}). */
@@ -1244,12 +1250,16 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             for (CodegenOperation op : objs.getOperations().getOperation()) {
                 op.vendorExtensions.putIfAbsent(ERROR_ENUM, op.operationIdCamelCase + "Error");
-                markCookies(op);
+                if (markCookies(op)) {
+                    additionalProperties.put(USES_COOKIES, true);
+                }
                 for (CodegenOperation variant : contentVariants.getOrDefault(op, List.of())) {
                     variant.authMethods = op.authMethods;
                     variant.hasAuthMethods = op.hasAuthMethods;
                     variant.vendorExtensions.put(ERROR_ENUM, op.operationIdCamelCase + "Error");
-                    markCookies(variant);
+                    if (markCookies(variant)) {
+                        additionalProperties.put(USES_COOKIES, true);
+                    }
                     ErrorStatus.mark(variant, op, op.operationIdCamelCase + "Error");
                 }
                 if (!op.vendorExtensions.containsKey(CONTENT_VARIANT)) {

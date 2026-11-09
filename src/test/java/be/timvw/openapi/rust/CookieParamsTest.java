@@ -85,6 +85,21 @@ class CookieParamsTest {
         assertTrue(Files.readString(out.resolve("src/apis/mod.rs")).contains("pub fn cookie_encode<T: AsRef<str>>("));
     }
 
+    /** A crate whose operations send no cookie has no {@code cookie_encode}. */
+    @Test
+    void withoutCookiesThereIsNoEncoder(@TempDir Path none) throws IOException {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("packageName", "no_cookies_fixture");
+        new DefaultGenerator().opts(new CodegenConfigurator()
+                .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
+                .setInputSpec(Path.of("src/test/resources/uuid_params.yaml").toAbsolutePath().toString())
+                .setOutputDir(none.toString())
+                .setAdditionalProperties(props)
+                .toClientOptInput()).generate();
+        assertFalse(Files.readString(none.resolve("src/apis/mod.rs")).contains("cookie_encode"));
+        assertFalse(Files.readString(none.resolve("src/apis/default_api.rs")).contains("COOKIE"));
+    }
+
     /** Runs src/test/rust/cookie_params.rs on the generated crate. Needs cargo; without it there is nothing to run. */
     @Test
     void whatItDoesAtRunTime() throws IOException, InterruptedException {

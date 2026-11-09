@@ -87,6 +87,7 @@ pub fn urlencode<T: AsRef<str>>(s: T) -> String {
     ::url::form_urlencoded::byte_serialize(s.as_ref().as_bytes()).collect()
 }
 
+{{#usesCookies}}
 /// Percent-encodes every byte that is not a cookie-octet (RFC 6265, section 4.1.1), and `%`, so a value can stand
 /// in a `Cookie` header.
 pub fn cookie_encode<T: AsRef<str>>(s: T) -> String {
@@ -99,6 +100,7 @@ pub fn cookie_encode<T: AsRef<str>>(s: T) -> String {
     }
     encoded
 }
+{{/usesCookies}}
 
 pub fn parse_deep_object(prefix: &str, value: &serde_json::Value) -> Vec<(String, String)> {
     if let serde_json::Value::Object(object) = value {

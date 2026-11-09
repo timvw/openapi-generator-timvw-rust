@@ -109,9 +109,8 @@ class ParamSerializationTest {
     }
 
     /**
-     * Runs src/test/rust/param_serialization.rs on the generated crate, and clippy with {@code -D warnings} on it
-     * ({@code needless_return} in {@code ContentType::from} is fixed elsewhere). Needs cargo; without it there is
-     * nothing to run.
+     * Runs src/test/rust/param_serialization.rs on the generated crate, and clippy with {@code -D warnings} on it.
+     * Needs cargo; without it there is nothing to run.
      */
     @Test
     void whatItDoesAtRunTime() throws IOException, InterruptedException {
@@ -131,7 +130,7 @@ class ParamSerializationTest {
         String output = cargo(out, 900, "test", "--test", "param_serialization");
         assertNotNull(output, "cargo did not finish");
         assertTrue(output.contains("test result: ok.") && !output.contains(" 0 passed"), output);
-        String clippy = cargo(out, 900, "clippy", "--all-targets", "--", "-D", "warnings", "-A", "clippy::needless_return");
+        String clippy = cargo(out, 900, "clippy", "--all-targets", "--", "-D", "warnings");
         assertNotNull(clippy, "cargo did not finish");
         assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("warning:"), clippy);
     }

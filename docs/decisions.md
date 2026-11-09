@@ -149,6 +149,10 @@ for langfuse-ergonomic to bypass the generated client.
 
 **Decision:** adopt (2026-11-09): success headers through 1; `ResponseContent` gets `headers: reqwest::header::HeaderMap` for errors. Typed accessors for declared response headers are out of scope. Implemented in #68.
 
+**Decision (2026-11-09, follow-up):** errors are always boxed; `boxResponseError` removed. With `headers` an unboxed
+`ResponseContent` puts every function over clippy's `result_large_err` limit, so `Error::ResponseError` always holds
+`Box<ResponseContent<T>>`, and setting `boxResponseError` fails generation as not configurable. Implemented in #68.
+
 ## 5. Error variant chosen by body shape, not status
 
 **Rule:** [`responses.statusCode`](mapping/responses.md#responsesstatuscode).

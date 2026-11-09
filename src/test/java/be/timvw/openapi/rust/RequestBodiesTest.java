@@ -144,9 +144,8 @@ class RequestBodiesTest {
         assertNotNull(test, "cargo did not finish");
         assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
         // needless_return: ContentType::from in src/apis/mod.rs, which this rule does not touch
-        // Without boxResponseError the error with its headers is larger than clippy's result_large_err allows.
         String clippy = cargo(out, 900, "clippy", "--all-targets", "--", "-D", "warnings",
-                "-A", "clippy::needless_return", "-A", "clippy::result_large_err");
+                "-A", "clippy::needless_return");
         assertNotNull(clippy, "clippy did not finish");
         assertTrue(clippy.contains("Finished") && !clippy.contains("warning:"), clippy);
     }

@@ -96,7 +96,6 @@ The options of the generator itself:
 | `typedEnumParameters` | `false` | inline enums of parameters and form/multipart body properties become component enums the functions take, see [the comparison](docs/comparison/README.md#typedenumparameters-enum-parameters-take-the-enum) | |
 | `deprecatedAttributes` | `false` | `#[deprecated]` on deprecated properties and schemas; generated files start with `#![allow(deprecated)]` | [`schema.deprecated`](docs/mapping/schema.md#schemadeprecated) |
 | `pruneAllHelpers` | `false` | helpers nobody calls are always left out; with this option also those marked `#[allow(dead_code)]` | |
-| `boxResponseError` | `false` | box the `ResponseError` payload | |
 | `apiLintAllows` | unset | `#![allow(..)]` contents for API modules and `configuration.rs` | |
 | `userAgentFromPackage` | `false` | default user agent from `packageName` and the crate version | |
 | `preprocessedSpecFile` | unset | output-relative path the preprocessed spec is written to, as JSON | |
@@ -110,7 +109,8 @@ anything but `reqwest`. Stock options it does not support are rejected too: `avo
 `templateDir` (`-t`; the templates are part of the generator). The options that were the mapping's baseline are not
 options any more either: their rendering is always applied, and setting `boxOnlyCycles`, `defaultOnlyWhereValid`,
 `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`,
-`schemaDefaultDocs` or `nullableUnionFields`, to any value, fails generation as not configurable. An operation with
+`schemaDefaultDocs` or `nullableUnionFields`, to any value, fails generation as not configurable. So does
+`boxResponseError`: `Error::ResponseError` always holds `Box<ResponseContent<T>>`. An operation with
 the `x-group-parameters` extension (one parameter struct per operation in stock `-g rust`) fails generation as well. A
 configuration taken over from `-g rust`, or from an earlier `timvw-rust`, therefore fails instead of being silently
 ignored:

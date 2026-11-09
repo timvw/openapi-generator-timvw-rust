@@ -19,7 +19,7 @@ pub enum Error<T> {
     SerdePathToError(serde_path_to_error::Error<serde_json::Error>),
     {{/useSerdePathToError}}
     Io(std::io::Error),
-    ResponseError({{#boxResponseError}}Box<{{/boxResponseError}}ResponseContent<T>{{#boxResponseError}}>{{/boxResponseError}}),
+    ResponseError(Box<ResponseContent<T>>),
 }
 
 impl <T> fmt::Display for Error<T> {

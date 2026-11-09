@@ -685,7 +685,7 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
         let headers = resp.headers().clone();
         let content = resp.text().await?;
 {{>error_entity}}
-        return Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity, headers }{{#boxResponseError}}){{/boxResponseError}}));
+        return Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity, headers })));
     }
     let content_type = resp
         .headers()
@@ -756,7 +756,7 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
         let headers = resp.headers().clone();
         let content = resp.text().await?;
 {{>error_entity}}
-        Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity, headers }{{#boxResponseError}}){{/boxResponseError}}))
+        Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity, headers })))
     }
 }
     {{/vendorExtensions.x-rust-event-stream}}

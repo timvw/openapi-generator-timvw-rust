@@ -37,7 +37,7 @@ async fn serve(status: &str, body: &'static str) -> Configuration {
 
 fn error<T: std::fmt::Debug>(result: Result<impl std::fmt::Debug, Error<T>>) -> ResponseContent<T> {
     match result {
-        Err(Error::ResponseError(content)) => content,
+        Err(Error::ResponseError(content)) => *content,
         other => panic!("expected a response error, got {other:?}"),
     }
 }

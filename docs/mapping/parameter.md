@@ -41,7 +41,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a query parameter whose schema is an object (inline, or a reference to an object schema) |
 | Rust | `&str`: the caller passes the text to send |
 | Options | `deepObjectQueryParameters=<path>?<name>` sends listed ones in `deepObject` style, as `HashMap<String, String>` |
-| Tests | [`OperationMappingTest#queryParametersFollowTheirStyle`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L94), [`SpecRulesTest#objectQueryParametersBecomeStringsUnlessAllowed`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L170), [`GenerationTest#deepObjectParsingDoesNotPanic`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L82) |
+| Tests | [`OperationMappingTest#queryParametersFollowTheirStyle`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L94), [`SpecRulesTest#objectQueryParametersBecomeStringsUnlessAllowed`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L170), [`GenerationTest#deepObjectParsingDoesNotPanic`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L83) |
 
 ### `parameter.in.header`
 

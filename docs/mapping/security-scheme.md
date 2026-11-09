@@ -14,7 +14,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `type: http, scheme: bearer` |
 | Rust | `configuration.bearer_access_token: Option<String>`, sent as `Authorization: Bearer <token>` |
 | Library | `reqwest::RequestBuilder::bearer_auth` |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L171) |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L175) |
 
 ### `securityScheme.type.http-basic`
 
@@ -23,7 +23,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `type: http, scheme: basic` |
 | Rust | `configuration.basic_auth: Option<BasicAuth>`, `BasicAuth = (String, Option<String>)` (user, password) |
 | Library | `reqwest::RequestBuilder::basic_auth` |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L171) |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L175) |
 
 ### `securityScheme.type.api-key`
 
@@ -31,7 +31,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: apiKey, in: header, name: <header>` |
 | Rust | `configuration.api_key: Option<ApiKey { prefix: Option<String>, key: String }>`, sent in the scheme's header as `<prefix> <key>` or `<key>`. `Debug` redacts the key |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L171) |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L175) |
 
 ### `securityScheme.type.oauth2`
 
@@ -39,7 +39,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: oauth2` (any flow) |
 | Rust | `configuration.oauth_access_token: Option<String>`, sent as a bearer token. Getting or refreshing the token is up to the caller |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L171) |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L175) |
 
 ### `oauthFlows.scopes`
 

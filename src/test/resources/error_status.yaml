@@ -1,0 +1,91 @@
+openapi: 3.0.3
+info:
+  title: Error status
+  version: 1.0.0
+paths:
+  /things/{id}:
+    get:
+      operationId: getThing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: the thing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thing"
+        "400":
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: conflict, no body
+        "4XX":
+          description: another client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        default:
+          description: anything else
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fallback"
+  /plain:
+    get:
+      operationId: getPlain
+      responses:
+        "204":
+          description: done
+        "400":
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "5XX":
+          description: server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /bare:
+    get:
+      operationId: getBare
+      responses:
+        "204":
+          description: done
+components:
+  schemas:
+    Thing:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+    Problem:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    Fallback:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string

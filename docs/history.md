@@ -61,6 +61,13 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of
   `date` or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a
   client that built such a request by hand to get RFC 3339 can call the generated function instead.
+- `responseFunctions` (new option, off by default; [decision 1](decisions.md#1-response-functions-returning-apiresponset)):
+  every operation whose success is a JSON body, text or nothing also gets `<operation>_response`, which sends the
+  same request and fails with the same typed error but returns `apis::ApiResponse<T>`: the `status`, the `headers`
+  and the undecoded body, with `json()` (the generated type), `json_as::<U>()` (a type of the caller's, owned),
+  `json_borrowed::<U>()` (borrowing from the body) and `text()`. Binary responses, event streams and webhooks get
+  none. A twin whose name another operation of the module has fails generation. Without the option nothing changes;
+  see the [guide](guides/response-functions.md).
 - A `format: uuid` parameter is `uuid::Uuid` ([decision 6](decisions.md#6-uuid-parameters-are-str)): a path, query
   or header parameter or form field took `&str` (an array already took `Vec<uuid::Uuid>`) and now takes `uuid::Uuid`
   by value (`Option<uuid::Uuid>` when optional), as a model property does. It is sent hyphenated, as before. A client

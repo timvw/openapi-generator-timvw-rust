@@ -65,7 +65,7 @@ every spec); keep.
 **Recommendation:** adopt as option `responseFunctions`: it gives subsets, borrowing and headers for any spec without
 changing an existing function.
 
-**Decision:** adopt as option `responseFunctions` (2026-11-09). Documented in full: a mapping rule, a usage guide with examples (the generated type, a subset, a borrowed subset, headers, errors) and the README option entry.
+**Decision:** adopt as option `responseFunctions` (2026-11-09). Documented in full: a mapping rule, a usage guide with examples (the generated type, a subset, a borrowed subset, headers, errors) and the README option entry. Implemented in #70.
 
 ## 2. Request bodies by reference
 

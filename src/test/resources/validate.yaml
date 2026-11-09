@@ -129,6 +129,8 @@ components:
           $ref: '#/components/schemas/Patterns'
         status:
           $ref: '#/components/schemas/Status'
+        pet:
+          $ref: '#/components/schemas/Pet'
         level:
           $ref: '#/components/schemas/Level'
         huge:
@@ -204,6 +206,40 @@ components:
         skip_set_operation:
           type: string
           pattern: '[a&&b]'
+    Pet:
+      description: inline variants (an enum-typed tag) whose fields are named like the parameters and locals of validate_into
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [dog, cat]
+        path:
+          type: string
+          minLength: 2
+        errors:
+          type: integer
+          maximum: 3
+        value0:
+          type: string
+          maxLength: 1
+      discriminator:
+        propertyName: kind
+        mapping:
+          dog: '#/components/schemas/Dog'
+          cat: '#/components/schemas/Cat'
+    Dog:
+      allOf:
+        - $ref: '#/components/schemas/Pet'
+        - type: object
+          properties:
+            bark: {type: boolean}
+    Cat:
+      allOf:
+        - $ref: '#/components/schemas/Pet'
+        - type: object
+          properties:
+            claws: {type: integer, minimum: 0}
     Status:
       type: string
       enum: [draft, published]

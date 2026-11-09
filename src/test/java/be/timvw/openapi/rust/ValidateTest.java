@@ -85,12 +85,18 @@ class ValidateTest {
             }
         }
         assertContains(read(on, "status"), "impl crate::models::validation::Validate for Status {\n"
-                + "    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {\n"
-                + "        Ok(())\n    }\n}");
+                + "    fn validate_into(\n"
+                + "        &self,\n"
+                + "        _path: &crate::models::validation::Path<'_>,\n"
+                + "        _errors: &mut Vec<crate::models::validation::ValidationError>,\n"
+                + "    ) {\n    }\n}");
         String point = read(on, "point");
         assertContains(point, "impl crate::models::validation::Validate for Point {\n"
-                + "    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {\n"
-                + "        Ok(())\n    }\n}");
+                + "    fn validate_into(\n"
+                + "        &self,\n"
+                + "        _path: &crate::models::validation::Path<'_>,\n"
+                + "        _errors: &mut Vec<crate::models::validation::ValidationError>,\n"
+                + "    ) {\n    }\n}");
         assertContains(Files.readString(on.resolve("src/models/mod.rs")), "pub mod validation;");
         assertFalse(Files.readString(on.resolve("src/lib.rs")).contains("validation"));
         String validation = Files.readString(on.resolve("src/models/validation.rs"));
@@ -102,44 +108,43 @@ class ValidateTest {
     @Test
     void stringsNumbersListsAndMapsAreChecked() throws IOException {
         String request = read(on, "request");
-        assertContains(request, "crate::models::validation::items(self.messages.len(), Some(1), Some(3))"
-                + ".map_err(|e| e.at(\"messages\"))?;");
-        assertContains(request, "crate::models::validation::exclusive_maximum(self.count, 100).map_err(|e| e.at(\"count\"))?;");
+        assertContains(request, "crate::models::validation::items(self.messages.len(), Some(1), Some(3), &path.field(\"messages\"), errors);");
+        assertContains(request, "crate::models::validation::exclusive_maximum(self.count, 100, &path.field(\"count\"), errors);");
         assertContains(request, "if let Some(Some(value0)) = &self.temperature {\n"
-                + "            crate::models::validation::minimum(*value0, 0.0).map_err(|e| e.at(\"temperature\"))?;");
-        assertContains(request, "crate::models::validation::multiple_of(*value0, 0.1)");
-        assertContains(request, "crate::models::validation::unique_items(value0).map_err(|e| e.at(\"tags\"))?;");
-        assertContains(request, "crate::models::validation::length(item1, None, Some(5))"
-                + ".map_err(|e| e.at_index(index1).at(\"tags\"))?;");
-        assertContains(request, "crate::models::validation::properties(value0.len(), Some(1), Some(2))");
-        assertContains(request, ".map_err(|e| e.at_key(key1).at(\"metadata\"))?;");
+                + "            crate::models::validation::minimum(*value0, 0.0, &path.field(\"temperature\"), errors);");
+        assertContains(request, "crate::models::validation::multiple_of(*value0, 0.1, &path.field(\"top_p\"), errors);");
+        assertContains(request, "crate::models::validation::unique_items(value0, &path.field(\"tags\"), errors);");
+        // a map's errors are sorted by key, so the report does not depend on the map's order
+        assertContains(request, "let start1 = errors.len();\n            for (key1, entry1) in value0 {\n"
+                + "                crate::models::validation::length(entry1, None, Some(3), &path.field(\"metadata\").key(key1), errors);\n"
+                + "            }\n            crate::models::validation::sort_by_key(errors, start1, &path.field(\"metadata\"));");
+        assertContains(request, "crate::models::validation::length(item1, None, Some(5), &path.field(\"tags\").index(index1), errors);");
+        assertContains(request, "crate::models::validation::properties(value0.len(), Some(1), Some(2), &path.field(\"metadata\"), errors);");
         // A map of an inline enum: its size, and nothing for the enum values.
         assertContains(request, "pub ratings: Option<std::collections::HashMap<String, Ratings>>,");
         assertContains(request, "if let Some(value0) = &self.ratings {\n"
-                + "            crate::models::validation::properties(value0.len(), Some(1), Some(2))"
-                + ".map_err(|e| e.at(\"ratings\"))?;\n        }");
-        assertContains(read(on, "message"), "crate::models::validation::length(&self.content, Some(1), Some(10))"
-                + ".map_err(|e| e.at(\"content\"))?;");
+                + "            crate::models::validation::properties(value0.len(), Some(1), Some(2), &path.field(\"ratings\"), errors);\n        }");
+        assertContains(read(on, "message"), "crate::models::validation::length(&self.content, Some(1), Some(10), &path.field(\"content\"), errors);");
     }
 
     @Test
     void nestedModelsAreChecked() throws IOException {
         String request = read(on, "request");
         // holder has no constraints of its own, but holds a message
-        assertContains(request, "crate::models::validation::Validate::validate(&self.holder).map_err(|e| e.at(\"holder\"))?;");
-        assertContains(read(on, "holder"), "crate::models::validation::Validate::validate(&self.inner)");
+        assertContains(request, "crate::models::validation::Validate::validate_into(&self.holder, &path.field(\"holder\"), errors);");
+        assertContains(read(on, "holder"), "crate::models::validation::Validate::validate_into(&self.inner, ");
         // a model whose validate() cannot fail is not called
         assertFalse(read(on, "holder").contains("&self.plain"), read(on, "holder"));
-        assertContains(read(on, "node"), "crate::models::validation::Validate::validate(&self.next)");
+        assertContains(read(on, "node"), "crate::models::validation::Validate::validate_into(&self.next, ");
     }
 
     @Test
     void unionsCheckTheActiveVariant() throws IOException {
         String content = read(on, "content");
         assertContains(content, "match self {\n            Self::Text(value) => {\n"
-                + "                crate::models::validation::length(value, None, Some(4))?;");
+                + "                crate::models::validation::length(value, None, Some(4), path, errors);");
         assertContains(content, "Self::ArrayOfMessages(value) => {\n"
-                + "                crate::models::validation::Validate::validate(value)?;");
+                + "                crate::models::validation::Validate::validate_into(value, path, errors);");
         // only Circle has something to check, and Unknown catches the rest
         assertContains(read(on, "shape"), "if let Self::Circle(value) = self {");
     }
@@ -153,13 +158,13 @@ class ValidateTest {
         // bounds every value of the type meets
         assertFalse(request.contains("self.seed"), request);
         assertFalse(request.contains("self.small"), request);
-        assertContains(request, "crate::models::validation::items(value0.len(), Some(1), None).map_err(|e| e.at(\"colors\"))?;");
+        assertContains(request, "crate::models::validation::items(value0.len(), Some(1), None, &path.field(\"colors\"), errors);");
     }
 
     @Test
     void aPatternIsMatchedWithARegexCompiledOnce() throws IOException {
         String message = read(on, "message");
-        assertContains(message, "crate::models::validation::pattern(value0, &PATTERN_0, r\"^[a-z]+\\d*$\")");
+        assertContains(message, "crate::models::validation::pattern(value0, &PATTERN_0, r\"^[a-z]+\\d*$\", &path.field(\"name\"), errors)");
         assertContains(message, "static PATTERN_0: std::sync::LazyLock<Option<regex::Regex>> = "
                 + "std::sync::LazyLock::new(|| regex::Regex::new(r\"^[a-z]+\\d*$\").ok());");
         assertContains(Files.readString(on.resolve("Cargo.toml")), "regex = ");
@@ -175,11 +180,11 @@ class ValidateTest {
     @Test
     void openApi31ExclusiveBoundsAreNumbers() throws IOException {
         String range = read(v31, "range");
-        assertContains(range, "crate::models::validation::exclusive_minimum(self.low, 0.0).map_err(|e| e.at(\"low\"))?;");
-        assertContains(range, "crate::models::validation::exclusive_maximum(self.low, 10.0).map_err(|e| e.at(\"low\"))?;");
-        assertContains(range, "crate::models::validation::exclusive_minimum(*value0, 1).map_err(|e| e.at(\"count\"))?;");
+        assertContains(range, "crate::models::validation::exclusive_minimum(self.low, 0.0, &path.field(\"low\"), errors);");
+        assertContains(range, "crate::models::validation::exclusive_maximum(self.low, 10.0, &path.field(\"low\"), errors);");
+        assertContains(range, "crate::models::validation::exclusive_minimum(*value0, 1, &path.field(\"count\"), errors);");
         assertContains(range, "if let Some(Some(value0)) = &self.label {\n"
-                + "            crate::models::validation::length(value0, None, Some(3))");
+                + "            crate::models::validation::length(value0, None, Some(3), &path.field(\"label\"), errors);");
     }
 
     @Test

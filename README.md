@@ -88,7 +88,7 @@ The options of the generator itself:
 | `webhookModule` | unset | tag for webhook operations, generated into their own API module | |
 | `webhookModuleReexport` | `false` | `default_api` re-exports the webhook module | |
 | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `deepObjectQueryParameters` | empty | lists; entries separated by `\|`, `;` or whitespace on the command line (a comma ends an `--additional-properties` value), or a JSON array in a `-c` config file | [`schema.type.scalar-component`](docs/mapping/schema.md#schematypescalar-component) |
-| `resetQueryParameterStyle` | `false` | query parameters not listed in `deepObjectQueryParameters` get the default style (`form`, exploded) | |
+| `resetQueryParameterStyle` | `false` | query parameters that are not sent as deepObject (listed in `deepObjectQueryParameters`, or an object declared `style: deepObject`) get the default style (`form`, exploded) | |
 | `multipartHelper` | `false` | multipart bodies through the generated helper module | |
 | `fileProperties` | empty | `Schema.property` entries rendered as files | [`schema.format.binary`](docs/mapping/schema.md#schemaformatbinary) |
 | `unionPlanFile` | unset | output-relative path the union plan (the variants of every union) is written to, as JSON | |

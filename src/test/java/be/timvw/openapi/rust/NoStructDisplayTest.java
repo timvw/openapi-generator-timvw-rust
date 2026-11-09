@@ -66,7 +66,7 @@ class NoStructDisplayTest {
 
     @Test
     void pathParameter() throws IOException {
-        assertTrue(api(on).contains("filter=serde_json::to_string(&p_path_filter)?"), api(on));
+        assertTrue(api(on).contains("filter=crate::apis::urlencode(serde_json::to_string(&p_path_filter)?)"), api(on));
     }
 
     @Test

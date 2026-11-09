@@ -57,9 +57,11 @@ fn body(request: &str) -> &str {
     &request[request.find("\r\n\r\n").unwrap() + 4..]
 }
 
-/// Path arrays encode each item (a space is `%20`, a `/` `%2F`) and join them with `,`, integers too; a deepObject
+/// Path arrays encode each item (a space is `%20`, a `/` `%2F`) and join them with `,`, integers too; an enum and a
+/// struct (its JSON) are URL-encoded in the path too; a deepObject
 /// model is `name[field]=value` (fields in serde_json's order); pipe- and space-delimited arrays are joined with `|` and ` ` (then form-encoded); an
-/// array of arrays sends each inner array as its JSON; a header array of integers joins their text.
+/// array of arrays sends each inner array as its JSON; a pipe-delimited array with `explode: true` is repeated; a
+/// header array of integers joins their text.
 #[tokio::test]
 async fn query_path_and_header_parameters() {
     let (configuration, request) = serve().await;
@@ -71,9 +73,15 @@ async fn query_path_and_header_parameters() {
         .configuration(&configuration)
         .names(vec!["a b".to_owned(), "c/d".to_owned()])
         .nums(vec![1, 22])
+        .status(models::Status::CSlashD)
+        .scope(models::Filter {
+            name: None,
+            min: Some(1),
+        })
         .filter(filter)
         .pipes(vec!["x".to_owned(), "y".to_owned()])
         .spaces(vec!["x".to_owned(), "y".to_owned()])
+        .pipes_exploded(vec!["x".to_owned(), "y".to_owned()])
         .matrix(vec![vec![1, 2], vec![3]])
         .tags(vec!["t1".to_owned(), "t2".to_owned()])
         .x_nums(vec![4, 5])
@@ -83,9 +91,9 @@ async fn query_path_and_header_parameters() {
     let request = request.await.unwrap();
     assert_eq!(
         request.lines().next().unwrap(),
-        "GET /items/a%20b,c%2Fd/1,22\
+        "GET /items/a%20b,c%2Fd/1,22/c%2Fd/%7B%22min%22%3A1%7D\
          ?filter%5Bmin%5D=3&filter%5Bname%5D=a+b\
-         &pipes=x%7Cy&spaces=x+y\
+         &pipes=x%7Cy&spaces=x+y&pipesExploded=x&pipesExploded=y\
          &matrix=%5B1%2C2%5D&matrix=%5B3%5D\
          &tags=t1&tags=t2 HTTP/1.1"
     );
@@ -93,7 +101,8 @@ async fn query_path_and_header_parameters() {
 }
 
 /// An urlencoded form array is a pair per item (`style: form, explode: true`), or one joined pair where the
-/// encoding says `explode: false`; a required nullable field left `None` is sent empty.
+/// encoding says `explode: false` (joined with `,`, or `|` for a pipeDelimited encoding); a required nullable field
+/// left `None` is sent empty.
 #[tokio::test]
 async fn urlencoded_form_fields() {
     let (configuration, request) = serve().await;
@@ -101,11 +110,12 @@ async fn urlencoded_form_fields() {
         .configuration(&configuration)
         .tags(vec!["a".to_owned(), "b".to_owned()])
         .labels(vec!["c".to_owned(), "d".to_owned()])
+        .bars(vec!["e".to_owned(), "f".to_owned()])
         .call()
         .await
         .unwrap();
     let request = request.await.unwrap();
-    assert_eq!(body(&request), "note=&tags=a&tags=b&labels=c%2Cd");
+    assert_eq!(body(&request), "note=&tags=a&tags=b&labels=c%2Cd&bars=e%7Cf");
 
     let (configuration, request) = serve().await;
     default_api::post_form()

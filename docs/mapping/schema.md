@@ -153,7 +153,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | a property that references another model |
 | Rust | the model, by value (`Option<models::Owner>`). A reference that closes a cycle of the model graph is boxed (`Option<Box<models::ThreadNode>>`), including a cycle through a union's variants, an inline union's too (`Top` → `TopChild` → `Leaf` → `Top`); `Vec` and map items are never boxed, since they already are on the heap |
 | Options | always (stock boxes every model reference) |
-| Tests | [`BoxOnlyCyclesTest#acyclicReferencesAreHeldByValue`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L47), [`#selfReferenceIsBoxedButNotInsideVec`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L59), [`#mutualRecursionIsBoxedBothWays`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L69), [`ParamSerializationTest#aCycleThroughAnInlineUnionIsBoxed`](../../src/test/java/be/timvw/openapi/rust/ParamSerializationTest.java#L105) |
+| Tests | [`BoxOnlyCyclesTest#acyclicReferencesAreHeldByValue`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L47), [`#selfReferenceIsBoxedButNotInsideVec`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L59), [`#mutualRecursionIsBoxedBothWays`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L69), [`ParamSerializationTest#aCycleThroughAnInlineUnionIsBoxed`](../../src/test/java/be/timvw/openapi/rust/ParamSerializationTest.java#L118) |
 
 ### `schema.additionalProperties`
 

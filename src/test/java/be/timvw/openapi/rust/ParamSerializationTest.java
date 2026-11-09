@@ -59,6 +59,8 @@ class ParamSerializationTest {
         assertContains(api(), "names=p_path_names.iter().map(crate::apis::urlencode).collect::<Vec<String>>().join(\",\")");
         assertContains(api(), "nums=p_path_nums.iter().map(|p| crate::apis::urlencode(p.to_string()))"
                 + ".collect::<Vec<String>>().join(\",\")");
+        assertContains(api(), "status=crate::apis::urlencode(p_path_status.to_string()), "
+                + "scope=crate::apis::urlencode(serde_json::to_string(&p_path_scope)?)");
         assertContains(Files.readString(out.resolve("src/apis/mod.rs")),
                 "byte_serialize(s.as_ref().as_bytes()).collect::<String>().replace('+', \"%20\")");
     }
@@ -81,6 +83,7 @@ class ParamSerializationTest {
         String api = api();
         assertContains(api, "req_builder = req_builder.query(&[(\"pipes\", items.join(\"|\"))]);");
         assertContains(api, "req_builder = req_builder.query(&[(\"spaces\", items.join(\" \"))]);");
+        assertContains(api, "req_builder = req_builder.query(&[(\"pipesExploded\", item)]);");
         assertContains(api, "let items: Vec<String> = param_value.iter().map(serde_json::to_string)"
                 + ".collect::<Result<_, _>>()?;\n        for item in items {\n"
                 + "            req_builder = req_builder.query(&[(\"matrix\", item)]);");
@@ -93,7 +96,17 @@ class ParamSerializationTest {
         assertContains(api, "let mut multipart_form_params: Vec<(&str, String)> = Vec::new();");
         assertContains(api, "for item in items {\n            multipart_form_params.push((\"tags\", item));");
         assertContains(api, "multipart_form_params.push((\"labels\", items.join(\",\")));");
+        assertContains(api, "multipart_form_params.push((\"bars\", items.join(\"|\")));");
         assertContains(api, "else {\n        multipart_form_params.push((\"note\", String::new()));");
+    }
+
+    @Test
+    void aRustTypeNameBecomesTheNameOfItsOuterType() {
+        TimvwRustCodegen codegen = new TimvwRustCodegen();
+        org.junit.jupiter.api.Assertions.assertEquals("uuid", codegen.toParamName("uuid::Uuid"));
+        org.junit.jupiter.api.Assertions.assertEquals("hash_map", codegen.toParamName("HashMap<String, models::Foo>"));
+        org.junit.jupiter.api.Assertions.assertEquals("hash_map",
+                codegen.toParamName("std::collections::HashMap<String, models::Foo>"));
     }
 
     @Test

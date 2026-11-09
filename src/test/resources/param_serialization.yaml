@@ -7,7 +7,7 @@ info:
 # nullable form field, a JSON body that is an array of uuids, and a model cycle through an inline oneOf union
 # (Top -> TopChild -> Leaf -> Top).
 paths:
-  /items/{names}/{nums}:
+  /items/{names}/{nums}/{status}/{scope}:
     get:
       operationId: getItems
       parameters:
@@ -48,6 +48,24 @@ paths:
             type: array
             items:
               type: string
+        - name: pipesExploded
+          in: query
+          style: pipeDelimited
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: status
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Status'
+        - name: scope
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Filter'
         - name: matrix
           in: query
           schema:
@@ -94,10 +112,16 @@ paths:
                   type: array
                   items:
                     type: string
+                bars:
+                  type: array
+                  items:
+                    type: string
             encoding:
               labels:
                 style: form
                 explode: false
+              bars:
+                style: pipeDelimited
       responses:
         '204':
           description: Nothing
@@ -128,6 +152,9 @@ paths:
                 $ref: '#/components/schemas/Top'
 components:
   schemas:
+    Status:
+      type: string
+      enum: [a b, c/d]
     Filter:
       type: object
       properties:

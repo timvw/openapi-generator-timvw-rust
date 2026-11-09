@@ -216,6 +216,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String STR = "x-rust-str";
     /** Set on an array parameter of strings: an item is its own text. */
     static final String STR_ITEMS = "x-rust-str-items";
+    /** Set on an urlencoded form field array whose encoding is pipeDelimited or spaceDelimited: its delimiter. */
+    static final String FORM_SEPARATOR = "x-rust-form-separator";
     /** Set on an urlencoded form field array whose encoding says {@code explode: false}. */
     static final String FORM_JOINED = "x-rust-form-joined";
     /** Set on a query or form array that is sent as one pair per item. */
@@ -1154,12 +1156,15 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
             // A query array is repeated for style: form, explode: true (collectionFormat multi), a form field array
             // unless its encoding says explode: false; otherwise the items are joined with the style's delimiter.
+            // pipeDelimited and spaceDelimited with explode: true are repeated too, as OpenAPI 3.2 spells out.
+            boolean delimited = "pipes".equals(p.collectionFormat) || "ssv".equals(p.collectionFormat);
             boolean repeat = p.isFormParam ? !p.vendorExtensions.containsKey(FORM_JOINED)
-                    : "multi".equals(p.collectionFormat);
+                    : "multi".equals(p.collectionFormat) || (delimited && p.isExplode);
             if (repeat) {
                 p.vendorExtensions.put(REPEAT, true);
             }
-            p.vendorExtensions.put(SEPARATOR, separator(p.collectionFormat));
+            p.vendorExtensions.put(SEPARATOR, p.isFormParam
+                    ? (String) p.vendorExtensions.getOrDefault(FORM_SEPARATOR, ",") : separator(p.collectionFormat));
         }
     }
 
@@ -1379,7 +1384,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
     /**
      * An urlencoded form field array is sent as a pair per item ({@code style: form, explode: true}, the default)
-     * unless the body's {@code encoding} gives it {@code explode: false}: marks those with {@link #FORM_JOINED}.
+     * unless the body's {@code encoding} gives it {@code explode: false} (the default for pipeDelimited and
+     * spaceDelimited): marks those with {@link #FORM_JOINED}, and a pipe- or space-delimited one with
+     * {@link #FORM_SEPARATOR}.
      */
     private void markFormExplode(CodegenOperation co, io.swagger.v3.oas.models.Operation operation) {
         if (operation.getRequestBody() == null) {
@@ -1402,7 +1409,18 @@ public class TimvwRustCodegen extends RustCodegenBase {
             for (CodegenParameter p : params) {
                 io.swagger.v3.oas.models.media.Encoding encoding = p.isFormParam ? form.getEncoding().get(p.baseName)
                         : null;
-                if (encoding != null && Boolean.FALSE.equals(encoding.getExplode())) {
+                if (encoding == null) {
+                    continue;
+                }
+                io.swagger.v3.oas.models.media.Encoding.StyleEnum style = encoding.getStyle();
+                boolean formStyle = style == null || style == io.swagger.v3.oas.models.media.Encoding.StyleEnum.FORM;
+                boolean explode = encoding.getExplode() != null ? encoding.getExplode() : formStyle;
+                if (style == io.swagger.v3.oas.models.media.Encoding.StyleEnum.PIPE_DELIMITED) {
+                    p.vendorExtensions.put(FORM_SEPARATOR, "|");
+                } else if (style == io.swagger.v3.oas.models.media.Encoding.StyleEnum.SPACE_DELIMITED) {
+                    p.vendorExtensions.put(FORM_SEPARATOR, " ");
+                }
+                if (!explode) {
                     p.vendorExtensions.put(FORM_JOINED, true);
                 }
             }

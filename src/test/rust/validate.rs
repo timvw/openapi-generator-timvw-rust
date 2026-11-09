@@ -225,3 +225,9 @@ fn an_f32_bound_beyond_f32_is_compared_as_f64() {
     ok.huge = Some(f32::MAX);
     assert_eq!(ok.validate(), Ok(()));
 }
+
+#[test]
+fn plain_enums_implement_the_trait() {
+    assert_eq!(models::Status::Draft.validate(), Ok(()));
+    assert_eq!(models::Level::Variant1.validate(), Ok(()));
+}

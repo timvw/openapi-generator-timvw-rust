@@ -72,9 +72,21 @@ class ValidateTest {
     @Test
     void everyModelImplementsTheTrait() throws IOException {
         for (String model : List.of("request", "message", "point", "content", "shape", "circle", "square", "node",
-                "holder", "validate", "validation_error")) {
+                "holder", "validate", "validation_error", "status", "level")) {
             assertContains(read(on, model), "impl crate::models::validation::Validate for ");
         }
+        // every model file, plain string and integer enums included; only the helper modules have none
+        try (Stream<Path> files = Files.list(on.resolve("src/models"))) {
+            for (Path file : (Iterable<Path>) files::iterator) {
+                String name = file.getFileName().toString();
+                if (!List.of("mod.rs", "validation.rs", "union_dispatch.rs", "parse_enum_error.rs").contains(name)) {
+                    assertContains(Files.readString(file), "impl crate::models::validation::Validate for ");
+                }
+            }
+        }
+        assertContains(read(on, "status"), "impl crate::models::validation::Validate for Status {\n"
+                + "    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {\n"
+                + "        Ok(())\n    }\n}");
         String point = read(on, "point");
         assertContains(point, "impl crate::models::validation::Validate for Point {\n"
                 + "    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {\n"
@@ -240,7 +252,8 @@ class ValidateTest {
                 """);
         Files.createDirectories(crate.resolve("src/models"));
         Files.createDirectories(crate.resolve("tests"));
-        Files.writeString(crate.resolve("src/lib.rs"), "pub mod models;\n");
+        // as the generated lib.rs: an integer enum's file imports serde's derives it does not use
+        Files.writeString(crate.resolve("src/lib.rs"), "#![allow(unused_imports)]\npub mod models;\n");
         try (Stream<Path> files = Files.list(on.resolve("src/models"))) {
             for (Path file : (Iterable<Path>) files::iterator) {
                 Files.copy(file, crate.resolve("src/models").resolve(file.getFileName()));

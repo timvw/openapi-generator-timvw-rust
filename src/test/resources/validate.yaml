@@ -112,6 +112,10 @@ components:
           $ref: '#/components/schemas/Holder'
         patterns:
           $ref: '#/components/schemas/Patterns'
+        status:
+          $ref: '#/components/schemas/Status'
+        level:
+          $ref: '#/components/schemas/Level'
         huge:
           type: number
           format: float
@@ -185,6 +189,12 @@ components:
         skip_set_operation:
           type: string
           pattern: '[a&&b]'
+    Status:
+      type: string
+      enum: [draft, published]
+    Level:
+      type: integer
+      enum: [1, 2, 3]
     Message:
       type: object
       required: [role, content]

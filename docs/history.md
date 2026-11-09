@@ -101,7 +101,9 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   the spec has a `pattern`; every constrained field's documentation lists its constraints. A client that wants
   validation calls `validate()` (with `use <crate>::models::validation::Validate;`); one that does not want the code sets
   `validateMethods=false`. A client that keeps its own `Cargo.toml` (openai-client-base) adds `regex = "1"` when its
-  spec has a `pattern`.
+  spec has a `pattern`. The generator's own warnings (a skipped pattern, a union field that is not rendered, ...) now show in the
+  openapi-generator CLI and Docker image, which only print `org.openapitools` loggers; renames that are expected (a
+  keyword as `r#type`, a Rust type the base generator uses as a variable name) log at debug instead of warn.
 
 ## What the generator renders differently from `-g rust`
 

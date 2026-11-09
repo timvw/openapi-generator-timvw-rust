@@ -24,7 +24,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | --- | --- | --- |
 | `type: string` | `String` | |
 | `format: date`, `date-time` | `chrono::NaiveDate`, `chrono::DateTime<chrono::FixedOffset>`; a path, query or header parameter or a form field is sent as `YYYY-MM-DD` and RFC 3339 (`to_rfc3339()`) | `useChrono` (default `true`); `useChrono=false` gives `String` and no `chrono` dependency (openai-client-base sets it) |
-| `format: uuid` | `uuid::Uuid` in a model; `&str` as a header or query parameter | |
+| `format: uuid` | `uuid::Uuid` in a model, a parameter and a form field, sent hyphenated | |
 | `format: byte` | `Vec<u8>`, base64 through `#[serde_as(as = "serde_with::base64::Base64")]` | |
 | `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response | |
 | `format: email`, `uri`, any other | `String` | |
@@ -180,4 +180,3 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 - `readOnly`/`writeOnly` properties are in both directions.
 - `uniqueItems` gives a `Vec`, not a set.
 - The error enum variant comes from the body's shape, not the status code; read `status` from `ResponseContent`.
-- `format: uuid` is `uuid::Uuid` in models but `&str` in parameters.

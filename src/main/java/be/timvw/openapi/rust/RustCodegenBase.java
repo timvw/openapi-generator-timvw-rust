@@ -927,7 +927,9 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                 }
             }
 
-            if (!hasUUIDs && operation.allParams.stream().anyMatch(p -> p.isUuid)) {
+            // a uuid parameter, or an array of them, is uuid::Uuid: the crate depends on uuid
+            if (!hasUUIDs && operation.allParams.stream()
+                    .anyMatch(p -> p.isUuid || (p.items != null && p.items.isUuid))) {
                 hasUUIDs = true;
             }
             if (useChrono && !usesChronoTypes && operation.allParams.stream().anyMatch(p -> p.isDate || p.isDateTime)) {

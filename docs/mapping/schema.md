@@ -11,6 +11,11 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 
 ## `type` and `format`
 
+A format has one Rust type wherever it appears: in a model, a parameter (path, query, header) and a body or form
+field ([decision 6](../decisions.md#6-uuid-parameters-are-str)). The crate depends on the format's crate (`chrono`,
+`uuid`) only when the API uses the format, in a model or only in a parameter. A fallback to `String` exists only where a
+user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
+
 ### `schema.type.string`
 
 | | |
@@ -27,16 +32,16 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Rust | `chrono::DateTime<chrono::FixedOffset>` (`date-time`) and `chrono::NaiveDate` (`date`); the crate depends on `chrono` |
 | Wire | RFC 3339 text, through chrono's serde support. A path, query or header parameter, an urlencoded form field and a multipart text part are written the same way: a `date-time` with `to_rfc3339()` (`2026-01-02T03:04:05+01:00`, not chrono's `Display`, `2026-01-02 03:04:05 +01:00`), a `date` as `YYYY-MM-DD`, each item of an array alike; percent-encoded in the path and the query (`%3A`, `%2B`) |
 | Options | `useChrono` (default `true`, as in stock). With `useChrono=false` both are `String`, sent as they are, and the crate has no `chrono` dependency (openai-client-base sets this; langfuse-client-base keeps the default). Stock sends a parameter with chrono's `Display` |
-| Tests | [`SchemaMappingTest#datesAreChronoUnlessUseChronoIsOff`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L82), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L71), [`#aDateIsSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L104), [`#aDateTimeFormFieldIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L88), [`#withoutChronoTheyAreStringsSentAsTheyAre`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L115)](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L91), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L131) |
+| Tests | [`SchemaMappingTest#datesAreChronoUnlessUseChronoIsOff`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L82), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L71), [`#aDateIsSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L104), [`#aDateTimeFormFieldIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L88), [`#withoutChronoTheyAreStringsSentAsTheyAre`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L115), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L131) |
 
 ### `schema.format.uuid`
 
 | | |
 | --- | --- |
 | OpenAPI | `type: string, format: uuid` |
-| Rust | `uuid::Uuid` in a model; `&str` as a path, query or header parameter |
-| Gap | a parameter takes `&str`, not `uuid::Uuid` |
-| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L67), [`#aUuidParameterIsAString`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L99) |
+| Rust | `uuid::Uuid` everywhere: in a model, and as a path, query or header parameter or form field, taken by value (`Option<uuid::Uuid>` when optional, `Vec<uuid::Uuid>` for an array); the crate depends on `uuid` when a model or a parameter has one. Stock takes a parameter as `&str` |
+| Wire | the hyphenated lower-case form (`67e55044-10b1-426f-9247-bb680e5fe0c8`), through serde in a body and `Display` in a parameter or form field; URL-safe, so it goes into the path as it is. An array is joined with `,` (path, header, urlencoded field) or repeated (query, `explode: true`) |
+| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L67), [`#aUuidParameterIsAUuid`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L99), [`UuidParamsTest#aUuidParameterIsAUuid`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L69), [`#itIsSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L83), [`#theCrateDependsOnUuidOnlyWhenTheApiUsesIt`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L102), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L111) |
 
 ### `schema.format.byte`
 

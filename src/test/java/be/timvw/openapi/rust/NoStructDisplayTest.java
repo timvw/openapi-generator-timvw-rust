@@ -16,7 +16,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Milestone 3.2: noStructDisplay removes the struct Display and makes every use of it explicit JSON. */
+/** Milestone 3.2: structs have no Display, and every use of one in the API code is explicit JSON. */
 class NoStructDisplayTest {
 
     @TempDir
@@ -25,23 +25,16 @@ class NoStructDisplayTest {
     @TempDir
     static Path onHelper;
 
-    @TempDir
-    static Path off;
-
     @BeforeAll
     static void generate() {
-        generate(on, true, false);
-        generate(onHelper, true, true);
-        generate(off, false, false);
+        generate(on, false);
+        generate(onHelper, true);
     }
 
-    private static void generate(Path output, boolean noStructDisplay, boolean multipartHelper) {
+    private static void generate(Path output, boolean multipartHelper) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "enums");
         props.put(TimvwRustCodegen.DEEP_OBJECT_QUERY_PARAMETERS, "/things/deep?filter");
-        if (noStructDisplay) {
-            props.put(TimvwRustCodegen.NO_STRUCT_DISPLAY, "true");
-        }
         if (multipartHelper) {
             props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
         }
@@ -63,9 +56,6 @@ class NoStructDisplayTest {
 
     @Test
     void structsHaveNoDisplay() throws IOException {
-        // Only the removed legacyModelRewrites gave structs a JSON Display; without the option the API code still
-        // calls to_string() on them, as stock does.
-        assertFalse(model(off, "filter").contains("Display"));
         assertFalse(model(on, "filter").contains("Display"));
     }
 
@@ -76,13 +66,11 @@ class NoStructDisplayTest {
 
     @Test
     void pathParameter() throws IOException {
-        assertTrue(api(off).contains("filter=p_path_filter.to_string()"), api(off));
         assertTrue(api(on).contains("filter=serde_json::to_string(&p_path_filter)?"), api(on));
     }
 
     @Test
     void requiredQueryParameter() throws IOException {
-        assertTrue(api(off).contains("&[(\"filter\", &p_query_filter.to_string())]"), api(off));
         assertTrue(api(on).contains("&[(\"filter\", &serde_json::to_string(&p_query_filter)?)]"), api(on));
     }
 
@@ -107,7 +95,6 @@ class NoStructDisplayTest {
 
     @Test
     void headers() throws IOException {
-        assertTrue(api(off).contains("req_builder.header(\"X-Filter\", p_header_x_filter.to_string())"), api(off));
         assertTrue(api(on).contains("req_builder.header(\"X-Filter\", serde_json::to_string(&p_header_x_filter)?)"),
                 api(on));
         assertTrue(api(on).contains("req_builder.header(\"X-Maybe-Filter\", serde_json::to_string(&param_value)?)"),
@@ -135,12 +122,11 @@ class NoStructDisplayTest {
                     + ".map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(\",\"));"), api);
             assertTrue(api.contains("multipart_form.text(\"color\", param_value.to_string());"), api);
         }
-        assertTrue(api(off).contains("multipart_form.text(\"filter\", p_form_filter.to_string());"), api(off));
     }
 
     @Test
     void nothingStillCallsDisplayOnAStruct() throws IOException {
-        // Off, these identifiers go through to_string(); on, none of them may.
+        // Stock -g rust calls to_string() on these identifiers; none of them may.
         for (Path output : List.of(on, onHelper)) {
             String api = api(output);
             for (String id : List.of("p_path_filter", "p_query_filter", "p_header_x_filter", "p_form_filter")) {
@@ -164,11 +150,5 @@ class NoStructDisplayTest {
         assertTrue(e.getMessage().contains("Filter"), e.getMessage());
         Files.writeString(models.resolve("filter.rs"), "pub struct Filter {\n}\n");
         codegen.checkStructJsonModels(models, java.util.Set.of("Filter"));
-    }
-
-    @Test
-    void offKeepsTheStockTextForArrays() throws IOException {
-        assertTrue(api(off).contains("(\"filters\".to_owned(), p.to_string())"), api(off));
-        assertFalse(api(off).contains("serde_json::to_string(&p)"), api(off));
     }
 }

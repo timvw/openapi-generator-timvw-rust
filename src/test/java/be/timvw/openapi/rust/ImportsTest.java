@@ -37,25 +37,17 @@ class ImportsTest {
     @TempDir
     static Path stock;
 
-    @TempDir
-    static Path noUnions;
-
     @BeforeAll
     static void generate() {
-        generate(helper, true, true);
-        generate(stock, false, true);
-        generate(noUnions, true, false);
+        generate(helper, true);
+        generate(stock, false);
     }
 
-    private static void generate(Path output, boolean multipartHelper, boolean modelUnions) {
+    private static void generate(Path output, boolean multipartHelper) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "imports");
         if (multipartHelper) {
             props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
-        }
-        if (modelUnions) {
-            props.put(TimvwRustCodegen.MODEL_UNIONS, "true");
-            props.put(TimvwRustCodegen.UNION_DISPATCH, "true");
         }
         props.put(TimvwRustCodegen.TYPED_EVENT_STREAMS, "true");
         ClientOptInput input = new CodegenConfigurator()
@@ -102,14 +94,6 @@ class ImportsTest {
             }
         }
         golden("apis", all.toString());
-    }
-
-    @Test
-    void withoutModelUnionsEveryModelKeepsTheImport() throws IOException {
-        for (String model : List.of("plain", "color", "text_or_number")) {
-            String text = Files.readString(noUnions.resolve("src/models/" + model + ".rs"));
-            assertTrue(text.contains("use crate::models;"), model + "\n" + text);
-        }
     }
 
     @Test

@@ -134,19 +134,19 @@ class SpecRulesTest {
         }
         // Hyphenated schema renamed and still referenced.
         assertTrue(models.contains("item2.rs"), String.join(",", models));
-        assertTrue(read("src/models/thing.rs").contains("pub item: Box<models::Item2>,"));
-        // Inline union hoisted into ThingChoice; the string branch is titled Text. (The array branch's
-        // ArrayOfItem2s title is an array title, which titleNaming=false strips before naming.)
+        assertTrue(read("src/models/thing.rs").contains("pub item: models::Item2,"));
+        // Inline union hoisted into ThingChoice; the string enum branch is titled Text and becomes the model
+        // ThingChoiceTextVariantEnum.
         assertTrue(models.contains("thing_choice.rs"), String.join(",", models));
         String choice = read("src/models/thing_choice.rs");
-        assertTrue(choice.contains("Text(String),"), choice);
+        assertTrue(choice.contains("TextVariant(models::ThingChoiceTextVariantEnum),"), choice);
         assertTrue(choice.contains("(Vec<models::Item2>),"), choice);
         // Untitled primitive variants are titled Text and Integer (the stock generator still renders an all-primitive
         // anyOf as an empty struct; the union group gives it variants).
         String json = read("target/specs/preprocessed.json");
         assertTrue(json.contains("\"title\" : \"Text\""), json);
         assertTrue(json.contains("\"title\" : \"Integer\""), json);
-        // The inline title colliding with the Options component is renamed ThingOptions.
+        // The inline title colliding with the Options component names nothing: the schema is named ThingOptions.
         assertTrue(models.contains("thing_options.rs"), String.join(",", models));
         assertTrue(read("src/models/options.rs").contains("pub struct Options {"));
         // The string component referenced from a top-level union is inlined: no PlainText variant.

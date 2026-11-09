@@ -1,10 +1,10 @@
 # OpenAPI Object, Info Object
 
 Rules for the [OpenAPI Object](https://spec.openapis.org/oas/v3.0.3#openapi-object) and the
-[Info Object](https://spec.openapis.org/oas/v3.0.3#info-object). The [baseline](README.md#baseline) options apply.
+[Info Object](https://spec.openapis.org/oas/v3.0.3#info-object).
 
 Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`. `OperationMappingTest` renders
-`src/test/resources/operation_mapping.yaml` with the baseline options.
+`src/test/resources/operation_mapping.yaml` without options.
 
 ### `openapi.webhooks`
 

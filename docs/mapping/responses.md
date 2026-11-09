@@ -1,11 +1,10 @@
 # Responses Object
 
 Rules for the [Responses Object](https://spec.openapis.org/oas/v3.0.3#responses-object): what an operation's error
-responses become. Success responses are the [Response Object](response.md). The [baseline](README.md#baseline)
-options apply.
+responses become. Success responses are the [Response Object](response.md).
 
 Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`. `OperationMappingTest` renders
-`src/test/resources/operation_mapping.yaml` with the baseline options.
+`src/test/resources/operation_mapping.yaml` without options.
 
 ### `responses.statusCode`
 

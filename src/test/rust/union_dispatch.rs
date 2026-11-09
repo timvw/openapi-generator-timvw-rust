@@ -132,10 +132,13 @@ fn a_value_on_two_variants_tries_them_in_order_for_that_value_only() {
     let assistant = r#"{"type":"message","role":"assistant","content":["x"]}"#;
     assert!(matches!(decode::<Item>(assistant), Item::OutputMessage(_)));
 
-    let failed = error::<Item>(r#"{"type":"message","role":"nobody","content":["x"]}"#);
+    let failed = error::<Item>(r#"{"type":"message","role":"user","content":"x"}"#);
     assert!(failed.contains("Item: no variant decodes `type` \"message\""), "{failed}");
-    assert!(failed.contains("InputMessage: unknown variant `nobody`"), "{failed}");
-    assert!(failed.contains("OutputMessage: unknown variant `nobody`"), "{failed}");
+    assert!(failed.contains("InputMessage: invalid type: string"), "{failed}");
+    assert!(failed.contains("OutputMessage: invalid type: string"), "{failed}");
+    // A response holds OutputMessage, so its role is open: a role no variant lists still decodes.
+    let unknown = r#"{"type":"message","role":"nobody","content":["x"]}"#;
+    assert!(matches!(decode::<Item>(unknown), Item::OutputMessage(_)));
 
     // Another value does not try them.
     let other = error::<Item>(r#"{"type":"tool_call","role":"user","content":["x"]}"#);
@@ -193,7 +196,8 @@ fn a_variant_that_is_a_union_is_dispatched_through_and_keeps_its_fields() {
 fn an_unknown_tag_names_the_union_the_tag_and_the_value() {
     assert_eq!(error::<Shape>(r#"{"kind":"triangle"}"#), "Shape: unknown `kind` value \"triangle\"");
     assert_eq!(error::<Part>(r#"{"type":"audio"}"#), "Part: unknown `type` value \"audio\"");
-    assert_eq!(error::<InputItem>(r#"{"type":"nope"}"#), "InputItem: unknown `type` value \"nope\"");
+    // A response holds InputItem, so it keeps a tag it does not know instead.
+    assert!(matches!(decode::<InputItem>(r#"{"type":"nope"}"#), InputItem::Unknown(_)));
     // Nested in a struct, serde_json adds where.
     #[derive(Debug, Deserialize)]
     #[allow(dead_code)]

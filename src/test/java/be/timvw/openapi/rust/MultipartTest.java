@@ -84,10 +84,11 @@ class MultipartTest {
         assertTrue(api.contains("if let Some(param_value) = p_form_options { multipart_form = multipart_helper::add_schema_value_to_form( multipart_form, \"options\", serde_json::to_value(param_value)?, Some(\"application/json\"), )?; }"), api);
         // Optional scalar with an explicit content type.
         assertTrue(api.contains("serde_json::Value::String(param_value.to_string()), Some(\"application/sdp\"),"), api);
-        // Required scalar and required object stay stock; a binary union stays stock.
+        // A required scalar stays stock, a required object is its JSON; a binary union uploads its file.
         assertTrue(api.contains("multipart_form = multipart_form.text(\"name\", p_form_name.to_string());"), api);
-        assertTrue(api.contains("multipart_form = multipart_form.text(\"mode\", p_form_mode.to_string());"), api);
-        assertTrue(api.contains("multipart_form = multipart_form.text(\"image\""), api);
+        assertTrue(api.contains("multipart_form = multipart_form.text(\"mode\", serde_json::to_string(&p_form_mode)?);"), api);
+        assertTrue(api.contains("models::UploadCreateRequestImage::Text(value) => { multipart_form = "
+                + "multipart_helper::add_file_to_form(multipart_form, value, \"image\")?; }"), api);
         // The helper module is written and declared after configuration; other modules do not import it.
         assertTrue(Files.readString(dir.resolve("src/apis/multipart_helper.rs")).contains("pub fn add_schema_value_to_form("));
         assertTrue(Files.readString(dir.resolve("src/apis/mod.rs")).contains("pub mod configuration;\n\n// Internal helper module for multipart file handling\npub(crate) mod multipart_helper;\n"));

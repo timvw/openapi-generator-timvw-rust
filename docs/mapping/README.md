@@ -32,28 +32,27 @@ Each rule has:
 | OpenAPI | the input |
 | Rust | what the generator renders |
 | Wire | what decodes and what is written, where that is not obvious from the Rust |
-| Options | the options that change it, and what it renders without the baseline |
+| Options | the options that change it; `always` where none does (what stock renders instead is noted where it helps) |
 | Tests | the tests that show the rendering, linked to their line (`tools/link-mapping-tests.py` writes the links) |
 | Library | only where the Rust depends on the HTTP library: which types come from it (see [HTTP library](#http-library)) |
 | Gap | only for a known gap: what is missing |
 
-Where an entry says "stock", it compares with openapi-generator's own Rust generator, `-g rust` 7.27.0: without the
-option `timvw-rust` renders what `-g rust` renders. That rendering is `timvw-rust`'s own code and templates (ported from
-`-g rust`), not something it inherits, so a rule can change it like any other.
+Where an entry says "stock", it compares with openapi-generator's own Rust generator, `-g rust` 7.27.0: without an
+option that changes it, `timvw-rust` renders what `-g rust` renders. That rendering is `timvw-rust`'s own code and
+templates (ported from `-g rust`), not something it inherits, so a rule can change it like any other.
 
-## Baseline
+## What the generator renders
 
-The **Rust** entry of every rule is the rendering with the options openai-client-base and langfuse-client-base both set:
+The **Rust** entry of every rule is what `timvw-rust` renders without options, in the one client configuration it
+generates (async reqwest with reqwest-middleware; the matching stock options are rejected, see the README's
+[configuration](../../README.md#configuration)). What used to be the baseline options (`boxOnlyCycles`,
+`defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`,
+`unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) is always applied, and setting one fails
+generation.
 
-```
-boxOnlyCycles defaultOnlyWhereValid enumFromStr noStructDisplay integersAsI64 qualifiedInlineNames
-modelUnions unionDispatch openEnums schemaDefaultDocs nullableUnionFields
-```
-
-in the one client configuration `timvw-rust` generates (async reqwest with reqwest-middleware; the matching stock
-options are rejected, see the README's [configuration](../../README.md#configuration)). openai-client-base also sets `multipartHelper`, `typedEventStreams`,
-`contentTypeMethods`, `boxResponseError` and `useChrono=false`; langfuse-client-base also sets `typedEnumParameters` and
-`deprecatedAttributes`. The **Options** entry describes those and every other option as a variation of the baseline.
+openai-client-base also sets `multipartHelper`, `typedEventStreams`, `contentTypeMethods`, `boxResponseError` and
+`useChrono=false`; langfuse-client-base also sets `typedEnumParameters` and `deprecatedAttributes`. The **Options**
+entry describes those and every other option as a variation of what the generator renders without options.
 
 ## HTTP library
 

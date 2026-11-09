@@ -16,6 +16,12 @@ file headers and blank lines removed.
 How timvw-rust renders every OpenAPI construct, with the option behind each rule, is in
 [docs/type-mapping.md](../type-mapping.md).
 
+The comparison was made when the mapping's baseline (`boxOnlyCycles`, `defaultOnlyWhereValid`, `enumFromStr`,
+`noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`,
+`schemaDefaultDocs`, `nullableUnionFields`) still consisted of options. These are no longer options: their rendering is
+always applied, so where this page names one of them, it names what timvw-rust now always renders, and
+`nullableUnionFields` and `schemaDefaultDocs`, off in the comparison, are on as well.
+
 ## Summary
 
 | | stock `-g rust` | timvw-rust | progenitor |

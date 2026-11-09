@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Milestone 3.2 ({@code enumFromStr}): gives every closed value enum {@code FromStr} and {@code TryFrom<&str>},
+ * Milestone 3.2: gives every closed value enum {@code FromStr} and {@code TryFrom<&str>},
  * {@code TryFrom<&String>} and {@code TryFrom<String>}, accepting exactly the strings its {@code Display} prints.
  *
  * <p>This runs over the written crate rather than in the model template: the final text says which enums exist and
@@ -75,7 +75,7 @@ final class EnumFromStr {
         // mod.rs is rendered afresh, so a declaration here is a schema; a file alone is left from an earlier run.
         String declarations = Files.exists(mod) ? Files.readString(mod) : "";
         if (Pattern.compile("\\b" + ERROR_MODULE + "\\b|\\b" + ERROR_TYPE + "\\b").matcher(declarations).find()) {
-            throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": " + TimvwRustCodegen.ENUM_FROM_STR
+            throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": FromStr"
                     + " needs the name " + ERROR_TYPE + ", which a schema already has");
         }
         int enums = 0;

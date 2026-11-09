@@ -22,8 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -34,7 +32,7 @@ import java.util.regex.Pattern;
  * <p>Two kinds of rule live here. The <em>generic</em> ones repair constructs the stock generator mishandles and run
  * on every spec: {@link #pruneGeneratorHostileKeywords}, {@link #stripRefSiblings},
  * {@link #collapseRequiredOnlyUnions}, {@link #titleUnnamedUnionVariants}, {@link #hoistInlineUnions},
- * {@link #inlineStringRefsInUnions}, {@link #normalizeHyphenatedSchemaNames}, {@link #disambiguateInlineTitles} and
+ * {@link #inlineStringRefsInUnions}, {@link #normalizeHyphenatedSchemaNames} and
  * {@link #simplifyObjectQueryParameters}. The <em>spec decisions</em> are driven by options and name the schemas
  * or properties they apply to: {@link #routeWebhooks}, {@link #stringSchemas}, {@link #stringIdProperties},
  * {@link #stringProperties} and the deep-object allow list of
@@ -428,17 +426,11 @@ final class SpecRules {
      * Moves an inline {@code oneOf}/{@code anyOf} of a component property into a component schema named
      * {@code <Schema><Property>} and references it, when every branch is inline (no {@code $ref}), none is
      * {@code type: null} and at least one is an array or object. The stock generator fails on the flattened
-     * composed model of such a property.
-     *
-     * @param keepNullable the union keeps the property's {@code nullable} (for {@code nullableUnionFields}); without it
-     *                     a nullable property loses its nullability, as it always did
+     * composed model of such a property. The union keeps the property's {@code nullable}, so that the field stays
+     * nullable.
      */
-    static List<String> hoistInlineUnions(OpenAPI openAPI) {
-        return hoistInlineUnions(openAPI, false);
-    }
-
     @SuppressWarnings({"rawtypes", "unchecked"})
-    static List<String> hoistInlineUnions(OpenAPI openAPI, boolean keepNullable) {
+    static List<String> hoistInlineUnions(OpenAPI openAPI) {
         List<String> hoisted = new ArrayList<>();
         Map<String, Schema> schemas = schemas(openAPI);
         Map<String, Schema> added = new LinkedHashMap<>();
@@ -481,8 +473,8 @@ final class SpecRules {
                     }
                     union.setTitle(name);
                     union.setDescription(prop.getDescription());
-                    if (keepNullable && (Boolean.TRUE.equals(prop.getNullable())
-                            || (prop.getTypes() != null && prop.getTypes().contains("null")))) {
+                    if (Boolean.TRUE.equals(prop.getNullable())
+                            || (prop.getTypes() != null && prop.getTypes().contains("null"))) {
                         union.setNullable(true);
                     }
                     added.put(name, union);
@@ -567,39 +559,6 @@ final class SpecRules {
             });
         }
         return renamed;
-    }
-
-    /**
-     * An inline object schema of a component property whose title would name the same model as an existing
-     * component gets the title {@code <Schema><Property>}; the stock generator otherwise writes both models to
-     * the same file and keeps whichever comes last.
-     */
-    @SuppressWarnings("rawtypes")
-    static List<String> disambiguateInlineTitles(OpenAPI openAPI, Function<String, String> modelName) {
-        List<String> retitled = new ArrayList<>();
-        Map<String, Schema> schemas = schemas(openAPI);
-        Set<String> modelNames = new LinkedHashSet<>();
-        for (String name : schemas.keySet()) {
-            modelNames.add(modelName.apply(name));
-        }
-        for (Map.Entry<String, Schema> e : schemas.entrySet()) {
-            Map<String, Schema> props = e.getValue().getProperties();
-            if (props == null) {
-                continue;
-            }
-            for (Map.Entry<String, Schema> p : props.entrySet()) {
-                Schema prop = p.getValue();
-                if (prop.get$ref() != null || prop.getTitle() == null || prop.getProperties() == null) {
-                    continue;
-                }
-                if (modelNames.contains(modelName.apply(prop.getTitle()))) {
-                    String title = modelName.apply(e.getKey()) + capitalizeWords(p.getKey());
-                    retitled.add(e.getKey() + "." + p.getKey() + ": '" + prop.getTitle() + "' -> " + title);
-                    prop.setTitle(title);
-                }
-            }
-        }
-        return retitled;
     }
 
     /**
@@ -755,17 +714,6 @@ final class SpecRules {
         StringBuilder sb = new StringBuilder();
         for (String part : snake.split("_")) {
             sb.append(capitalize(part));
-        }
-        return sb.toString();
-    }
-
-    /** {@code snake_case} to CamelCase, keeping the rest of each part as written. */
-    static String capitalizeWords(String snake) {
-        StringBuilder sb = new StringBuilder();
-        for (String part : snake.split("_")) {
-            if (!part.isEmpty()) {
-                sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
-            }
         }
         return sb.toString();
     }

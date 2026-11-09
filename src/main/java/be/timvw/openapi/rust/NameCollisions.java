@@ -20,9 +20,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Finds schemas that would render to the same Rust model or file with different content ({@code qualifiedInlineNames},
- * Milestone 3.3). The stock generator writes such schemas to one file and keeps whichever comes last, so a client
- * compiles and then fails to decode; here generation stops and names both.
+ * Finds schemas that would render to the same Rust model or file with different content (Milestone 3.3). The stock
+ * generator writes such schemas to one file and keeps whichever comes last, so a client compiles and then fails to
+ * decode; here generation stops and names both.
  *
  * <p>Schemas compare equal when they are equal apart from annotations (title, description, examples, external docs,
  * {@code deprecated}, extensions), following references, which may have different names as long as what they point at

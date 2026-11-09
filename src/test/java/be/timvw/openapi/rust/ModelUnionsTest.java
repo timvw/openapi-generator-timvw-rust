@@ -24,38 +24,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Milestone 3.3: modelUnions renders unions from the model. */
+/** Milestone 3.3: unions render from the model. */
 class ModelUnionsTest {
 
     @TempDir
     static Path on;
 
-    @TempDir
-    static Path qualified;
-
-    @TempDir
-    static Path off;
-
     @BeforeAll
     static void generate() {
-        generate(on, true, false);
-        generate(qualified, true, true);
-        generate(off, false, false);
+        generate(on);
     }
 
-    private static void generate(Path output, boolean modelUnions, boolean qualifiedNames) {
+    private static void generate(Path output) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "unions");
-        props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
-        props.put(TimvwRustCodegen.DEFAULT_ONLY_WHERE_VALID, "true");
         props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
-        if (modelUnions) {
-            props.put(TimvwRustCodegen.MODEL_UNIONS, "true");
-            props.put(TimvwRustCodegen.UNION_PLAN_FILE, "target/union_plan.json");
-        }
-        if (qualifiedNames) {
-            props.put(TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true");
-        }
+        props.put(TimvwRustCodegen.UNION_PLAN_FILE, "target/union_plan.json");
         CodegenConfigurator configurator = new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of("src/test/resources/unions.yaml").toAbsolutePath().toString())
@@ -105,7 +89,6 @@ class ModelUnionsTest {
         // A tag tells them apart, so they stay in the order of the spec.
         assertEquals(List.of("StartedEvent(models::StartedEvent)", "StoppedEvent(models::StoppedEvent)"),
                 variants(event, "ServerEvent"));
-        assertFalse(read(off, "server_event").contains("StartedEvent"), "stock leaves a discriminated anyOf empty");
     }
 
     @Test
@@ -123,8 +106,9 @@ class ModelUnionsTest {
             assertTrue(log.contains("pub actor: Option<models::LogActor>,"), log);
             assertTrue(log.contains("pub error: Option<Option<models::LogError>>,"), log);
             assertTrue(read(output, "log_actor").contains("pub struct LogActor {"));
-            assertEquals(List.of("ProtocolError(models::ProtocolError)", "HttpError(models::HttpError)"),
-                    variants(read(output, "log_error"), "LogError"));
+            // A response holds it, so it has a catch-all for a tag it does not know.
+            assertEquals(List.of("ProtocolError(models::ProtocolError)", "HttpError(models::HttpError)",
+                    "Unknown(serde_json::Value)"), variants(read(output, "log_error"), "LogError"));
         }
     }
 
@@ -139,18 +123,16 @@ class ModelUnionsTest {
 
     @Test
     void anInlineBranchKeepsItsOwnModel() throws IOException {
-        assertEquals(List.of("Pcm(models::Pcm)", "Ulaw(models::Ulaw)"), variants(read(on, "format"), "Format"));
-        assertTrue(read(on, "pcm").contains("pub rate: i32,"));
         // Qualified names carry the union's name, which the variant does not repeat.
-        assertEquals(List.of("Pcm", "Ulaw"), names(variants(read(qualified, "format"), "Format")));
-        assertTrue(read(qualified, "format").contains("Pcm(models::FormatPcm)"));
-        assertTrue(read(qualified, "format_pcm").contains("pub rate: i32,"));
+        assertEquals(List.of("Pcm", "Ulaw"), names(variants(read(on, "format"), "Format")));
+        assertTrue(read(on, "format").contains("Pcm(models::FormatPcm)"));
+        assertTrue(read(on, "format_pcm").contains("pub rate: i64,"));
     }
 
     @Test
     void theIntegerBranchSurvivesAnEnumNextToIt() throws IOException {
         String batchSize = read(on, "log_batch_size");
-        assertEquals(List.of("TextVariant(models::LogBatchSizeTextVariantEnum)", "Integer(i32)"),
+        assertEquals(List.of("TextVariant(models::LogBatchSizeTextVariantEnum)", "Integer(i64)"),
                 variants(batchSize, "LogBatchSize"));
         String values = read(on, "log_batch_size_text_variant_enum");
         assertTrue(values.contains("#[serde(rename = \"auto\")]"), values);
@@ -161,7 +143,7 @@ class ModelUnionsTest {
 
     @Test
     void anIntegerGoesBeforeAFloatAndAnEnumBeforeAString() throws IOException {
-        assertEquals(List.of("Integer(i32)", "Number(f64)"), variants(read(on, "log_temperature"), "LogTemperature"));
+        assertEquals(List.of("Integer(i64)", "Number(f64)"), variants(read(on, "log_temperature"), "LogTemperature"));
         assertEquals(List.of("TextVariant(models::ModelChoiceTextVariantEnum)", "Text(String)"),
                 variants(read(on, "model_choice"), "ModelChoice"));
     }
@@ -198,7 +180,7 @@ class ModelUnionsTest {
 
     @Test
     void aTitleRepeatedInsideItsUnionDoesNotMakeTheUnionHoldItself() throws IOException {
-        for (Path output : List.of(on, qualified)) {
+        for (Path output : List.of(on)) {
             try (Stream<Path> models = Files.list(output.resolve("src/models"))) {
                 for (Path file : (Iterable<Path>) models::iterator) {
                     String source = Files.readString(file);
@@ -210,9 +192,9 @@ class ModelUnionsTest {
                 }
             }
         }
-        String fields = read(on, "tracing_configuration_object");
+        String fields = read(on, "log_tracing_tracing_configuration");
         assertTrue(fields.contains("pub workflow_name: Option<String>,"), fields);
-        assertTrue(read(on, "tracing_configuration").contains("(models::TracingConfigurationObject)"));
+        assertTrue(read(on, "log_tracing").contains("(models::LogTracingTracingConfiguration)"));
     }
 
     @Test
@@ -278,13 +260,6 @@ class ModelUnionsTest {
         assertEquals("System", message.get("variants").get(0).get("name").asText());
         assertEquals("#/components/schemas/SystemMessage", message.get("variants").get(0).get("branch").get("$ref").asText());
         assertTrue(plan.get("schemas").has("SystemMessage"));
-    }
-
-    @Test
-    void withoutTheOptionNothingChanges() throws IOException {
-        String message = read(off, "message");
-        assertTrue(message.contains("#[serde(tag = \"role\")]"), message);
-        assertFalse(Files.exists(off.resolve("target/union_plan.json")));
     }
 
     @Test

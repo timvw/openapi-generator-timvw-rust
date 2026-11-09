@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Milestone 3.5: openEnums gives what a response can hold a catch-all. What the generated code does at run time is in
+ * Milestone 3.5: what a response can hold has a catch-all. What the generated code does at run time is in
  * src/test/rust/open_enums.rs, which {@link #whatItDoesAtRunTime} runs with cargo.
  */
 class OpenEnumsTest {
@@ -37,35 +37,19 @@ class OpenEnumsTest {
     @TempDir
     static Path on;
 
-    @TempDir
-    static Path off;
-
-    @TempDir
-    static Path unset;
-
     private static JsonNode census;
 
     @BeforeAll
     static void generate() throws IOException {
-        generate(on, Map.of(TimvwRustCodegen.OPEN_ENUMS, "true"));
-        generate(off, Map.of(TimvwRustCodegen.OPEN_ENUMS, "false"));
-        generate(unset, Map.of());
+        generate(on);
         census = new ObjectMapper().readTree(on.resolve("target/union_plan.json").toFile()).get("openEnums");
     }
 
-    private static void generate(Path output, Map<String, String> extra) {
+    private static void generate(Path output) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "open_enums_fixture");
         props.put(TimvwRustCodegen.BON_BUILDERS, "false");
-        props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
-        props.put(TimvwRustCodegen.DEFAULT_ONLY_WHERE_VALID, "true");
-        props.put(TimvwRustCodegen.INTEGERS_AS_I64, "true");
-        props.put(TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true");
-        props.put(TimvwRustCodegen.ENUM_FROM_STR, "true");
-        props.put(TimvwRustCodegen.MODEL_UNIONS, "true");
-        props.put(TimvwRustCodegen.UNION_DISPATCH, "true");
         props.put(TimvwRustCodegen.UNION_PLAN_FILE, "target/union_plan.json");
-        props.putAll(extra);
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(SPEC).toAbsolutePath().toString())
@@ -170,41 +154,6 @@ class OpenEnumsTest {
         assertTrue(read(on, "flavor").contains("\"other\" => Ok(Self::Other),"));
         assertTrue(read(on, "role").contains("\"unknown\" => Ok(Self::Unknown),"));
         assertFalse(read(on, "role").contains("\"unknown_value\" => Ok("));
-    }
-
-    @Test
-    void offAndUnsetAreTheSameAndOnlyOnChangesAnything() throws IOException {
-        assertEquals(snapshot(unset), snapshot(off));
-        Map<String, String> without = snapshot(off);
-        assertFalse(without.values().stream().anyMatch(text -> text.contains("other)]")));
-        assertFalse(without.get("target/union_plan.json").contains("openEnums"));
-        assertFalse(without.get("src/models/union_dispatch.rs").contains("allow(dead_code)"));
-    }
-
-    private static Map<String, String> snapshot(Path root) throws IOException {
-        Map<String, String> files = new TreeMap<>();
-        try (Stream<Path> walk = Files.walk(root)) {
-            for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
-                files.put(root.relativize(file).toString(), Files.readString(file));
-            }
-        }
-        return files;
-    }
-
-    @Test
-    void itRequiresModelUnions(@TempDir Path output) {
-        String message = assertThrows(IllegalArgumentException.class, () -> {
-            Map<String, Object> props = new LinkedHashMap<>();
-            props.put("packageName", "open_enums_fixture");
-            props.put(TimvwRustCodegen.OPEN_ENUMS, "true");
-            new DefaultGenerator().opts(new CodegenConfigurator()
-                    .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
-                    .setInputSpec(Path.of(SPEC).toAbsolutePath().toString())
-                    .setOutputDir(output.toString())
-                    .setAdditionalProperties(props)
-                    .toClientOptInput()).generate();
-        }).getMessage();
-        assertTrue(message.startsWith("timvw-rust: openEnums requires modelUnions"), message);
     }
 
     /** Runs src/test/rust/open_enums.rs on the generated models. Needs cargo; without it there is nothing to run. */

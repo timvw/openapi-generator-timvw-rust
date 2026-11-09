@@ -2,11 +2,11 @@
 
 Rules for the [Paths](https://spec.openapis.org/oas/v3.0.3#paths-object),
 [Path Item](https://spec.openapis.org/oas/v3.0.3#path-item-object) and
-[Operation](https://spec.openapis.org/oas/v3.0.3#operation-object) Objects. The [baseline](README.md#baseline) options
-apply. Parameters, request bodies and responses have files of their own.
+[Operation](https://spec.openapis.org/oas/v3.0.3#operation-object) Objects. Parameters, request bodies and responses
+have files of their own.
 
 Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`. `OperationMappingTest` renders
-`src/test/resources/operation_mapping.yaml` with the baseline options.
+`src/test/resources/operation_mapping.yaml` without options.
 
 ### `operation.tags`
 

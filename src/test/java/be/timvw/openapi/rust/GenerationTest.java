@@ -46,7 +46,7 @@ class GenerationTest {
     @Test
     void modelStructsDeriveBonBuilderAndEnumsDoNot() throws IOException {
         String widget = read("src/models/widget.rs");
-        assertTrue(widget.contains("#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]\npub struct Widget {"), widget);
+        assertTrue(widget.contains("#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]\npub struct Widget {"), widget);
         String kind = read("src/models/widget_kind.rs");
         assertFalse(kind.contains("bon::Builder"), kind);
     }

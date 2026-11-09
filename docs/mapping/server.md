@@ -1,10 +1,9 @@
 # Server Object
 
-Rules for the [Server Object](https://spec.openapis.org/oas/v3.0.3#server-object). The [baseline](README.md#baseline)
-options apply.
+Rules for the [Server Object](https://spec.openapis.org/oas/v3.0.3#server-object).
 
 Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`. `OperationMappingTest` renders
-`src/test/resources/operation_mapping.yaml` with the baseline options.
+`src/test/resources/operation_mapping.yaml` without options.
 
 ### `server.url`
 

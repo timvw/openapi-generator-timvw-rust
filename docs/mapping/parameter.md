@@ -1,11 +1,10 @@
 # Parameter Object
 
-Rules for the [Parameter Object](https://spec.openapis.org/oas/v3.0.3#parameter-object). The
-[baseline](README.md#baseline) options apply. A parameter's argument follows
+Rules for the [Parameter Object](https://spec.openapis.org/oas/v3.0.3#parameter-object). A parameter's argument follows
 [`operation.parameters`](operation.md#operationparameters).
 
 Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`. `OperationMappingTest` renders
-`src/test/resources/operation_mapping.yaml` with the baseline options.
+`src/test/resources/operation_mapping.yaml` without options.
 
 ### `parameter.required`
 
@@ -48,8 +47,8 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `in: header` |
 | Rust | `.header(<name>, value)`; an array is joined with `,` |
-| Options | `noStructDisplay` (baseline) serializes a struct with `serde_json::to_string` ([`schema.properties.display`](schema.md#schemapropertiesdisplay)) |
-| Tests | [`OperationMappingTest#headersAreSentAndArraysJoined`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L103), [`NoStructDisplayTest#headers`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L109), [`ExtraRulesTest#arrayHeadersOfEnumsJoinTheirDisplay`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L94) |
+| Options | always: a struct is serialized with `serde_json::to_string` ([`schema.properties.display`](schema.md#schemapropertiesdisplay)) |
+| Tests | [`OperationMappingTest#headersAreSentAndArraysJoined`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L103), [`NoStructDisplayTest#headers`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L97), [`ExtraRulesTest#arrayHeadersOfEnumsJoinTheirDisplay`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L87) |
 
 ### `parameter.in.cookie`
 
@@ -67,4 +66,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a parameter whose schema is an inline `enum` (or an array of one) |
 | Rust | `&str` (`Vec<String>` for an array): the value is not checked |
 | Options | `typedEnumParameters` (langfuse-client-base) moves the enum to a component `<OperationId><Param>` (`models::ListModelsOrder`), which the function takes and sends as its value; arrays use `_item`. A name that is taken fails generation |
-| Tests | [`OperationMappingTest#anInlineEnumParameterIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L118), [`ExtraRulesTest#enumParametersTakeTheEnum`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L85), [`#enumParametersStayStringsWithoutTheOption`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L114), [`#aTakenNameFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L121) |
+| Tests | [`OperationMappingTest#anInlineEnumParameterIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L118), [`ExtraRulesTest#enumParametersTakeTheEnum`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L78), [`#enumParametersStayStringsWithoutTheOption`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L107), [`#aTakenNameFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L114) |

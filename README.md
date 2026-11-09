@@ -46,15 +46,9 @@ docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
   --additional-properties=packageName=my-client,packageVersion=0.1.0
 ```
 
-Without options you get an async reqwest client with reqwest-middleware and bon builders, with the same models stock
-`-g rust` renders. The options openai-client-base and langfuse-client-base both set are the mapping's
-[baseline](docs/mapping/README.md#baseline), and the recommended starting point:
-
-```bash
---additional-properties=boxOnlyCycles=true,defaultOnlyWhereValid=true,enumFromStr=true,noStructDisplay=true,\
-integersAsI64=true,qualifiedInlineNames=true,modelUnions=true,unionDispatch=true,openEnums=true,\
-schemaDefaultDocs=true,nullableUnionFields=true
-```
+Without options you get an async reqwest client with reqwest-middleware and bon builders, and the models the
+[mapping](docs/mapping/README.md#what-the-generator-renders) describes: unions that decode by their tag, enums that
+accept values the spec does not list yet, `i64` integers, boxes only where a type contains itself.
 
 Hand-maintained files (`Cargo.toml`, `README.md`, `.gitignore`) go in the output directory's
 `.openapi-generator-ignore`, which the generator honours like any openapi-generator run.
@@ -92,20 +86,10 @@ The options of the generator itself:
 | `resetQueryParameterStyle` | `false` | query parameters not listed in `deepObjectQueryParameters` get the default style (`form`, exploded) | |
 | `multipartHelper` | `false` | multipart bodies through the generated helper module | |
 | `fileProperties` | empty | `Schema.property` entries rendered as files | [`schema.format.binary`](docs/mapping/schema.md#schemaformatbinary) |
-| `boxOnlyCycles` | `false` | box a model reference only where it closes a cycle of the model graph | [`schema.properties.reference`](docs/mapping/schema.md#schemapropertiesreference) |
-| `defaultOnlyWhereValid` | `false` | `Default` only where its value is one the API would accept | [`schema.properties.default-impl`](docs/mapping/schema.md#schemapropertiesdefault-impl) |
-| `enumFromStr` | `false` | closed enums implement `FromStr` and `TryFrom`; property enums get the `Display` they lack | [`schema.enum.from-str`](docs/mapping/schema.md#schemaenumfrom-str) |
-| `noStructDisplay` | `false` | structs have no JSON `Display`; API code serializes them with `serde_json::to_string` | [`schema.properties.display`](docs/mapping/schema.md#schemapropertiesdisplay) |
-| `integersAsI64` | `false` | integers are `i64` unless `format: int32` | [`schema.type.integer`](docs/mapping/schema.md#schematypeinteger) |
-| `modelUnions` | `false` | unions render from the model as untagged enums | [`schema.oneOf`](docs/mapping/schema.md#schemaoneof) |
-| `unionDispatch` | `false` | with `modelUnions`: a union with a tag decodes by that tag | [`discriminator.propertyName`](docs/mapping/discriminator.md#discriminatorpropertyname) |
-| `openEnums` | `false` | with `modelUnions`: what a response or webhook payload can hold has a catch-all for values the spec does not list | [`schema.enum.open`](docs/mapping/schema.md#schemaenumopen) |
-| `unionPlanFile` | unset | with `modelUnions`: output-relative path the union plan is written to, as JSON | |
+| `unionPlanFile` | unset | output-relative path the union plan (the variants of every union) is written to, as JSON | |
 | `typedEventStreams` | `false` | a `text/event-stream` response is a method returning a typed stream; `sse.rs` is only written when some operation streams | [`response.content.event-stream`](docs/mapping/response.md#responsecontentevent-stream) |
 | `contentTypeMethods` | `false` | one method per request body media type and response shape, named with a suffix | [`requestBody.content`](docs/mapping/request-body.md#requestbodycontent) |
 | `typedEnumParameters` | `false` | inline enums of parameters and form/multipart body properties become component enums the functions take, see [the comparison](docs/comparison/README.md#typedenumparameters-enum-parameters-take-the-enum) | |
-| `nullableUnionFields` | `false` | with `modelUnions`: a field whose union is nullable is `Option<Option<U>>` (optional) or `Option<U>` (required), so `null` can be sent | [`schema.oneOf.null-branch`](docs/mapping/schema.md#schemaoneofnull-branch) |
-| `schemaDefaultDocs` | `false` | a property's or parameter's `default` is noted in its documentation | [`schema.default`](docs/mapping/schema.md#schemadefault) |
 | `deprecatedAttributes` | `false` | `#[deprecated]` on deprecated properties and schemas; generated files start with `#![allow(deprecated)]` | [`schema.deprecated`](docs/mapping/schema.md#schemadeprecated) |
 | `pruneAllHelpers` | `false` | helpers nobody calls are always left out; with this option also those marked `#[allow(dead_code)]` | |
 | `boxResponseError` | `false` | box the `ResponseError` payload | |
@@ -119,9 +103,13 @@ are not options here: it always generates as with `library=reqwest`, `supportAsy
 `hideGenerationTimestamp=true`, and setting any of them, to any value, fails generation, as does `--library` with
 anything but `reqwest`. Stock options it does not support are rejected too: `avoidBoxedModels`, `mockall`,
 `topLevelApiClient`, `withAWSV4Signature`, `supportTokenSource`, `useBonBuilder` (replaced by `bonBuilders`),
-`templateDir` (`-t`; the templates are part of the generator). An operation with the `x-group-parameters` extension
-(one parameter struct per operation in stock `-g rust`) fails generation as well. A configuration taken over from
-`-g rust` therefore fails instead of being silently ignored:
+`templateDir` (`-t`; the templates are part of the generator). The options that were the mapping's baseline are not
+options any more either: their rendering is always applied, and setting `boxOnlyCycles`, `defaultOnlyWhereValid`,
+`enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`,
+`schemaDefaultDocs` or `nullableUnionFields`, to any value, fails generation as not configurable. An operation with
+the `x-group-parameters` extension (one parameter struct per operation in stock `-g rust`) fails generation as well. A
+configuration taken over from `-g rust`, or from an earlier `timvw-rust`, therefore fails instead of being silently
+ignored:
 
 ```
 Exception in thread "main" java.lang.IllegalArgumentException: timvw-rust: option 'supportAsync' is not configurable: timvw-rust always uses 'true'; remove it (it was set to 'true')

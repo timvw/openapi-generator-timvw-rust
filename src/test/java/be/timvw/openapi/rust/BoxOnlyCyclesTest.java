@@ -16,27 +16,20 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Milestone 3.1: boxOnlyCycles boxes a model reference only where it closes a cycle. */
+/** Milestone 3.1: a model reference is boxed only where it closes a cycle. */
 class BoxOnlyCyclesTest {
 
     @TempDir
     static Path cycles;
 
-    @TempDir
-    static Path stock;
-
     @BeforeAll
     static void generate() {
-        generate(cycles, true);
-        generate(stock, false);
+        generate(cycles);
     }
 
-    private static void generate(Path output, boolean boxOnlyCycles) {
+    private static void generate(Path output) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "cycles");
-        if (boxOnlyCycles) {
-            props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
-        }
         CodegenConfigurator configurator = new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of("src/test/resources/cycles.yaml").toAbsolutePath().toString())
@@ -93,15 +86,5 @@ class BoxOnlyCyclesTest {
         String shape = read(cycles, "shape");
         assertTrue(shape.contains("Circle(models::Circle),"), shape);
         assertTrue(shape.contains("Square(models::Square),"), shape);
-        assertTrue(read(stock, "shape").contains("Circle(Box<models::Circle>),"));
-    }
-
-    @Test
-    void withoutTheOptionEveryModelReferenceIsBoxed() throws IOException {
-        String tree = read(stock, "tree");
-        assertTrue(tree.contains("pub root: Box<models::Node>,"), tree);
-        assertTrue(tree.contains("pub maybe_leaf: Option<Option<Box<models::Leaf>>>,"), tree);
-        assertTrue(tree.contains("root: Box::new(root),"), tree);
-        assertTrue(read(stock, "expr").contains("Literal(Box<models::Literal>),"));
     }
 }

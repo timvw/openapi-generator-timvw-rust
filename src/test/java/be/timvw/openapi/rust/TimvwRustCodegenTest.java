@@ -122,6 +122,32 @@ class TimvwRustCodegenTest {
         assertTrue(e.getMessage().contains("not configurable"), e.getMessage());
     }
 
+    /** The former baseline options are always on: setting one, to any value, fails like a fixed option. */
+    @ParameterizedTest(name = "{0} is not configurable")
+    @ValueSource(strings = {
+            "boxOnlyCycles",
+            "defaultOnlyWhereValid",
+            "enumFromStr",
+            "noStructDisplay",
+            "integersAsI64",
+            "qualifiedInlineNames",
+            "modelUnions",
+            "unionDispatch",
+            "openEnums",
+            "schemaDefaultDocs",
+            "nullableUnionFields",
+    })
+    void rejectsTheFormerBaselineOptionsWhenSet(String option) {
+        for (Object value : new Object[]{"true", "false", Boolean.TRUE, Boolean.FALSE}) {
+            TimvwRustCodegen c = codegen();
+            c.additionalProperties().put(option, value);
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts, option + "=" + value);
+            assertEquals("timvw-rust: option '" + option + "' is not configurable: timvw-rust always uses 'true'; "
+                    + "remove it (it was set to '" + value + "')", e.getMessage());
+        }
+        assertTrue(TimvwRustCodegen.ALWAYS_ON.contains(option), option);
+    }
+
     @Test
     void rejectsBooleanValuesOfFixedOptionsToo() {
         TimvwRustCodegen c = codegen();
@@ -192,6 +218,9 @@ class TimvwRustCodegenTest {
         }
         for (String fixed : TimvwRustCodegen.FIXED_VALUES.keySet()) {
             assertTrue(!opts.contains(fixed), fixed + " should not be advertised");
+        }
+        for (String alwaysOn : TimvwRustCodegen.ALWAYS_ON) {
+            assertTrue(!opts.contains(alwaysOn), alwaysOn + " should not be advertised");
         }
         assertTrue(opts.contains(TimvwRustCodegen.BON_BUILDERS), opts.toString());
     }

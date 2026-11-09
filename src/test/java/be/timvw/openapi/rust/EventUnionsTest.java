@@ -23,8 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The unions openai-client-base rendered as {@code serde_json::Value} through the removed {@code jsonValueSchemas}
- * (the response output items, computer actions, and the streaming and realtime event unions) render as typed enums with
- * {@code modelUnions}, {@code unionDispatch} and {@code openEnums}. What the generated code does at run time is in
+ * (the response output items, computer actions, and the streaming and realtime event unions) render as typed enums that
+ * decode by their tag and keep a value they do not know. What the generated code does at run time is in
  * src/test/rust/event_unions.rs, which {@link #whatItDoesAtRunTime} runs with cargo.
  */
 class EventUnionsTest {
@@ -39,14 +39,6 @@ class EventUnionsTest {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "event_unions_fixture");
         props.put(TimvwRustCodegen.BON_BUILDERS, "false");
-        props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
-        props.put(TimvwRustCodegen.DEFAULT_ONLY_WHERE_VALID, "true");
-        props.put(TimvwRustCodegen.INTEGERS_AS_I64, "true");
-        props.put(TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true");
-        props.put(TimvwRustCodegen.ENUM_FROM_STR, "true");
-        props.put(TimvwRustCodegen.MODEL_UNIONS, "true");
-        props.put(TimvwRustCodegen.UNION_DISPATCH, "true");
-        props.put(TimvwRustCodegen.OPEN_ENUMS, "true");
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(SPEC).toAbsolutePath().toString())

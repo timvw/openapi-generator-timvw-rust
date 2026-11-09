@@ -18,6 +18,8 @@ pub enum InputItem {
     EasyMessage(models::EasyMessage),
     Item(models::Item),
     ItemReference(models::ItemReference),
+    /// A `type` this client does not know, holding the value as it came, which is what it serializes to.
+    Unknown(serde_json::Value),
 }
 
 impl<'de> Deserialize<'de> for InputItem {
@@ -42,7 +44,7 @@ impl InputItem {
             Tag::Value("tool_call") => dispatch::decode(value, UNION, "Item").map(Self::Item),
             Tag::Value("item_reference") => dispatch::decode(value, UNION, "ItemReference").map(Self::ItemReference),
             Tag::Missing => dispatch::first_of(value, UNION, TAG, &[("EasyMessage", |v| serde_json::from_value(v).map(Self::EasyMessage)),("Item", |v| serde_json::from_value(v).map(Self::Item)),("ItemReference", |v| serde_json::from_value(v).map(Self::ItemReference)),]),
-            Tag::Value(other) => Err(dispatch::unknown_tag(UNION, TAG, other)),
+            Tag::Value(_) => Ok(Self::Unknown(value)),
             Tag::NotObject => Err(dispatch::not_an_object(&value, UNION, TAG)),
         }
     }
@@ -60,6 +62,7 @@ impl std::fmt::Display for InputItem {
                 Ok(s) => write!(f, "{}", s),
                 Err(_) => Err(std::fmt::Error),
             },
+            Self::Unknown(value) => write!(f, "{}", value),
         }
     }
 }

@@ -1,12 +1,11 @@
 # Security Scheme Object
 
-Rules for the [Security Scheme Object](https://spec.openapis.org/oas/v3.0.3#security-scheme-object). The
-[baseline](README.md#baseline) options apply. Which schemes an operation sends is
-[`operation.security`](operation.md#operationsecurity). Every credential is a field of `Configuration`, empty by
-default, and is sent only when set.
+Rules for the [Security Scheme Object](https://spec.openapis.org/oas/v3.0.3#security-scheme-object). Which schemes an
+operation sends is [`operation.security`](operation.md#operationsecurity). Every credential is a field of
+`Configuration`, empty by default, and is sent only when set.
 
 Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`. `OperationMappingTest` renders
-`src/test/resources/operation_mapping.yaml` with the baseline options.
+`src/test/resources/operation_mapping.yaml` without options.
 
 ### `securityScheme.type.http-bearer`
 

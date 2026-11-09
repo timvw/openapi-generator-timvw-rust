@@ -90,17 +90,8 @@ impl std::fmt::Display for {{{classname}}} {
 }
 
 {{/isInteger}}
-{{^defaultOnlyWhereValid}}
-impl Default for {{{classname}}} {
-    fn default() -> {{{classname}}} {
-        {{#allowableValues}}
-        Self::{{ enumVars.0.name }}
-        {{/allowableValues}}
-    }
-}
-{{/defaultOnlyWhereValid}}
 {{/isEnum}}
-{{!-- modelUnions: a union, as UnionRules decided it --}}
+{{!-- a union, as UnionRules decided it --}}
 {{#vendorExtensions.x-rust-enum}}
 {{#vendorExtensions.x-rust-enum-variants}}
 {{#vendorExtensions.x-rust-enum-model}}
@@ -108,7 +99,7 @@ pub use crate::models::{{{.}}};
 {{/vendorExtensions.x-rust-enum-model}}
 {{/vendorExtensions.x-rust-enum-variants}}
 
-{{!-- unionDispatch: a tagged union serializes untagged, since each struct holds its tag, and gets the Deserialize further down. --}}
+{{!-- a tagged union serializes untagged, since each struct holds its tag, and gets the Deserialize further down. --}}
 #[derive(Clone, Debug, PartialEq, Serialize{{^vendorExtensions.x-rust-enum-dispatch}}, Deserialize{{/vendorExtensions.x-rust-enum-dispatch}})]
 #[serde(untagged)]
 pub enum {{{classname}}} {
@@ -166,14 +157,6 @@ impl {{{classname}}} {
 }
 
 {{/vendorExtensions.x-rust-enum-dispatch}}
-{{^defaultOnlyWhereValid}}
-impl Default for {{{classname}}} {
-    fn default() -> Self {
-        {{#vendorExtensions.x-rust-enum-variants}}{{#-first}}Self::{{{name}}}(Default::default()){{/-first}}{{/vendorExtensions.x-rust-enum-variants}}
-    }
-}
-
-{{/defaultOnlyWhereValid}}
 {{#vendorExtensions.x-rust-enum-text}}
 impl {{{classname}}} {
     pub fn new_text(text: String) -> Self {
@@ -230,7 +213,6 @@ impl std::fmt::Display for {{{classname}}} {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "{{{propertyBaseName}}}")]
 pub enum {{{classname}}} {
-    {{^oneOf}}
     {{#mappedModels}}
     #[serde(rename="{{mappingName}}")]
     {{^vendorExtensions.x-rust-inline-variants}}
@@ -249,39 +231,15 @@ pub enum {{{classname}}} {
     },
     {{/vendorExtensions.x-rust-inline-variants}}
     {{/mappedModels}}
-    {{/oneOf}}
-    {{^oneOf.isEmpty}}
-    {{#composedSchemas.oneOf}}
-    {{#description}}
-    /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
-    {{/description}}
-    {{#baseName}}
-    #[serde(rename="{{{.}}}")]
-    {{/baseName}}
-    {{{name}}}({{#isModel}}{{#vendorExtensions.x-rust-box}}Box<{{/vendorExtensions.x-rust-box}}{{/isModel}}{{{dataType}}}{{#isModel}}{{#vendorExtensions.x-rust-box}}>{{/vendorExtensions.x-rust-box}}{{/isModel}}),
-    {{/composedSchemas.oneOf}}
-    {{/oneOf.isEmpty}}
 }
 
-{{^defaultOnlyWhereValid}}
-impl Default for {{classname}} {
-    fn default() -> Self {
-        {{^oneOf}}{{#mappedModels}}{{#-first}}{{^vendorExtensions.x-rust-inline-variants}}Self::{{modelName}}(Default::default()){{/vendorExtensions.x-rust-inline-variants}}{{#vendorExtensions.x-rust-inline-variants}}Self::{{modelName}} {
-        {{#vars}}
-            {{{name}}}: Default::default(),
-        {{/vars}}
-        }{{/vendorExtensions.x-rust-inline-variants}}{{/-first}}{{/mappedModels}}
-        {{/oneOf}}{{^oneOf.isEmpty}}{{#composedSchemas.oneOf}}{{#-first}}Self::{{{name}}}(Default::default()){{/-first}}{{/composedSchemas.oneOf}}{{/oneOf.isEmpty}}
-    }
-}
-{{/defaultOnlyWhereValid}}
 
 {{/discriminator}}
 {{!-- for non-enum schemas --}}
 {{^isEnum}}
 {{^discriminator}}
 {{#vendorExtensions.x-rust-has-byte-array}}#[serde_as]
-{{/vendorExtensions.x-rust-has-byte-array}}{{#oneOf.isEmpty}}#[derive(Clone, {{#vendorExtensions.x-rust-derive-default}}Default, {{/vendorExtensions.x-rust-derive-default}}Debug, PartialEq, Serialize, Deserialize{{#bonBuilders}}, bon::Builder{{/bonBuilders}})]
+{{/vendorExtensions.x-rust-has-byte-array}}#[derive(Clone, {{#vendorExtensions.x-rust-derive-default}}Default, {{/vendorExtensions.x-rust-derive-default}}Debug, PartialEq, Serialize, Deserialize{{#bonBuilders}}, bon::Builder{{/bonBuilders}})]
 pub struct {{{classname}}} {
 {{#vars}}
     {{#description}}
@@ -335,31 +293,6 @@ impl {{{classname}}} {
         }
     }
 }
-{{/oneOf.isEmpty}}
-{{^oneOf.isEmpty}}
-{{! TODO: add other vars that are not part of the oneOf}}
-{{#description}}
-/// {{#rustdoc}}{{{.}}}{{/rustdoc}}
-{{/description}}
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum {{classname}} {
-{{#composedSchemas.oneOf}}
-    {{#description}}
-    /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
-    {{/description}}
-    {{{name}}}({{#isModel}}{{#vendorExtensions.x-rust-box}}Box<{{/vendorExtensions.x-rust-box}}{{/isModel}}{{{dataType}}}{{#isModel}}{{#vendorExtensions.x-rust-box}}>{{/vendorExtensions.x-rust-box}}{{/isModel}}),
-{{/composedSchemas.oneOf}}
-}
-
-{{^defaultOnlyWhereValid}}
-impl Default for {{classname}} {
-    fn default() -> Self {
-        {{#composedSchemas.oneOf}}{{#-first}}Self::{{{name}}}(Default::default()){{/-first}}{{/composedSchemas.oneOf}}
-    }
-}
-{{/defaultOnlyWhereValid}}
-{{/oneOf.isEmpty}}
 {{/discriminator}}
 {{/isEnum}}
 {{/vendorExtensions.x-rust-enum}}
@@ -420,15 +353,6 @@ pub enum {{{enumName}}} {
 }
 {{/isInteger}}
 
-{{^defaultOnlyWhereValid}}
-impl Default for {{{enumName}}} {
-    fn default() -> {{{enumName}}} {
-        {{#allowableValues}}
-        Self::{{ enumVars.0.name }}
-        {{/allowableValues}}
-    }
-}
-{{/defaultOnlyWhereValid}}
 {{/isEnum}}
 {{/vars}}
 

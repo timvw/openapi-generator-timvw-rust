@@ -22,30 +22,21 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** With modelUnions, a multipart union with file variants uploads the files instead of sending their paths as text. */
+/** A multipart union with file variants uploads the files instead of sending their paths as text. */
 class MultipartFileUnionsTest {
 
     @TempDir
     static Path on;
 
-    @TempDir
-    static Path off;
-
     @BeforeAll
     static void generate() {
-        generate("multipart_unions.yaml", on, true);
-        generate("multipart_unions.yaml", off, false);
+        generate("multipart_unions.yaml", on);
     }
 
-    private static void generate(String spec, Path output, boolean modelUnions) {
+    private static void generate(String spec, Path output) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "multipart_unions");
         props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
-        props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
-        if (modelUnions) {
-            props.put(TimvwRustCodegen.MODEL_UNIONS, "true");
-            props.put(TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true");
-        }
         CodegenConfigurator configurator = new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of("src/test/resources/" + spec).toAbsolutePath().toString())
@@ -144,19 +135,9 @@ class MultipartFileUnionsTest {
     }
 
     @Test
-    void withoutTheOptionNothingMatches() throws IOException {
-        for (String module : List.of("videos", "skills", "mixed", "plain")) {
-            String api = api(off, module);
-            assertFalse(api.contains("add_file_to_form"), api);
-            assertFalse(api.contains("match param_value {"), api);
-            assertFalse(api.contains("files[]"), api);
-        }
-    }
-
-    @Test
     void filesInAShapeMultipartCannotCarryFailGeneration(@TempDir Path output) {
         Throwable failure = assertThrows(RuntimeException.class,
-                () -> generate("multipart_unions_nested.yaml", output, true));
+                () -> generate("multipart_unions_nested.yaml", output));
         StringBuilder messages = new StringBuilder();
         for (Throwable t = failure; t != null; t = t.getCause()) {
             messages.append(t.getMessage()).append('\n');

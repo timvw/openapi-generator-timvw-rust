@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The operation-side rules of docs/mapping (Operation, Parameter, Request Body, Responses, Server, Security Scheme)
- * that no option test covers, rendered with the mapping's baseline options from
+ * that no option test covers, rendered without options from
  * {@code src/test/resources/operation_mapping.yaml}.
  */
 class OperationMappingTest {

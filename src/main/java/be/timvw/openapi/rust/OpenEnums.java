@@ -27,7 +27,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Milestone 3.5 ({@code openEnums}): enums and tagged unions a response can hold get a catch-all, so that one new value
+ * Milestone 3.5: enums and tagged unions a response can hold get a catch-all, so that one new value
  * from the API does not fail the whole response.
  *
  * <p><b>Reachable.</b> Everything a response body can hold, in any media type (so server-sent events too), of any

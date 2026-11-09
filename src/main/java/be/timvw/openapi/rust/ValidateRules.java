@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
 
 /**
  * The generated {@code Validate} trait (decisions 9 and 8): every model implements
- * {@code crate::validation::Validate}, whose {@code validate()} checks the validation keywords of the model's schema
+ * {@code crate::models::validation::Validate} (in {@code src/models/validation.rs}), whose {@code validate()} checks the validation keywords of the model's schema
  * and of every model, list, map and union variant it holds, and returns the first value that breaks one.
  *
  * <p>Checked: {@code minLength} and {@code maxLength} of a {@code String} (in characters), {@code pattern} (with the
@@ -45,7 +45,7 @@ final class ValidateRules {
     /** Vendor extension on a {@link CodegenProperty}: its constraints, for its documentation. */
     static final String NOTE = "x-rust-validation-note";
 
-    private static final String V = "crate::validation::";
+    private static final String V = "crate::models::validation::";
 
     private static final Set<String> FLOATS = Set.of("f32", "f64");
     private static final Map<String, BigInteger[]> INTEGERS = new LinkedHashMap<>();
@@ -63,6 +63,23 @@ final class ValidateRules {
             "\\(\\?(?:=|!|<=|<!|>)|(?<!\\\\)(?:\\\\\\\\)*\\\\(?:[1-9]|k<|c[A-Za-z])");
 
     private ValidateRules() {
+    }
+
+    /** The module of the trait, {@code src/models/validation.rs}. */
+    static final String MODULE = "validation";
+
+    /** Fails when a model would be written to the module of the trait. */
+    static void checkModuleName(Map<String, ModelsMap> allModels) {
+        for (ModelsMap mm : allModels.values()) {
+            for (ModelMap m : mm.getModels()) {
+                CodegenModel cm = m.getModel();
+                if (MODULE.equals(cm.classFilename)) {
+                    throw new IllegalArgumentException(TimvwRustCodegen.GENERATOR_NAME + ": the schema "
+                            + cm.name + " would be the module models::" + MODULE + ", which the generated Validate "
+                            + "trait needs; set " + TimvwRustCodegen.VALIDATE_METHODS + "=false or rename the schema");
+                }
+            }
+        }
     }
 
     /** What {@link #apply} did. */

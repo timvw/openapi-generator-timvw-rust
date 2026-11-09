@@ -55,8 +55,8 @@ impl std::fmt::Display for Content {
     }
 }
 
-impl crate::validation::Validate for Content {
-    fn validate(&self) -> Result<(), crate::validation::ValidationError> {
+impl crate::models::validation::Validate for Content {
+    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {
         Ok(())
     }
 }

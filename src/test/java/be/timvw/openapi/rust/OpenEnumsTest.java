@@ -174,8 +174,7 @@ class OpenEnumsTest {
                 """);
         Files.createDirectories(crate.resolve("src/models"));
         Files.createDirectories(crate.resolve("tests"));
-        Files.writeString(crate.resolve("src/lib.rs"), "#![allow(clippy::all)]\npub mod models;\npub mod validation;\n");
-        Files.copy(on.resolve("src/validation.rs"), crate.resolve("src/validation.rs"));
+        Files.writeString(crate.resolve("src/lib.rs"), "#![allow(clippy::all)]\npub mod models;\n");
         try (Stream<Path> files = Files.list(on.resolve("src/models"))) {
             for (Path file : (Iterable<Path>) files::iterator) {
                 Files.copy(file, crate.resolve("src/models").resolve(file.getFileName()));

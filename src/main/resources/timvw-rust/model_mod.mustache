@@ -4,6 +4,9 @@ pub mod {{{classFilename}}};
 pub use self::{{{classFilename}}}::{{{classname}}};
 {{/model}}
 {{/models}}
+{{#validateMethods}}
+pub mod validation;
+{{/validateMethods}}
 {{#serdeAsDoubleOption}}
 use serde::{Deserialize, Deserializer, Serializer};
 use serde_with::{de::DeserializeAsWrap, ser::SerializeAsWrap, DeserializeAs, SerializeAs};

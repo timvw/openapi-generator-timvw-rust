@@ -310,8 +310,8 @@ impl {{{classname}}} {
 {{/vendorExtensions.x-rust-enum}}
 {{#validateMethods}}
 
-impl crate::validation::Validate for {{{classname}}} {
-    fn validate(&self) -> Result<(), crate::validation::ValidationError> {
+impl crate::models::validation::Validate for {{{classname}}} {
+    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {
 {{{vendorExtensions.x-rust-validate}}}        Ok(())
     }
 }

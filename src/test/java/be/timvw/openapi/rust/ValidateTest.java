@@ -21,10 +21,11 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Decisions 9 and 8: every model implements the generated {@code validation::Validate} trait, which checks the
+ * Decisions 9 and 8: every model implements the generated {@code models::validation::Validate} trait, which checks the
  * validation keywords of its schema (see {@link ValidateRules}). What it does at run time is in
  * src/test/rust/validate.rs, which {@link #whatItDoesAtRunTime} runs with cargo.
  */
@@ -72,15 +73,15 @@ class ValidateTest {
     void everyModelImplementsTheTrait() throws IOException {
         for (String model : List.of("request", "message", "point", "content", "shape", "circle", "square", "node",
                 "holder", "validate", "validation_error")) {
-            assertContains(read(on, model), "impl crate::validation::Validate for ");
+            assertContains(read(on, model), "impl crate::models::validation::Validate for ");
         }
         String point = read(on, "point");
-        assertContains(point, "impl crate::validation::Validate for Point {\n"
-                + "    fn validate(&self) -> Result<(), crate::validation::ValidationError> {\n"
+        assertContains(point, "impl crate::models::validation::Validate for Point {\n"
+                + "    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {\n"
                 + "        Ok(())\n    }\n}");
-        String lib = Files.readString(on.resolve("src/lib.rs"));
-        assertContains(lib, "pub mod validation;");
-        String validation = Files.readString(on.resolve("src/validation.rs"));
+        assertContains(Files.readString(on.resolve("src/models/mod.rs")), "pub mod validation;");
+        assertFalse(Files.readString(on.resolve("src/lib.rs")).contains("validation"));
+        String validation = Files.readString(on.resolve("src/models/validation.rs"));
         assertContains(validation, "pub trait Validate {\n");
         assertContains(validation, "pub struct ValidationError {");
         assertContains(validation, "impl std::error::Error for ValidationError {}");
@@ -89,18 +90,18 @@ class ValidateTest {
     @Test
     void stringsNumbersListsAndMapsAreChecked() throws IOException {
         String request = read(on, "request");
-        assertContains(request, "crate::validation::items(self.messages.len(), Some(1), Some(3))"
+        assertContains(request, "crate::models::validation::items(self.messages.len(), Some(1), Some(3))"
                 + ".map_err(|e| e.at(\"messages\"))?;");
-        assertContains(request, "crate::validation::exclusive_maximum(self.count, 100).map_err(|e| e.at(\"count\"))?;");
+        assertContains(request, "crate::models::validation::exclusive_maximum(self.count, 100).map_err(|e| e.at(\"count\"))?;");
         assertContains(request, "if let Some(Some(value0)) = &self.temperature {\n"
-                + "            crate::validation::minimum(*value0, 0.0).map_err(|e| e.at(\"temperature\"))?;");
-        assertContains(request, "crate::validation::multiple_of(*value0, 0.1)");
-        assertContains(request, "crate::validation::unique_items(value0).map_err(|e| e.at(\"tags\"))?;");
-        assertContains(request, "crate::validation::length(item1, None, Some(5))"
+                + "            crate::models::validation::minimum(*value0, 0.0).map_err(|e| e.at(\"temperature\"))?;");
+        assertContains(request, "crate::models::validation::multiple_of(*value0, 0.1)");
+        assertContains(request, "crate::models::validation::unique_items(value0).map_err(|e| e.at(\"tags\"))?;");
+        assertContains(request, "crate::models::validation::length(item1, None, Some(5))"
                 + ".map_err(|e| e.at_index(index1).at(\"tags\"))?;");
-        assertContains(request, "crate::validation::properties(value0.len(), Some(1), Some(2))");
+        assertContains(request, "crate::models::validation::properties(value0.len(), Some(1), Some(2))");
         assertContains(request, ".map_err(|e| e.at_key(key1).at(\"metadata\"))?;");
-        assertContains(read(on, "message"), "crate::validation::length(&self.content, Some(1), Some(10))"
+        assertContains(read(on, "message"), "crate::models::validation::length(&self.content, Some(1), Some(10))"
                 + ".map_err(|e| e.at(\"content\"))?;");
     }
 
@@ -108,20 +109,20 @@ class ValidateTest {
     void nestedModelsAreChecked() throws IOException {
         String request = read(on, "request");
         // holder has no constraints of its own, but holds a message
-        assertContains(request, "crate::validation::Validate::validate(&self.holder).map_err(|e| e.at(\"holder\"))?;");
-        assertContains(read(on, "holder"), "crate::validation::Validate::validate(&self.inner)");
+        assertContains(request, "crate::models::validation::Validate::validate(&self.holder).map_err(|e| e.at(\"holder\"))?;");
+        assertContains(read(on, "holder"), "crate::models::validation::Validate::validate(&self.inner)");
         // a model whose validate() cannot fail is not called
         assertFalse(read(on, "holder").contains("&self.plain"), read(on, "holder"));
-        assertContains(read(on, "node"), "crate::validation::Validate::validate(&self.next)");
+        assertContains(read(on, "node"), "crate::models::validation::Validate::validate(&self.next)");
     }
 
     @Test
     void unionsCheckTheActiveVariant() throws IOException {
         String content = read(on, "content");
         assertContains(content, "match self {\n            Self::Text(value) => {\n"
-                + "                crate::validation::length(value, None, Some(4))?;");
+                + "                crate::models::validation::length(value, None, Some(4))?;");
         assertContains(content, "Self::ArrayOfMessages(value) => {\n"
-                + "                crate::validation::Validate::validate(value)?;");
+                + "                crate::models::validation::Validate::validate(value)?;");
         // only Circle has something to check, and Unknown catches the rest
         assertContains(read(on, "shape"), "if let Self::Circle(value) = self {");
     }
@@ -132,33 +133,33 @@ class ValidateTest {
         assertFalse(request.contains("self.payload"), request);
         assertFalse(request.contains("self.points.len()"), request);
         assertFalse(request.contains("self.lookahead"), request);
-        assertContains(request, "crate::validation::items(value0.len(), Some(1), None).map_err(|e| e.at(\"colors\"))?;");
+        assertContains(request, "crate::models::validation::items(value0.len(), Some(1), None).map_err(|e| e.at(\"colors\"))?;");
     }
 
     @Test
     void aPatternIsMatchedWithARegexCompiledOnce() throws IOException {
         String message = read(on, "message");
-        assertContains(message, "crate::validation::pattern(value0, &PATTERN_0, r\"^[a-z]+\\d*$\")");
+        assertContains(message, "crate::models::validation::pattern(value0, &PATTERN_0, r\"^[a-z]+\\d*$\")");
         assertContains(message, "static PATTERN_0: std::sync::LazyLock<Option<regex::Regex>> = "
                 + "std::sync::LazyLock::new(|| regex::Regex::new(r\"^[a-z]+\\d*$\").ok());");
         assertContains(Files.readString(on.resolve("Cargo.toml")), "regex = ");
-        assertContains(Files.readString(on.resolve("src/validation.rs")), "pub fn pattern(");
+        assertContains(Files.readString(on.resolve("src/models/validation.rs")), "pub fn pattern(");
     }
 
     @Test
     void withoutAPatternThereIsNoRegexDependency() throws IOException {
         assertFalse(Files.readString(v31.resolve("Cargo.toml")).contains("regex"));
-        assertFalse(Files.readString(v31.resolve("src/validation.rs")).contains("regex::"));
+        assertFalse(Files.readString(v31.resolve("src/models/validation.rs")).contains("regex::"));
     }
 
     @Test
     void openApi31ExclusiveBoundsAreNumbers() throws IOException {
         String range = read(v31, "range");
-        assertContains(range, "crate::validation::exclusive_minimum(self.low, 0.0).map_err(|e| e.at(\"low\"))?;");
-        assertContains(range, "crate::validation::exclusive_maximum(self.low, 10.0).map_err(|e| e.at(\"low\"))?;");
-        assertContains(range, "crate::validation::exclusive_minimum(*value0, 1).map_err(|e| e.at(\"count\"))?;");
+        assertContains(range, "crate::models::validation::exclusive_minimum(self.low, 0.0).map_err(|e| e.at(\"low\"))?;");
+        assertContains(range, "crate::models::validation::exclusive_maximum(self.low, 10.0).map_err(|e| e.at(\"low\"))?;");
+        assertContains(range, "crate::models::validation::exclusive_minimum(*value0, 1).map_err(|e| e.at(\"count\"))?;");
         assertContains(range, "if let Some(Some(value0)) = &self.label {\n"
-                + "            crate::validation::length(value0, None, Some(3))");
+                + "            crate::models::validation::length(value0, None, Some(3))");
     }
 
     @Test
@@ -175,14 +176,25 @@ class ValidateTest {
 
     @Test
     void theOptionTurnsTheGenerationOff() throws IOException {
-        assertFalse(Files.exists(off.resolve("src/validation.rs")));
-        assertFalse(Files.readString(off.resolve("src/lib.rs")).contains("validation"));
+        assertFalse(Files.exists(off.resolve("src/models/validation.rs")));
+        assertFalse(Files.readString(off.resolve("src/models/mod.rs")).contains("pub mod validation;"));
         assertFalse(Files.readString(off.resolve("Cargo.toml")).contains("regex"));
         try (Stream<Path> files = Files.list(off.resolve("src/models"))) {
             for (Path file : (Iterable<Path>) files::iterator) {
                 assertFalse(Files.readString(file).contains("crate::validation"), file.toString());
             }
         }
+    }
+
+    @Test
+    void aSchemaWithTheNameOfTheModuleFailsGenerationUnlessTheOptionIsOff(@TempDir Path output, @TempDir Path offOutput)
+            throws IOException {
+        String message = assertThrows(IllegalArgumentException.class,
+                () -> generate("src/test/resources/validate_reserved.yaml", output, Map.of())).getMessage();
+        assertContains(message, "the schema Validation would be the module models::validation");
+        generate("src/test/resources/validate_reserved.yaml", offOutput,
+                Map.of(TimvwRustCodegen.VALIDATE_METHODS, "false"));
+        assertContains(read(offOutput, "validation"), "pub struct Validation {");
     }
 
     @Test
@@ -215,8 +227,7 @@ class ValidateTest {
                 """);
         Files.createDirectories(crate.resolve("src/models"));
         Files.createDirectories(crate.resolve("tests"));
-        Files.writeString(crate.resolve("src/lib.rs"), "pub mod models;\npub mod validation;\n");
-        Files.copy(on.resolve("src/validation.rs"), crate.resolve("src/validation.rs"));
+        Files.writeString(crate.resolve("src/lib.rs"), "pub mod models;\n");
         try (Stream<Path> files = Files.list(on.resolve("src/models"))) {
             for (Path file : (Iterable<Path>) files::iterator) {
                 Files.copy(file, crate.resolve("src/models").resolve(file.getFileName()));

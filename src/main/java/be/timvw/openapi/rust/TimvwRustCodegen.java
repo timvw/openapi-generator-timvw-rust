@@ -90,7 +90,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public static final String BON_BUILDERS = "bonBuilders";
 
     /**
-     * Our own option (default on): every model implements the generated {@code validation::Validate} trait, which
+     * Our own option (default on): every model implements the generated {@code models::validation::Validate} trait, which
      * checks the validation keywords of its schema (see {@link ValidateRules}).
      */
     public static final String VALIDATE_METHODS = "validateMethods";
@@ -323,7 +323,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         cliOptions.add(CliOption.newBoolean(BON_BUILDERS,
                 "Derive bon::Builder on model structs and put #[bon::builder] on API functions", true));
         cliOptions.add(CliOption.newBoolean(VALIDATE_METHODS,
-                "Every model implements the generated validation::Validate trait: validate() checks minLength, "
+                "Every model implements the generated models::validation::Validate trait: validate() checks minLength, "
                         + "maxLength, pattern (with the regex crate), minimum, maximum, exclusiveMinimum, "
                         + "exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties and "
                         + "maxProperties, in every nested model, and returns the first violation. Nothing calls it. "
@@ -501,6 +501,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 openEnumsCensus.reachableTagged().size(), openEnumsCensus.guardedUnions().size(),
                 openEnumsCensus.untaggedUnions().size());
         writeUnionPlan(unions);
+        if (validateMethods) {
+            ValidateRules.checkModuleName(objs);
+        }
         ValidateRules.Result validation = ValidateRules.apply(objs, validateMethods,
                 msg -> LOGGER.warn("{}: validate: {}", GENERATOR_NAME, msg));
         if (validateMethods) {
@@ -651,7 +654,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 || convertPropertyToBooleanAndWriteBack(VALIDATE_METHODS);
         additionalProperties.put(VALIDATE_METHODS, validateMethods);
         if (validateMethods) {
-            supportingFiles.add(new SupportingFile("validation.mustache", "src", "validation.rs"));
+            supportingFiles.add(new SupportingFile("validation.mustache", modelFolder, "validation.rs"));
         }
 
         titleNaming = !additionalProperties.containsKey(TITLE_NAMING)

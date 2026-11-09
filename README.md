@@ -83,7 +83,7 @@ The options of the generator itself:
 | Option | Default | Notes | Rule |
 | --- | --- | --- | --- |
 | `bonBuilders` | `true` | derive `bon::Builder` on model structs and put `#[bon::builder]` on API functions | [`schema.properties`](docs/mapping/schema.md#schemaproperties) |
-| `validateMethods` | `true` | every model implements the generated `validation::Validate` trait: `validate()` checks the schema's validation keywords (`minLength`, `pattern`, `maximum`, `minItems`, `uniqueItems`, ...) in every nested model and returns the first violation; nothing generated calls it. `false` generates no trait, no impls and no `regex` dependency | [`schema.pattern`](docs/mapping/schema.md#schemapattern) |
+| `validateMethods` | `true` | every model implements the generated `models::validation::Validate` trait: `validate()` checks the schema's validation keywords (`minLength`, `pattern`, `maximum`, `minItems`, `uniqueItems`, ...) in every nested model and returns the first violation; nothing generated calls it. `false` generates no trait, no impls and no `regex` dependency | [`schema.pattern`](docs/mapping/schema.md#schemapattern) |
 | `titleNaming` | `true` | let schema titles name, merge and replace types (stock); `false` keeps names from schema keys and paths | [`schema.title`](docs/mapping/schema.md#schematitle) |
 | `webhookModule` | unset | tag for webhook operations, generated into their own API module | |
 | `webhookModuleReexport` | `false` | `default_api` re-exports the webhook module | |

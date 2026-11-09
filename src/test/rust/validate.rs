@@ -3,7 +3,7 @@
 
 use serde_json::json;
 use validate_fixture::models::{self, Content, Request, Shape};
-use validate_fixture::validation::{Rule, Validate, ValidationError};
+use validate_fixture::models::validation::{Rule, Validate, ValidationError};
 
 fn valid() -> Request {
     serde_json::from_value(json!({

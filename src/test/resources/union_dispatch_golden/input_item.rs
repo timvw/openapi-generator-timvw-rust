@@ -67,8 +67,8 @@ impl std::fmt::Display for InputItem {
     }
 }
 
-impl crate::validation::Validate for InputItem {
-    fn validate(&self) -> Result<(), crate::validation::ValidationError> {
+impl crate::models::validation::Validate for InputItem {
+    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {
         Ok(())
     }
 }

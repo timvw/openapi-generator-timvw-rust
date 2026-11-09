@@ -3,7 +3,8 @@ info:
   title: Union parameters
   version: 1.0.0
 # Parameters whose type is a oneOf union, as openai-client-base's VaultStatusFilterParam (a status, or an array of
-# them): a scalar variant goes out as its plain text, any other as its JSON.
+# them): a scalar variant goes out as its plain text (a uuid hyphenated, a date-time RFC 3339), any other as its
+# JSON. Only the unions use uuid and chrono: the crate depends on them all the same.
 paths:
   /vaults/{status}:
     get:
@@ -29,6 +30,15 @@ paths:
             type: array
             items:
               $ref: '#/components/schemas/StatusFilter'
+        - name: ref
+          in: query
+          schema:
+            $ref: '#/components/schemas/Ref'
+        - name: maybe
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/NullableMixed'
         - name: X-Status
           in: header
           schema:
@@ -52,6 +62,19 @@ components:
         - type: integer
         - type: boolean
         - $ref: '#/components/schemas/Point'
+    Ref:
+      oneOf:
+        - type: string
+          format: uuid
+        - type: string
+          format: date-time
+        - type: string
+          format: date
+    NullableMixed:
+      nullable: true
+      oneOf:
+        - type: integer
+        - type: boolean
     Point:
       type: object
       required: [x]

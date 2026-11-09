@@ -6,7 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use union_params_fixture::apis::configuration::Configuration;
 use union_params_fixture::apis::default_api;
-use union_params_fixture::models::{Mixed, Point, Status, StatusFilter};
+use union_params_fixture::models::{Mixed, NullableMixed, Point, Ref, Status, StatusFilter};
 
 /// Serves one request with 204; returns the request.
 async fn serve() -> (Configuration, tokio::task::JoinHandle<String>) {
@@ -108,4 +108,32 @@ async fn other_variants() {
         request.await.unwrap().lines().next().unwrap(),
         "GET /vaults/active?mixed=%7B%22x%22%3A1%7D HTTP/1.1"
     );
+}
+
+/// A uuid variant goes out hyphenated, a date-time as RFC 3339 (not chrono's `Display`), a date as `YYYY-MM-DD`; a
+/// required parameter of a nullable union is an `Option`, sent when it is `Some`.
+#[tokio::test]
+async fn uuid_date_time_and_nullable_variants() {
+    let at = chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05+01:00").unwrap();
+    let id = uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap();
+    for (value, text) in [
+        (Ref::Text(id), "67e55044-10b1-426f-9247-bb680e5fe0c8"),
+        (Ref::Text2(at), "2026-01-02T03%3A04%3A05%2B01%3A00"),
+        (Ref::Text3(chrono::NaiveDate::from_ymd_opt(2026, 1, 31).unwrap()), "2026-01-31"),
+    ] {
+        let (configuration, request) = serve().await;
+        default_api::list_vaults()
+            .configuration(&configuration)
+            .status(StatusFilter::Status(Status::Active))
+            .mixed(Mixed::Integer(1))
+            .r#ref(value)
+            .maybe(NullableMixed::Boolean(false))
+            .call()
+            .await
+            .unwrap();
+        assert_eq!(
+            request.await.unwrap().lines().next().unwrap(),
+            format!("GET /vaults/active?mixed=1&ref={text}&maybe=false HTTP/1.1")
+        );
+    }
 }

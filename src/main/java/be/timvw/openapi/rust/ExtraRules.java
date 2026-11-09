@@ -260,14 +260,9 @@ final class ExtraRules {
 
     // ---------------------------------------------------------------- nullable union fields
 
-    /**
-     * Makes nullable every field that refers to a nullable union, so it renders as {@code Option<Option<U>>} (optional)
-     * or {@code Option<U>} (required) like any other nullable field.
-     *
-     * @return how many fields changed (counted once per field, not per property list)
-     */
+    /** The class names of the unions that are nullable ({@code nullable: true}, or {@code null} among the types). */
     @SuppressWarnings("rawtypes")
-    static int nullableUnionFields(Map<String, ModelsMap> objs, Map<String, CodegenModel> unions, OpenAPI openAPI) {
+    static Set<String> nullableUnions(Map<String, CodegenModel> unions, OpenAPI openAPI) {
         Map<String, Schema> schemas = SpecRules.schemas(openAPI);
         Set<String> nullable = new TreeSet<>();
         for (CodegenModel cm : unions.values()) {
@@ -277,6 +272,18 @@ final class ExtraRules {
                 nullable.add(cm.classname);
             }
         }
+        return nullable;
+    }
+
+    /**
+     * Makes nullable every field that refers to a nullable union, so it renders as {@code Option<Option<U>>} (optional)
+     * or {@code Option<U>} (required) like any other nullable field.
+     *
+     * @return how many fields changed (counted once per field, not per property list)
+     */
+    @SuppressWarnings("rawtypes")
+    static int nullableUnionFields(Map<String, ModelsMap> objs, Map<String, CodegenModel> unions, OpenAPI openAPI) {
+        Set<String> nullable = nullableUnions(unions, openAPI);
         int n = 0;
         for (CodegenModel cm : models(objs)) {
             for (List<CodegenProperty> vars : propertyLists(cm)) {

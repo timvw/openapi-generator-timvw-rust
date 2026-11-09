@@ -191,11 +191,16 @@ impl std::fmt::Display for {{{classname}}} {
             {{#vendorExtensions.x-rust-enum-plain-display}}
             Self::{{{name}}}(value) => write!(f, "{}", value),
             {{/vendorExtensions.x-rust-enum-plain-display}}
+            {{#vendorExtensions.x-rust-enum-rfc3339-display}}
+            Self::{{{name}}}(value) => write!(f, "{}", value.to_rfc3339()),
+            {{/vendorExtensions.x-rust-enum-rfc3339-display}}
             {{^vendorExtensions.x-rust-enum-plain-display}}
+            {{^vendorExtensions.x-rust-enum-rfc3339-display}}
             Self::{{{name}}}(value) => match serde_json::to_string(value) {
                 Ok(s) => write!(f, "{}", s),
                 Err(_) => Err(std::fmt::Error),
             },
+            {{/vendorExtensions.x-rust-enum-rfc3339-display}}
             {{/vendorExtensions.x-rust-enum-plain-display}}
             {{/vendorExtensions.x-rust-enum-variants}}
             {{#vendorExtensions.x-rust-enum-dispatch}}

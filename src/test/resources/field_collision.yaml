@@ -1,0 +1,15 @@
+openapi: 3.0.3
+info:
+  title: Field collision
+  version: 1.0.0
+# Two properties whose names become the same Rust field.
+paths: {}
+components:
+  schemas:
+    Thing:
+      type: object
+      properties:
+        foo-bar:
+          type: string
+        foo_bar:
+          type: string

@@ -123,9 +123,9 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | `type: object` with `properties` |
-| Rust | `pub struct` with `#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]`, one `pub` field per property with `#[serde(rename = "<name>")]`, and `new(<required fields>)` that sets the optional ones to `None`. Field names are `snake_case` |
+| Rust | `pub struct` with `#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]`, one `pub` field per property with `#[serde(rename = "<name>")]`, and `new(<required fields>)` that sets the optional ones to `None`. Field names are `snake_case`; two properties that become the same field (`foo-bar` and `foo_bar`) fail generation, naming both |
 | Options | `bonBuilders` (default `true`) adds the `bon::Builder` derive |
-| Tests | [`SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L114), [`GenerationTest#modelStructsDeriveBonBuilderAndEnumsDoNot`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L47) |
+| Tests | [`SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L114), [`GenerationTest#modelStructsDeriveBonBuilderAndEnumsDoNot`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L47), [`UnionParamsTest#twoPropertiesWithTheSameRustNameFail`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L97) |
 
 ### `schema.required`
 
@@ -351,9 +351,9 @@ A tagged union opens too: [`discriminator.propertyName.unknown-value`](discrimin
 | --- | --- |
 | OpenAPI | `oneOf` with two or more branches that are not `type: null` |
 | Rust | a `pub enum` with `#[serde(untagged)]` and a variant per branch, holding the branch's type (`User(models::UserMessage)`, `Text(String)`, `ArrayOfStrings(Vec<String>)`). No `Default`. A variant is boxed only where it closes a cycle (`Branch(Box<models::Branch>)`) |
-| Wire | decodes to the first variant, in [variant order](#schemaoneofvariant-order), that accepts the value; with a tag, by the tag ([`discriminator.propertyName`](discriminator.md#discriminatorpropertyname), [`schema.oneOf.implicit-tag`](#schemaoneofimplicit-tag)). Encodes as the variant's value, without a wrapper. As a path, query, header or cookie parameter or a form field (and per item of an array of them), it is its `Display`: a scalar variant as its plain text (`status=active`, `5`, `true`), any other as its JSON (`%5B%22active%22%5D`) |
+| Wire | decodes to the first variant, in [variant order](#schemaoneofvariant-order), that accepts the value; with a tag, by the tag ([`discriminator.propertyName`](discriminator.md#discriminatorpropertyname), [`schema.oneOf.implicit-tag`](#schemaoneofimplicit-tag)). Encodes as the variant's value, without a wrapper. As a path, query, header or cookie parameter or a form field (and per item of an array of them), it is its `Display`: a scalar variant as its plain text (`status=active`, `5`, `true`, a uuid hyphenated, a date `YYYY-MM-DD`, a date-time RFC 3339), any other as its JSON (`%5B%22active%22%5D`). A uuid or chrono variant makes the crate depend on `uuid` or `chrono` |
 | Options | always (stock renders a discriminated `oneOf` as `#[serde(tag = "...")]`, which does not decode when the branch structs keep the tag field, and writes the tag twice) |
-| Tests | [`ModelUnionsTest#aDiscriminatedOneOfIsUntaggedSoTheTagIsWrittenOnce`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L75), [`#nothingIsEmptyAndNoUnionHasADefault`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L201), [`#aCycleThroughAUnionIsBoxedOnlyThere`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L244), [`UnionParamsTest#aUnionIsSentAsItsDisplayNotItsJson`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L53), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L64) |
+| Tests | [`ModelUnionsTest#aDiscriminatedOneOfIsUntaggedSoTheTagIsWrittenOnce`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L75), [`#nothingIsEmptyAndNoUnionHasADefault`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L201), [`#aCycleThroughAUnionIsBoxedOnlyThere`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L244), [`UnionParamsTest#aUnionIsSentAsItsDisplayNotItsJson`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L61), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L110), [`UnionParamsTest#uuidAndDateVariantsPrintTheirText`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L71), [`#aUnionVariantMakesTheCrateDependOnItsCrate`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L80) |
 
 ### `schema.oneOf.variant-names`
 
@@ -393,10 +393,10 @@ object kind decides. Two variants that accept the same values decode to whicheve
 | | |
 | --- | --- |
 | OpenAPI | a `oneOf` or `anyOf` with a `type: null` branch (OpenAPI 3.1, or `nullable: true` on the union) |
-| Rust | the `null` branch is no variant: the union is nullable. With one other branch, there is no union: the schema is that branch (an object next to `null` is a struct). Where it is used, the nullable union follows [`schema.nullable`](../type-mapping.md#objects): an optional property is `Option<Option<U>>` |
+| Rust | the `null` branch is no variant: the union is nullable. With one other branch, there is no union: the schema is that branch (an object next to `null` is a struct). Where it is used, the nullable union follows [`schema.nullable`](../type-mapping.md#objects): an optional property is `Option<Option<U>>`. A required query, header or cookie parameter of a nullable union is an `Option` too, and `None` sends nothing |
 | Wire | `null` decodes to `Some(None)`, an absent property to `None` |
 | Options | always |
-| Tests | [`ModelUnionsTest#anObjectNextToNullIsAStruct`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L116), [`#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103), [`ExtraRulesTest#nullableUnionFieldsCanHoldNull`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L137) |
+| Tests | [`ModelUnionsTest#anObjectNextToNullIsAStruct`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L116), [`#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103), [`ExtraRulesTest#nullableUnionFieldsCanHoldNull`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L137), [`UnionParamsTest#aRequiredNullableUnionParameterIsAnOption`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L87) |
 
 ### `schema.oneOf.enum-branch`
 

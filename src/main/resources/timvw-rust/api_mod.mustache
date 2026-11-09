@@ -29,7 +29,7 @@ impl <T> fmt::Display for Error<T> {
             Error::ReqwestMiddleware(e) => ("reqwest-middleware", e.to_string()),
             Error::Serde(e) => ("serde", e.to_string()),
             {{#useSerdePathToError}}
-            Error::SerdePathToError(e) => ("serde", format!("{}: {}", e.path().to_string(), e.inner().to_string())),
+            Error::SerdePathToError(e) => ("serde", format!("{}: {}", e.path(), e.inner())),
             {{/useSerdePathToError}}
             Error::Io(e) => ("IO", e.to_string()),
             Error::ResponseError(e) => ("response", format!("status code {}", e.status)),

@@ -81,6 +81,21 @@ components:
           additionalProperties:
             type: string
             maxLength: 3
+        ratings:
+          type: object
+          minProperties: 1
+          maxProperties: 2
+          additionalProperties:
+            type: string
+            enum: [low, high]
+        rating_lists:
+          type: object
+          additionalProperties:
+            type: array
+            maxItems: 1
+            items:
+              type: string
+              enum: [low, high]
         stops:
           type: array
           items:

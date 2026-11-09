@@ -223,7 +223,8 @@ class EventStreamsTest {
 
     /**
      * With supportMultipleResponses the stream method still returns the stream (a stream response has no other
-     * success to choose from), while the other methods return {@code ResponseContent<..Success>}; the crate builds.
+     * success to choose from), while the other methods return {@code ResponseContent<..Success>}; the crate passes
+     * clippy.
      */
     @Test
     void aStreamMethodReturnsTheStreamWithSupportMultipleResponses() throws IOException, InterruptedException {
@@ -232,9 +233,10 @@ class EventStreamsTest {
                 + "Error<CreateResponseError>>"), api);
         assertTrue(api.contains("-> Result<ResponseContent<CreateResponseSuccess>, Error<CreateResponseError>>"), api);
         Assumptions.assumeTrue(cargo(multiple, 30, "--version") != null, "no cargo");
-        String build = cargo(multiple, 900, "build");
-        assertNotNull(build, "cargo did not finish");
-        assertTrue(build.contains("Finished") && !build.contains("error:") && !build.contains("error["), build);
+        String clippy = cargo(multiple, 900, "clippy", "--all-targets", "--", "-D", "warnings");
+        assertNotNull(clippy, "clippy did not finish");
+        assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("error[")
+                && !clippy.contains("warning:"), clippy);
     }
 
     /** Runs src/test/rust/event_streams.rs on the generated crate. Needs cargo; without it there is nothing to run. */

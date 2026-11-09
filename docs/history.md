@@ -91,6 +91,20 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`additionalProperties`), which did not compile, is sent as its JSON. Signatures do not change. The generated header
   replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
   into the existing header rather than append a second one.
+- A map whose values are an inline enum (`additionalProperties: {type: string, enum: [..]}`) is
+  `HashMap<String, <Enum>>` (a map of lists of it `HashMap<String, Vec<<Enum>>>`, a list of such maps
+  `Vec<HashMap<String, <Enum>>>`); it was the enum itself (or a list of it), which the JSON does not decode to. The
+  field's type changes,
+  and `validate()` now checks its `minProperties`/`maxProperties` (its enum values have nothing to check).
+- `contentTypeMethods` without `typedEventStreams`: the method for another request media type of an operation whose
+  response is an event stream returned `sse::EventStream`, but `sse.rs` is only written with `typedEventStreams`, so
+  the crate did not compile. It now decodes the response as JSON, like the operation's own method.
+- `useSerdePathToError`: `Display` of `Error::SerdePathToError` no longer calls `to_string()` inside `format!`
+  (clippy `to_string_in_format_args`). An operation whose only error is a `text/plain` default sets
+  `Some(DefaultResponse(content.clone()))` without an `UnknownValue` fallback that could not apply.
+- `cargo test --doc` passes on a generated crate: `lib.rs` includes the README as the crate's documentation, and its
+  `Cargo.toml` line and `cargo doc --open` were bare code blocks, so rustdoc compiled them as Rust. They are marked
+  `toml` and `sh`.
 - Every model implements a generated `Validate` trait
   ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
   [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,
@@ -104,6 +118,18 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   spec has a `pattern`. The generator's own warnings (a skipped pattern, a union field that is not rendered, ...) now show in the
   openapi-generator CLI and Docker image, which only print `org.openapitools` loggers; renames that are expected (a
   keyword as `r#type`, a Rust type the base generator uses as a variable name) log at debug instead of warn.
+- `contentTypeMethods` with `typedEventStreams`: an event stream whose schema models the SSE envelope (required
+  `event` and `data`), which gets no typed stream, now gets none in the method for another request media type either:
+  that method returned `sse::EventStream<Envelope>` and now decodes the response as JSON like the operation's own.
+- The generated README's description (`info.description`) has the code blocks rustdoc would compile marked `text`
+  (fenced without a language or with only `rust` and rustdoc attributes such as `no_run` or `ignore`, and indented
+  blocks, also inside a list item), so `cargo test --doc` does not compile them; code blocks in another language stay
+  as they are.
+- A discriminated union whose branches share one `enum` of every tag value (`kind: [cat, dog]` on both `Cat` and
+  `Dog`) dispatches each value to the branch the `mapping` names (`cat` decodes `Cat`, `dog` decodes `Dog`), instead
+  of trying both in order for either value: a branch's own tag values select it unless the mapping gives them to
+  another branch. The unused `decode` helper of `src/models/union_dispatch.rs` is now left
+  out when only `first_of` is used (clippy `dead_code`).
 - Parameter serialization fixes (pre-existing bugs found in reviews):
   - A query parameter the spec declares `style: deepObject` (an object or a `$ref` to one) keeps its type and is
     sent as `name[field]=value`; it was turned into `&str` and then dropped, or, with `resetQueryParameterStyle`,

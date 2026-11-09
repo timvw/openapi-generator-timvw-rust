@@ -1,0 +1,77 @@
+openapi: 3.0.3
+info:
+  title: Map enum values
+  version: "1"
+  description: |
+    A description with code blocks, which the README (the crate's documentation) must not run as doctests.
+
+    ```
+    curl https://example.com/x
+    ```
+
+    ```rust
+    this is not rust either
+    ```
+
+    ```json
+    {"stays": "json"}
+    ```
+
+    An indented block:
+
+        GET /x HTTP/1.1
+        Host: example.com
+
+    ```no_run
+    attribute only, still rust
+    ```
+
+    ```rust,ignore
+    ignored rust
+    ```
+
+    - a list item
+
+      with a continuation paragraph
+
+          code inside the item
+paths:
+  /x:
+    get:
+      operationId: getX
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Holder"}
+components:
+  schemas:
+    Holder:
+      type: object
+      properties:
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [red, green]
+        required_labels:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [high, low]
+        array_labels:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              enum: [up, down]
+        label_maps:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+              enum: [left, right]
+      required: [required_labels]

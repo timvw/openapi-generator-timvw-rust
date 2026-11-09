@@ -151,12 +151,21 @@ async fn text(status: &str, body: &'static str) -> ResponseContent<GetTextError>
     )
 }
 
-/// A `text/plain` error response holds the body as it is, not decoded as JSON; so does a `text/plain` default.
+/// A `text/plain` error response holds the body as it is, not decoded as JSON; so does a `text/plain` default. A
+/// string error that also lists JSON decodes as JSON.
 #[tokio::test]
 async fn a_text_error_holds_the_body() {
     let e = text("400 Bad Request", "bad input").await;
     assert!(
         matches!(&e.entity, Some(GetTextError::Status400(s)) if s == "bad input"),
+        "{:?}",
+        e.entity
+    );
+    // 402 lists JSON as well as text: it decodes as JSON.
+    let e = serve_as("402 Payment Required", "application/json", r#""pay up""#).await;
+    let e = error(default_api::get_text().configuration(&e).call().await);
+    assert!(
+        matches!(&e.entity, Some(GetTextError::Status402(s)) if s == "pay up"),
         "{:?}",
         e.entity
     );

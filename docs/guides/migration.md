@@ -328,8 +328,9 @@ check:
 - A trait of yours with a method named `validate`, in scope next to `Validate`, makes a call ambiguous. Call it by its
   path (`Validate::validate(&value)`).
 - The generator's own warnings now reach the CLI and the Docker image log, among them one per `pattern` that is not
-  checked ([which](validation.md#what-is-not-checked)). Expected renames (a keyword field as `r#type`) moved to debug.
-  A generation log that was quiet may now show warnings; read them once.
+  checked ([which](validation.md#what-is-not-checked)). Identifier renames and union fields a variant does not carry
+  log at debug, so only warnings you can act on remain (openai-client-base: 71 instead of 5331, most of them
+  openapi-generator's own). Read them once.
 
 ### Generated code is clippy-clean
 
@@ -356,6 +357,8 @@ After: no `apiLintAllows`.
   operation decodes JSON. Before, it returned an `sse::EventStream` without `sse.rs`, which did not compile. With
   `typedEventStreams`, an SSE envelope schema gets no stream in those methods either.
 - A map cookie or header parameter (`additionalProperties`), which did not compile, is sent as its JSON.
+- An optional query parameter whose type is a union goes out as the union's `Display`: a string variant as plain
+  text, no longer quoted JSON (openai-client-base's vault `status`: `status=active`, not `status=%22active%22`).
 - `cargo test --doc` passes on a generated crate. The generated README's `Cargo.toml` line and `cargo doc --open` are
   marked `toml` and `sh`. Code blocks of the spec's `info.description` that rustdoc would compile (no language,
   `rust`, or indented) are marked `text`. A client that kept its own README or disabled doctests for this can drop

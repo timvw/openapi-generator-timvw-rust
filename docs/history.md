@@ -130,6 +130,13 @@ the code before and after, and the steps for a client repository.
 
 ### Fixes
 
+- An optional or nullable query parameter whose type is a union is sent as the union's `Display`: a string or enum
+  variant as plain text, a number or boolean as its text, any other variant as its JSON. It was sent as JSON, so a
+  string went out quoted (openai-client-base's vault `status` filter: `status=%22active%22`, now `status=active`).
+- Generation warns only where a user can act: identifier renames (`application/json` → `ApplicationSlashJson`,
+  `[Done]` → `LeftSquareBracketDoneRightSquareBracket`) and each union field a variant does not carry log at debug,
+  the latter with one summary warning. openai-client-base's generation log goes from 5331 to 71 warnings,
+  langfuse-client-base's from 1472 to 4; most of what remains is openapi-generator's own.
 - `supportMultipleResponses` with `typedEventStreams`: the stream function returns its `EventStream`, as without the
   option (it returned the stream where `ResponseContent<..Success>` was declared, which did not compile).
 - A crate generated without options passes `cargo clippy -- -D warnings`: `ContentType::from` (`src/apis/mod.rs`) and

@@ -54,7 +54,8 @@ assert_eq!(paths, ["name", "sku", "tags"]);
 ```
 
 `validate()` checks the whole value and returns **every** violation as a `ValidationErrors`, a non-empty list of
-`ValidationError`s in the order of the fields. It has `len()`, `iter()` and `into_vec()`, iterates with `for`
+`ValidationError`s: in the order of the fields, nested values depth-first, map entries by key. The order is stable,
+and a valid value allocates nothing. It has `len()`, `iter()` and `into_vec()`, iterates with `for`
 (by value or by reference), and implements `Display` (one line per error) and `std::error::Error`, so `?` takes it into
 your error type. Each `ValidationError` holds:
 
@@ -65,8 +66,7 @@ your error type. Each `ValidationError` holds:
 | `actual` | what the value had: `length 0`, `"abc"`, `-1`, `11 items`, `items 0 and 1 are equal` |
 
 A `ValidationError` displays as `<path>: <actual> breaks <rule>`. Number limits are reported as `f64`, so an integer
-limit above 2^53 shows rounded. Map entries are visited in the map's order, which is unspecified, so with several bad
-entries in one map their order can vary.
+limit above 2^53 shows rounded.
 
 The generated functions **never call it**. The server checks the request anyway. A spec that is stricter than its
 server would otherwise block requests the server accepts, and a response that breaks a constraint the spec states is
@@ -160,6 +160,14 @@ WARN o.o.codegen.timvw.TimvwRustCodegen - timvw-rust: validate: Patterns.skip_bi
 `models/validation.rs`, no `Validate` impl and no `regex` dependency. The field documentation stays. Turn it off for a
 crate whose size or compile time matters more than the checks. openai-client-base's spec gives about 1,300 checks, which make its
 generated code 9% longer. Nothing else changes, since no generated code calls it.
+
+### Implementing `Validate` yourself
+
+`validate()` is a provided method of the trait. It collects what a hidden method, `validate_into(path, errors)`,
+pushes; the generated impls implement that method and call it on the values they hold. A type of yours that should
+take part (a newtype you put in a model by hand, say) implements `validate_into`, not `validate()`. Mirror the
+generated impls in `models/validation.rs` for the path and error types. A model with nothing to check implements it
+with an empty body.
 
 A schema whose module would be `models::validation` fails generation while the option is on; turn the option off or
 rename the schema. A property named `validate` and models named `Validate` or `ValidationError` work.

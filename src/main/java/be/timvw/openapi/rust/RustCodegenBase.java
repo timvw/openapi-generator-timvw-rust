@@ -477,16 +477,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
 
         String casedOriginalName = casingFunction.apply(originalName);
         if (!casedOriginalName.equals(name)) {
-            // A keyword as a raw identifier (type => r#type), a name that already is one, or a Rust type the base
-            // generator names a composed-schema variable after (Vec<String>) is renamed as expected: not worth a
-            // warning, which the CLI prints for every such field.
-            boolean expected = name.equals("r#" + casedOriginalName) || originalName.startsWith("r#")
-                    || originalName.contains("<") || originalName.contains("::");
-            if (expected) {
-                LOGGER.debug("{} cannot be used as a {} name. Renamed to {}", casedOriginalName, type, name);
-            } else {
-                LOGGER.warn("{} cannot be used as a {} name. Renamed to {}", casedOriginalName, type, name);
-            }
+            // Every rename here is mechanical (a keyword as r#type, [Done] as LeftSquareBracketDoneRightSquareBracket,
+            // application/json as ApplicationSlashJson) and the wire keeps the spec's name (serde rename): nothing for
+            // the user to act on, and the base generator asks for some names thousands of times. A rename that makes
+            // two names collide fails generation elsewhere (NameCollisions).
+            LOGGER.debug("{} cannot be used as a {} name. Renamed to {}", casedOriginalName, type, name);
         }
         return name;
     }

@@ -525,8 +525,16 @@ public class TimvwRustCodegen extends RustCodegenBase {
     @Override
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
         objs = super.postProcessAllModels(objs);
+        List<String> ownFields = new ArrayList<>();
         Map<String, CodegenModel> unions = UnionRules.plan(objs,
-                msg -> LOGGER.warn("{}: unions: {}", GENERATOR_NAME, msg));
+                msg -> LOGGER.warn("{}: unions: {}", GENERATOR_NAME, msg), ownFields::add);
+        // A field declared next to oneOf/anyOf that a variant lacks: one line per field is thousands for
+        // openai-client-base, so one warning with the count, and each field at debug.
+        ownFields.forEach(msg -> LOGGER.debug("{}: unions: {}", GENERATOR_NAME, msg));
+        if (!ownFields.isEmpty()) {
+            LOGGER.warn("{}: unions: {} fields declared on a union itself are not rendered, as a variant does not "
+                    + "carry them (debug logging lists them)", GENERATOR_NAME, ownFields.size());
+        }
         LOGGER.info("{}: {} fields of a nullable union made nullable", GENERATOR_NAME,
                 ExtraRules.nullableUnionFields(objs, unions, openAPI));
         if (deprecatedAttributes) {

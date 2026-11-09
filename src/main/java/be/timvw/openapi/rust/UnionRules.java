@@ -255,6 +255,15 @@ final class UnionRules {
      * @return the unions by model name
      */
     static Map<String, CodegenModel> plan(Map<String, ModelsMap> allModels, Consumer<String> warn) {
+        return plan(allModels, warn, warn);
+    }
+
+    /**
+     * {@link #plan(Map, Consumer)}, with the fields of a union that a variant does not carry, which are not rendered,
+     * reported to {@code ownFields} rather than {@code warn}.
+     */
+    static Map<String, CodegenModel> plan(Map<String, ModelsMap> allModels, Consumer<String> warn,
+                                          Consumer<String> ownFields) {
         Map<String, CodegenModel> byName = byName(allModels);
         Map<String, CodegenModel> unions = new LinkedHashMap<>();
         Map<String, List<CodegenProperty>> branches = new LinkedHashMap<>();
@@ -277,7 +286,7 @@ final class UnionRules {
         Shapes shapes = new Shapes(byName, branches);
         for (Map.Entry<String, CodegenModel> e : unions.entrySet()) {
             CodegenModel cm = e.getValue();
-            warnAboutOwnFields(cm, branches.get(e.getKey()), byName, warn);
+            warnAboutOwnFields(cm, branches.get(e.getKey()), byName, ownFields);
             clearFields(cm);
             List<CodegenProperty> ordered = shapes.order(branches.get(e.getKey()));
             cm.vendorExtensions.put(VARIANTS, ordered);

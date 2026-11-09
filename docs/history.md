@@ -154,6 +154,13 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   A client passing a value to a declared `deepObject` parameter now passes the typed value instead of a string; a
   server reading form arrays as one `,`-joined field reads repeated fields instead.
 
+- A query parameter whose type is a `oneOf` union (openai-client-base's vault `status`, `VaultStatusFilterParam`)
+  goes out as the union's `Display`: a string variant unquoted (`status=active`, it was `status=%22active%22`),
+  numbers and booleans as text, other variants as their JSON, as a path, header or cookie parameter already did.
+- Generation logs only what a user can act on: identifier renames (`[Done]` as
+  `LeftSquareBracketDoneRightSquareBracket`, `application/json` as `ApplicationSlashJson`) log at debug, and the fields
+  declared on a union that a variant does not carry are one warning with their count (each at debug).
+
 ## What the generator renders differently from `-g rust`
 
 For a side-by-side view of stock `-g rust`, timvw-rust and progenitor on one spec (generated types, what each

@@ -17,6 +17,7 @@ meant for any OpenAPI 3.0 spec.
 | [docs/type-mapping.md](docs/type-mapping.md) | the same as one overview table, including what is not yet a rule |
 | [docs/comparison](docs/comparison/README.md) | stock `-g rust`, timvw-rust and progenitor side by side on one spec |
 | [docs/roadmap.md](docs/roadmap.md) | the plan: document the mapping, decide what to change, make the generator conform |
+| [docs/decisions.md](docs/decisions.md) | proposed changes to the mapping, each with a recommendation and the maintainer's decision |
 | [docs/design](docs/design/partial-decoding-and-ownership.md) | design proposals with measurements: decoding only what is needed, and ownership |
 | [docs/history.md](docs/history.md) | how the generator replaced the clients' post-processing scripts |
 

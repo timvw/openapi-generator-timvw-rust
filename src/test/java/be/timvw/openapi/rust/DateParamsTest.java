@@ -24,7 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@code date} and {@code date-time} path, query and header parameters (decision 11) on
  * src/test/resources/date_params.yaml: a {@code date-time} is sent in RFC 3339 ({@code to_rfc3339}), a {@code date}
- * as {@code YYYY-MM-DD}; form fields (urlencoded and multipart text parts) alike. What goes on the wire is in src/test/rust/date_params.rs, which {@link #whatItDoesAtRunTime}
+ * as {@code YYYY-MM-DD}; form fields (urlencoded and multipart text parts) alike. What goes on the wire is in
+ * src/test/rust/date_params.rs, which {@link #whatItDoesAtRunTime}
  * runs with cargo against a local server.
  */
 class DateParamsTest {

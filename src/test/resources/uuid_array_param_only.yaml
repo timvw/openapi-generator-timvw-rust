@@ -1,0 +1,21 @@
+openapi: 3.0.3
+info:
+  title: A uuid only in an array parameter
+  version: 1.0.0
+# No model or scalar parameter has a uuid: only an array query parameter.
+paths:
+  /items:
+    get:
+      operationId: getItems
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+      responses:
+        '204':
+          description: Nothing

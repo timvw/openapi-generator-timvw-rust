@@ -44,7 +44,8 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   or header parameter or form field took `&str` (an array already took `Vec<uuid::Uuid>`) and now takes `uuid::Uuid`
   by value (`Option<uuid::Uuid>` when optional), as a model property does. It is sent hyphenated, as before. A client
   passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
-  not compile, now join their items.
+  not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
+  makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
 
 ## What the generator renders differently from `-g rust`
 

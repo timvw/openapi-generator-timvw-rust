@@ -40,11 +40,23 @@ class UuidParamsTest {
     @TempDir
     static Path noUuids;
 
+    @TempDir
+    static Path responseOnly;
+
+    @TempDir
+    static Path arrayParameterOnly;
+
+    @TempDir
+    static Path dateTimeErrorOnly;
+
     @BeforeAll
     static void generate() {
         generate(SPEC, out, false);
         generate(SPEC, helper, true);
         generate("src/test/resources/date_params.yaml", noUuids, false);
+        generate("src/test/resources/uuid_response_only.yaml", responseOnly, false);
+        generate("src/test/resources/uuid_array_param_only.yaml", arrayParameterOnly, false);
+        generate("src/test/resources/date_time_error_only.yaml", dateTimeErrorOnly, false);
     }
 
     private static void generate(String spec, Path output, boolean multipartHelper) {
@@ -104,9 +116,27 @@ class UuidParamsTest {
         assertTrue(cargo.contains("uuid = { version = \"^1.8\", features = [\"serde\", \"v4\"] }"), cargo);
         String without = Files.readString(noUuids.resolve("Cargo.toml"));
         assertFalse(without.contains("\nuuid = "), without);
+        // only a success response, or only an array parameter, has one
+        for (Path output : List.of(responseOnly, arrayParameterOnly)) {
+            String only = Files.readString(output.resolve("Cargo.toml"));
+            assertTrue(only.contains("\nuuid = "), only);
+        }
+        assertTrue(api(responseOnly).contains("Result<Vec<uuid::Uuid>, Error<ListIdsError>>"), api(responseOnly));
     }
 
-    /** Runs src/test/rust/uuid_params.rs on the generated crate. Needs cargo; without it there is nothing to run. */
+    /** chrono alike: a date-time only in an error response makes the crate depend on it. */
+    @Test
+    void theCrateDependsOnChronoWhenOnlyAResponseUsesIt() throws IOException {
+        String cargo = Files.readString(dateTimeErrorOnly.resolve("Cargo.toml"));
+        assertTrue(cargo.contains("\nchrono = "), cargo);
+        assertTrue(api(dateTimeErrorOnly).contains("chrono::DateTime<chrono::FixedOffset>"), api(dateTimeErrorOnly));
+    }
+
+    /**
+     * Runs src/test/rust/uuid_params.rs on the generated crate, and checks the crates with the helper, with a uuid only
+     * in a response and with a date-time only in an error response compile. Needs cargo; without it there is nothing
+     * to run.
+     */
     @Test
     void whatItDoesAtRunTime() throws IOException, InterruptedException {
         Assumptions.assumeTrue(cargo(out, 30, "--version") != null, "no cargo");
@@ -126,9 +156,11 @@ class UuidParamsTest {
         assertNotNull(output, "cargo did not finish");
         assertTrue(output.contains("test result: ok.") && !output.contains(" 0 passed"), output);
 
-        String check = cargo(helper, 900, "check");
-        assertNotNull(check, "cargo did not finish");
-        assertTrue(check.contains("Finished") && !check.contains("error:") && !check.contains("error["), check);
+        for (Path crate : List.of(helper, responseOnly, dateTimeErrorOnly)) {
+            String check = cargo(crate, 900, "check");
+            assertNotNull(check, "cargo did not finish");
+            assertTrue(check.contains("Finished") && !check.contains("error:") && !check.contains("error["), check);
+        }
     }
 
     /** What cargo printed, or {@code null} when it cannot run or does not finish in time. */

@@ -61,12 +61,29 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of
   `date` or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a
   client that built such a request by hand to get RFC 3339 can call the generated function instead.
+- `responseFunctions` (new option, off by default; [decision 1](decisions.md#1-response-functions-returning-apiresponset)):
+  every operation whose success is a JSON body, text or nothing also gets `<operation>_response`, which sends the
+  same request and fails with the same typed error but returns `apis::ApiResponse<T>`: the `status`, the `headers`
+  and the undecoded body, with `json()` (the generated type), `json_as::<U>()` (a type of the caller's, owned),
+  `json_borrowed::<U>()` (borrowing from the body) and `text()`. Binary responses, event streams and webhooks get
+  none. A twin whose name another operation of the module has fails generation. Without the option nothing changes;
+  see the [guide](guides/response-functions.md).
 - A `format: uuid` parameter is `uuid::Uuid` ([decision 6](decisions.md#6-uuid-parameters-are-str)): a path, query
   or header parameter or form field took `&str` (an array already took `Vec<uuid::Uuid>`) and now takes `uuid::Uuid`
   by value (`Option<uuid::Uuid>` when optional), as a model property does. It is sent hyphenated, as before. A client
   passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
   not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
   makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
+- A `text/plain` error response holds its body as it is: a `string` error response (or `default`) whose media types
+  are text and none JSON was decoded as JSON, so a plain-text body (`bad input`) gave no entity; it now gives
+  `Status400("bad input")` (`DefaultResponse(..)` for the default), as decision 5 picks the variant by status (also in
+  the `_response` function of `responseFunctions`). A client that read such an error from `content` can match the
+  variant.
+- `supportMultipleResponses` with `typedEventStreams`: the stream function returns its `EventStream`, as without the
+  option (it returned the stream where `ResponseContent<..Success>` was declared, which did not compile).
+- A crate generated without options passes `cargo clippy -- -D warnings`: `ContentType::from` (`src/apis/mod.rs`) and
+  the content-type match of each function no longer `return` from their last expression (`needless_return`). A client
+  that allowed `clippy::needless_return` through `apiLintAllows` only for this can drop it.
 - Cookie parameters are sent ([decision 3](decisions.md#3-cookie-parameters-are-not-sent)): the argument was
   accepted and never used. The cookie parameters that are set now go out in one `Cookie` header (`a=1; b=2`), each
   value percent-encoded where it is not an RFC 6265 cookie-octet, an exploded array as a pair per item. An api key

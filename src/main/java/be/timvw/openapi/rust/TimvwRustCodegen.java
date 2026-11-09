@@ -167,6 +167,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
      */
     public static final String CONTENT_TYPE_METHODS = "contentTypeMethods";
     /**
+     * Every operation whose success is a body (not a file or an event stream) also gets {@code <operation>_response},
+     * returning {@code apis::ApiResponse<T>}: status, headers and the undecoded body (decision 1).
+     */
+    public static final String RESPONSE_FUNCTIONS = "responseFunctions";
+    /** Set on an operation with {@link #RESPONSE_FUNCTIONS}: the context its {@code _response} twin renders with. */
+    static final String RESPONSE_FUNCTION = "x-rust-response-function";
+    /**
      * Inline enums of parameters and of form or multipart body properties become component enums, so the API function
      * takes the enum instead of {@code &str} (see {@link ExtraRules#typedEnumParameters}).
      */
@@ -319,6 +326,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /** Some operation got a typed event stream: only then are {@code sse.rs} and its {@code mod} line written. */
     private boolean anyEventStream;
     private boolean contentTypeMethods;
+    private boolean responseFunctions;
     /** The methods added for an operation, by its own method, which gets its auth methods only after it was grouped. */
     private final Map<CodegenOperation, List<CodegenOperation>> contentVariants = new java.util.IdentityHashMap<>();
     /** The methods per API module ({@code tag#operationId}), to fail on a suffixed name another operation has. */
@@ -399,6 +407,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 "One method per request body media type and per success response shape (JSON, text, bytes): the "
                         + "operation's method keeps the first of each, the others are <operation>_<suffix> "
                         + "(_json, _multipart, _form, _text, _bytes or the media subtype)", false));
+        cliOptions.add(CliOption.newBoolean(RESPONSE_FUNCTIONS,
+                "Every operation whose success is a body also gets <operation>_response, which sends the same request "
+                        + "and fails the same way but returns apis::ApiResponse<T>: the status, the headers and the "
+                        + "undecoded body, with json() (the generated type), json_as::<U>() (a type of the "
+                        + "caller's), json_borrowed::<U>() (borrowing from the body) and text()", false));
         cliOptions.add(CliOption.newBoolean(TYPED_ENUM_PARAMETERS,
                 "Inline enums of query, path, header and cookie parameters, and of the properties of form and "
                         + "multipart bodies, become component enums (<operationId>_<parameter>, <Schema>_<property>), so "
@@ -706,6 +719,14 @@ public class TimvwRustCodegen extends RustCodegenBase {
         contentTypeMethods = additionalProperties.containsKey(CONTENT_TYPE_METHODS)
                 && convertPropertyToBooleanAndWriteBack(CONTENT_TYPE_METHODS);
         additionalProperties.put(CONTENT_TYPE_METHODS, contentTypeMethods);
+        responseFunctions = additionalProperties.containsKey(RESPONSE_FUNCTIONS)
+                && convertPropertyToBooleanAndWriteBack(RESPONSE_FUNCTIONS);
+        additionalProperties.put(RESPONSE_FUNCTIONS, responseFunctions);
+        if (responseFunctions) {
+            supportingFiles.add(new SupportingFile("api_response.mustache", apiFolder, "api_response.rs"));
+            additionalProperties.put("x-rust-crate", String.valueOf(additionalProperties.get("packageName"))
+                    .replace('-', '_'));
+        }
         Object plan = additionalProperties.get(UNION_PLAN_FILE);
         unionPlanFile = plan == null || String.valueOf(plan).isEmpty() ? null : String.valueOf(plan);
         for (String flag : Arrays.asList(USER_AGENT_FROM_PACKAGE)) {
@@ -1208,6 +1229,39 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 variants.size(), variants.stream().map(v -> v.operationId).collect(java.util.stream.Collectors.toList()));
     }
 
+    /**
+     * With {@code responseFunctions}, marks every method of one API module whose success is a body: the api template
+     * renders it a second time as {@code <operation>_response}, returning {@code ApiResponse<T>}. A file response
+     * already is the {@code reqwest::Response} and an event stream is not a body to hold, so neither gets one. Fails
+     * when the name is another method's.
+     */
+    private void addResponseFunctions(List<CodegenOperation> operations) {
+        Set<String> names = new HashSet<>();
+        for (CodegenOperation op : operations) {
+            names.add(op.operationId);
+        }
+        for (CodegenOperation op : operations) {
+            if (op.isResponseFile || op.vendorExtensions.containsKey(EVENT_STREAM)) {
+                continue;
+            }
+            String name = op.operationId + "_response";
+            if (names.contains(name)) {
+                throw new IllegalArgumentException(String.format("%s: %s: %s would get the method %s, but another "
+                                + "operation of its API module is named %s; rename one of them (operationId)",
+                        GENERATOR_NAME, RESPONSE_FUNCTIONS, op.operationId, name, name));
+            }
+            String type = isSupportMultipleResponses() ? op.operationIdCamelCase + "Success"
+                    : op.returnType == null ? "()" : op.returnType;
+            Map<String, Object> context = new HashMap<>();
+            context.put("x-rust-as-response", true);
+            context.put("x-rust-response-type", type);
+            // The twin's doc paragraph follows the operation's doc lines with an empty line, only when there are some.
+            context.put("x-rust-doc-gap", (op.notes != null && !op.notes.isEmpty())
+                    || op.vendorExtensions.containsKey(VARIANT_DOC));
+            op.vendorExtensions.put(RESPONSE_FUNCTION, context);
+        }
+    }
+
     /** Fails when a suffixed method takes the name of another method of the same API module. */
     private void claimName(String tag, CodegenOperation co, boolean variant) {
         String key = tag + "#" + co.operationId;
@@ -1385,6 +1439,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
         if (helperUsed) {
             objs.put(MULTIPART_HELPER_IMPORT, true);
+        }
+        if (responseFunctions && objs.getOperations() != null && objs.getOperations().getOperation() != null) {
+            addResponseFunctions(objs.getOperations().getOperation());
         }
         Imports.markApi(objs, multipartHelper, isSupportMultipleResponses());
         if (webhookModuleReexport && objs.getOperations() != null

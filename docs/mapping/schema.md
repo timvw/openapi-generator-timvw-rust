@@ -61,7 +61,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | Wire | the file's bytes, streamed from disk; the response body as it comes |
 | Library | `reqwest::Response`; the file is opened with tokio and streamed as a `reqwest::Body` or `reqwest::multipart::Part` |
 | Options | `fileProperties` renders listed `Schema.property` entries as files |
-| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L105), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L138) |
+| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L105), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L150) |
 
 ### `schema.type.integer`
 

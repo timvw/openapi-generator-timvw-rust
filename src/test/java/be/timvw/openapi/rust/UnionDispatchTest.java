@@ -214,7 +214,7 @@ class UnionDispatchTest {
     void aSchemaWithTheNameOfTheHelperFailsGeneration(@TempDir Path output) {
         String message = assertThrows(IllegalStateException.class,
                 () -> generate("src/test/resources/union_dispatch_reserved.yaml", output)).getMessage();
-        assertTrue(message.contains("unionDispatch needs the module union_dispatch"), message);
+        assertTrue(message.contains("union dispatch needs the module union_dispatch"), message);
     }
 
     private static String failure(String spec, Path output) {

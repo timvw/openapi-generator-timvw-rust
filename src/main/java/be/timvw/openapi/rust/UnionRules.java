@@ -161,9 +161,9 @@ final class UnionRules {
                     String name = modelName.apply(e.getKey()) + variant + "Enum";
                     Schema existing = schemas.containsKey(name) ? schemas.get(name) : added.get(name);
                     if (existing != null && !b.getEnum().equals(existing.getEnum())) {
-                        throw new IllegalArgumentException(String.format("%s: %s: the string enum branch of %s would "
+                        throw new IllegalArgumentException(String.format("%s: unions: the string enum branch of %s would "
                                         + "be the model %s, which a different schema already is; fix this upstream",
-                                TimvwRustCodegen.GENERATOR_NAME, TimvwRustCodegen.MODEL_UNIONS, e.getKey(), name));
+                                TimvwRustCodegen.GENERATOR_NAME, e.getKey(), name));
                     }
                     if (existing == null) {
                         StringSchema values = new StringSchema();
@@ -204,8 +204,8 @@ final class UnionRules {
             return;
         }
         if (branches == null || branches.size() != variants.size()) {
-            throw new IllegalStateException(String.format("%s: %s: %s has %d variants for %s branches",
-                    TimvwRustCodegen.GENERATOR_NAME, TimvwRustCodegen.MODEL_UNIONS, schemaName, variants.size(),
+            throw new IllegalStateException(String.format("%s: unions: %s has %d variants for %s branches",
+                    TimvwRustCodegen.GENERATOR_NAME, schemaName, variants.size(),
                     branches == null ? "no" : String.valueOf(branches.size())));
         }
         Map<String, List<String>> mapped = new LinkedHashMap<>();
@@ -928,9 +928,9 @@ final class UnionRules {
                 });
             }
             if (selected.isEmpty()) {
-                throw new IllegalArgumentException(String.format("%s: %s: %s is tagged on '%s', but no value selects "
+                throw new IllegalArgumentException(String.format("%s: union dispatch: %s is tagged on '%s', but no value selects "
                                 + "its variant %s (%s): the spec's branch needs fixed values or a discriminator mapping; "
-                                + "fix this upstream", TimvwRustCodegen.GENERATOR_NAME, TimvwRustCodegen.UNION_DISPATCH,
+                                + "fix this upstream", TimvwRustCodegen.GENERATOR_NAME,
                         cm.classname, tag, v.name, v.dataType));
             }
             for (String value : selected) {
@@ -970,9 +970,9 @@ final class UnionRules {
             return;
         }
         if (model == null || model.vars.stream().noneMatch(f -> tag.equals(f.baseName))) {
-            throw new IllegalArgumentException(String.format("%s: %s: %s is tagged on '%s', but its variant %s holds %s, "
+            throw new IllegalArgumentException(String.format("%s: union dispatch: %s is tagged on '%s', but its variant %s holds %s, "
                             + "which has no such field: decoding by the tag would drop it. Fix this upstream",
-                    TimvwRustCodegen.GENERATOR_NAME, TimvwRustCodegen.UNION_DISPATCH, union.classname, tag, variant,
+                    TimvwRustCodegen.GENERATOR_NAME, union.classname, tag, variant,
                     payload.dataType));
         }
     }
@@ -1217,7 +1217,7 @@ final class UnionRules {
         java.nio.file.Path mod = models.resolve("mod.rs");
         String declarations = java.nio.file.Files.readString(mod);
         if (java.util.regex.Pattern.compile("\\b" + DISPATCH_MODULE + "\\b").matcher(declarations).find()) {
-            throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": " + TimvwRustCodegen.UNION_DISPATCH
+            throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": union dispatch"
                     + " needs the module " + DISPATCH_MODULE + ", which a schema already has");
         }
         String module = dispatchModule();

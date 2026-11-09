@@ -75,7 +75,7 @@ final class EnumFromStr {
         // mod.rs is rendered afresh, so a declaration here is a schema; a file alone is left from an earlier run.
         String declarations = Files.exists(mod) ? Files.readString(mod) : "";
         if (Pattern.compile("\\b" + ERROR_MODULE + "\\b|\\b" + ERROR_TYPE + "\\b").matcher(declarations).find()) {
-            throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": " + TimvwRustCodegen.ENUM_FROM_STR
+            throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": FromStr"
                     + " needs the name " + ERROR_TYPE + ", which a schema already has");
         }
         int enums = 0;

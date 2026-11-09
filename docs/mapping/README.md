@@ -37,9 +37,9 @@ Each rule has:
 | Library | only where the Rust depends on the HTTP library: which types come from it (see [HTTP library](#http-library)) |
 | Gap | only for a known gap: what is missing |
 
-Where an entry says "stock", it compares with openapi-generator's own Rust generator, `-g rust` 7.27.0: without the
-option `timvw-rust` renders what `-g rust` renders. That rendering is `timvw-rust`'s own code and templates (ported from
-`-g rust`), not something it inherits, so a rule can change it like any other.
+Where an entry says "stock", it compares with openapi-generator's own Rust generator, `-g rust` 7.27.0: without an
+option that changes it, `timvw-rust` renders what `-g rust` renders. That rendering is `timvw-rust`'s own code and
+templates (ported from `-g rust`), not something it inherits, so a rule can change it like any other.
 
 ## What the generator renders
 

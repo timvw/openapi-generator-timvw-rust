@@ -1005,12 +1005,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
      */
     static void markBodyRef(CodegenParameter p) {
         if (!p.isBodyParam || p.isFile || p.isBinary || p.isString || p.isUuid || p.dataType == null
-                || p.isBoolean || p.isInteger || p.isLong || p.isShort || p.isNumber || p.isFloat || p.isDouble
-                || p.vendorExtensions.containsKey(TEXT_BODY)) {
+                || p.isBoolean || p.isInteger || p.isLong || p.isShort || p.isNumber || p.isFloat || p.isDouble) {
             return;
         }
+        // As the api template qualifies a type: a model gets models::, a container, a path
+        // (serde_json::Value, std::collections::HashMap, models::X) or a primitive does not.
         String type = p.dataType;
-        if (!p.isPrimitiveType && !p.isContainer && !p.vendorExtensions.containsKey(TYPE_QUALIFIED)) {
+        if (!p.isPrimitiveType && !p.isContainer && !p.isFreeFormObject && !p.isAnyType && !type.contains("::")) {
             type = "models::" + type;
         }
         String borrowed;
@@ -1162,12 +1163,22 @@ public class TimvwRustCodegen extends RustCodegenBase {
         return co.produces == null || co.produces.isEmpty() ? "" : String.valueOf(co.produces.get(0).get("mediaType"));
     }
 
-    /** Every method names the error enum it returns: its own unless it is another method of an operation. */
+    /**
+     * Every method names the error enum it returns: its own unless it is another method of an operation. A body the
+     * method only serializes is borrowed ({@link #markBodyRef}).
+     */
     @Override
     public CodegenOperation fromOperation(String path, String httpMethod, io.swagger.v3.oas.models.Operation operation,
             List<io.swagger.v3.oas.models.servers.Server> servers) {
         CodegenOperation co = super.fromOperation(path, httpMethod, operation, servers);
         co.vendorExtensions.put(ERROR_ENUM, co.operationIdCamelCase + "Error");
+        // Here rather than in postProcessOperationsWithModels, which webhook operations never reach.
+        for (List<CodegenParameter> params : Arrays.asList(co.allParams, co.bodyParams, co.requiredParams,
+                co.optionalParams)) {
+            if (params != null) {
+                params.forEach(TimvwRustCodegen::markBodyRef);
+            }
+        }
         return co;
     }
 
@@ -1195,7 +1206,6 @@ public class TimvwRustCodegen extends RustCodegenBase {
                             p.vendorExtensions.put(TYPE_QUALIFIED, true);
                         }
                         markStructJson(p, structs);
-                        markBodyRef(p);
                         if (p.vendorExtensions.containsKey(STRUCT_JSON)) {
                             structJsonModels.add(p.dataType.replaceFirst("^models::", ""));
                         } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS)) {

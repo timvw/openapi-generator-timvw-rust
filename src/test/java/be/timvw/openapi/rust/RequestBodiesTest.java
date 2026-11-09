@@ -33,6 +33,7 @@ class RequestBodiesTest {
     static void generate() {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "request_bodies");
+        props.put(TimvwRustCodegen.WEBHOOK_MODULE, "Hooks");
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of("src/test/resources/request_bodies.yaml").toAbsolutePath().toString())
@@ -82,6 +83,13 @@ class RequestBodiesTest {
     void aMapAndAnyValueAreBorrowed() throws IOException {
         assertContains(function("set_labels"), "request_body: &std::collections::HashMap<String, String>)");
         assertContains(function("send_anything"), "body: Option<&serde_json::Value>)");
+    }
+
+    @Test
+    void aWebhookBodyIsBorrowedToo() throws IOException {
+        String hooks = Files.readString(out.resolve("src/apis/hooks_api.rs"));
+        assertContains(hooks, "item_created_post(configuration: &configuration::Configuration, "
+                + "item: Option<&models::Item>)");
     }
 
     @Test

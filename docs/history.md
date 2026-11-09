@@ -28,7 +28,7 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
 - A request body the function only serializes is borrowed ([decision 2](decisions.md#2-request-bodies-by-reference)):
   `create_item(configuration, item: models::Item)` becomes `item: &models::Item` (an array body `&[T]`, a map or
   `serde_json::Value` body a reference too, an optional one `Option<&T>`), in every method of an operation, the
-  `contentTypeMethods` and `typedEventStreams` methods included. Strings (`&str`), numbers, booleans, multipart parts,
+  `contentTypeMethods` and `typedEventStreams` methods and webhooks included. Strings (`&str`), numbers, booleans, multipart parts,
   form fields and files (`PathBuf`) are unchanged. A caller passes `&request` instead of `request`
   (`.create_item(&request)`, `.maybe_create_item(Some(&request))`) and keeps its value; the bytes sent do not change.
 

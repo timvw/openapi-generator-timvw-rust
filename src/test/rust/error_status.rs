@@ -3,17 +3,22 @@
 //! answers each call.
 
 use error_status_fixture::apis::configuration::Configuration;
-use error_status_fixture::apis::default_api::{self, GetBareError, GetPlainError, GetThingError};
+use error_status_fixture::apis::default_api::{self, GetBareError, GetPlainError, GetTextError, GetThingError};
 use error_status_fixture::apis::{Error, ResponseContent};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-/// Serves one request with `status` and `body`.
+/// Serves one request with `status` and a JSON `body`.
 async fn serve(status: &str, body: &'static str) -> Configuration {
+    serve_as(status, "application/json", body).await
+}
+
+/// Serves one request with `status` and `body` of `content_type`.
+async fn serve_as(status: &str, content_type: &str, body: &'static str) -> Configuration {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let response = format!(
-        "HTTP/1.1 {status}\r\ncontent-type: application/json\r\nx-request-id: req-{status}\r\nretry-after: 30\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\nx-request-id: req-{status}\r\nretry-after: 30\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
         body.len()
     );
     tokio::spawn(async move {
@@ -134,4 +139,31 @@ async fn the_error_has_the_response_headers() {
             .await,
     );
     assert_eq!(e.headers.get("retry-after").map(|v| v.to_str().unwrap()), Some("30"));
+}
+
+async fn text(status: &str, body: &'static str) -> ResponseContent<GetTextError> {
+    let configuration = serve_as(status, "text/plain", body).await;
+    error(
+        default_api::get_text()
+            .configuration(&configuration)
+            .call()
+            .await,
+    )
+}
+
+/// A `text/plain` error response holds the body as it is, not decoded as JSON; so does a `text/plain` default.
+#[tokio::test]
+async fn a_text_error_holds_the_body() {
+    let e = text("400 Bad Request", "bad input").await;
+    assert!(
+        matches!(&e.entity, Some(GetTextError::Status400(s)) if s == "bad input"),
+        "{:?}",
+        e.entity
+    );
+    let e = text("500 Internal Server Error", "{\"looks\": \"like json\"}").await;
+    assert!(
+        matches!(&e.entity, Some(GetTextError::DefaultResponse(s)) if s == "{\"looks\": \"like json\"}"),
+        "{:?}",
+        e.entity
+    );
 }

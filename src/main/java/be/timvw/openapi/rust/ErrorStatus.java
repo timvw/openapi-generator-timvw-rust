@@ -16,10 +16,12 @@ import java.util.Map;
  * clippy rejects), and decodes the body as that response's type; any other status decodes as the {@code default}
  * response's type, if the operation has one. A body that does not decode as the chosen type (or a
  * status no response lists, without {@code default}) gives {@code UnknownValue} when it is JSON. A response without a
- * body has a variant without a value ({@code Status409()}), which its status gives whatever the body.</p>
+ * body has a variant without a value ({@code Status409()}), which its status gives whatever the body. A
+ * {@code String} response typed only as text ({@code text/plain}) holds the body as it is
+ * ({@code Status503(content.clone())}): the body is the string, not JSON.</p>
  *
  * <p>Marks each method with what the template needs: the match arms in order ({@link #ARMS}, each a {@code pattern},
- * the {@code variant} and whether it {@code decodes}), and the {@code default} variant ({@link #DEFAULT}). Every map
+ * the {@code variant}, whether it {@code decodes} as JSON or is {@code text}), and the {@code default} variant ({@link #DEFAULT}). Every map
  * names the error enum ({@code enum}), as a method that is not the operation's own returns its operation's enum.</p>
  */
 final class ErrorStatus {
@@ -78,7 +80,28 @@ final class ErrorStatus {
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("enum", errorEnum);
         v.put("variant", name);
-        v.put("decodes", r.dataType != null);
+        boolean text = isText(r);
+        v.put("text", text);
+        v.put("decodes", r.dataType != null && !text);
         return v;
+    }
+
+    /**
+     * A {@code String} response whose media types are text and none JSON ({@code text/plain}): its body is the string
+     * itself, not a JSON string.
+     */
+    static boolean isText(CodegenResponse r) {
+        if (!"String".equals(r.dataType) || r.getContent() == null || r.getContent().isEmpty()) {
+            return false;
+        }
+        boolean text = false;
+        for (String mediaType : r.getContent().keySet()) {
+            String m = mediaType.toLowerCase(java.util.Locale.ROOT);
+            if (m.contains("json")) {
+                return false;
+            }
+            text |= m.startsWith("text/");
+        }
+        return text;
     }
 }

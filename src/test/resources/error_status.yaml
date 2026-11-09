@@ -63,6 +63,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /text:
+    get:
+      operationId: getText
+      responses:
+        "204":
+          description: done
+        "400":
+          description: a text error
+          content:
+            text/plain:
+              schema:
+                type: string
+        default:
+          description: any other text error
+          content:
+            text/plain:
+              schema:
+                type: string
   /bare:
     get:
       operationId: getBare

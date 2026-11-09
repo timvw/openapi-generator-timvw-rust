@@ -31,6 +31,10 @@ class ErrorStatusTest {
     @TempDir
     static Path output;
 
+    /** The same spec with {@code responseFunctions}: every operation also has its {@code _response} twin. */
+    @TempDir
+    static Path responseFunctions;
+
     /** The same spec with {@code supportMultipleResponses}, whose successes are a {@code ResponseContent} too. */
     @TempDir
     static Path multiple;
@@ -39,14 +43,17 @@ class ErrorStatusTest {
     static void generate() {
         generate(output, false);
         generate(multiple, true);
+        generate(responseFunctions, Map.of(TimvwRustCodegen.RESPONSE_FUNCTIONS, "true"));
     }
 
     private static void generate(Path dir, boolean supportMultipleResponses) {
-        Map<String, Object> props = new LinkedHashMap<>();
+        generate(dir, supportMultipleResponses
+                ? Map.of(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES, "true") : Map.of());
+    }
+
+    private static void generate(Path dir, Map<String, Object> options) {
+        Map<String, Object> props = new LinkedHashMap<>(options);
         props.put("packageName", "error_status_fixture");
-        if (supportMultipleResponses) {
-            props.put(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES, "true");
-        }
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(SPEC).toAbsolutePath().toString())
@@ -108,6 +115,40 @@ class ErrorStatusTest {
     }
 
     @Test
+    void aTextErrorHoldsTheBodyAsItIs() throws IOException {
+        assertContains(api(), """
+                        let entity: Option<GetTextError> = match status.as_u16() {
+                            400 => Some(GetTextError::Status400(content.clone())),
+                            _ => Some(GetTextError::DefaultResponse(content.clone())),
+                        }
+                """);
+    }
+
+    /**
+     * The {@code _response} twin of responseFunctions has the same error branch: the status picks the variant and a
+     * text error holds the body. The crate passes clippy with no lint allowed.
+     */
+    @Test
+    void theResponseFunctionTwinPicksTheVariantTheSameWay() throws IOException, InterruptedException {
+        String api = Files.readString(responseFunctions.resolve("src/apis/default_api.rs"));
+        int twin = api.indexOf("pub async fn get_text_response(");
+        assertTrue(twin >= 0, api);
+        assertContains(api.substring(twin), """
+                        let entity: Option<GetTextError> = match status.as_u16() {
+                            400 => Some(GetTextError::Status400(content.clone())),
+                            _ => Some(GetTextError::DefaultResponse(content.clone())),
+                        }
+                """);
+        assertContains(api.substring(api.indexOf("pub async fn get_thing_response(")),
+                "404 => serde_json::from_str(&content).ok().map(GetThingError::Status404),");
+        Assumptions.assumeTrue(cargo(responseFunctions, 30, "--version") != null, "no cargo");
+        String clippy = cargo(responseFunctions, 900, "clippy", "--all-targets", "--", "-D", "warnings");
+        assertNotNull(clippy, "clippy did not finish");
+        assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("warning:"),
+                clippy);
+    }
+
+    @Test
     void theErrorEnumKeepsItsShape() throws IOException {
         assertContains(api(), "#[serde(untagged)]\npub enum GetThingError {\n    Status400(models::Problem),\n"
                 + "    Status404(models::Problem),\n    Status409(),\n    Status4XX(models::Problem),\n"
@@ -133,10 +174,9 @@ class ErrorStatusTest {
         String result = cargo(output, 900, "test", "--test", "error_status");
         assertNotNull(result, "cargo did not finish");
         assertTrue(result.contains("test result: ok.") && !result.contains(" 0 passed"), result);
-        // A range is a guard, so an exact code before its range is no overlap for clippy. The other templates still
-        // have return statements clippy finds needless (the clients allow that lint).
-        String clippy = cargo(output, 900, "clippy", "--all-targets", "--", "-D", "warnings", "-A",
-                "clippy::needless_return");
+        // A range is a guard, so an exact code before its range is no overlap for clippy. No lint is allowed: a
+        // crate generated without options passes clippy.
+        String clippy = cargo(output, 900, "clippy", "--all-targets", "--", "-D", "warnings");
         Assumptions.assumeTrue(clippy == null || !clippy.contains("no such command"), "no clippy");
         assertNotNull(clippy, "clippy did not finish");
         assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("warning:"),

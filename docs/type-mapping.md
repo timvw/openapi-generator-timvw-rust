@@ -173,7 +173,8 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 ## Known gaps
 
 - Cookie parameters are not sent.
-- Response headers of a JSON or text success cannot be read (an error has them).
+- Response headers of a JSON or text success cannot be read (an error has them, and so does a success with
+  `supportMultipleResponses`).
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
   ([mapping](mapping/README.md#objects)).
 - Validation keywords (`minLength`, `pattern`, `maximum`, ...) are not checked.

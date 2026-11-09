@@ -10,7 +10,8 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | `headers` of a response |
-| Rust | no typed header fields. An error response's `ResponseContent` has `headers: reqwest::header::HeaderMap`, every header of the response, declared or not (see [`responses.statusCode`](responses.md#responsesstatuscode)). A JSON or text success returns only its decoded body. A binary response returns the whole `reqwest::Response`, whose headers the caller can read |
+| Rust | no typed header fields. An error response's `ResponseContent` has `headers: reqwest::header::HeaderMap`, every header of the response, declared or not (see [`responses.statusCode`](responses.md#responsesstatuscode)). `{:?}` of such an error prints every header, which can include `set-cookie` or tokens; its `Display` does not print them. A JSON or text success returns only its decoded body, except with `supportMultipleResponses`, whose success `ResponseContent` has the `headers` too. A binary response returns the whole `reqwest::Response`, whose headers the caller can read |
 | Library | `reqwest::header::HeaderMap` |
-| Gap | the headers of a JSON or text success cannot be read |
-| Tests | [`OtherObjectsTest#responseHeadersAreNotExposed`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L76), [`ErrorStatusTest#whatItDecodesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/ErrorStatusTest.java#L91) |
+| Options | `supportMultipleResponses`: the success `ResponseContent` has `headers` as well |
+| Gap | the headers of a JSON or text success cannot be read without `supportMultipleResponses` |
+| Tests | [`OtherObjectsTest#declaredResponseHeadersGetNoTypedAccessor`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L76), [`ErrorStatusTest#whatItDecodesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/ErrorStatusTest.java#L119) |

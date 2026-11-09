@@ -44,7 +44,9 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   `ResponseContent` gets `headers: reqwest::header::HeaderMap`, filled on every error status (also of event-stream and
   `contentTypeMethods` methods), so `retry-after`, `x-request-id` and rate-limit headers can be read. Code that
   builds a `ResponseContent` with a struct literal adds `headers` (e.g. `reqwest::header::HeaderMap::new()`). With
-  `supportMultipleResponses`, the success `ResponseContent` has the headers too.
+  `supportMultipleResponses`, the success `ResponseContent` has the headers too. `{:?}` of an error now prints every
+  response header, which can include `set-cookie` or tokens: a client that logs errors with `{:?}` may want to log
+  `Display` (only the status) or redact; `Display` is unchanged.
 - The error is always boxed (decision 4, follow-up): `Error::ResponseError` holds `Box<ResponseContent<T>>`, since
   with the headers an unboxed error is over clippy's `result_large_err` limit in every function. `boxResponseError`
   is no longer an option: setting it, to any value, fails generation as not configurable. openai-client-base removes

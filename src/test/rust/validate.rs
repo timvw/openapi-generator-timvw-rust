@@ -3,7 +3,7 @@
 
 use serde_json::json;
 use validate_fixture::models::{self, Content, Request, Shape};
-use validate_fixture::models::validation::{Rule, Validate, ValidationError};
+use validate_fixture::models::validation::{Rule, Validate, ValidationError, ValidationErrors};
 
 fn valid() -> Request {
     serde_json::from_value(json!({
@@ -37,10 +37,18 @@ fn valid() -> Request {
 }
 
 /// The error `change` causes in an otherwise valid request.
-fn error(change: impl FnOnce(&mut Request)) -> ValidationError {
+/// The errors `change` causes in an otherwise valid request.
+fn errors(change: impl FnOnce(&mut Request)) -> ValidationErrors {
     let mut request = valid();
     change(&mut request);
     request.validate().expect_err("the change breaks a rule")
+}
+
+/// The one error `change` causes in an otherwise valid request.
+fn error(change: impl FnOnce(&mut Request)) -> ValidationError {
+    let errors = errors(change);
+    assert_eq!(errors.len(), 1, "{errors}");
+    errors.into_vec().remove(0)
 }
 
 fn assert_error(change: impl FnOnce(&mut Request), path: &str, rule: Rule, actual: &str) {
@@ -179,23 +187,67 @@ fn names_that_could_collide() {
 }
 
 #[test]
-fn the_first_error_is_reported() {
-    let e = error(|r| {
-        r.messages.clear();
-        r.count = 0;
+fn every_error_is_reported_in_field_order() {
+    let all = errors(|r| {
+        r.messages = vec![message(""), message("x"), message(&"y".repeat(11))];
+        r.messages[0].name = Some("Bad".into());
+        r.count = 101;
+        r.tags = Some(vec!["a".into(), "a".into(), "toolong".into()]);
+        r.metadata = Some([("z", "1234"), ("a", "5678"), ("m", "ok")].map(|(k, v)| (k.into(), v.into())).into());
+        let node = r.node.as_mut().unwrap();
+        node.value = Some(-1);
+        node.children.as_mut().unwrap()[0].next.as_mut().unwrap().value = Some(-2);
+        r.validate = Some("v".into());
     });
-    assert_eq!(e.path, "messages");
+    let found: Vec<(String, Rule)> = all.iter().map(|e| (e.path.clone(), e.rule.clone())).collect();
+    let expected = vec![
+        ("messages[0].content", Rule::MinLength(1)),
+        ("messages[0].name", Rule::Pattern(r"^[a-z]+\d*$")),
+        ("messages[2].content", Rule::MaxLength(10)),
+        ("count", Rule::ExclusiveMaximum(100.0)),
+        ("count", Rule::MultipleOf(5.0)),
+        ("tags", Rule::UniqueItems),
+        ("tags[2]", Rule::MaxLength(5)),
+        ("metadata", Rule::MaxProperties(2)),
+        ("metadata[\"a\"]", Rule::MaxLength(3)),
+        ("metadata[\"z\"]", Rule::MaxLength(3)),
+        ("node.value", Rule::Minimum(0.0)),
+        ("node.children[0].next.value", Rule::Minimum(0.0)),
+        ("validate", Rule::MinLength(2)),
+    ];
+    let expected: Vec<(String, Rule)> = expected.into_iter().map(|(p, r)| (p.to_string(), r)).collect();
+    assert_eq!(found, expected, "{all}");
+    // the same order every time, whatever order the map iterates in
+    for _ in 0..20 {
+        let again = errors(|r| {
+            r.metadata = Some([("z", "1234"), ("a", "5678"), ("m", "ok")].map(|(k, v)| (k.into(), v.into())).into());
+        });
+        let paths: Vec<&str> = again.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["metadata", "metadata[\"a\"]", "metadata[\"z\"]"]);
+    }
 }
 
 #[test]
-fn validation_error_is_an_error() {
-    let e = error(|r| r.count = 0);
-    let boxed: Box<dyn std::error::Error> = Box::new(e);
-    assert_eq!(boxed.to_string(), "count: 0 breaks minimum 1");
+fn validation_errors_is_an_error_with_a_line_per_error() {
+    let one = errors(|r| r.count = 0);
+    assert_eq!(one.to_string(), "count: 0 breaks minimum 1");
+    let two = errors(|r| r.count = 101);
+    let boxed: Box<dyn std::error::Error> = Box::new(two.clone());
+    assert_eq!(boxed.to_string(), "count: 101 breaks exclusiveMaximum 100\ncount: 101 breaks multipleOf 5");
+    assert_eq!(two.len(), 2);
+    assert!(!two.is_empty());
+    assert_eq!((&two).into_iter().count(), 2);
+    let owned: Vec<ValidationError> = two.clone().into_iter().collect();
+    assert_eq!(owned, two.into_vec());
+    let single: Box<dyn std::error::Error> = Box::new(error(|r| r.count = 0));
+    assert_eq!(single.to_string(), "count: 0 breaks minimum 1");
 }
 
 fn patterns(json: serde_json::Value) -> Result<(), ValidationError> {
-    serde_json::from_value::<models::Patterns>(json).unwrap().validate()
+    match serde_json::from_value::<models::Patterns>(json).unwrap().validate() {
+        Ok(()) => Ok(()),
+        Err(errors) => Err(errors.into_vec().remove(0)),
+    }
 }
 
 #[test]
@@ -241,4 +293,16 @@ fn an_f32_bound_beyond_f32_is_compared_as_f64() {
 fn plain_enums_implement_the_trait() {
     assert_eq!(models::Status::Draft.validate(), Ok(()));
     assert_eq!(models::Level::Variant1.validate(), Ok(()));
+}
+
+/// Inline variants bind their fields to generated names: fields named `path`, `errors` or `value0` shadow nothing.
+#[test]
+fn inline_variant_fields_named_like_generated_locals() {
+    let pet: models::Pet =
+        serde_json::from_value(json!({"kind": "dog", "path": "x", "errors": 5, "value0": "ab"})).unwrap();
+    let errors = pet.validate().expect_err("three rules broken");
+    let found: Vec<(&str, &Rule)> = errors.iter().map(|e| (e.path.as_str(), &e.rule)).collect();
+    assert_eq!(found, [("path", &Rule::MinLength(2)), ("errors", &Rule::Maximum(3.0)), ("value0", &Rule::MaxLength(1))]);
+    let ok: models::Pet = serde_json::from_value(json!({"kind": "cat", "path": "xy", "errors": 3, "value0": "a"})).unwrap();
+    assert_eq!(ok.validate(), Ok(()));
 }

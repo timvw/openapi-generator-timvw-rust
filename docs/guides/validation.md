@@ -54,8 +54,8 @@ assert_eq!(paths, ["name", "sku", "tags"]);
 ```
 
 `validate()` checks the whole value and returns **every** violation as a `ValidationErrors`, a non-empty list of
-`ValidationError`s: in the order of the fields, nested values depth-first, map entries by key. The order is stable,
-and a valid value allocates nothing. It has `len()`, `iter()` and `into_vec()`, iterates with `for`
+`ValidationError`s: in the order of the fields, nested values depth-first, the entries of a map ordered by their
+rendered (escaped) key. The order is stable, and a valid value allocates nothing. It has `len()`, `iter()` and `into_vec()`, iterates with `for`
 (by value or by reference), and implements `Display` (one line per error) and `std::error::Error`, so `?` takes it into
 your error type. Each `ValidationError` holds:
 
@@ -163,11 +163,38 @@ generated code 9% longer. Nothing else changes, since no generated code calls it
 
 ### Implementing `Validate` yourself
 
-`validate()` is a provided method of the trait. It collects what a hidden method, `validate_into(path, errors)`,
-pushes; the generated impls implement that method and call it on the values they hold. A type of yours that should
-take part (a newtype you put in a model by hand, say) implements `validate_into`, not `validate()`. Mirror the
-generated impls in `models/validation.rs` for the path and error types. A model with nothing to check implements it
-with an empty body.
+`validate()` is a provided method of the trait: it calls `validate_into(path, errors)` from `Path::root()` and
+returns what was pushed. The generated impls implement `validate_into` and call it on the values they hold with a
+longer `Path` (`path.field("items")`, `.index(i)`, `.key(k)`). A `Path` is built on the stack and written out
+(`to_string()`) only for an error, so a valid value allocates nothing.
+
+A type of yours that holds generated models, and should be validated with them, implements `validate_into` the same
+way:
+
+```rust
+use my_client::models::validation::{Path, Rule, Validate, ValidationError};
+
+struct Order {
+    note: String,
+    items: Vec<models::NewItem>,
+}
+
+impl Validate for Order {
+    fn validate_into(&self, path: &Path<'_>, errors: &mut Vec<ValidationError>) {
+        let length = self.note.chars().count() as u64;
+        if length > 100 {
+            let mut error = ValidationError::new(Rule::MaxLength(100), format!("length {length}"));
+            error.path = path.field("note").to_string();
+            errors.push(error);
+        }
+        self.items.validate_into(&path.field("items"), errors);
+    }
+}
+
+let order = Order { note: "x".repeat(101), items: vec![models::NewItem::new(String::new())] };
+let errors = order.validate().unwrap_err();
+assert_eq!(errors.to_string(), "note: length 101 breaks maxLength 100\nitems[0].name: length 0 breaks minLength 1");
+```
 
 A schema whose module would be `models::validation` fails generation while the option is on; turn the option off or
 rename the schema. A property named `validate` and models named `Validate` or `ValidationError` work.

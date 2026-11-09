@@ -248,6 +248,32 @@ mod validation {
         assert_eq!(tags.validate().unwrap_err().to_string(), "tags: 11 items breaks maxItems 10");
     }
 
+    #[test]
+    fn by_hand() {
+        use my_client::models::validation::{Path, Rule, Validate, ValidationError};
+
+        struct Order {
+            note: String,
+            items: Vec<models::NewItem>,
+        }
+
+        impl Validate for Order {
+            fn validate_into(&self, path: &Path<'_>, errors: &mut Vec<ValidationError>) {
+                let length = self.note.chars().count() as u64;
+                if length > 100 {
+                    let mut error = ValidationError::new(Rule::MaxLength(100), format!("length {length}"));
+                    error.path = path.field("note").to_string();
+                    errors.push(error);
+                }
+                self.items.validate_into(&path.field("items"), errors);
+            }
+        }
+
+        let order = Order { note: "x".repeat(101), items: vec![models::NewItem::new(String::new())] };
+        let errors = order.validate().unwrap_err();
+        assert_eq!(errors.to_string(), "note: length 101 breaks maxLength 100\nitems[0].name: length 0 breaks minLength 1");
+    }
+
     async fn create(configuration: &Configuration, new_item: &models::NewItem) -> Result<models::Item, Box<dyn std::error::Error>> {
         new_item.validate()?;
         Ok(items_api::create_item().configuration(configuration).new_item(new_item).call().await?)

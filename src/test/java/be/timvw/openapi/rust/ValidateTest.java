@@ -133,6 +133,9 @@ class ValidateTest {
         assertFalse(request.contains("self.payload"), request);
         assertFalse(request.contains("self.points.len()"), request);
         assertFalse(request.contains("self.lookahead"), request);
+        // bounds every value of the type meets
+        assertFalse(request.contains("self.seed"), request);
+        assertFalse(request.contains("self.small"), request);
         assertContains(request, "crate::models::validation::items(value0.len(), Some(1), None).map_err(|e| e.at(\"colors\"))?;");
     }
 

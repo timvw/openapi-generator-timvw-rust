@@ -55,6 +55,14 @@ components:
           type: integer
           format: int32
           minimum: 0.5
+        seed:
+          type: integer
+          minimum: -9223372036854775808
+          maximum: 9223372036854775807
+        small:
+          type: integer
+          format: int32
+          maximum: 3000000000
         tags:
           type: array
           uniqueItems: true

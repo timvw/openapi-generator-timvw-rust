@@ -540,6 +540,10 @@ final class ValidateRules {
             BigInteger[] range = INTEGERS.get(rustType);
             if (range == null) {
                 literal = floatLiteral(bound);
+            } else if (isIntegral(bound) && !function.equals("multiple_of")
+                    && always(function, bound.toBigInteger(), range)) {
+                // every value of the type meets it (the int64 range itself, say)
+                return;
             } else if (isIntegral(bound) && bound.toBigInteger().compareTo(range[0]) >= 0
                     && bound.toBigInteger().compareTo(range[1]) <= 0) {
                 literal = bound.toBigInteger().toString();
@@ -549,6 +553,17 @@ final class ValidateRules {
                 literal = floatLiteral(bound);
             }
             lines.add(V + function + "(" + value + ", " + literal + ")" + mapErr(chain) + "?;");
+        }
+
+        /** Whether every value of an integer type in {@code range} meets the bound. */
+        private static boolean always(String function, BigInteger bound, BigInteger[] range) {
+            return switch (function) {
+                case "minimum" -> bound.compareTo(range[0]) <= 0;
+                case "exclusive_minimum" -> bound.compareTo(range[0]) < 0;
+                case "maximum" -> bound.compareTo(range[1]) >= 0;
+                case "exclusive_maximum" -> bound.compareTo(range[1]) > 0;
+                default -> false;
+            };
         }
 
         /** Whether checking a value of {@code type} needs more than calling {@code validate()} on it. */

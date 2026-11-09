@@ -1254,7 +1254,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         }
                         if (p.isArray && p.items != null && (p.items.isModel || p.items.isEnumRef
                                 || (p.items.dataType != null && p.items.dataType.startsWith("models::"))
-                                || isChrono(p.items.dataType))) {
+                                || isChrono(p.items.dataType) || p.items.isUuid)) {
                             p.vendorExtensions.put(DISPLAY_ITEMS, true);
                         }
                         markText(p);

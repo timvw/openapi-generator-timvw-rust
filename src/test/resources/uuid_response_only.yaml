@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info:
+  title: A uuid only in a response
+  version: 1.0.0
+# No model or parameter has a uuid: only the success response, an array of them.
+paths:
+  /ids:
+    get:
+      operationId: listIds
+      responses:
+        '200':
+          description: The ids
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  format: uuid

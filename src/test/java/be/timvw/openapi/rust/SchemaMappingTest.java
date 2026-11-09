@@ -96,9 +96,9 @@ class SchemaMappingTest {
     }
 
     @Test
-    void aUuidParameterIsAString() throws IOException {
+    void aUuidParameterIsAUuid() throws IOException {
         String api = Files.readString(out.resolve("src/apis/default_api.rs"));
-        assertContains(api, "pub async fn get_thing(configuration: &configuration::Configuration, id: &str)");
+        assertContains(api, "pub async fn get_thing(configuration: &configuration::Configuration, id: uuid::Uuid)");
     }
 
     @Test

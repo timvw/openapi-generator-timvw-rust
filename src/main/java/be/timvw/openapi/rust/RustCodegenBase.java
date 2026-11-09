@@ -40,6 +40,7 @@ import org.openapitools.codegen.CodegenModel;
 import org.openapitools.codegen.CodegenOperation;
 import org.openapitools.codegen.CodegenParameter;
 import org.openapitools.codegen.CodegenProperty;
+import org.openapitools.codegen.CodegenResponse;
 import org.openapitools.codegen.CodegenType;
 import org.openapitools.codegen.DefaultCodegen;
 import org.openapitools.codegen.GeneratorLanguage;
@@ -927,10 +928,14 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                 }
             }
 
-            if (!hasUUIDs && operation.allParams.stream().anyMatch(p -> p.isUuid)) {
+            // A parameter, a success or an error response of uuid or chrono type (or an array or map of one): the
+            // crate depends on uuid or chrono, as it does for a model property.
+            if (!hasUUIDs && (usesType(operation, "uuid::Uuid") || operation.allParams.stream()
+                    .anyMatch(p -> p.isUuid || (p.items != null && p.items.isUuid)))) {
                 hasUUIDs = true;
             }
-            if (useChrono && !usesChronoTypes && operation.allParams.stream().anyMatch(p -> p.isDate || p.isDateTime)) {
+            if (useChrono && !usesChronoTypes && (usesType(operation, "chrono::")
+                    || operation.allParams.stream().anyMatch(p -> p.isDate || p.isDateTime))) {
                 usesChronoTypes = true;
             }
 
@@ -971,6 +976,24 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         additionalProperties.put("hasUUIDs", hasUUIDs);
         additionalProperties.put("usesChronoTypes", useChrono && usesChronoTypes);
         return objs;
+    }
+
+    /** Whether a parameter, the return type or a response of the operation names the Rust type {@code type}. */
+    private static boolean usesType(CodegenOperation operation, String type) {
+        List<String> types = new ArrayList<>();
+        types.add(operation.returnType);
+        for (CodegenParameter p : operation.allParams) {
+            types.add(p.dataType);
+            if (p.items != null) {
+                types.add(p.items.dataType);
+            }
+        }
+        if (operation.responses != null) {
+            for (CodegenResponse r : operation.responses) {
+                types.add(r.dataType);
+            }
+        }
+        return types.stream().anyMatch(t -> t != null && t.contains(type));
     }
 
     /** Whether a property, its items, its map values or its nested properties satisfy {@code check}. */

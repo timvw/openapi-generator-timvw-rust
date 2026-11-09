@@ -13,7 +13,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a success response with `application/json` content |
 | Rust | the function returns `Result<T, Error<..>>`, `T` the schema's type, decoded from the body. A body of another content type is `Error::Serde` |
 | Options | `responseFunctions` adds `<operation>_response`, returning the body undecoded with the status and headers ([`response.content.response-function`](#responsecontentresponse-function)) |
-| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L136) |
+| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L137) |
 
 ### `response.content.text`
 
@@ -22,7 +22,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a success response with `text/plain` content |
 | Rust | `String`, the body as it came |
 | Options | `responseFunctions`: `<operation>_response` returns `ApiResponse<String>`; `text()` is the body ([`response.content.response-function`](#responsecontentresponse-function)) |
-| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L136) |
+| Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L137) |
 
 ### `response.content.binary`
 
@@ -40,7 +40,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a success response without `content` (`204`) |
 | Rust | `Result<(), Error<..>>` |
 | Options | `responseFunctions`: `<operation>_response` returns `ApiResponse<()>`, for the status and headers ([`response.content.response-function`](#responsecontentresponse-function)) |
-| Tests | [`OperationMappingTest#aResponseWithoutABodyIsUnit`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L143) |
+| Tests | [`OperationMappingTest#aResponseWithoutABodyIsUnit`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L144) |
 
 ### `response.content.response-function`
 

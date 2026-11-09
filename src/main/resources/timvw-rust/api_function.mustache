@@ -268,6 +268,57 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{/isOAuth}}
     {{/authMethods}}
     {{/hasAuthMethods}}
+    {{#vendorExtensions.x-rust-cookies}}
+    // one Cookie header: every cookie parameter that is set, and an api key sent as a cookie
+    let mut cookies: Vec<String> = Vec::new();
+    {{#cookieParams}}
+    {{#required}}
+    {{^isNullable}}
+    {
+        let param_value = &{{{vendorExtensions.x-rust-param-identifier}}};
+    {{/isNullable}}
+    {{#isNullable}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+    {{/isNullable}}
+    {{/required}}
+    {{^required}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+    {{/required}}
+        {{#isArray}}
+        let items: Vec<String> = {{#vendorExtensions.x-rust-struct-json-items}}param_value.iter().map(serde_json::to_string).collect::<Result<_, _>>()?{{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}param_value.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect(){{/vendorExtensions.x-rust-struct-json-items}};
+        {{#isExplode}}
+        for item in items {
+            cookies.push(format!("{{{baseName}}}={}", crate::apis::cookie_encode(item)));
+        }
+        {{/isExplode}}
+        {{^isExplode}}
+        cookies.push(format!("{{{baseName}}}={}", items.iter().map(crate::apis::cookie_encode).collect::<Vec<String>>().join(",")));
+        {{/isExplode}}
+        {{/isArray}}
+        {{^isArray}}
+        cookies.push(format!("{{{baseName}}}={}", crate::apis::cookie_encode({{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{^vendorExtensions.x-rust-str}}.{{{vendorExtensions.x-rust-to-text}}}(){{/vendorExtensions.x-rust-str}}{{/vendorExtensions.x-rust-struct-json}})));
+        {{/isArray}}
+    }
+    {{/cookieParams}}
+    {{#hasAuthMethods}}
+    {{#authMethods}}
+    {{#isApiKey}}
+    {{#isKeyInCookie}}
+    if let Some(ref apikey) = configuration.api_key {
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, apikey.key),
+            None => apikey.key.clone(),
+        };
+        cookies.push(format!("{{{keyParamName}}}={}", crate::apis::cookie_encode(value)));
+    }
+    {{/isKeyInCookie}}
+    {{/isApiKey}}
+    {{/authMethods}}
+    {{/hasAuthMethods}}
+    if !cookies.is_empty() {
+        req_builder = req_builder.header(reqwest::header::COOKIE, cookies.join("; "));
+    }
+    {{/vendorExtensions.x-rust-cookies}}
 {{#multipartHelper}}
     {{#isMultipart}}
     {{#hasFormParams}}

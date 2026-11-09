@@ -25,9 +25,9 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: string` with `format: date-time` or `format: date` |
 | Rust | `chrono::DateTime<chrono::FixedOffset>` (`date-time`) and `chrono::NaiveDate` (`date`); the crate depends on `chrono` |
-| Wire | RFC 3339 text, through chrono's serde support |
-| Options | `useChrono` (default `true`, as in stock). With `useChrono=false` both are `String` and the crate has no `chrono` dependency (openai-client-base sets this; langfuse-client-base keeps the default) |
-| Tests | [`SchemaMappingTest#datesAreChronoUnlessUseChronoIsOff`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L82) |
+| Wire | RFC 3339 text, through chrono's serde support. A path, query or header parameter is written the same way: a `date-time` with `to_rfc3339()` (`2026-01-02T03:04:05+01:00`, not chrono's `Display`, `2026-01-02 03:04:05 +01:00`), a `date` as `YYYY-MM-DD`, each item of an array alike; percent-encoded in the path and the query (`%3A`, `%2B`) |
+| Options | `useChrono` (default `true`, as in stock). With `useChrono=false` both are `String`, sent as they are, and the crate has no `chrono` dependency (openai-client-base sets this; langfuse-client-base keeps the default). Stock sends a parameter with chrono's `Display` |
+| Tests | [`SchemaMappingTest#datesAreChronoUnlessUseChronoIsOff`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L82), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L63), [`#aDateIsSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L80), [`#withoutChronoTheyAreStringsSentAsTheyAre`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L91), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L105) |
 
 ### `schema.format.uuid`
 

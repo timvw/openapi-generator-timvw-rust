@@ -23,7 +23,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
 | `type: string` | `String` | |
-| `format: date`, `date-time` | `chrono::NaiveDate`, `chrono::DateTime<chrono::FixedOffset>` | `useChrono` (default `true`); `useChrono=false` gives `String` and no `chrono` dependency (openai-client-base sets it) |
+| `format: date`, `date-time` | `chrono::NaiveDate`, `chrono::DateTime<chrono::FixedOffset>`; a path, query or header parameter is sent as `YYYY-MM-DD` and RFC 3339 (`to_rfc3339()`) | `useChrono` (default `true`); `useChrono=false` gives `String` and no `chrono` dependency (openai-client-base sets it) |
 | `format: uuid` | `uuid::Uuid` in a model; `&str` as a header or query parameter | |
 | `format: byte` | `Vec<u8>`, base64 through `#[serde_as(as = "serde_with::base64::Base64")]` | |
 | `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response | |

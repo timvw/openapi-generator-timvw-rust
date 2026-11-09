@@ -21,7 +21,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | `operationId` |
-| Rust | `pub async fn <snake_case>(configuration: &configuration::Configuration, <parameters...>) -> Result<<success>, Error<<OperationId>Error>>`, also callable as a builder (`create_item().configuration(&c).item(i).call()`) |
+| Rust | `pub async fn <snake_case>(configuration: &configuration::Configuration, <parameters...>) -> Result<<success>, Error<<OperationId>Error>>`, also callable as a builder (`create_item().configuration(&c).item(&i).call()`) |
 | Options | `bonBuilders` (default `true`) adds `#[bon::builder]`. `contentTypeMethods` and `typedEventStreams` add functions with a suffix ([`requestBody.content`](request-body.md#requestbodycontent), [`response.content`](response.md#responsecontent)) |
 | Tests | [`OperationMappingTest#anOperationIsAnAsyncFunctionWithABuilder`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L68), [`GenerationTest#apiFunctionsGetBonBuilderAfterDeprecated`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L55) |
 

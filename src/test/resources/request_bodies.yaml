@@ -1,0 +1,114 @@
+openapi: 3.0.3
+info:
+  title: Request bodies
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+paths:
+  /item:
+    post:
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+      responses:
+        "204":
+          description: created
+    put:
+      operationId: updateItem
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+      responses:
+        "204":
+          description: updated
+  /items:
+    post:
+      operationId: createItems
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Item'
+      responses:
+        "204":
+          description: created
+  /labels:
+    post:
+      operationId: setLabels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        "204":
+          description: set
+  /anything:
+    post:
+      operationId: sendAnything
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {}
+      responses:
+        "204":
+          description: sent
+  /count:
+    post:
+      operationId: setCount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: integer
+              format: int64
+      responses:
+        "204":
+          description: set
+  /name:
+    post:
+      operationId: setName
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: string
+      responses:
+        "204":
+          description: set
+  /upload:
+    post:
+      operationId: upload
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "204":
+          description: uploaded
+components:
+  schemas:
+    Item:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string

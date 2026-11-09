@@ -120,7 +120,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | parameters | one argument each, in spec order: required as `T`/`&str`, optional as `Option<..>` | |
 | `deprecated` operation | `#[deprecated]` | |
 | `webhooks` | a module of their own, tagged `webhookModule` | `webhookModule`, `webhookModuleReexport` |
-| request body | the last argument, named after the schema (`create_chat_completion_request: models::CreateChatCompletionRequest`) | |
+| request body | the last argument, named after the schema; a JSON body is borrowed (`create_chat_completion_request: &models::CreateChatCompletionRequest`, an array as a slice `&[T]`) | |
 
 ### Parameters
 

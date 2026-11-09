@@ -101,24 +101,65 @@ class UnknownOptionsTest {
         }
     }
 
-    @Test
-    void notConfigurableAndUnsupportedOptionsAreNeverSuggested() {
+    /** The keys with a message of their own: not configurable, not supported, removed. */
+    private static List<String> notOptions() {
         List<String> notOptions = new ArrayList<>(TimvwRustCodegen.ALWAYS_ON);
         notOptions.addAll(TimvwRustCodegen.FIXED_VALUES.keySet());
         notOptions.addAll(TimvwRustCodegen.REJECTED_OPTIONS);
         notOptions.add(TimvwRustCodegen.JSON_VALUE_SCHEMAS);
         notOptions.add(TimvwRustCodegen.LEGACY_MODEL_REWRITES);
-        List<CliOption> advertised = new TimvwRustCodegen().cliOptions();
+        return notOptions;
+    }
+
+    @Test
+    void notConfigurableAndUnsupportedOptionsAreNeverSuggested() {
+        List<String> notOptions = notOptions();
+        List<String> candidates = UnknownOptions.candidates(new TimvwRustCodegen().cliOptions(), notOptions);
         for (String option : notOptions) {
-            // one edit away: a misspelling of the option
+            assertFalse(candidates.stream().anyMatch(option::equalsIgnoreCase), option);
+            // one edit away (a misspelling), and the same misspelling in another case
             String misspelt = option.substring(0, option.length() - 1);
-            String closest = UnknownOptions.closest(misspelt, advertised);
-            assertFalse(notOptions.contains(closest), misspelt + " -> " + closest);
-            String message = failsWith(Map.of(misspelt, "true")).getMessage();
-            assertTrue(message.startsWith("timvw-rust: unknown option '" + misspelt + "'"), message);
-            assertFalse(message.contains("'" + option + "'"), message);
+            for (String key : List.of(misspelt, misspelt.toUpperCase(java.util.Locale.ROOT))) {
+                String closest = UnknownOptions.closest(key, candidates);
+                assertFalse(closest != null && notOptions.stream().anyMatch(closest::equalsIgnoreCase),
+                        key + " -> " + closest);
+                String message = failsWith(Map.of(key, "true")).getMessage();
+                assertTrue(message.startsWith("timvw-rust: unknown option '" + key + "'"), message);
+                assertFalse(message.toLowerCase(java.util.Locale.ROOT)
+                        .contains("'" + option.toLowerCase(java.util.Locale.ROOT) + "'"), message);
+            }
         }
-        assertNull(UnknownOptions.closest("boxOnlyCycle", advertised));
+        assertNull(UnknownOptions.closest("boxOnlyCycle", candidates));
+        assertNull(UnknownOptions.closest("BoxOnlyCycle", candidates));
+    }
+
+    /** A not-configurable or unsupported option in another case gets its own message, not the unknown-option one. */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"BoxOnlyCycles", "BOXONLYCYCLES", "SupportAsync", "Library", "MockAll", "TemplateDir"})
+    void notConfigurableAndUnsupportedOptionsMatchIgnoringCase(String key) {
+        String message = failsWith(Map.of(key, "true", "frobnicate", "1")).getMessage();
+        assertTrue(message.startsWith("timvw-rust: option '" + key + "' is not "), message);
+    }
+
+    @Test
+    void theCaseVariantOfABaselineOptionGetsTheNotConfigurableMessage() {
+        assertEquals("timvw-rust: option 'BoxOnlyCycles' is not configurable: timvw-rust always uses 'true'; remove it "
+                + "(it was set to 'true')", failsWith(Map.of("BoxOnlyCycles", "true")).getMessage());
+    }
+
+    /** The general options and the keys openapi-generator sets are suggested too, after the generator's own. */
+    @Test
+    void generalOptionsAndOpenApiGeneratorKeysAreSuggested() {
+        assertTrue(failsWith(Map.of("gitUserID", "x")).getMessage()
+                .contains("'gitUserID' (did you mean 'gitUserId'?)"));
+        assertTrue(failsWith(Map.of("sortParamsByRequiredFlags", "true")).getMessage()
+                .contains("(did you mean 'sortParamsByRequiredFlag'?)"));
+        assertTrue(failsWith(Map.of("apiPackag", "x")).getMessage().contains("(did you mean 'apiPackage'?)"));
+        List<String> candidates = UnknownOptions.candidates(new TimvwRustCodegen().cliOptions(), notOptions());
+        List<String> advertised = new TimvwRustCodegen().cliOptions().stream().map(CliOption::getOpt).toList();
+        assertEquals(advertised, candidates.subList(0, advertised.size()));
+        assertFalse(candidates.contains("lambda"));
+        assertNull(UnknownOptions.closest("lambd", candidates));
     }
 
     /** openapi-generator's general options: DefaultCodegen's cliOptions and the other keys its processOpts reads. */
@@ -138,9 +179,7 @@ class UnknownOptionsTest {
         c.additionalProperties().put("docExtension", "md");
         assertDoesNotThrow(c::processOpts);
         assertDoesNotThrow(() -> UnknownOptions.check("timvw-rust", UnknownOptions.DEFAULT_CODEGEN_KEYS,
-                List.of(), List.of()));
-        assertDoesNotThrow(() -> UnknownOptions.check("timvw-rust", UnknownOptions.TEMPLATE_KEYS, List.of(),
-                List.of()));
+                List.of(), List.of(), List.of()));
     }
 
     /**
@@ -226,7 +265,19 @@ class UnknownOptionsTest {
     void theClientsOptionsAreAccepted(String keys) {
         List<CliOption> advertised = new TimvwRustCodegen().cliOptions();
         assertDoesNotThrow(() -> UnknownOptions.check("timvw-rust", List.of(keys.split(",")), advertised,
-                List.of()));
+                List.of(), List.of()));
+    }
+
+    /** The Cargo.toml keys the crate template reads are advertised options (they were read before, unadvertised). */
+    @Test
+    void theCargoKeysAreAdvertisedOptions() {
+        List<String> advertised = new TimvwRustCodegen().cliOptions().stream().map(CliOption::getOpt).toList();
+        assertTrue(advertised.containsAll(List.of("publishRustRegistry", "repositoryUrl", "documentationUrl",
+                "homePageUrl")), advertised.toString());
+        TimvwRustCodegen c = new TimvwRustCodegen();
+        c.additionalProperties().putAll(Map.of("publishRustRegistry", "crates-io", "repositoryUrl", "https://x",
+                "documentationUrl", "https://docs.rs/x", "homePageUrl", "https://x"));
+        assertDoesNotThrow(c::processOpts);
     }
 
     @Test

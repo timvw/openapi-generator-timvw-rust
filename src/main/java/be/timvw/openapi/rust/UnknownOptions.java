@@ -23,12 +23,12 @@ import java.util.TreeSet;
  *   <li>an option of the generator (its {@code cliOptions}, which {@code config-help -g timvw-rust} lists),</li>
  *   <li>one of openapi-generator's general options: those of {@link DefaultCodegen} ({@code cliOptions} that
  *       timvw-rust removes from its own) and the other keys {@link DefaultCodegen#processOpts} reads,</li>
- *   <li>a key openapi-generator itself puts in the map ({@link #OPENAPI_GENERATOR_KEYS}),</li>
- *   <li>a key the templates read that is not advertised ({@link #TEMPLATE_KEYS}), or</li>
+ *   <li>a key openapi-generator itself puts in the map ({@link #OPENAPI_GENERATOR_KEYS}), or</li>
  *   <li>a key the generator answers with a message of its own (fixed, always-on, rejected and removed options), which
  *       is checked before this one.</li>
  * </ul>
- * Only the generator's own options are suggested as the closest match.
+ * The closest match is suggested from the generator's options first, then from the general options and the keys
+ * openapi-generator sets (other than its template helpers); never from the keys with a message of their own.
  */
 final class UnknownOptions {
 
@@ -78,25 +78,22 @@ final class UnknownOptions {
             CodegenConstants.AUTOSET_CONSTANTS,
             CodegenConstants.DEFAULT_TO_EMPTY_CONTAINER);
 
-    /** Keys {@code Cargo.mustache} reads (as stock {@code -g rust}'s does) that are not advertised options. */
-    static final Set<String> TEMPLATE_KEYS = Set.of(
-            "publishRustRegistry", "repositoryUrl", "documentationUrl", "homePageUrl");
-
     /** The {@code cliOptions} of {@link DefaultCodegen}: openapi-generator's general options. */
     private static final Set<String> GENERAL_OPTIONS = names(new DefaultCodegen().cliOptions());
 
     /**
      * Fails when {@code keys} holds a key that is neither in {@code advertised} nor in {@code handled} nor one of the
-     * keys above, naming every such key and, for each, the closest advertised option when it is close enough.
+     * keys above, naming every such key and, for each, the closest {@link #candidates candidate} when it is close
+     * enough.
      */
     static void check(String generator, Collection<String> keys, List<CliOption> advertised,
-                      Collection<String> handled) {
+                      Collection<String> handled, Collection<String> notSuggested) {
+        List<String> candidates = candidates(advertised, notSuggested);
         Set<String> options = names(advertised);
         Set<String> unknown = new TreeSet<>();
         for (String key : keys) {
             if (!options.contains(key) && !handled.contains(key) && !GENERAL_OPTIONS.contains(key)
-                    && !DEFAULT_CODEGEN_KEYS.contains(key) && !OPENAPI_GENERATOR_KEYS.contains(key)
-                    && !TEMPLATE_KEYS.contains(key)) {
+                    && !DEFAULT_CODEGEN_KEYS.contains(key) && !OPENAPI_GENERATOR_KEYS.contains(key)) {
                 unknown.add(key);
             }
         }
@@ -105,7 +102,7 @@ final class UnknownOptions {
         }
         List<String> described = new ArrayList<>();
         for (String key : unknown) {
-            String closest = closest(key, advertised);
+            String closest = closest(key, candidates);
             described.add("'" + key + "'" + (closest == null ? "" : " (did you mean '" + closest + "'?)"));
         }
         boolean one = unknown.size() == 1;
@@ -115,20 +112,50 @@ final class UnknownOptions {
                 one ? "remove it or correct its name" : "remove them or correct their names", generator));
     }
 
+    /** openapi-generator's template helpers in the map, which are no option anyone sets. */
+    private static final Set<String> TEMPLATE_HELPERS = Set.of("lambda", "openbrace", "closebrace");
+
     /**
-     * The advertised option closest to {@code key} by edit distance, ignoring case, when it is at most
-     * {@code max(2, length / 4)} edits away; the first in {@code advertised} order on a tie, {@code null} when none is
+     * The names a misspelt key may be meant as, in the order they win a tie: the generator's options, then
+     * openapi-generator's general options and the keys it sets itself (other than its template helpers), sorted;
+     * never one of {@code notSuggested}.
+     */
+    static List<String> candidates(List<CliOption> advertised, Collection<String> notSuggested) {
+        List<String> candidates = new ArrayList<>();
+        for (CliOption option : advertised) {
+            candidates.add(option.getOpt());
+        }
+        Set<String> others = new TreeSet<>(GENERAL_OPTIONS);
+        others.addAll(DEFAULT_CODEGEN_KEYS);
+        others.addAll(OPENAPI_GENERATOR_KEYS);
+        others.removeAll(TEMPLATE_HELPERS);
+        for (String other : others) {
+            if (!candidates.contains(other)) {
+                candidates.add(other);
+            }
+        }
+        Set<String> excluded = new HashSet<>();
+        for (String name : notSuggested) {
+            excluded.add(name.toLowerCase(Locale.ROOT));
+        }
+        candidates.removeIf(name -> excluded.contains(name.toLowerCase(Locale.ROOT)));
+        return candidates;
+    }
+
+    /**
+     * The candidate closest to {@code key} by edit distance, ignoring case, when it is at most
+     * {@code max(2, length / 4)} edits away; the first in {@code candidates} order on a tie, {@code null} when none is
      * that close.
      */
-    static String closest(String key, List<CliOption> advertised) {
+    static String closest(String key, List<String> candidates) {
         String lower = key.toLowerCase(Locale.ROOT);
         int limit = Math.max(2, key.length() / 4);
         String best = null;
         int bestDistance = Integer.MAX_VALUE;
-        for (CliOption option : advertised) {
-            int d = distance(lower, option.getOpt().toLowerCase(Locale.ROOT));
+        for (String candidate : candidates) {
+            int d = distance(lower, candidate.toLowerCase(Locale.ROOT));
             if (d <= limit && d < bestDistance) {
-                best = option.getOpt();
+                best = candidate;
                 bestDistance = d;
             }
         }

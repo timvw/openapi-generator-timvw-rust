@@ -73,6 +73,10 @@ working:
 | `useSerdePathToError` | `false` | responses decode through `serde_path_to_error`, so an error names the path of the value | |
 | `supportMultipleResponses` | `false` | a function returns `ResponseContent<<Operation>Success>`, an enum of the 2xx responses | |
 | `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none) | |
+| `publishRustRegistry` | unset | `Cargo.toml` `publish = ["<value>"]` | |
+| `repositoryUrl` | unset | `Cargo.toml` `repository` | |
+| `documentationUrl` | unset | `Cargo.toml` `documentation` | |
+| `homePageUrl` | unset | `Cargo.toml` `homepage` | |
 
 The options of the generator itself:
 
@@ -117,15 +121,24 @@ Exception in thread "main" java.lang.IllegalArgumentException: timvw-rust: optio
 
 An option that is none of these, nor one of openapi-generator's general options (`sortParamsByRequiredFlag`,
 `gitUserId`, `apiPackage`, ...), nor a key openapi-generator sets itself, fails generation too, so a misspelt option
-does not silently change the output. The error lists every unknown key, each with the closest option when one is near
-(the options above that are not configurable are never suggested):
+does not silently change the output. The error lists every unknown key, each with the closest option or general
+option when one is near (the options above that are not configurable are never suggested; they are recognised in any
+case, so `BoxOnlyCycles` gets their message):
 
 ```
 Exception in thread "main" java.lang.IllegalArgumentException: timvw-rust: unknown options 'bonBuilder' (did you mean 'bonBuilders'?), 'frobnicate'; remove them or correct their names (config-help -g timvw-rust lists the options)
 ```
 
-The keys `Cargo.mustache` reads (`publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, as in stock
-`-g rust`) are accepted as well.
+Two consequences of how openapi-generator hands keys over:
+
+- In a `-c` config file, a key that is not one of openapi-generator's settings fields becomes an additional property,
+  so it is checked like `--additional-properties`. The CLI flag names are not settings names: `skipValidateSpec`,
+  `dryRun` or `minimalUpdate` in a config file were ignored before and now fail. Use the settings names
+  (`validateSpec: false`, `enableMinimalUpdate: true`) or the CLI flags (`--skip-validate-spec`, `--dry-run`,
+  `--minimal-update`).
+- The Maven plugin passes on a `<configOptions>` entry only when it is an advertised option, and silently drops the
+  others before the generator sees them, so a misspelt `<configOptions>` entry is still ignored there. Its
+  `<additionalProperties>` entries are checked.
 
 ## Templates
 

@@ -114,7 +114,7 @@ client changes.
 
 **Recommendation:** adopt: the argument already exists and silently dropping it is a bug.
 
-**Decision:** adopt (2026-11-09): the operation's cookie parameters that are set go out in one `Cookie` header, percent-encoded where the cookie syntax needs it.
+**Decision:** adopt (2026-11-09): the operation's cookie parameters that are set go out in one `Cookie` header, percent-encoded where the cookie syntax needs it. Implemented in #69.
 
 ## 4. Response headers cannot be read
 

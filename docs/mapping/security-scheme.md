@@ -14,7 +14,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `type: http, scheme: bearer` |
 | Rust | `configuration.bearer_access_token: Option<String>`, sent as `Authorization: Bearer <token>` |
 | Library | `reqwest::RequestBuilder::bearer_auth` |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L177) |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L178) |
 
 ### `securityScheme.type.http-basic`
 
@@ -23,15 +23,15 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `type: http, scheme: basic` |
 | Rust | `configuration.basic_auth: Option<BasicAuth>`, `BasicAuth = (String, Option<String>)` (user, password) |
 | Library | `reqwest::RequestBuilder::basic_auth` |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L177) |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L178) |
 
 ### `securityScheme.type.api-key`
 
 | | |
 | --- | --- |
-| OpenAPI | `type: apiKey, in: header, name: <header>` |
-| Rust | `configuration.api_key: Option<ApiKey { prefix: Option<String>, key: String }>`, sent in the scheme's header as `<prefix> <key>` or `<key>`. `Debug` redacts the key |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L177) |
+| OpenAPI | `type: apiKey, in: header`, `in: query` or `in: cookie`, `name: <name>` |
+| Rust | `configuration.api_key: Option<ApiKey { prefix: Option<String>, key: String }>`, sent as `<prefix> <key>` or `<key>` in the scheme's header, query parameter, or cookie. A cookie goes into the operation's one `Cookie` header, after its cookie parameters, percent-encoded as they are ([`parameter.in.cookie`](parameter.md#parameterincookie)). The single configured `api_key` is sent under every api-key scheme an operation's security alternatives list (header, query and cookie alike). `Debug` redacts the key |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L178), [`CookieParamsTest#eachCookieIsAPairOfOneHeader`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L70), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L114) |
 
 ### `securityScheme.type.oauth2`
 
@@ -39,7 +39,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: oauth2` (any flow) |
 | Rust | `configuration.oauth_access_token: Option<String>`, sent as a bearer token. Getting or refreshing the token is up to the caller |
-| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L177) |
+| Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L178) |
 
 ### `oauthFlows.scopes`
 

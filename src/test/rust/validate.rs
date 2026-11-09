@@ -19,6 +19,8 @@ fn valid() -> Request {
         "tags": ["a", "b"],
         "points": [{"x": 1.0}, {"x": 2.0}],
         "metadata": {"k": "abc"},
+        "ratings": {"a": "low"},
+        "rating_lists": {"a": ["low"]},
         "stops": [["a"], ["b", "c"]],
         "content": [{"role": "user", "content": "x"}],
         "shape": {"kind": "Circle", "radius": 0.5},
@@ -136,6 +138,15 @@ fn map_sizes_and_values() {
         "metadata", Rule::MaxProperties(2), "3 properties");
     assert_error(|r| r.metadata = Some([("k".to_string(), "abcd".to_string())].into()), "metadata[\"k\"]",
         Rule::MaxLength(3), "length 4");
+    // A map of an inline enum: its size is checked, its values are enum values with nothing to check.
+    assert_error(|r| r.ratings = Some(Default::default()), "ratings", Rule::MinProperties(1), "0 properties");
+    assert_error(
+        |r| r.ratings = Some(serde_json::from_value(json!({"a": "low", "b": "high", "c": "low"})).unwrap()),
+        "ratings", Rule::MaxProperties(2), "3 properties");
+    // A map of lists of an inline enum: each list's size.
+    assert_error(
+        |r| r.rating_lists = Some(serde_json::from_value(json!({"a": ["low", "high"]})).unwrap()),
+        "rating_lists[\"a\"]", Rule::MaxItems(1), "2 items");
 }
 
 #[test]

@@ -14,4 +14,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Library | `reqwest::header::HeaderMap` |
 | Options | `supportMultipleResponses`: the success `ResponseContent` has `headers` as well. `responseFunctions`: `<operation>_response` returns the headers of a success in its `ApiResponse` ([`response.content.response-function`](response.md#responsecontentresponse-function)) |
 | Gap | the headers of a JSON or text success cannot be read without `supportMultipleResponses` or `responseFunctions` |
-| Tests | [`OtherObjectsTest#declaredResponseHeadersGetNoTypedAccessor`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L76), [`ErrorStatusTest#whatItDecodesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/ErrorStatusTest.java#L160) |
+| Tests | [`OtherObjectsTest#declaredResponseHeadersGetNoTypedAccessor`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L76), [`ErrorStatusTest#whatItDecodesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/ErrorStatusTest.java#L165) |

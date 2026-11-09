@@ -1,0 +1,41 @@
+openapi: 3.0.3
+info: {title: Union with a shared tag enum, version: "1"}
+paths:
+  /u:
+    get:
+      operationId: getU
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Pet"}
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [cat, dog]}
+      oneOf:
+        - $ref: "#/components/schemas/Cat"
+        - $ref: "#/components/schemas/Dog"
+      discriminator:
+        propertyName: kind
+        mapping: {cat: "#/components/schemas/Cat", dog: "#/components/schemas/Dog", pet: "#/components/schemas/Pet"}
+    Cat:
+      type: object
+      required: [kind, m]
+      properties:
+        kind: {type: string, enum: [cat, dog]}
+        m:
+          type: object
+          additionalProperties: {type: string, enum: [k, l]}
+        om:
+          type: object
+          additionalProperties: {type: string, enum: [k2, l2]}
+    Dog:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [cat, dog]}

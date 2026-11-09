@@ -118,10 +118,14 @@ class ErrorStatusTest {
     void aTextErrorHoldsTheBodyAsItIs() throws IOException {
         assertContains(api(), """
                         let entity: Option<GetTextError> = match status.as_u16() {
+                            402 => serde_json::from_str(&content).ok().map(GetTextError::Status402),
                             400 => Some(GetTextError::Status400(content.clone())),
                             _ => Some(GetTextError::DefaultResponse(content.clone())),
                         }
                 """);
+        // The only error a text default: the body is the entity, nothing to fall back to.
+        assertContains(api(), "        let entity: Option<GetTextDefaultError> = "
+                + "Some(GetTextDefaultError::DefaultResponse(content.clone()));\n");
     }
 
     /**
@@ -135,6 +139,7 @@ class ErrorStatusTest {
         assertTrue(twin >= 0, api);
         assertContains(api.substring(twin), """
                         let entity: Option<GetTextError> = match status.as_u16() {
+                            402 => serde_json::from_str(&content).ok().map(GetTextError::Status402),
                             400 => Some(GetTextError::Status400(content.clone())),
                             _ => Some(GetTextError::DefaultResponse(content.clone())),
                         }

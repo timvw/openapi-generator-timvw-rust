@@ -394,8 +394,9 @@ final class ValidateRules {
         private List<String> field(CodegenProperty cp, Expr expr, boolean variant) {
             Type type;
             if (cp.isEnum) {
-                type = cp.isArray ? Type.of(Boolean.TRUE.equals(cp.getUniqueItems())
-                        ? "std::collections::HashSet" : "Vec", Type.of("enum")) : Type.of("enum");
+                // An inline enum, alone or in lists and maps (as the model template types it, one level each way):
+                // the enum itself has nothing to check.
+                type = enumType(cp, 0);
             } else if (cp.isByteArray) {
                 type = Type.of("Vec<u8>");
             } else {
@@ -451,7 +452,7 @@ final class ValidateRules {
                     lines.add(V + "unique_items(" + expr.ref() + ")" + mapErr(chain) + "?;");
                 }
                 Type item = type.args().get(0);
-                CodegenProperty items = cp == null || cp.isEnum ? null : cp.items;
+                CodegenProperty items = cp == null ? null : inner(cp);
                 if (explicit(item, items)) {
                     String index = "index" + depth;
                     String name = "item" + depth;
@@ -473,7 +474,7 @@ final class ValidateRules {
                             + some(cp.getMaxProperties()) + ")" + mapErr(chain) + "?;");
                 }
                 Type item = type.args().get(1);
-                CodegenProperty items = cp == null ? null : cp.items;
+                CodegenProperty items = cp == null ? null : inner(cp);
                 if (explicit(item, items)) {
                     String key = "key" + depth;
                     String name = "entry" + depth;
@@ -571,6 +572,29 @@ final class ValidateRules {
             };
         }
 
+        /**
+         * The items or values of {@code cp} to check: none when they are the inline enum itself (nothing to check), the
+         * list or map holding it otherwise, so its own size keywords are checked.
+         */
+        private static CodegenProperty inner(CodegenProperty cp) {
+            if (cp.isEnum && (cp.items == null || !(cp.items.isArray || cp.items.isMap))) {
+                return null;
+            }
+            return cp.items;
+        }
+
+        /** The type of an inline enum property: the enum, in the list or map the property is, two levels deep. */
+        private static Type enumType(CodegenProperty cp, int depth) {
+            if (cp == null || depth > 1 || !(cp.isArray || cp.isMap)) {
+                return Type.of("enum");
+            }
+            Type inner = enumType(cp.items, depth + 1);
+            if (cp.isMap) {
+                return Type.of("std::collections::HashMap", Type.of("String"), inner);
+            }
+            return Type.of(Boolean.TRUE.equals(cp.getUniqueItems()) ? "std::collections::HashSet" : "Vec", inner);
+        }
+
         /** Whether checking a value of {@code type} needs more than calling {@code validate()} on it. */
         private boolean explicit(Type type, CodegenProperty cp) {
             if (type.option()) {
@@ -585,11 +609,11 @@ final class ValidateRules {
             if (type.list()) {
                 return cp.getMinItems() != null || cp.getMaxItems() != null
                         || (Boolean.TRUE.equals(cp.getUniqueItems()) && !type.set())
-                        || (!cp.isEnum && explicit(type.args().get(0), cp.items));
+                        || explicit(type.args().get(0), inner(cp));
             }
             if (type.map()) {
                 return cp.getMinProperties() != null || cp.getMaxProperties() != null
-                        || explicit(type.args().get(1), cp.items);
+                        || explicit(type.args().get(1), inner(cp));
             }
             if (type.name().equals("String")) {
                 return cp.getMinLength() != null || cp.getMaxLength() != null

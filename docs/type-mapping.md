@@ -129,8 +129,8 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | --- | --- | --- |
 | path | `&str`, the scalar, `uuid::Uuid` or the chrono type, URL-encoded into the path (a `date-time` as RFC 3339) | |
 | query | `Option<..>` added with `.query(..)` | |
-| query array | repeated (`?tag=a&tag=b`) or joined with `,`, as the spec's `style`/`explode` say | `resetQueryParameterStyle` sends all of them repeated |
-| query object | sent as a string | `deepObjectQueryParameters` sends listed ones as `deepObject` |
+| query array | repeated (`?tag=a&tag=b`) or joined with the style's delimiter (`,`, `\|`, space), as the spec's `style`/`explode` say | `resetQueryParameterStyle` sends all of them repeated |
+| query object | sent as a string; one the spec declares `style: deepObject` is typed and sent as `name[field]=value` | `deepObjectQueryParameters` sends listed ones as `deepObject` too |
 | header | `.header(name, value)`; an array joined with `,` | |
 | cookie | one `Cookie` header of the set ones (`a=1; b=2`), percent-encoded where a value is not a cookie-octet | |
 | an inline `enum` | `&str` | `typedEnumParameters`: a component enum (`models::ListModelsOrder`), sent as its value |

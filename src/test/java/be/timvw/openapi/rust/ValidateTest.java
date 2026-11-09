@@ -113,6 +113,11 @@ class ValidateTest {
                 + ".map_err(|e| e.at_index(index1).at(\"tags\"))?;");
         assertContains(request, "crate::models::validation::properties(value0.len(), Some(1), Some(2))");
         assertContains(request, ".map_err(|e| e.at_key(key1).at(\"metadata\"))?;");
+        // A map of an inline enum: its size, and nothing for the enum values.
+        assertContains(request, "pub ratings: Option<std::collections::HashMap<String, Ratings>>,");
+        assertContains(request, "if let Some(value0) = &self.ratings {\n"
+                + "            crate::models::validation::properties(value0.len(), Some(1), Some(2))"
+                + ".map_err(|e| e.at(\"ratings\"))?;\n        }");
         assertContains(read(on, "message"), "crate::models::validation::length(&self.content, Some(1), Some(10))"
                 + ".map_err(|e| e.at(\"content\"))?;");
     }

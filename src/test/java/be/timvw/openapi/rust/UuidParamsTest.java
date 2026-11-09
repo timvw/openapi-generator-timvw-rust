@@ -88,13 +88,13 @@ class UuidParamsTest {
                 + "id: uuid::Uuid, parent: Option<uuid::Uuid>, ids: Option<Vec<uuid::Uuid>>)"), api);
         assertTrue(api.contains("pub async fn post_upload(configuration: &configuration::Configuration, "
                 + "id: uuid::Uuid, parent: Option<uuid::Uuid>)"), api);
-        assertFalse(api.contains("&str"), api);
+        assertFalse(api.contains(": &str") || api.contains("Option<&str>"), api);
     }
 
     @Test
     void itIsSentWithDisplay() throws IOException {
         String api = api(out);
-        assertTrue(api.contains("id=p_path_id, ids=p_path_ids.iter().map(|p| p.to_string())"
+        assertTrue(api.contains("id=p_path_id, ids=p_path_ids.iter().map(|p| crate::apis::urlencode(p.to_string()))"
                 + ".collect::<Vec<String>>().join(\",\")"), api);
         assertTrue(api.contains("req_builder.query(&[(\"owner\", &p_query_owner.to_string())]);"), api);
         assertTrue(api.contains("req_builder.query(&[(\"parent\", &param_value.to_string())]);"), api);
@@ -103,7 +103,8 @@ class UuidParamsTest {
                 + ".collect::<Vec<String>>().join(\",\").to_string());"), api);
         for (Path output : List.of(out, helper)) {
             String form = api(output);
-            assertTrue(form.contains("multipart_form_params.insert(\"id\", p_form_id.to_string());"), form);
+            assertTrue(form.contains("let param_value = &p_form_id;\n"
+                    + "        multipart_form_params.push((\"id\", param_value.to_string()));"), form);
             assertTrue(form.contains("multipart_form = multipart_form.text(\"id\", p_form_id.to_string());"), form);
             assertTrue(form.contains("multipart_form = multipart_form.text(\"parent\", param_value.to_string());"),
                     form);

@@ -196,8 +196,8 @@ Pass options with `--additional-properties=<name>=<value>,...` or in a `-c` conf
 | `titleNaming` | `true` | let schema titles name, merge and replace types (stock); `false` keeps names from schema keys and paths ([rule](docs/mapping/schema.md#schematitle)) |
 | `stringIdSchemas`, `stringIdProperties`, `stringProperties` | empty | render the listed component schemas, properties that reference them, or `Schema.property` entries as `String` ([rule](docs/mapping/schema.md#schematypescalar-component)) |
 | `fileProperties` | empty | `Schema.property` entries rendered as files ([rule](docs/mapping/schema.md#schemaformatbinary)) |
-| `deepObjectQueryParameters` | empty | `<path>?<name>` object query parameters sent in deepObject style; other object query parameters go as JSON strings |
-| `resetQueryParameterStyle` | `false` | the other query parameters get the default style (`form`, exploded) |
+| `deepObjectQueryParameters` | empty | `<path>?<name>` object query parameters sent in deepObject style (`name[field]=value`), like those the spec declares `style: deepObject`; other object query parameters go as JSON strings |
+| `resetQueryParameterStyle` | `false` | the query parameters not sent in deepObject style get the default style (`form`, exploded) |
 | `webhookModule` | unset | the tag for webhook operations, generated into their own API module |
 | `webhookModuleReexport` | `false` | `default_api` re-exports the webhook module |
 | `unionPlanFile`, `preprocessedSpecFile` | unset | write the union plan, or the spec after the spec rules, to this output-relative path as JSON (for tools and debugging) |

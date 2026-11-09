@@ -32,7 +32,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | Rust | `chrono::DateTime<chrono::FixedOffset>` (`date-time`) and `chrono::NaiveDate` (`date`); the crate depends on `chrono` when a model, a parameter or a response has one |
 | Wire | RFC 3339 text, through chrono's serde support. A path, query or header parameter, an urlencoded form field and a multipart text part are written the same way: a `date-time` with `to_rfc3339()` (`2026-01-02T03:04:05+01:00`, not chrono's `Display`, `2026-01-02 03:04:05 +01:00`), a `date` as `YYYY-MM-DD`, each item of an array alike; percent-encoded in the path and the query (`%3A`, `%2B`) |
 | Options | `useChrono` (default `true`, as in stock). With `useChrono=false` both are `String`, sent as they are, and the crate has no `chrono` dependency (openai-client-base sets this; langfuse-client-base keeps the default). Stock sends a parameter with chrono's `Display` |
-| Tests | [`SchemaMappingTest#datesAreChronoUnlessUseChronoIsOff`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L82), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L71), [`#aDateIsSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L104), [`#aDateTimeFormFieldIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L88), [`#withoutChronoTheyAreStringsSentAsTheyAre`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L115), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L131) |
+| Tests | [`SchemaMappingTest#datesAreChronoUnlessUseChronoIsOff`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L82), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L71), [`#aDateIsSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L108), [`#aDateTimeFormFieldIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L90), [`#withoutChronoTheyAreStringsSentAsTheyAre`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L120), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L137) |
 
 ### `schema.format.uuid`
 
@@ -41,7 +41,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | `type: string, format: uuid` |
 | Rust | `uuid::Uuid` everywhere: in a model, and as a path, query or header parameter or form field, taken by value (`Option<uuid::Uuid>` when optional, `Vec<uuid::Uuid>` for an array); the crate depends on `uuid` when a model, a parameter or a response (success or error) has one. Stock takes a parameter as `&str` |
 | Wire | the hyphenated lower-case form (`67e55044-10b1-426f-9247-bb680e5fe0c8`), through serde in a body and `Display` in a parameter or form field; URL-safe, so it goes into the path as it is. An array is joined with `,` (path, header, form field, multipart text part, query with `explode: false`), repeated in the query with `explode: true` |
-| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L67), [`#aUuidParameterIsAUuid`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L101), [`UuidParamsTest#aUuidParameterIsAUuid`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L81), [`#itIsSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L95), [`#theCrateDependsOnUuidOnlyWhenTheApiUsesIt`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L114), [`#theCrateDependsOnChronoWhenOnlyAResponseUsesIt`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L129), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L141) |
+| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L67), [`#aUuidParameterIsAUuid`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L101), [`UuidParamsTest#aUuidParameterIsAUuid`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L81), [`#itIsSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L95), [`#theCrateDependsOnUuidOnlyWhenTheApiUsesIt`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L115), [`#theCrateDependsOnChronoWhenOnlyAResponseUsesIt`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L130), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/UuidParamsTest.java#L142) |
 
 ### `schema.format.byte`
 
@@ -114,8 +114,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | Rust | the type is the one of the rules above. Every model implements `crate::models::validation::Validate` (`fn validate(&self) -> Result<(), ValidationError>`), also a model without constraints of its own (an enum's `validate()` is `Ok(())`). It checks the keywords of the model's fields: `minLength`/`maxLength` of a `String` in characters, `pattern` with the `regex` crate (`regex::Regex`, compiled once in a `LazyLock`), the number bounds and `multipleOf` (an integer against an integer literal, a float against a literal of its own type, `multipleOf` of a float within a relative tolerance), `minItems`/`maxItems`/`uniqueItems` of a `Vec`, `minProperties`/`maxProperties` of a map; and recursively every nested model, `Vec` item, map value, `Option` that holds a value, `Box` and the active variant of a union. Enums, `serde_json::Value`, byte arrays, files, dates and other typed scalars have nothing to check; `minProperties` of a struct is not checked. A float bound beyond `f32` is compared as `f64`; one beyond `f64`, and an integer bound every value of its type meets, is not checked. `ValidationError` holds the path in wire names (`messages[2].content`, `metadata["key"]`), the `Rule` and the offending value or size, and implements `Display` and `std::error::Error`; `validate()` returns the first one. The field's documentation lists its constraints (``Validation: `minLength: 1`, `maxLength: 10`.``) |
 | Wire | unchanged: nothing generated calls `validate()`, neither before a request nor after decoding a response, and `Error` has no validation variant. A `pattern` is checked only when it uses constructs both engines read alike and `regex` compiles (literals, `.`, anchors, groups `(...)`, `(?:...)`, `(?<name>...)`, quantifiers, `\d \w \s \b` and their negations, code point escapes, general categories `\p{L}`, escaped punctuation, classes with single-character ranges in order, code points that are Unicode scalar values, distinct group names, repetition counts that multiply to at most 1000, or 100 for `\w`, `\p{..}` and other large Unicode classes); any other pattern (lookaround, backreferences, `\Z`, `\c`, `[]`, `[^]`, `a{,3}`, `\uD83D`, `[z-a]`, a group name twice, `\w{1000}`, nested classes, set operations, inline flags, ...) is skipped with a generation warning naming the construct. `regex` classes such as `\d` are Unicode-aware where ECMA-262's are ASCII. A limit in `ValidationError::rule` is an `f64`, so an integer limit above 2^53 shows rounded |
 | Options | `validateMethods` (default `true`): `false` generates no `models::validation` module, no impls and no `regex` dependency; the field documentation stays. `regex` is a dependency only when a checked `pattern` exists. A schema whose module would be `models::validation` fails generation unless the option is `false` |
-| Gap | a map of an inline enum (`additionalProperties: {type: string, enum: [...]}`) renders as the enum itself, not a map, so its `minProperties`/`maxProperties` are documented but not checked |
-| Tests | [`ValidateTest#everyModelImplementsTheTrait`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L73), [`#stringsNumbersListsAndMapsAreChecked`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L103), [`#nestedModelsAreChecked`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L121), [`#unionsCheckTheActiveVariant`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L132), [`#whatHasNothingToCheckIsSkipped`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L143), [`#aPatternIsMatchedWithARegexCompiledOnce`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L155), [`#withoutAPatternThereIsNoRegexDependency`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L165), [`#openApi31ExclusiveBoundsAreNumbers`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L171), [`#constraintsAreDocumented`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L181), [`#theOptionTurnsTheGenerationOff`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L193), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L238), [`SchemaMappingTest#validationKeywordsAreCheckedByValidateAndDocumented`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L92) |
+| Tests | [`ValidateTest#everyModelImplementsTheTrait`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L73), [`#stringsNumbersListsAndMapsAreChecked`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L103), [`#nestedModelsAreChecked`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L126), [`#unionsCheckTheActiveVariant`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L137), [`#whatHasNothingToCheckIsSkipped`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L148), [`#aPatternIsMatchedWithARegexCompiledOnce`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L160), [`#withoutAPatternThereIsNoRegexDependency`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L170), [`#openApi31ExclusiveBoundsAreNumbers`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L176), [`#constraintsAreDocumented`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L186), [`#theOptionTurnsTheGenerationOff`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L198), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L243), [`SchemaMappingTest#validationKeywordsAreCheckedByValidateAndDocumented`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L92) |
 
 ## Objects
 
@@ -151,17 +150,18 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | a property that references another model |
-| Rust | the model, by value (`Option<models::Owner>`). A reference that closes a cycle of the model graph is boxed (`Option<Box<models::ThreadNode>>`); `Vec` and map items are never boxed, since they already are on the heap |
+| Rust | the model, by value (`Option<models::Owner>`). A reference that closes a cycle of the model graph is boxed (`Option<Box<models::ThreadNode>>`), including a cycle through a union's variants, an inline union's too (`Top` → `TopChild` → `Leaf` → `Top`); `Vec` and map items are never boxed, since they already are on the heap |
 | Options | always (stock boxes every model reference) |
-| Tests | [`BoxOnlyCyclesTest#acyclicReferencesAreHeldByValue`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L47), [`#selfReferenceIsBoxedButNotInsideVec`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L59), [`#mutualRecursionIsBoxedBothWays`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L69) |
+| Tests | [`BoxOnlyCyclesTest#acyclicReferencesAreHeldByValue`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L47), [`#selfReferenceIsBoxedButNotInsideVec`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L59), [`#mutualRecursionIsBoxedBothWays`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L69), [`ParamSerializationTest#aCycleThroughAnInlineUnionIsBoxed`](../../src/test/java/be/timvw/openapi/rust/ParamSerializationTest.java#L118) |
 
 ### `schema.additionalProperties`
 
 | | |
 | --- | --- |
 | OpenAPI | `additionalProperties: <schema>`, or `true` |
-| Rust | `std::collections::HashMap<String, T>`; `true` gives `HashMap<String, serde_json::Value>` |
-| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L132) |
+| Rust | `std::collections::HashMap<String, T>`; `true` gives `HashMap<String, serde_json::Value>`. Values that are an inline enum give `HashMap<String, <Property>>`, with the enum `<Property>` rendered next to the struct, and values that are a list of one `HashMap<String, Vec<<Property>>>` (a list of such maps is `Vec<HashMap<String, <Property>>>`); `validate()` checks its `minProperties`/`maxProperties` like any map's ([`schema.pattern`](#schemapattern)) |
+| Gap | an inline enum two or more lists or maps deep (a map of lists of lists) is typed one level deep only |
+| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L132), [`SmallFixesTest#aMapOfAnInlineEnumIsAMapOfTheEnum`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L82) |
 
 ### `schema.type.free-form-object`
 
@@ -187,7 +187,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | `default: <value>` |
 | Rust | not applied: the field is `Option<T>` like any optional field, and the default is noted in its documentation (``Defaults to `false`.``) |
 | Options | always |
-| Tests | [`ExtraRulesTest#defaultsAreDocumented`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L146) |
+| Tests | [`ExtraRulesTest#defaultsAreDocumented`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L147) |
 
 ### `schema.properties.default-impl`
 
@@ -206,7 +206,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | Rust | no `Display`. Where a struct goes into a path, query, header, form or multipart text part, the API code serializes it with `serde_json::to_string` |
 | Wire | the struct's JSON; a serialization failure is `Error::Serde` |
 | Options | always |
-| Tests | [`NoStructDisplayTest#structsHaveNoDisplay`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L58), [`#pathParameter`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L68), [`#nothingStillCallsDisplayOnAStruct`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L128) |
+| Tests | [`NoStructDisplayTest#structsHaveNoDisplay`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L58), [`#pathParameter`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L68), [`#nothingStillCallsDisplayOnAStruct`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L131) |
 
 ### `schema.deprecated`
 
@@ -215,7 +215,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | `deprecated: true` on a property or a schema |
 | Rust | no marker |
 | Options | `deprecatedAttributes` (langfuse-client-base) adds `#[deprecated]` to the field or type, and generated files start with `#![allow(deprecated)]` |
-| Tests | [`ExtraRulesTest#deprecatedFieldsAndModelsAreMarked`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L155), [`#nothingIsDeprecatedWithoutTheOption`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L165) |
+| Tests | [`ExtraRulesTest#deprecatedFieldsAndModelsAreMarked`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L156), [`#nothingIsDeprecatedWithoutTheOption`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L166) |
 
 ### `schema.description`
 
@@ -223,7 +223,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | --- | --- |
 | OpenAPI | `description` |
 | Rust | `///` on the type or field; bare URLs are wrapped in `<...>` (rustdoc's `bare_urls`). A type without a description has no empty `///` |
-| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L90), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L200) |
+| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L90), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L201) |
 
 ## Arrays
 
@@ -396,7 +396,7 @@ object kind decides. Two variants that accept the same values decode to whicheve
 | Rust | the `null` branch is no variant: the union is nullable. With one other branch, there is no union: the schema is that branch (an object next to `null` is a struct). Where it is used, the nullable union follows [`schema.nullable`](../type-mapping.md#objects): an optional property is `Option<Option<U>>` |
 | Wire | `null` decodes to `Some(None)`, an absent property to `None` |
 | Options | always |
-| Tests | [`ModelUnionsTest#anObjectNextToNullIsAStruct`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L116), [`#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103), [`ExtraRulesTest#nullableUnionFieldsCanHoldNull`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L136) |
+| Tests | [`ModelUnionsTest#anObjectNextToNullIsAStruct`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L116), [`#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103), [`ExtraRulesTest#nullableUnionFieldsCanHoldNull`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L137) |
 
 ### `schema.oneOf.enum-branch`
 

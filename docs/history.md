@@ -39,7 +39,7 @@ the code before and after, and the steps for a client repository.
   each, the closest option (`did you mean 'bonBuilders'?`). A client whose configuration only holds options sees no
   change; one with a misspelt or stale key removes or corrects it.
 
-### Function signatures
+### Function signatures and models
 
 - A request body the function only serializes is borrowed ([decision 2](decisions.md#2-request-bodies-by-reference)):
   `create_item(configuration, item: models::Item)` becomes `item: &models::Item` (a union body too, an array body
@@ -54,6 +54,16 @@ the code before and after, and the steps for a client repository.
   passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
   not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
   makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
+- A map whose values are an inline enum (`additionalProperties: {type: string, enum: [..]}`) is
+  `HashMap<String, <Enum>>` (a map of lists of it `HashMap<String, Vec<<Enum>>>`, a list of such maps
+  `Vec<HashMap<String, <Enum>>>`); it was the enum itself (or a list of it), which the JSON does not decode to. The
+  field's type changes,
+  and `validate()` now checks its `minProperties`/`maxProperties` (its enum values have nothing to check).
+- A discriminated union whose branches share one `enum` of every tag value (`kind: [cat, dog]` on both `Cat` and
+  `Dog`) dispatches each value to the branch the `mapping` names (`cat` decodes `Cat`, `dog` decodes `Dog`), instead
+  of trying both in order for either value: a branch's own tag values select it unless the mapping gives them to
+  another branch. The unused `decode` helper of `src/models/union_dispatch.rs` is now left
+  out when only `first_of` is used (clippy `dead_code`).
 
 ### Errors
 
@@ -94,6 +104,29 @@ the code before and after, and the steps for a client repository.
   (`additionalProperties`), which did not compile, is sent as its JSON. Signatures do not change. The generated header
   replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
   into the existing header rather than append a second one.
+- Parameter serialization fixes (pre-existing bugs found in reviews):
+  - A query parameter the spec declares `style: deepObject` (an object or a `$ref` to one) keeps its type and is
+    sent as `name[field]=value`; it was turned into `&str` and then dropped, or, with `resetQueryParameterStyle`,
+    sent as one `name=<text>` string (openai-client-base's vault `metadata`).
+  - A model parameter listed in `deepObjectQueryParameters` is sent as `name[field]=value`; it went with flat
+    `field=value` keys (openai-client-base's audit log `effective_at`). A required listed one is sent in `deepObject`
+    style too (it went as its JSON).
+  - `pipeDelimited` and `spaceDelimited` query arrays are joined with `|` and a space (they were joined with `,`),
+    or repeated with `explode: true`.
+  - An array of arrays (or of maps) in the query is sent as each item's JSON; it did not compile.
+  - Path arrays URL-encode each item, and a path value encodes a space as `%20` (it was `+`); path and header arrays
+    of integers, uuids, enums and structs compile and join their items' text (structs their JSON). A single enum,
+    struct or map path value is URL-encoded too (a struct or map as its JSON).
+  - An urlencoded form body is a list of pairs in the spec's order (it was a `HashMap`): an array field is a pair
+    per item (`style: form, explode: true`) unless the `encoding` says `explode: false` (joined with `,`, or `|` and a
+    space for a `pipeDelimited` or `spaceDelimited` encoding), and a required nullable
+    field left `None` is sent empty (it did not compile).
+  - A JSON body that is an array of uuids is named `uuid` (it was `uuid_colon_colon_uuid`).
+  - A model cycle through an inline union is boxed (E0072).
+  - The generated parameter code passes `clippy -D warnings`: no `into_iter()` on a reference, no redundant
+    closure.
+  A client passing a value to a declared `deepObject` parameter now passes the typed value instead of a string; a
+  server reading form arrays as one `,`-joined field reads repeated fields instead.
 
 ### Fixes
 
@@ -102,6 +135,22 @@ the code before and after, and the steps for a client repository.
 - A crate generated without options passes `cargo clippy -- -D warnings`: `ContentType::from` (`src/apis/mod.rs`) and
   the content-type match of each function no longer `return` from their last expression (`needless_return`). A client
   that allowed `clippy::needless_return` through `apiLintAllows` only for this can drop it.
+- `contentTypeMethods` without `typedEventStreams`: the method for another request media type of an operation whose
+  response is an event stream returned `sse::EventStream`, but `sse.rs` is only written with `typedEventStreams`, so
+  the crate did not compile. It now decodes the response as JSON, like the operation's own method.
+- `contentTypeMethods` with `typedEventStreams`: an event stream whose schema models the SSE envelope (required
+  `event` and `data`), which gets no typed stream, now gets none in the method for another request media type either:
+  that method returned `sse::EventStream<Envelope>` and now decodes the response as JSON like the operation's own.
+- `useSerdePathToError`: `Display` of `Error::SerdePathToError` no longer calls `to_string()` inside `format!`
+  (clippy `to_string_in_format_args`). An operation whose only error is a `text/plain` default sets
+  `Some(DefaultResponse(content.clone()))` without an `UnknownValue` fallback that could not apply.
+- `cargo test --doc` passes on a generated crate: `lib.rs` includes the README as the crate's documentation, and its
+  `Cargo.toml` line and `cargo doc --open` were bare code blocks, so rustdoc compiled them as Rust. They are marked
+  `toml` and `sh`.
+- The generated README's description (`info.description`) has the code blocks rustdoc would compile marked `text`
+  (fenced without a language or with only `rust` and rustdoc attributes such as `no_run` or `ignore`, and indented
+  blocks, also inside a list item), so `cargo test --doc` does not compile them; code blocks in another language stay
+  as they are.
 
 ### New
 

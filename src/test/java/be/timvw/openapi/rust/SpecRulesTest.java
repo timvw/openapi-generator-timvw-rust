@@ -173,8 +173,8 @@ class SpecRulesTest {
         assertTrue(api.contains("filter: Option<std::collections::HashMap<String, String>>,"), api);
         assertTrue(api.contains("ids: Option<Vec<String>>)"), api);
         // style reset to form/explode: arrays go as repeated parameters.
-        assertTrue(api.contains("match \"multi\""), api);
-        assertFalse(api.contains("match \"csv\""), api);
+        assertTrue(api.contains("req_builder = req_builder.query(&[(\"ids\", item)]);"), api);
+        assertFalse(api.contains("items.join("), api);
     }
 
     @Test

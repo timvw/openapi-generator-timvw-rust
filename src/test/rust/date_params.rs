@@ -144,7 +144,7 @@ fn body(request: &str) -> &str {
 }
 
 /// An urlencoded form field is written like a query parameter: RFC 3339 for a date-time, `YYYY-MM-DD` for a date,
-/// an array joined with `,`.
+/// an array as a pair per item (`style: form, explode: true`).
 #[tokio::test]
 async fn an_urlencoded_form_field_is_rfc_3339() {
     let (configuration, request) = serve().await;
@@ -170,7 +170,8 @@ async fn an_urlencoded_form_field_is_rfc_3339() {
         vec![
             "at=2026-01-02T03%3A04%3A05%2B01%3A00",
             "day=2026-01-31",
-            "times=2026-01-01T00%3A00%3A00%2B00%3A00%2C2026-01-02T00%3A00%3A00%2B01%3A00",
+            "times=2026-01-01T00%3A00%3A00%2B00%3A00",
+            "times=2026-01-02T00%3A00%3A00%2B01%3A00",
             "until=2026-12-31T23%3A59%3A59%2B00%3A00",
         ]
     );

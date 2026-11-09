@@ -14,8 +14,18 @@
 {{/vendorExtensions.x-rust-error-match}}
 {{^vendorExtensions.x-rust-error-match}}
 {{#vendorExtensions.x-rust-error-default}}
-        let entity: Option<{{{enum}}}> = {{#text}}Some({{{enum}}}::{{{variant}}}(content.clone())){{/text}}{{^text}}{{#decodes}}serde_json::from_str(&content).ok().map({{{enum}}}::{{{variant}}}){{/decodes}}{{^decodes}}Some({{{enum}}}::{{{variant}}}()){{/decodes}}{{/text}}
+        {{#text}}
+        let entity: Option<{{{enum}}}> = Some({{{enum}}}::{{{variant}}}(content.clone()));
+        {{/text}}
+        {{^text}}
+        {{#decodes}}
+        let entity: Option<{{{enum}}}> = serde_json::from_str(&content).ok().map({{{enum}}}::{{{variant}}})
             .or_else(|| serde_json::from_str(&content).ok().map({{{enum}}}::UnknownValue));
+        {{/decodes}}
+        {{^decodes}}
+        let entity: Option<{{{enum}}}> = Some({{{enum}}}::{{{variant}}}());
+        {{/decodes}}
+        {{/text}}
 {{/vendorExtensions.x-rust-error-default}}
 {{^vendorExtensions.x-rust-error-default}}
         let entity: Option<{{{vendorExtensions.x-rust-error-enum}}}> = serde_json::from_str(&content).ok().map({{{vendorExtensions.x-rust-error-enum}}}::UnknownValue);

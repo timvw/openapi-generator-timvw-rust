@@ -79,7 +79,7 @@ async fn create(configuration: &Configuration, new_item: &models::NewItem) -> Re
 | `exclusiveMinimum`, `exclusiveMaximum` | integers, floats | exclusive bounds, in the 3.0 boolean and the 3.1 numeric form |
 | `multipleOf` | integers, floats | exact for integers; for floats within a relative tolerance (1e-9 for `f64`, 1e-5 for `f32`), so `0.3` is a multiple of `0.1` |
 | `minItems`, `maxItems` | `Vec` | the item count |
-| `uniqueItems` | `Vec` | no two items are equal (`PartialEq`), whatever the item type; the array stays a `Vec` |
+| `uniqueItems` | `Vec` | no two items are equal (`PartialEq`), whatever the item type; the array stays a `Vec` (an array of an inline enum is a `HashSet`, as in stock) |
 | `minProperties`, `maxProperties` | maps | the entry count |
 
 The check is recursive. A model checks the models it holds, the items of its `Vec`s, the values of its maps, the
@@ -135,8 +135,7 @@ WARN o.o.codegen.timvw.TimvwRustCodegen - timvw-rust: validate: Patterns.skip_bi
   `serde_json::Value`, byte arrays, files, dates, uuids and `bool`.
 - **A bound every value of the type meets** (an `int64` field with the full `int64` range) is not compared. A float
   bound beyond `f32` is compared as `f64`; one beyond `f64` is not checked.
-- **`minProperties`/`maxProperties` of a struct**, and of a map whose values are an inline enum (a known gap in
-  [`schema.pattern`](../mapping/schema.md#schemapattern)).
+- **`minProperties`/`maxProperties` of a struct.**
 - **`readOnly`, `writeOnly`, `format`** (beyond the type it picks), `const`, `not`, `if`/`then`, `dependentRequired`:
   not validation keywords here.
 

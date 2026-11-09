@@ -1,0 +1,52 @@
+openapi: 3.0.3
+info: {title: Stream without typedEventStreams, version: "1"}
+paths:
+  /events:
+    post:
+      operationId: createEvents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Req"}
+          application/x-www-form-urlencoded:
+            schema: {$ref: "#/components/schemas/Req"}
+      responses:
+        "200":
+          description: a stream
+          content:
+            text/event-stream:
+              schema: {$ref: "#/components/schemas/Event"}
+  /envelopes:
+    post:
+      operationId: createEnvelopes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Req"}
+          application/x-www-form-urlencoded:
+            schema: {$ref: "#/components/schemas/Req"}
+      responses:
+        "200":
+          description: a stream whose schema models the SSE envelope
+          content:
+            text/event-stream:
+              schema: {$ref: "#/components/schemas/Envelope"}
+components:
+  schemas:
+    Envelope:
+      type: object
+      required: [event, data]
+      properties:
+        event: {type: string}
+        data: {type: string}
+    Req:
+      type: object
+      properties:
+        name: {type: string}
+    Event:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string}

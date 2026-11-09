@@ -431,6 +431,17 @@ mod migration {
         Ok(())
     }
 
+    async fn deep_object() -> Result<(), BoxError> {
+        let configuration = configuration();
+        let metadata = std::collections::HashMap::from([("team".to_owned(), "lamps".to_owned())]);
+        let page = items_api::list_items()
+            .configuration(&configuration)
+            .metadata(metadata)
+            .call()
+            .await?;
+        Ok(())
+    }
+
     #[test]
     fn status_variants() {
         let response = not_found();

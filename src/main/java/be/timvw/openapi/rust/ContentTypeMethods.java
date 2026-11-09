@@ -201,15 +201,16 @@ final class ContentTypeMethods {
                 if (!ownResponse) {
                     suffix.append('_').append(s.suffix);
                 }
+                // A primary event stream that cannot be decoded (no typedEventStreams, or an SSE envelope) is left as
+                // the stock rendering, in the operation's own method and in its other request media types alike.
+                Shape shape = s == Shape.STREAM && !streamable ? null : s;
                 if (ownRequest && ownResponse) {
-                    // The operation's own method: what the stock generator renders. A primary event stream that cannot
-                    // be decoded is left as the stock rendering.
-                    Shape own = s == Shape.STREAM && !streamable ? null : s;
-                    methods.add(0, new Method(request, own, "", operation, false));
+                    // The operation's own method: what the stock generator renders.
+                    methods.add(0, new Method(request, shape, "", operation, false));
                     continue;
                 }
-                methods.add(new Method(request, s, suffix.toString(),
-                        restrict(openAPI, operation, methodResponse, body, request, s), !ownResponse));
+                methods.add(new Method(request, shape, suffix.toString(),
+                        restrict(openAPI, operation, methodResponse, body, request, shape), !ownResponse));
             }
         }
         return methods;

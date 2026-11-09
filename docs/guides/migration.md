@@ -23,8 +23,11 @@ the bytes on the wire, and a few in the generator's configuration. In short:
 | [text errors](#a-text-error-holds-its-text) | reading a text error from `content` | match the variant |
 | [`date-time` on the wire](#date-time-parameters-are-sent-in-rfc-3339) | nothing in the code | check a server that parsed the old form |
 | [cookies sent](#cookie-parameters-are-sent) | nothing in the code | check middleware that sets `Cookie` |
+| [parameter serialization](#parameters-are-serialized-as-the-spec-says) | a declared `deepObject` parameter taken as `&str` | pass the typed value; check servers that read the old forms |
+| [maps of inline enums](#a-map-of-an-inline-enum-is-a-map) | code that used the field as the enum | use the map |
+| [discriminator mapping](#a-shared-tag-enum-follows-the-mapping) | nothing in the code | a value now decodes the branch the mapping names |
 | [validation](#models-implement-validate) | a hand-kept `Cargo.toml` with checked patterns | add `regex` |
-| [no `needless_return`](#generated-code-is-clippy-clean) | nothing | drop the lint from `apiLintAllows` |
+| [clippy-clean](#generated-code-is-clippy-clean) | nothing | drop `needless_return` and `into_iter_on_ref` from `apiLintAllows` |
 
 ### The baseline options are gone
 
@@ -261,6 +264,58 @@ items_api::list_owner_items()
 On an operation that sends cookies, the generated header replaces a default `Cookie` header of the client. A middleware
 that adds cookies must merge them into the existing header rather than append a second one.
 
+### Parameters are serialized as the spec says
+
+A set of parameter fixes. Most change only the bytes sent; the first one changes a type.
+
+- **A query parameter the spec declares `style: deepObject`** keeps its type and is sent as `name[field]=value`.
+  Before, it was turned into `&str` and then not sent at all, or, with `resetQueryParameterStyle`, sent as one
+  `name=<text>`. In openai-client-base this is the vault `metadata` filter, which is now a
+  `HashMap<String, String>`:
+
+<!-- not compiled: 0.20 -->
+```rust
+items_api::list_items().configuration(&configuration).metadata("team=lamps").call().await?;
+```
+
+```rust
+let metadata = std::collections::HashMap::from([("team".to_owned(), "lamps".to_owned())]);
+let page = items_api::list_items()
+    .configuration(&configuration)
+    .metadata(metadata)
+    .call()
+    .await?;
+```
+
+- **A model parameter listed in `deepObjectQueryParameters`** is sent as `name[field]=value`. Before, it went with
+  flat `field=value` keys. openai-client-base's audit log `effective_at` now arrives as `effective_at[gt]=...`. A
+  required listed one is sent in deepObject style too; before, it went as its JSON.
+- **An urlencoded form array is a pair per item** (`tags=a&tags=b`, `style: form, explode: true`) unless its
+  `encoding` says `explode: false`. Before, it was one `,`-joined field. The form is a list of pairs in the spec's
+  order, so a server that read one joined field reads repeated fields now. A required nullable form field left `None`
+  is sent empty; before, it did not compile.
+- **Path values encode a space as `%20`**, where they used `+`, and path arrays URL-encode each item. An enum, struct
+  or map path value is URL-encoded too (a struct or map as its JSON). Path and header arrays of integers, uuids, enums
+  and structs compile now and join their items' text.
+- **`pipeDelimited` and `spaceDelimited` query arrays** are joined with `|` and a space; before, they were joined with
+  `,`. With `explode: true` they repeat.
+- An array of arrays (or of maps) in the query is sent as each item's JSON; it did not compile. A JSON body that is
+  an array of uuids is named `uuid` (it was `uuid_colon_colon_uuid`). A model cycle through an inline union is boxed.
+
+### A map of an inline enum is a map
+
+A property `additionalProperties: {type: string, enum: [..]}` was rendered as the enum itself (or a list of it), which
+the JSON does not decode to. It is now `HashMap<String, <Enum>>`. A map of lists of it is `HashMap<String, Vec<<Enum>>>`,
+and a list of such maps is `Vec<HashMap<String, <Enum>>>`. The field's type changes, and `validate()` checks its
+`minProperties`/`maxProperties`.
+
+### A shared tag enum follows the mapping
+
+When every branch of a discriminated union declares the same `enum` of all tag values (`kind: [cat, dog]` on both
+`Cat` and `Dog`), each value now decodes the branch the `discriminator.mapping` names: `cat` gives `Cat`, `dog` gives
+`Dog`. Before, both branches were tried in order for either value, so a `dog` could decode as `Cat`. Nothing changes
+in the code; a value that decoded into the wrong branch now decodes into the right one.
+
 ### Models implement `Validate`
 
 Every model implements `models::validation::Validate` (`validate()`), and constrained fields get a `Validation:` line
@@ -278,9 +333,11 @@ check:
 
 ### Generated code is clippy-clean
 
-A crate generated without options passes `cargo clippy -- -D warnings`. `ContentType::from` and the content-type
-match no longer `return` from their last expression. A client that allowed `clippy::needless_return` through
-`apiLintAllows` only for this can drop it.
+A crate generated without options passes `cargo clippy -- -D warnings`:
+- `ContentType::from` and the content-type match no longer `return` from their last expression (`needless_return`);
+- the parameter code no longer calls `into_iter()` on a reference (`into_iter_on_ref`) or uses a redundant closure.
+
+A client that allowed these lints through `apiLintAllows` only for the generated code can drop them.
 
 Before:
 
@@ -289,18 +346,21 @@ Before:
 { "apiLintAllows": "clippy::needless_return, clippy::into_iter_on_ref" }
 ```
 
-After:
-
-<!-- not compiled: configuration -->
-```json
-{ "apiLintAllows": "clippy::into_iter_on_ref" }
-```
+After: no `apiLintAllows`.
 
 ### Smaller fixes
 
 - `supportMultipleResponses` with `typedEventStreams`: the stream function returns its `EventStream`. Before, it
   returned the stream where `ResponseContent<..Success>` was declared, which did not compile.
+- `contentTypeMethods` without `typedEventStreams`: the method for another request media type of an event-stream
+  operation decodes JSON. Before, it returned an `sse::EventStream` without `sse.rs`, which did not compile. With
+  `typedEventStreams`, an SSE envelope schema gets no stream in those methods either.
 - A map cookie or header parameter (`additionalProperties`), which did not compile, is sent as its JSON.
+- `cargo test --doc` passes on a generated crate. The generated README's `Cargo.toml` line and `cargo doc --open` are
+  marked `toml` and `sh`. Code blocks of the spec's `info.description` that rustdoc would compile (no language,
+  `rust`, or indented) are marked `text`. A client that kept its own README or disabled doctests for this can drop
+  the workaround.
+- `useSerdePathToError`: `Display` of `Error::SerdePathToError` is clippy-clean.
 
 ### New, off by default
 
@@ -314,7 +374,8 @@ For openai-client-base and langfuse-client-base, and any client generated the sa
 1. Bump the image tag in the generation script to `0.21.0-og7.27.0`.
 2. Remove the removed options from the configuration (`scripts/generator-config.json`,
    `scripts/generate-openapi-client.sh`).
-3. Remove `clippy::needless_return` from `apiLintAllows` if it was only there for the generated code.
+3. Remove `clippy::needless_return` and `clippy::into_iter_on_ref` from `apiLintAllows` if they were only there for
+   the generated code.
 4. In a hand-kept `Cargo.toml`, add `regex = "1"` if the generated one has it.
 5. Regenerate, then fix the hand-written tests, examples and README examples. The compiler lists them: bodies by
    reference, uuids, `ResponseContent` literals.

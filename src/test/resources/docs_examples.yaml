@@ -21,6 +21,14 @@ paths:
           in: query
           schema:
             type: string
+        - name: metadata
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            additionalProperties:
+              type: string
       responses:
         "200":
           description: a page of items

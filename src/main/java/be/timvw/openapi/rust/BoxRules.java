@@ -48,6 +48,8 @@ final class BoxRules {
             lists.add(cm.getComposedSchemas().getAnyOf());
             lists.add(cm.getComposedSchemas().getAllOf());
         }
+        // The variants a union renders (UnionRules.plan), which for an inline union are not its composed schemas.
+        lists.add(UnionRules.variants(cm));
         lists.removeIf(l -> l == null);
         return lists;
     }
@@ -67,6 +69,7 @@ final class BoxRules {
         }
 
         Map<String, Integer> component = components(byName);
+
         for (CodegenModel cm : byName.values()) {
             for (List<CodegenProperty> list : propertyLists(cm)) {
                 for (CodegenProperty p : list) {
@@ -96,10 +99,12 @@ final class BoxRules {
         if (p.isContainer || p.isArray || p.isMap) {
             return null;
         }
-        String name = p.complexType;
-        if (name == null && p.dataType != null) {
-            name = p.dataType.startsWith("models::") ? p.dataType.substring("models::".length()) : p.dataType;
+        if (p.complexType != null && byName.containsKey(p.complexType)) {
+            return p.complexType;
         }
+        // An inline union keeps the schema's name as complexType (Top_child); its dataType is the model's (TopChild).
+        String name = p.dataType == null ? null
+                : p.dataType.startsWith("models::") ? p.dataType.substring("models::".length()) : p.dataType;
         return name != null && byName.containsKey(name) ? name : null;
     }
 
@@ -114,6 +119,7 @@ final class BoxRules {
                 addTargets(out, cm.getComposedSchemas().getOneOf(), byName);
                 addTargets(out, cm.getComposedSchemas().getAnyOf(), byName);
             }
+            addTargets(out, UnionRules.variants(cm), byName);
             edges.put(cm.classname, out);
         }
         return edges;

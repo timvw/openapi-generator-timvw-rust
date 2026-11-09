@@ -173,7 +173,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 ## Known gaps
 
 - Response headers of a JSON or text success cannot be read (an error has them, and so does a success with
-  `supportMultipleResponses`).
+  `supportMultipleResponses` or through the `_response` functions of `responseFunctions`).
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
   ([mapping](mapping/README.md#objects)).
 - `readOnly`/`writeOnly` properties are in both directions.

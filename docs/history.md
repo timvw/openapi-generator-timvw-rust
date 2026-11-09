@@ -33,6 +33,13 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   do not change, so nothing stops compiling; a client that matched on a `Status…` variant now gets the one of the
   status, and one that relied on a body of another response's type decoding (a 500 body in `Status400`) gets
   `UnknownValue`.
+- `date-time` parameters are sent in RFC 3339 ([decision 11](decisions.md#11-date-time-parameters-are-sent-in-display-form)):
+  with `useChrono` (the default), a `date-time` path, query or header parameter or form field (urlencoded body,
+  multipart text part), or each item of an array of them, was
+  written with chrono's `Display` (`2026-01-02 03:04:05 +01:00`) and is now written with `to_rfc3339()`
+  (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of
+  `date` or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a
+  client that built such a request by hand to get RFC 3339 can call the generated function instead.
 
 ## What the generator renders differently from `-g rust`
 

@@ -12,6 +12,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | a success response with `application/json` content |
 | Rust | the function returns `Result<T, Error<..>>`, `T` the schema's type, decoded from the body. A body of another content type is `Error::Serde` |
+| Options | `responseFunctions` adds `<operation>_response`, returning the body undecoded with the status and headers ([`response.content.response-function`](#responsecontentresponse-function)) |
 | Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L136) |
 
 ### `response.content.text`
@@ -20,6 +21,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | a success response with `text/plain` content |
 | Rust | `String`, the body as it came |
+| Options | `responseFunctions`: `<operation>_response` returns `ApiResponse<String>`; `text()` is the body ([`response.content.response-function`](#responsecontentresponse-function)) |
 | Tests | [`OperationMappingTest#aJsonResponseIsDecodedAndATextResponseIsAString`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L136) |
 
 ### `response.content.binary`
@@ -37,7 +39,19 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | a success response without `content` (`204`) |
 | Rust | `Result<(), Error<..>>` |
+| Options | `responseFunctions`: `<operation>_response` returns `ApiResponse<()>`, for the status and headers ([`response.content.response-function`](#responsecontentresponse-function)) |
 | Tests | [`OperationMappingTest#aResponseWithoutABodyIsUnit`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L143) |
+
+### `response.content.response-function`
+
+| | |
+| --- | --- |
+| OpenAPI | an operation whose success response has a body or none: JSON (`response.content.json`), text (`response.content.text`), no content (`response.content.none`) |
+| Rust | with `responseFunctions`, next to the operation's function `get_item`, a function `get_item_response` with the same arguments and builder, returning `Result<apis::ApiResponse<T>, Error<GetItemError>>`. `T` is what `get_item` returns: the schema's type, `String` for text, `()` without content (`GetItemSuccess` with `supportMultipleResponses`). `ApiResponse<T>` (`src/apis/api_response.rs`, re-exported as `apis::ApiResponse`, written only with the option) has the public fields `status: reqwest::StatusCode` and `headers: reqwest::header::HeaderMap`, and the body: `json()` decodes it as `T`, `json_as::<U>()` as any `U: DeserializeOwned` (a subset of `T`), `json_borrowed::<U>()` as a `U: Deserialize<'a>` that borrows from the response (`&'a str`, `Cow<'a, str>` with `#[serde(borrow)]`, `&RawValue`), and `text()` hands it out as `&str`; the three decoders return `serde_json::Error`. `ApiResponse::new` builds one (for tests); it implements `Clone` and `Debug` whatever `T` is. The operation's own function does not change. Every method of an operation gets one: the `contentTypeMethods` request variants (`create_edit_json_response`) and response variants with a body (`create_transcription_text_response`). A binary response (`response.content.binary`) gets none, since its function already returns the `reqwest::Response` with status and headers; neither does a `text/event-stream` method (`_stream`, `response.content.event-stream`), whose body is a stream, nor a webhook (webhooks are not post-processed per module). A method that would take the name of another method of its API module (an operation `getItemResponse` next to `getItem`) fails generation, naming both |
+| Wire | the same request as the operation's function. A success is not checked against its content type (the operation's function fails on a non-JSON body); the body is read as text and kept. An error status is the operation's typed `Error::ResponseError`, rendered by the same code |
+| Library | `reqwest::StatusCode`, `reqwest::header::HeaderMap` |
+| Options | `responseFunctions`, off by default. Stock has no such function; `supportMultipleResponses` returns a `ResponseContent` with the status and the body text, without headers. See the [guide](../guides/response-functions.md) |
+| Tests | [`ResponseFunctionsTest#aJsonOperationGetsAResponseTwinReturningApiResponse`](../../src/test/java/be/timvw/openapi/rust/ResponseFunctionsTest.java#L92), [`#theOperationItselfIsUnchanged`](../../src/test/java/be/timvw/openapi/rust/ResponseFunctionsTest.java#L105), [`#theErrorBranchIsTheOperations`](../../src/test/java/be/timvw/openapi/rust/ResponseFunctionsTest.java#L112), [`#theTwinIsDocumentedAndHasABuilder`](../../src/test/java/be/timvw/openapi/rust/ResponseFunctionsTest.java#L120), [`#aUnitOrTextSuccessHasOneAndAFileDoesNot`](../../src/test/java/be/timvw/openapi/rust/ResponseFunctionsTest.java#L129), [`#apiResponseIsWrittenOnlyWithTheOption`](../../src/test/java/be/timvw/openapi/rust/ResponseFunctionsTest.java#L138), [`#contentTypeMethodsGetOneEventStreamsAndBytesDoNot`](../../src/test/java/be/timvw/openapi/rust/ResponseFunctionsTest.java#L148), [`#aNameThatIsTakenFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/ResponseFunctionsTest.java#L161), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/ResponseFunctionsTest.java#L195) |
 
 ### `response.content`
 

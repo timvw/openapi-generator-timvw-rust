@@ -11,5 +11,6 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `headers` of a response |
 | Rust | nothing: a JSON or text response returns only its decoded body, and an error response only `status`, the body and the decoded entity. A binary response returns the whole `reqwest::Response`, whose headers the caller can read |
-| Gap | the headers of a JSON or text response cannot be read |
+| Options | `responseFunctions`: `<operation>_response` returns the headers of a success as a `reqwest::header::HeaderMap` ([`response.content.response-function`](response.md#responsecontentresponse-function)); the declared headers are not typed |
+| Gap | without `responseFunctions`, the headers of a JSON or text response cannot be read |
 | Tests | [`OtherObjectsTest#responseHeadersAreNotExposed`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L76) |

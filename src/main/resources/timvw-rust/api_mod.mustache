@@ -149,6 +149,10 @@ pub mod {{{classFilename}}};
 {{/apiInfo}}
 
 pub mod configuration;
+{{#responseFunctions}}
+pub mod api_response;
+pub use api_response::ApiResponse;
+{{/responseFunctions}}
 {{#multipartHelper}}
 
 // Internal helper module for multipart file handling

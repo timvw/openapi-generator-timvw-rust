@@ -1,0 +1,713 @@
+{{#description}}
+/// {{#rustdoc}}{{{.}}}{{/rustdoc}}
+{{/description}}
+{{#notes}}
+/// {{#rustdoc}}{{{.}}}{{/rustdoc}}
+{{/notes}}
+{{#vendorExtensions.x-rust-variant-doc}}
+///
+/// {{{.}}}
+{{/vendorExtensions.x-rust-variant-doc}}
+{{#x-rust-as-response}}
+///
+/// Sends the same request as [`{{{operationId}}}`] and fails the same way, error status included, but returns the
+/// success undecoded, with its status and headers: an [`ApiResponse`](super::ApiResponse) that decodes the body as
+/// `{{{x-rust-response-type}}}` (`json()`), as a type of the caller's (`json_as()`, `json_borrowed()`), or hands it out
+/// as text (`text()`).
+{{/x-rust-as-response}}
+{{#isDeprecated}}
+#[deprecated]
+{{/isDeprecated}}
+{{#bonBuilders}}
+#[bon::builder]
+{{/bonBuilders}}
+pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-response}}(configuration: &configuration::Configuration, {{#allParams}}{{{paramName}}}: {{!
+### Option Start
+}}{{^required}}Option<{{/required}}{{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{!
+### A body that is only serialized is borrowed
+}}{{#vendorExtensions.x-rust-body-ref}}{{{.}}}{{/vendorExtensions.x-rust-body-ref}}{{^vendorExtensions.x-rust-body-ref}}{{!
+### &str and Vec<&str>
+}}{{#isString}}{{#isArray}}Vec<{{/isArray}}{{^isUuid}}&str{{/isUuid}}{{#isArray}}>{{/isArray}}{{/isString}}{{!
+### UUIDs
+}}{{#isUuid}}{{#isArray}}Vec<{{/isArray}}&str{{#isArray}}>{{/isArray}}{{/isUuid}}{{!
+### Models and primative types
+}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}{{^vendorExtensions.x-rust-type-qualified}}models::{{/vendorExtensions.x-rust-type-qualified}}{{/isContainer}}{{/isPrimitiveType}}{{{dataType}}}{{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-body-ref}}{{!
+### Option End
+}}{{^required}}>{{/required}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{!
+### Comma for next arguement
+}}{{^-last}}, {{/-last}}{{/allParams}}{{!
+### Function return type
+}}) -> Result<{{#x-rust-as-response}}super::ApiResponse<{{{x-rust-response-type}}}>{{/x-rust-as-response}}{{^x-rust-as-response}}{{!
+### Response File Support
+}}{{#isResponseFile}}reqwest::Response{{/isResponseFile}}{{!
+### Regular Responses
+}}{{^isResponseFile}}{{!
+### Multi response support
+}}{{#supportMultipleResponses}}ResponseContent<{{{operationIdCamelCase}}}Success>{{/supportMultipleResponses}}{{!
+### Regular return type
+}}{{^supportMultipleResponses}}{{#vendorExtensions.x-rust-event-stream}}super::sse::EventStream<{{{returnType}}}, {{{vendorExtensions.x-rust-error-enum}}}>{{/vendorExtensions.x-rust-event-stream}}{{^vendorExtensions.x-rust-event-stream}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/vendorExtensions.x-rust-event-stream}}{{/supportMultipleResponses}}{{/isResponseFile}}{{/x-rust-as-response}}{{!
+### Error Type
+}}, Error<{{{vendorExtensions.x-rust-error-enum}}}>> {
+    {{#allParams.0}}
+    // add a prefix to parameters to efficiently prevent name collisions
+    {{/allParams.0}}
+    {{#allParams}}
+    let {{{vendorExtensions.x-rust-param-identifier}}} = {{{paramName}}};
+    {{/allParams}}
+
+    let uri_str = format!("{}{{{path}}}", configuration.base_path{{#pathParams}}, {{{baseName}}}={{#vendorExtensions.x-rust-rfc3339}}{{^isArray}}crate::apis::urlencode({{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}.to_rfc3339()){{/isArray}}{{#isArray}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}.iter().map(|p| crate::apis::urlencode(p.to_rfc3339())).collect::<Vec<String>>().join(","){{/isArray}}{{/vendorExtensions.x-rust-rfc3339}}{{^vendorExtensions.x-rust-rfc3339}}{{#isString}}crate::apis::urlencode({{/isString}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.to_string()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(","){{/isArray}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}.to_string(){{/isContainer}}{{/isPrimitiveType}}{{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-struct-json}}{{#isString}}){{/isString}}{{/vendorExtensions.x-rust-rfc3339}}{{/pathParams}});
+    let mut req_builder = configuration.client.request(reqwest::Method::{{{httpMethod}}}, &uri_str);
+
+    {{#queryParams}}
+    {{#required}}
+    {{#isArray}}
+    req_builder = match "{{collectionFormat}}" {
+        "multi" => {{#vendorExtensions.x-rust-struct-json-items}}req_builder.query(&{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| serde_json::to_string(&p).map(|value| ("{{{baseName}}}".to_owned(), value))).collect::<Result<Vec<(std::string::String, std::string::String)>, _>>()?){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}req_builder.query(&{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| ("{{{baseName}}}".to_owned(), p.{{{vendorExtensions.x-rust-to-text}}}())).collect::<Vec<(std::string::String, std::string::String)>>()){{/vendorExtensions.x-rust-struct-json-items}},
+        _ => req_builder.query(&[("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}&{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}&{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/vendorExtensions.x-rust-struct-json-items}})]),
+    };
+    {{/isArray}}
+    {{^isArray}}
+    {{^isNullable}}
+    {{#isMap}}
+    req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?)]);
+    {{/isMap}}
+    {{^isMap}}
+    req_builder = req_builder.query({{#vendorExtensions.x-rust-struct-json}}&[("{{{baseName}}}", &serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?)]{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}&[("{{{baseName}}}", &{{{vendorExtensions.x-rust-param-identifier}}}.{{{vendorExtensions.x-rust-to-text}}}())]{{/vendorExtensions.x-rust-struct-json}});
+    {{/isMap}}
+    {{/isNullable}}
+    {{#isNullable}}
+    {{#isDeepObject}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        {{^isExplode}}
+        let params = crate::apis::parse_deep_object("{{{baseName}}}", &serde_json::to_value(param_value)?);
+        req_builder = req_builder.query(&params);
+        {{/isExplode}}
+        {{#isExplode}}
+        {{#isModel}}
+        req_builder = req_builder.query(&param_value);
+        {{/isModel}}
+        {{#isMap}}
+        let params = crate::apis::parse_deep_object("{{{baseName}}}", &serde_json::to_value(param_value)?);
+        req_builder = req_builder.query(&params);
+        {{/isMap}}
+        {{/isExplode}}
+    };
+    {{/isDeepObject}}
+    {{^isDeepObject}}
+    {{#isObject}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
+    };
+    {{/isObject}}
+    {{#isModel}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
+    };
+    {{/isModel}}
+    {{/isDeepObject}}
+    {{^isObject}}
+    {{^isModel}}
+    {{^isEnum}}
+    {{^isEnumRef}}
+    {{#isPrimitiveType}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.query(&[("{{{baseName}}}", &param_value.{{{vendorExtensions.x-rust-to-text}}}())]);
+    };
+    {{/isPrimitiveType}}
+    {{^isPrimitiveType}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
+    };
+    {{/isPrimitiveType}}
+    {{/isEnumRef}}
+    {{/isEnum}}
+    {{#isEnum}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.query(&[("{{{baseName}}}", &param_value.to_string())]);
+    };
+    {{/isEnum}}
+    {{#isEnumRef}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.query(&[("{{{baseName}}}", &param_value.to_string())]);
+    };
+    {{/isEnumRef}}
+    {{/isModel}}
+    {{/isObject}}
+    {{/isNullable}}
+    {{/isArray}}
+    {{/required}}
+    {{^required}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        {{#isArray}}
+        req_builder = match "{{collectionFormat}}" {
+            "multi" => {{#vendorExtensions.x-rust-struct-json-items}}req_builder.query(&param_value.into_iter().map(|p| serde_json::to_string(&p).map(|value| ("{{{baseName}}}".to_owned(), value))).collect::<Result<Vec<(std::string::String, std::string::String)>, _>>()?){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}req_builder.query(&param_value.into_iter().map(|p| ("{{{baseName}}}".to_owned(), p.{{{vendorExtensions.x-rust-to-text}}}())).collect::<Vec<(std::string::String, std::string::String)>>()){{/vendorExtensions.x-rust-struct-json-items}},
+            _ => req_builder.query(&[("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}&param_value.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}&param_value.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/vendorExtensions.x-rust-struct-json-items}})]),
+        };
+        {{/isArray}}
+        {{^isArray}}
+        {{#isDeepObject}}
+        {{^isExplode}}
+        let params = crate::apis::parse_deep_object("{{{baseName}}}", &serde_json::to_value(param_value)?);
+        req_builder = req_builder.query(&params);
+        {{/isExplode}}
+        {{#isExplode}}
+        {{#isModel}}
+        req_builder = req_builder.query(&param_value);
+        {{/isModel}}
+        {{#isMap}}
+        let params = crate::apis::parse_deep_object("{{{baseName}}}", &serde_json::to_value(param_value)?);
+        req_builder = req_builder.query(&params);
+        {{/isMap}}
+        {{/isExplode}}
+        {{/isDeepObject}}
+        {{^isDeepObject}}
+        {{#isObject}}
+        req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
+        {{/isObject}}
+        {{#isModel}}
+        req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
+        {{/isModel}}
+        {{#isEnum}}
+        req_builder = req_builder.query(&[("{{{baseName}}}", &param_value.to_string())]);
+        {{/isEnum}}
+        {{#isEnumRef}}
+        req_builder = req_builder.query(&[("{{{baseName}}}", &param_value.to_string())]);
+        {{/isEnumRef}}
+        {{^isObject}}
+        {{^isModel}}
+        {{^isEnum}}
+        {{^isEnumRef}}
+        {{#isPrimitiveType}}
+        req_builder = req_builder.query(&[("{{{baseName}}}", &param_value.{{{vendorExtensions.x-rust-to-text}}}())]);
+        {{/isPrimitiveType}}
+        {{^isPrimitiveType}}
+        req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
+        {{/isPrimitiveType}}
+        {{/isEnumRef}}
+        {{/isEnum}}
+        {{/isModel}}
+        {{/isObject}}
+        {{/isDeepObject}}
+        {{/isArray}}
+    }
+    {{/required}}
+    {{/queryParams}}
+    {{#hasAuthMethods}}
+    {{#authMethods}}
+    {{#isApiKey}}
+    {{#isKeyInQuery}}
+    if let Some(ref apikey) = configuration.api_key {
+        let key = apikey.key.clone();
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key,
+        };
+        req_builder = req_builder.query(&[("{{{keyParamName}}}", value)]);
+    }
+    {{/isKeyInQuery}}
+    {{/isApiKey}}
+    {{/authMethods}}
+    {{/hasAuthMethods}}
+    {{#hasAuthMethods}}
+    {{/hasAuthMethods}}
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    {{#hasHeaderParams}}
+    {{#headerParams}}
+    {{#required}}
+    {{^isNullable}}
+    req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}});
+    {{/isNullable}}
+    {{#isNullable}}
+    match {{{vendorExtensions.x-rust-param-identifier}}} {
+        Some(param_value) => { req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}); },
+        None => { req_builder = req_builder.header("{{{baseName}}}", ""); },
+    }
+    {{/isNullable}}
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}});
+    }
+    {{/required}}
+    {{/headerParams}}
+    {{/hasHeaderParams}}
+    {{#hasAuthMethods}}
+    {{#authMethods}}
+    {{#isApiKey}}
+    {{#isKeyInHeader}}
+    if let Some(ref apikey) = configuration.api_key {
+        let key = apikey.key.clone();
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key,
+        };
+        req_builder = req_builder.header("{{{keyParamName}}}", value);
+    };
+    {{/isKeyInHeader}}
+    {{/isApiKey}}
+    {{#isBasic}}
+    {{#isBasicBasic}}
+    if let Some(ref auth_conf) = configuration.basic_auth {
+        req_builder = req_builder.basic_auth(auth_conf.0.to_owned(), auth_conf.1.to_owned());
+    };
+    {{/isBasicBasic}}
+    {{#isBasicBearer}}
+    if let Some(ref token) = configuration.bearer_access_token {
+        req_builder = req_builder.bearer_auth(token.to_owned());
+    };
+    {{/isBasicBearer}}
+    {{/isBasic}}
+    {{#isOAuth}}
+    if let Some(ref token) = configuration.oauth_access_token {
+        req_builder = req_builder.bearer_auth(token.to_owned());
+    };
+    {{/isOAuth}}
+    {{/authMethods}}
+    {{/hasAuthMethods}}
+{{#multipartHelper}}
+    {{#isMultipart}}
+    {{#hasFormParams}}
+    let mut multipart_form = reqwest::multipart::Form::new();
+    {{#formParams}}
+    {{#isFile}}
+    {{#required}}
+    {{#isArray}}
+    for value in &{{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+    }
+    {{/isArray}}
+    {{^isArray}}
+    // Add file to multipart form
+    multipart_form = multipart_helper::add_file_to_form(multipart_form, &{{{vendorExtensions.x-rust-param-identifier}}}, "{{{baseName}}}")?;
+    {{/isArray}}
+    {{/required}}
+    {{^required}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        {{#isArray}}
+        for value in param_value {
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+        }
+        {{/isArray}}
+        {{^isArray}}
+        // Add file to multipart form
+        multipart_form = multipart_helper::add_file_to_form(multipart_form, param_value, "{{{baseName}}}")?;
+        {{/isArray}}
+    }
+    {{/required}}
+    {{/isFile}}
+    {{^isFile}}
+    {{#vendorExtensions.x-multipart-json-items}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        for item in param_value {
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(item)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+        }
+    }
+    {{/vendorExtensions.x-multipart-json-items}}
+    {{#vendorExtensions.x-multipart-json-value}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form = multipart_helper::add_schema_value_to_form(
+            multipart_form,
+            "{{{baseName}}}",
+            serde_json::to_value(param_value)?,
+            {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+        )?;
+    }
+    {{/vendorExtensions.x-multipart-json-value}}
+    {{#vendorExtensions.x-multipart-text-media-type}}
+    {{#required}}
+    multipart_form = multipart_helper::add_schema_value_to_form(
+        multipart_form,
+        "{{{baseName}}}",
+        serde_json::Value::String({{{vendorExtensions.x-rust-param-identifier}}}.{{{vendorExtensions.x-rust-to-text}}}()),
+        Some("{{{vendorExtensions.x-multipart-content-type}}}"),
+    )?;
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form = multipart_helper::add_schema_value_to_form(
+            multipart_form,
+            "{{{baseName}}}",
+            serde_json::Value::String(param_value.{{{vendorExtensions.x-rust-to-text}}}()),
+            Some("{{{vendorExtensions.x-multipart-content-type}}}"),
+        )?;
+    }
+    {{/required}}
+    {{/vendorExtensions.x-multipart-text-media-type}}
+    {{#vendorExtensions.x-multipart-file-union-required}}
+    match &{{{vendorExtensions.x-rust-param-identifier}}} {
+    {{#vendorExtensions.x-multipart-file-union}}
+        {{{pattern}}}(value) => {
+            {{#isFilePart}}
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            {{/isFilePart}}
+            {{#isFileParts}}
+            for path in value {
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+            }
+            {{/isFileParts}}
+            {{#isValuePart}}
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(value)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+            {{/isValuePart}}
+        }
+    {{/vendorExtensions.x-multipart-file-union}}
+    }
+    {{/vendorExtensions.x-multipart-file-union-required}}
+    {{#vendorExtensions.x-multipart-file-union-nullable}}
+    match &{{{vendorExtensions.x-rust-param-identifier}}} {
+        None => { multipart_form = multipart_form.text("{{{baseName}}}", ""); },
+        Some(param_value) => match param_value {
+    {{#vendorExtensions.x-multipart-file-union}}
+        {{{pattern}}}(value) => {
+            {{#isFilePart}}
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            {{/isFilePart}}
+            {{#isFileParts}}
+            for path in value {
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+            }
+            {{/isFileParts}}
+            {{#isValuePart}}
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(value)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+            {{/isValuePart}}
+        }
+    {{/vendorExtensions.x-multipart-file-union}}
+        },
+    }
+    {{/vendorExtensions.x-multipart-file-union-nullable}}
+    {{#vendorExtensions.x-multipart-file-union-optional}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        match param_value {
+    {{#vendorExtensions.x-multipart-file-union}}
+        {{{pattern}}}(value) => {
+            {{#isFilePart}}
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            {{/isFilePart}}
+            {{#isFileParts}}
+            for path in value {
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+            }
+            {{/isFileParts}}
+            {{#isValuePart}}
+            multipart_form = multipart_helper::add_schema_value_to_form(
+                multipart_form,
+                "{{{baseName}}}",
+                serde_json::to_value(value)?,
+                {{#vendorExtensions.x-multipart-content-type}}Some("{{{.}}}"){{/vendorExtensions.x-multipart-content-type}}{{^vendorExtensions.x-multipart-content-type}}None{{/vendorExtensions.x-multipart-content-type}},
+            )?;
+            {{/isValuePart}}
+        }
+    {{/vendorExtensions.x-multipart-file-union}}
+        }
+    }
+    {{/vendorExtensions.x-multipart-file-union-optional}}
+    {{#vendorExtensions.x-multipart-stock}}
+    {{#required}}
+    {{^isNullable}}
+    multipart_form = multipart_form.text("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}});
+    {{/isNullable}}
+    {{#isNullable}}
+    match {{{vendorExtensions.x-rust-param-identifier}}} {
+        Some(param_value) => { multipart_form = multipart_form.text("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}param_value.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}}); },
+        None => { multipart_form = multipart_form.text("{{{baseName}}}", ""); },
+    }
+    {{/isNullable}}
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+    {{#isPrimitiveType}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.{{{vendorExtensions.x-rust-to-text}}}());
+    {{/isPrimitiveType}}
+    {{^isPrimitiveType}}
+    {{#isEnumRef}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
+    {{/isEnumRef}}
+    {{^isEnumRef}}
+    {{#vendorExtensions.x-rust-union-text}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
+    {{/vendorExtensions.x-rust-union-text}}
+    {{^vendorExtensions.x-rust-union-text}}
+        multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);
+    {{/vendorExtensions.x-rust-union-text}}
+    {{/isEnumRef}}
+    {{/isPrimitiveType}}
+    }
+    {{/required}}
+    {{/vendorExtensions.x-multipart-stock}}
+    {{/isFile}}
+    {{/formParams}}
+    req_builder = req_builder.multipart(multipart_form);
+    {{/hasFormParams}}
+    {{/isMultipart}}
+{{/multipartHelper}}
+{{^multipartHelper}}
+    {{#isMultipart}}
+    {{#hasFormParams}}
+    let mut multipart_form = reqwest::multipart::Form::new();
+    {{#formParams}}
+    {{#isFile}}
+    {{^required}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        {{#isArray}}
+                for value in param_value {
+                let file = TokioFile::open(value).await?;
+                let stream = FramedRead::new(file, BytesCodec::new());
+                let file_name = value.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let file_part = reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(stream)).file_name(file_name);
+                multipart_form = multipart_form.part("{{{baseName}}}", file_part);
+                }
+        {{/isArray}}
+        {{^isArray}}
+                let file = TokioFile::open(param_value).await?;
+                let stream = FramedRead::new(file, BytesCodec::new());
+                let file_name = param_value.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let file_part = reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(stream)).file_name(file_name);
+                multipart_form = multipart_form.part("{{{baseName}}}", file_part);
+        {{/isArray}}
+    }
+    {{/required}}
+    {{#required}}
+    {{#isArray}}
+    for value in &{{{vendorExtensions.x-rust-param-identifier}}} {
+        let file = TokioFile::open(value).await?;
+        let stream = FramedRead::new(file, BytesCodec::new());
+        let file_name = value.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let file_part = reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(stream)).file_name(file_name);
+        multipart_form = multipart_form.part("{{{baseName}}}", file_part);
+    }
+    {{/isArray}}
+    {{^isArray}}
+    let file = TokioFile::open(&{{{vendorExtensions.x-rust-param-identifier}}}).await?;
+    let stream = FramedRead::new(file, BytesCodec::new());
+    let file_name = {{{vendorExtensions.x-rust-param-identifier}}}.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let file_part = reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(stream)).file_name(file_name);
+    multipart_form = multipart_form.part("{{{baseName}}}", file_part);
+    {{/isArray}}
+    {{/required}}
+    {{/isFile}}
+    {{^isFile}}
+    {{#required}}
+    {{^isNullable}}
+    multipart_form = multipart_form.text("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}});
+    {{/isNullable}}
+    {{#isNullable}}
+    match {{{vendorExtensions.x-rust-param-identifier}}} {
+        Some(param_value) => { multipart_form = multipart_form.text("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}param_value.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}}); },
+        None => { multipart_form = multipart_form.text("{{{baseName}}}", ""); },
+    }
+    {{/isNullable}}
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+    {{#isPrimitiveType}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.{{{vendorExtensions.x-rust-to-text}}}());
+    {{/isPrimitiveType}}
+    {{^isPrimitiveType}}
+    {{#isEnumRef}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
+    {{/isEnumRef}}
+    {{^isEnumRef}}
+    {{#vendorExtensions.x-rust-union-text}}
+        multipart_form = multipart_form.text("{{{baseName}}}", param_value.to_string());
+    {{/vendorExtensions.x-rust-union-text}}
+    {{^vendorExtensions.x-rust-union-text}}
+        multipart_form = multipart_form.text("{{{baseName}}}", serde_json::to_string(&param_value)?);
+    {{/vendorExtensions.x-rust-union-text}}
+    {{/isEnumRef}}
+    {{/isPrimitiveType}}
+    }
+    {{/required}}
+    {{/isFile}}
+    {{/formParams}}
+    req_builder = req_builder.multipart(multipart_form);
+    {{/hasFormParams}}
+    {{/isMultipart}}
+{{/multipartHelper}}
+    {{^isMultipart}}
+    {{#hasFormParams}}
+    let mut multipart_form_params = std::collections::HashMap::new();
+    {{#formParams}}
+    {{#isFile}}
+    {{#required}}
+    {{^isNullable}}
+    multipart_form_params.insert("{{{baseName}}}", unimplemented!("File form param not supported with x-www-form-urlencoded content"));
+    {{/isNullable}}
+    {{#isNullable}}
+    match {{{vendorExtensions.x-rust-param-identifier}}} {
+        Some(param_value) => { multipart_form_params.insert("{{{baseName}}}", unimplemented!("File form param not supported with x-www-form-urlencoded content")); },
+        None => { unimplemented!("Required nullable file form param not supported with x-www-form-urlencoded content"); },
+    }
+    {{/isNullable}}
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form_params.insert("{{{baseName}}}", unimplemented!("File form param not supported with x-www-form-urlencoded content"));
+    }
+    {{/required}}
+    {{/isFile}}
+    {{^isFile}}
+    {{#required}}
+    {{^isNullable}}
+    multipart_form_params.insert("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}});
+    {{/isNullable}}
+    {{#isNullable}}
+    match {{{vendorExtensions.x-rust-param-identifier}}} {
+        Some(param_value) => { multipart_form_params.insert("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}param_value.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}}); },
+        None => { multipart_form_params.insert("{{{baseName}}}", ""); },
+    }
+    {{/isNullable}}
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form_params.insert("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}param_value.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}});
+    }
+    {{/required}}
+    {{/isFile}}
+    {{/formParams}}
+    req_builder = req_builder.form(&multipart_form_params);
+    {{/hasFormParams}}
+    {{/isMultipart}}
+    {{#hasBodyParam}}
+    {{#bodyParams}}
+    {{#isFile}}
+    {{#required}}
+    let file = TokioFile::open({{{vendorExtensions.x-rust-param-identifier}}}).await?;
+    let stream = FramedRead::new(file, BytesCodec::new());
+    req_builder = req_builder.body(reqwest::Body::wrap_stream(stream));
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        let file = TokioFile::open(param_value).await?;
+        let stream = FramedRead::new(file, BytesCodec::new());
+        req_builder = req_builder.body(reqwest::Body::wrap_stream(stream));
+    }
+    {{/required}}
+    {{/isFile}}
+    {{^isFile}}
+    {{#vendorExtensions.x-rust-text-body}}
+    {{#required}}
+    req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, "{{{.}}}").body({{{vendorExtensions.x-rust-param-identifier}}}.to_owned());
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, "{{{.}}}").body(param_value.to_owned());
+    }
+    {{/required}}
+    {{/vendorExtensions.x-rust-text-body}}
+    {{^vendorExtensions.x-rust-text-body}}
+    req_builder = req_builder.json({{^vendorExtensions.x-rust-body-ref-direct}}&{{/vendorExtensions.x-rust-body-ref-direct}}{{{vendorExtensions.x-rust-param-identifier}}});
+    {{/vendorExtensions.x-rust-text-body}}
+    {{/isFile}}
+    {{/bodyParams}}
+    {{/hasBodyParam}}
+
+    {{#vendorExtensions.x-rust-event-stream}}
+    req_builder = req_builder.header(reqwest::header::ACCEPT, "text/event-stream");
+    {{/vendorExtensions.x-rust-event-stream}}
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    {{#vendorExtensions.x-rust-event-stream}}
+    if status.is_client_error() || status.is_server_error() {
+        let content = resp.text().await?;
+{{>error_entity}}
+        return Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}));
+    }
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    if !content_type.starts_with("text/event-stream") {
+        return Err(Error::from(serde_json::Error::custom(format!("Received `{content_type}` content type response where a `text/event-stream` of `{{{returnType}}}` was expected (does the request ask for a stream?)"))));
+    }
+    Ok(super::sse::EventStream::from_response(resp))
+}
+    {{/vendorExtensions.x-rust-event-stream}}
+    {{^vendorExtensions.x-rust-event-stream}}
+    {{^supportMultipleResponses}}
+    {{^isResponseFile}}
+    {{^x-rust-as-response}}
+    {{#returnType}}
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+    {{/returnType}}
+    {{/x-rust-as-response}}
+    {{/isResponseFile}}
+    {{/supportMultipleResponses}}
+
+    if !status.is_client_error() && !status.is_server_error() {
+        {{#x-rust-as-response}}
+        let headers = resp.headers().clone();
+        let content = resp.text().await?;
+        Ok(super::ApiResponse::new(status, headers, content))
+        {{/x-rust-as-response}}
+        {{^x-rust-as-response}}
+        {{^supportMultipleResponses}}
+        {{#isResponseFile}}
+        Ok(resp)
+        {{/isResponseFile}}
+        {{^isResponseFile}}
+        {{^returnType}}
+        Ok(())
+        {{/returnType}}
+        {{#returnType}}
+        let content = resp.text().await?;
+        match content_type {
+            {{^useSerdePathToError}}
+            ContentType::Json => serde_json::from_str(&content).map_err(Error::from),
+            {{/useSerdePathToError}}
+            {{#useSerdePathToError}}
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            {{/useSerdePathToError}}
+            {{#vendorExtensions.x-supports-plain-text}}
+            ContentType::Text => return Ok(content),
+            {{/vendorExtensions.x-supports-plain-text}}
+            {{^vendorExtensions.x-supports-plain-text}}
+            ContentType::Text => return Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `{{returnType}}`"))),
+            {{/vendorExtensions.x-supports-plain-text}}
+            ContentType::Unsupported(unknown_type) => return Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `{{returnType}}`")))),
+        }
+        {{/returnType}}
+        {{/isResponseFile}}
+        {{/supportMultipleResponses}}
+        {{#supportMultipleResponses}}
+        {{#isResponseFile}}
+        Ok(resp)
+        {{/isResponseFile}}
+        {{^isResponseFile}}
+        let content = resp.text().await?;
+        let entity: Option<{{{operationIdCamelCase}}}Success> = serde_json::from_str(&content).ok();
+        Ok(ResponseContent { status, content, entity })
+        {{/isResponseFile}}
+        {{/supportMultipleResponses}}
+        {{/x-rust-as-response}}
+    } else {
+        let content = resp.text().await?;
+{{>error_entity}}
+        Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}))
+    }
+}
+    {{/vendorExtensions.x-rust-event-stream}}
+

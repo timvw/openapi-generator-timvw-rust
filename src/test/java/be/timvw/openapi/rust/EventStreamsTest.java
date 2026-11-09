@@ -57,7 +57,6 @@ class EventStreamsTest {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "event_streams_fixture");
         props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
-        props.put(TimvwRustCodegen.BOX_RESPONSE_ERROR, "true");
         if (typedEventStreams) {
             props.put(TimvwRustCodegen.TYPED_EVENT_STREAMS, "true");
         }

@@ -31,16 +31,44 @@ class ErrorStatusTest {
     @TempDir
     static Path output;
 
+    /** The same spec with {@code supportMultipleResponses}, whose successes are a {@code ResponseContent} too. */
+    @TempDir
+    static Path multiple;
+
     @BeforeAll
     static void generate() {
+        generate(output, false);
+        generate(multiple, true);
+    }
+
+    private static void generate(Path dir, boolean supportMultipleResponses) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "error_status_fixture");
+        if (supportMultipleResponses) {
+            props.put(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES, "true");
+        }
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(SPEC).toAbsolutePath().toString())
-                .setOutputDir(output.toString())
+                .setOutputDir(dir.toString())
                 .setAdditionalProperties(props)
                 .toClientOptInput()).generate();
+    }
+
+    /** With supportMultipleResponses a success is a ResponseContent with the response's headers; the crate builds. */
+    @Test
+    void aSuccessOfSupportMultipleResponsesHasTheHeaders() throws IOException, InterruptedException {
+        String api = Files.readString(multiple.resolve("src/apis/default_api.rs"));
+        assertContains(api, """
+                        let headers = resp.headers().clone();
+                        let content = resp.text().await?;
+                        let entity: Option<GetThingSuccess> = serde_json::from_str(&content).ok();
+                        Ok(ResponseContent { status, content, entity, headers })
+                """);
+        Assumptions.assumeTrue(cargo(multiple, 30, "--version") != null, "no cargo");
+        String build = cargo(multiple, 900, "build");
+        assertNotNull(build, "cargo did not finish");
+        assertTrue(build.contains("Finished") && !build.contains("error:") && !build.contains("error["), build);
     }
 
     private static String api() throws IOException {

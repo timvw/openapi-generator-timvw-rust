@@ -13,7 +13,7 @@ async fn serve(status: &str, body: &'static str) -> Configuration {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let response = format!(
-        "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        "HTTP/1.1 {status}\r\ncontent-type: application/json\r\nx-request-id: req-{status}\r\nretry-after: 30\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
         body.len()
     );
     tokio::spawn(async move {
@@ -37,7 +37,7 @@ async fn serve(status: &str, body: &'static str) -> Configuration {
 
 fn error<T: std::fmt::Debug>(result: Result<impl std::fmt::Debug, Error<T>>) -> ResponseContent<T> {
     match result {
-        Err(Error::ResponseError(content)) => content,
+        Err(Error::ResponseError(content)) => *content,
         other => panic!("expected a response error, got {other:?}"),
     }
 }
@@ -117,4 +117,21 @@ async fn a_body_that_does_not_decode_is_unknown_value() {
             .await,
     );
     assert!(matches!(e.entity, Some(GetBareError::UnknownValue(_))));
+}
+
+/// The error carries the response's headers (decision 4).
+#[tokio::test]
+async fn the_error_has_the_response_headers() {
+    let e = thing("429 Too Many Requests", r#"{"message":"slow down"}"#).await;
+    assert_eq!(e.headers["x-request-id"], "req-429 Too Many Requests");
+    assert_eq!(e.headers["retry-after"], "30");
+    assert_eq!(e.headers[reqwest::header::CONTENT_TYPE], "application/json");
+    let configuration = serve("503 Service Unavailable", "{}").await;
+    let e = error(
+        default_api::get_bare()
+            .configuration(&configuration)
+            .call()
+            .await,
+    );
+    assert_eq!(e.headers.get("retry-after").map(|v| v.to_str().unwrap()), Some("30"));
 }

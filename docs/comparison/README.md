@@ -233,7 +233,7 @@ stock boxes every model reference; timvw-rust (`boxOnlyCycles`) and progenitor b
 | --- | --- | --- | --- |
 | Call | `list_models(&config, Some(10), Some("desc"), None)` | the same, or `list_models().configuration(&config).limit(10).order("desc").call()` | `client.list_models().limit(10).order(ListModelsOrder::Desc).send()` |
 | Success | `Result<ModelList, Error<ListModelsError>>` | the same | `Result<ResponseValue<ModelList>, Error<ErrorResponse>>` |
-| Error body | `ListModelsError::DefaultResponse(ErrorResponse)` or `UnknownValue(Value)` | the same, `ResponseContent` boxed (`boxResponseError`) | `Error::ErrorResponse(ResponseValue<ErrorResponse>)` |
+| Error body | `ListModelsError::DefaultResponse(ErrorResponse)` or `UnknownValue(Value)` | the same, `ResponseContent` boxed | `Error::ErrorResponse(ResponseValue<ErrorResponse>)` |
 | Enum query parameter | `&str` | `&str` | the enum |
 | Event stream (`text/event-stream`) | ignored: one method decoding JSON | `create_chat_completion_stream(..) -> EventStream<ChatCompletionChunk, _>` | generation panics; without it, JSON only |
 | Multipart upload | `upload_file(&config, PathBuf, purpose: &str)` | the same through `multipart_helper` | generation fails |

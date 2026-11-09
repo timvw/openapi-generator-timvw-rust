@@ -4,7 +4,6 @@
   "useChrono": false,
   "titleNaming": false,
   "multipartHelper": true,
-  "boxResponseError": true,
   "userAgentFromPackage": true,
   "resetQueryParameterStyle": true,
   "typedEventStreams": true,

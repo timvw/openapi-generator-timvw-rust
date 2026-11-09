@@ -415,6 +415,12 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         return pattern;
     }
 
+    /** A {@code pattern} as the spec writes it: the generated {@code validate()} puts it into a raw string literal. */
+    @Override
+    public String toRegularExpression(String pattern) {
+        return pattern;
+    }
+
     public enum CasingType { CAMEL_CASE, SNAKE_CASE }
 
     /**

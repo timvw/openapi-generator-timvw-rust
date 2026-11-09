@@ -36,7 +36,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `type: string, format: uuid` |
 | Rust | `uuid::Uuid` in a model; `&str` as a path, query or header parameter |
 | Gap | a parameter takes `&str`, not `uuid::Uuid` |
-| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L67), [`#aUuidParameterIsAString`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L99) |
+| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L67), [`#aUuidParameterIsAString`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L101) |
 
 ### `schema.format.byte`
 
@@ -56,7 +56,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Wire | the file's bytes, streamed from disk; the response body as it comes |
 | Library | `reqwest::Response`; the file is opened with tokio and streamed as a `reqwest::Body` or `reqwest::multipart::Part` |
 | Options | `fileProperties` renders listed `Schema.property` entries as files |
-| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L105), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L139) |
+| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L107), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L139) |
 
 ### `schema.type.integer`
 
@@ -99,16 +99,17 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a component schema that is only a scalar (`Alias: {type: string}`) |
 | Rust | no type of its own: a reference to it is the scalar, documented with the component's description |
 | Options | `stringIdSchemas` renders listed components as `String` whatever they hold; `stringIdProperties` and `stringProperties` render listed properties as `String` |
-| Tests | [`SchemaMappingTest#aScalarComponentHasNoTypeOfItsOwn`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L152), [`SpecRulesTest#idSchemasAndIdPropertiesBecomeStrings`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L111), [`#stringProperties`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L124) |
+| Tests | [`SchemaMappingTest#aScalarComponentHasNoTypeOfItsOwn`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L154), [`SpecRulesTest#idSchemasAndIdPropertiesBecomeStrings`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L111), [`#stringProperties`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L124) |
 
 ### `schema.pattern`
 
 | | |
 | --- | --- |
-| OpenAPI | the validation keywords: `pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `minProperties`, `maxProperties` |
-| Rust | nothing: the type is the one of the rules above, and no value is checked |
-| Gap | values outside the bounds are neither rejected when decoding nor when building a request |
-| Tests | [`SchemaMappingTest#validationKeywordsAreNotChecked`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L92) |
+| OpenAPI | the validation keywords: `pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum` (3.0 booleans and 3.1 numbers), `multipleOf`, `minItems`, `maxItems`, `uniqueItems`, `minProperties`, `maxProperties` |
+| Rust | the type is the one of the rules above. Every model implements `crate::validation::Validate` (`fn validate(&self) -> Result<(), ValidationError>`), also a model without constraints of its own (an enum's `validate()` is `Ok(())`). It checks the keywords of the model's fields: `minLength`/`maxLength` of a `String` in characters, `pattern` with the `regex` crate (`regex::Regex`, compiled once in a `LazyLock`), the number bounds and `multipleOf` (an integer against an integer literal, a float against a literal of its own type, `multipleOf` of a float within a relative tolerance), `minItems`/`maxItems`/`uniqueItems` of a `Vec`, `minProperties`/`maxProperties` of a map; and recursively every nested model, `Vec` item, map value, `Option` that holds a value, `Box` and the active variant of a union. Enums, `serde_json::Value`, byte arrays, files, dates and other typed scalars have nothing to check; `minProperties` of a struct is not checked. `ValidationError` holds the path in wire names (`messages[2].content`, `metadata["key"]`), the `Rule` and the offending value or size, and implements `Display` and `std::error::Error`; `validate()` returns the first one. The field's documentation lists its constraints (``Validation: `minLength: 1`, `maxLength: 10`.``) |
+| Wire | unchanged: nothing generated calls `validate()`, neither before a request nor after decoding a response, and `Error` has no validation variant. A `pattern` the `regex` crate cannot compile (lookaround, backreferences, `\c` escapes) is skipped with a generation warning; `regex` classes such as `\d` are Unicode-aware where ECMA-262's are ASCII |
+| Options | `validateMethods` (default `true`): `false` generates no `validation` module, no impls and no `regex` dependency; the field documentation stays. `regex` is a dependency only when a checked `pattern` exists |
+| Tests | [`ValidateTest#everyModelImplementsTheTrait`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L72), [`#stringsNumbersListsAndMapsAreChecked`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L90), [`#nestedModelsAreChecked`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L108), [`#unionsCheckTheActiveVariant`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L119), [`#whatHasNothingToCheckIsSkipped`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L130), [`#aPatternIsMatchedWithARegexCompiledOnce`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L139), [`#withoutAPatternThereIsNoRegexDependency`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L149), [`#openApi31ExclusiveBoundsAreNumbers`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L155), [`#constraintsAreDocumented`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L165), [`#theOptionTurnsTheGenerationOff`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L177), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/ValidateTest.java#L201), [`SchemaMappingTest#validationKeywordsAreCheckedByValidateAndDocumented`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L92) |
 
 ## Objects
 
@@ -119,7 +120,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `type: object` with `properties` |
 | Rust | `pub struct` with `#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]`, one `pub` field per property with `#[serde(rename = "<name>")]`, and `new(<required fields>)` that sets the optional ones to `None`. Field names are `snake_case` |
 | Options | `bonBuilders` (default `true`) adds the `bon::Builder` derive |
-| Tests | [`SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L112), [`GenerationTest#modelStructsDeriveBonBuilderAndEnumsDoNot`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L47) |
+| Tests | [`SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L114), [`GenerationTest#modelStructsDeriveBonBuilderAndEnumsDoNot`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L47) |
 
 ### `schema.required`
 
@@ -128,7 +129,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a property listed in `required`, or not |
 | Rust | required: `T`, a parameter of `new()`. Optional: `Option<T>` with `skip_serializing_if = "Option::is_none"` |
 | Wire | an optional field that is `None` is left out |
-| Tests | [`SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L112) |
+| Tests | [`SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L114) |
 
 ### `schema.nullable`
 
@@ -137,7 +138,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `nullable: true` (OpenAPI 3.1: `type: [T, "null"]`) |
 | Rust | optional: `Option<Option<T>>` through `serde_with::rust::double_option`. Required: `Option<T>`, which must be present. A nullable union follows [`schema.oneOf.null-branch`](#schemaoneofnull-branch) |
 | Wire | optional: `None` leaves the field out, `Some(None)` sends `null`. Required: `None` sends `null` |
-| Tests | [`SchemaMappingTest#anOptionalNullablePropertyCanSendNull`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L123), [`DefaultOnlyWhereValidTest#aRequiredNullableFieldCountsAsRequired`](../../src/test/java/be/timvw/openapi/rust/DefaultOnlyWhereValidTest.java#L72), [`ModelUnionsTest#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103) |
+| Tests | [`SchemaMappingTest#anOptionalNullablePropertyCanSendNull`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L125), [`DefaultOnlyWhereValidTest#aRequiredNullableFieldCountsAsRequired`](../../src/test/java/be/timvw/openapi/rust/DefaultOnlyWhereValidTest.java#L72), [`ModelUnionsTest#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103) |
 
 ### `schema.properties.reference`
 
@@ -154,7 +155,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `additionalProperties: <schema>`, or `true` |
 | Rust | `std::collections::HashMap<String, T>`; `true` gives `HashMap<String, serde_json::Value>` |
-| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L130) |
+| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L132) |
 
 ### `schema.type.free-form-object`
 
@@ -162,7 +163,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: object` without `properties`, or `{}` |
 | Rust | `serde_json::Value`. `{}` is nullable as well: an optional property is `Option<Option<serde_json::Value>>` |
-| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L130) |
+| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L132) |
 
 ### `schema.readOnly`
 
@@ -171,7 +172,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `readOnly: true` or `writeOnly: true` |
 | Rust | an ordinary field, in requests and in responses |
 | Gap | a read-only field can be sent, and a write-only field is expected back; a required one makes `new()` ask for it |
-| Tests | [`SchemaMappingTest#readOnlyAndWriteOnlyAreFieldsInBothDirections`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L138) |
+| Tests | [`SchemaMappingTest#readOnlyAndWriteOnlyAreFieldsInBothDirections`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L140) |
 
 ### `schema.default`
 
@@ -216,7 +217,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `description` |
 | Rust | `///` on the type or field; bare URLs are wrapped in `<...>` (rustdoc's `bare_urls`). A type without a description has no empty `///` |
-| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L145), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L89), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L200) |
+| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L89), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L200) |
 
 ## Arrays
 
@@ -226,16 +227,16 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: array` with `items` |
 | Rust | `Vec<T>`; items are never boxed. Inline object items are a model named after the array ([`schema.title`](#schematitle)) |
-| Tests | [`SchemaMappingTest#arraysAreVecsAndUniqueItemsChangesNothing`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L158), [`BoxOnlyCyclesTest#selfReferenceIsBoxedButNotInsideVec`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L59) |
+| Tests | [`SchemaMappingTest#arraysAreVecsAndUniqueItemsChangesNothing`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L160), [`BoxOnlyCyclesTest#selfReferenceIsBoxedButNotInsideVec`](../../src/test/java/be/timvw/openapi/rust/BoxOnlyCyclesTest.java#L59) |
 
 ### `schema.uniqueItems`
 
 | | |
 | --- | --- |
 | OpenAPI | `uniqueItems: true` |
-| Rust | `Vec<T>`, as without it |
-| Gap | not a set: duplicates are neither rejected nor removed |
-| Tests | [`SchemaMappingTest#arraysAreVecsAndUniqueItemsChangesNothing`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L158) |
+| Rust | `Vec<T>`, as without it (an array of an inline enum is a `std::collections::HashSet`). The model's `validate()` reports two equal items (by `PartialEq`, so any item type works; see [`schema.pattern`](#schemapattern)) |
+| Wire | duplicates are neither rejected when decoding nor removed |
+| Tests | [`SchemaMappingTest#arraysAreVecsAndUniqueItemsChangesNothing`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L160) |
 
 ## `enum`
 
@@ -245,7 +246,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: string` with `enum`, as a component |
 | Rust | `pub enum` with a unit variant per value (`#[serde(rename = "<value>")]`), deriving `Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize`, and a `Display` that prints the value |
-| Tests | [`SchemaMappingTest#aStringEnumIsAUnitEnumWithDisplay`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L166) |
+| Tests | [`SchemaMappingTest#aStringEnumIsAUnitEnumWithDisplay`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L168) |
 
 ### `schema.enum.inline`
 
@@ -254,7 +255,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | an inline string `enum` as a property |
 | Rust | an enum of the same shape, in the struct's file, named after the property (`Mode`, `Role`) |
 | Options | always; it has the `Display` stock does not give a property enum |
-| Tests | [`SchemaMappingTest#anInlineEnumIsAnEnumInItsStructsFile`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L176), [`EnumFromStrTest#propertyEnumsInAStructFileGetDisplayToo`](../../src/test/java/be/timvw/openapi/rust/EnumFromStrTest.java#L72) |
+| Tests | [`SchemaMappingTest#anInlineEnumIsAnEnumInItsStructsFile`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L178), [`EnumFromStrTest#propertyEnumsInAStructFileGetDisplayToo`](../../src/test/java/be/timvw/openapi/rust/EnumFromStrTest.java#L72) |
 
 ### `schema.enum.integer`
 
@@ -262,7 +263,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: integer` with `enum` |
 | Rust | `#[repr(i64)]` enum through `serde_repr`, variants `Variant1 = 1`, ... |
-| Tests | [`SchemaMappingTest#anIntegerEnumIsReprI64`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L184), [`IntegersAsI64Test#integerEnumsKeepTheirRendering`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L106) |
+| Tests | [`SchemaMappingTest#anIntegerEnumIsReprI64`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L186), [`IntegersAsI64Test#integerEnumsKeepTheirRendering`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L106) |
 
 ### `schema.enum.from-str`
 
@@ -304,7 +305,7 @@ A tagged union opens too: [`discriminator.propertyName.unknown-value`](discrimin
 | OpenAPI | any enum |
 | Rust | no `Default` (stock picks the first variant, which is arbitrary) |
 | Options | always |
-| Tests | [`DefaultOnlyWhereValidTest#noEnumImplementsDefaultWhateverItsKind`](../../src/test/java/be/timvw/openapi/rust/DefaultOnlyWhereValidTest.java#L94), [`SchemaMappingTest#aStringEnumIsAUnitEnumWithDisplay`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L166) |
+| Tests | [`DefaultOnlyWhereValidTest#noEnumImplementsDefaultWhateverItsKind`](../../src/test/java/be/timvw/openapi/rust/DefaultOnlyWhereValidTest.java#L94), [`SchemaMappingTest#aStringEnumIsAUnitEnumWithDisplay`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L168) |
 
 ## `title`
 
@@ -325,7 +326,7 @@ A tagged union opens too: [`discriminator.propertyName.unknown-value`](discrimin
 | --- | --- |
 | OpenAPI | `allOf` of objects |
 | Rust | one struct holding the properties of every part, required where any part requires them; each referenced part keeps its own struct |
-| Tests | [`SchemaMappingTest#allOfObjectsIsOneStructWithEveryPartsProperties`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L192) |
+| Tests | [`SchemaMappingTest#allOfObjectsIsOneStructWithEveryPartsProperties`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L194) |
 
 ### `schema.allOf.union`
 

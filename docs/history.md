@@ -26,6 +26,17 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   each, the closest option (`did you mean 'bonBuilders'?`). A client whose configuration only holds options sees no
   change; one with a misspelt or stale key removes or corrects it.
 
+- Every model implements a generated `Validate` trait
+  ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
+  [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,
+  `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems`
+  (by equality; arrays stay `Vec`), `minProperties` and `maxProperties`, recursively, and returns the first
+  `validation::ValidationError` (path, rule, offending value). Nothing generated calls it, and `Error` is unchanged.
+  The crate gains `src/validation.rs`, an `impl crate::validation::Validate` per model, and a `regex` dependency when
+  the spec has a `pattern`; every constrained field's documentation lists its constraints. A client that wants
+  validation calls `validate()` (with `use <crate>::validation::Validate;`); one that does not want the code sets
+  `validateMethods=false`.
+
 ## What the generator renders differently from `-g rust`
 
 For a side-by-side view of stock `-g rust`, timvw-rust and progenitor on one spec (generated types, what each

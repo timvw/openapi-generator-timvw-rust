@@ -50,4 +50,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `application/octet-stream` with `format: binary` |
 | Rust | `std::path::PathBuf`, the file to send ([`schema.format.binary`](schema.md#schemaformatbinary)) |
 | Library | the file is opened with tokio and streamed as a `reqwest::Body` |
-| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L105) |
+| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L107) |

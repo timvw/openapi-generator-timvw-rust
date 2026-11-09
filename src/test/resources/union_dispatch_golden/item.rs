@@ -66,3 +66,10 @@ impl std::fmt::Display for Item {
     }
 }
 
+impl crate::validation::Validate for Item {
+    fn validate(&self) -> Result<(), crate::validation::ValidationError> {
+        Ok(())
+    }
+}
+
+

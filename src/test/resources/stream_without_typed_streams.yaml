@@ -1,0 +1,30 @@
+openapi: 3.0.3
+info: {title: Stream without typedEventStreams, version: "1"}
+paths:
+  /events:
+    post:
+      operationId: createEvents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Req"}
+          application/x-www-form-urlencoded:
+            schema: {$ref: "#/components/schemas/Req"}
+      responses:
+        "200":
+          description: a stream
+          content:
+            text/event-stream:
+              schema: {$ref: "#/components/schemas/Event"}
+components:
+  schemas:
+    Req:
+      type: object
+      properties:
+        name: {type: string}
+    Event:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string}

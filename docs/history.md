@@ -91,6 +91,14 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`additionalProperties`), which did not compile, is sent as its JSON. Signatures do not change. The generated header
   replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
   into the existing header rather than append a second one.
+- A map whose values are an inline enum (`additionalProperties: {type: string, enum: [..]}`) is
+  `HashMap<String, <Enum>>`; it was the enum itself, which a JSON object does not decode to. The field's type changes.
+- `contentTypeMethods` without `typedEventStreams`: the method for another request media type of an operation whose
+  response is an event stream returned `sse::EventStream`, but `sse.rs` is only written with `typedEventStreams`, so
+  the crate did not compile. It now decodes the response as JSON, like the operation's own method.
+- `useSerdePathToError`: `Display` of `Error::SerdePathToError` no longer calls `to_string()` inside `format!`
+  (clippy `to_string_in_format_args`). An operation whose only error is a `text/plain` default sets
+  `Some(DefaultResponse(content.clone()))` without an `UnknownValue` fallback that could not apply.
 
 ## What the generator renders differently from `-g rust`
 

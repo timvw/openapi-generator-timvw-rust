@@ -226,7 +226,7 @@ pub enum {{{classname}}} {
         /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
         {{/description}}
         #[serde(rename = "{{{baseName}}}"{{^required}}, skip_serializing_if = "Option::is_none"{{/required}})]
-        {{{name}}}: {{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{^required}}Option<{{/required}}{{#isEnum}}{{{enumName}}}{{/isEnum}}{{^isEnum}}{{#isModel}}{{#vendorExtensions.x-rust-box}}Box<{{/vendorExtensions.x-rust-box}}{{{dataType}}}{{#vendorExtensions.x-rust-box}}>{{/vendorExtensions.x-rust-box}}{{/isModel}}{{^isModel}}{{{dataType}}}{{/isModel}}{{/isEnum}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{^required}}>{{/required}},
+        {{{name}}}: {{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{^required}}Option<{{/required}}{{#isEnum}}{{#isArray}}{{#uniqueItems}}std::collections::HashSet<{{/uniqueItems}}{{^uniqueItems}}Vec<{{/uniqueItems}}{{/isArray}}{{#isMap}}std::collections::HashMap<String, {{/isMap}}{{{enumName}}}{{#isArray}}>{{/isArray}}{{#isMap}}>{{/isMap}}{{/isEnum}}{{^isEnum}}{{#isModel}}{{#vendorExtensions.x-rust-box}}Box<{{/vendorExtensions.x-rust-box}}{{{dataType}}}{{#vendorExtensions.x-rust-box}}>{{/vendorExtensions.x-rust-box}}{{/isModel}}{{^isModel}}{{{dataType}}}{{/isModel}}{{/isEnum}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{^required}}>{{/required}},
     {{/vars}}
     },
     {{/vendorExtensions.x-rust-inline-variants}}
@@ -257,7 +257,7 @@ pub struct {{{classname}}} {
     ### Option Start
     }}{{#isNullable}}Option<{{/isNullable}}{{^required}}Option<{{/required}}{{!
     ### Enums
-    }}{{#isEnum}}{{#isArray}}{{#uniqueItems}}std::collections::HashSet<{{/uniqueItems}}{{^uniqueItems}}Vec<{{/uniqueItems}}{{/isArray}}{{{enumName}}}{{#isArray}}>{{/isArray}}{{/isEnum}}{{!
+    }}{{#isEnum}}{{#isArray}}{{#uniqueItems}}std::collections::HashSet<{{/uniqueItems}}{{^uniqueItems}}Vec<{{/uniqueItems}}{{/isArray}}{{#isMap}}std::collections::HashMap<String, {{/isMap}}{{{enumName}}}{{#isArray}}>{{/isArray}}{{#isMap}}>{{/isMap}}{{/isEnum}}{{!
     ### Non-Enums Start
     }}{{^isEnum}}{{!
     ### Models
@@ -279,7 +279,7 @@ impl {{{classname}}} {
     ### Option Start
     }}{{#isNullable}}Option<{{/isNullable}}{{!
     ### Enums
-    }}{{#isEnum}}{{#isArray}}{{#uniqueItems}}std::collections::HashSet<{{/uniqueItems}}{{^uniqueItems}}Vec<{{/uniqueItems}}{{/isArray}}{{{enumName}}}{{#isArray}}>{{/isArray}}{{/isEnum}}{{!
+    }}{{#isEnum}}{{#isArray}}{{#uniqueItems}}std::collections::HashSet<{{/uniqueItems}}{{^uniqueItems}}Vec<{{/uniqueItems}}{{/isArray}}{{#isMap}}std::collections::HashMap<String, {{/isMap}}{{{enumName}}}{{#isArray}}>{{/isArray}}{{#isMap}}>{{/isMap}}{{/isEnum}}{{!
     ### Non-Enums
     }}{{^isEnum}}{{#isByteArray}}Vec<u8>{{/isByteArray}}{{^isByteArray}}{{{dataType}}}{{/isByteArray}}{{/isEnum}}{{!
     ### Option End

@@ -1,0 +1,28 @@
+openapi: 3.0.3
+info: {title: Map enum values, version: "1"}
+paths:
+  /x:
+    get:
+      operationId: getX
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Holder"}
+components:
+  schemas:
+    Holder:
+      type: object
+      properties:
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [red, green]
+        required_labels:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [on, off]
+      required: [required_labels]

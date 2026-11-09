@@ -1,0 +1,282 @@
+openapi: 3.0.3
+info:
+  title: validate
+  version: 1.0.0
+paths:
+  /requests:
+    post:
+      operationId: createRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Request'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Request'
+components:
+  schemas:
+    Request:
+      type: object
+      required: [messages, count]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/Message'
+        count:
+          type: integer
+          minimum: 1
+          maximum: 100
+          exclusiveMaximum: true
+          multipleOf: 5
+        temperature:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 2
+        top_p:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          multipleOf: 0.1
+        ratio:
+          type: number
+          format: float
+          maximum: 0.1
+        half:
+          type: integer
+          format: int32
+          minimum: 0.5
+        seed:
+          type: integer
+          minimum: -9223372036854775808
+          maximum: 9223372036854775807
+        small:
+          type: integer
+          format: int32
+          maximum: 3000000000
+        tags:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            maxLength: 5
+        points:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Point'
+        metadata:
+          type: object
+          minProperties: 1
+          maxProperties: 2
+          additionalProperties:
+            type: string
+            maxLength: 3
+        stops:
+          type: array
+          items:
+            type: array
+            minItems: 1
+            items:
+              type: string
+              minLength: 1
+        content:
+          $ref: '#/components/schemas/Content'
+        shape:
+          $ref: '#/components/schemas/Shape'
+        node:
+          $ref: '#/components/schemas/Node'
+        validate:
+          type: string
+          minLength: 2
+        lookahead:
+          type: string
+          pattern: '^(?=a)a+$'
+        payload: {}
+        colors:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [red, green]
+        holder:
+          $ref: '#/components/schemas/Holder'
+        patterns:
+          $ref: '#/components/schemas/Patterns'
+        status:
+          $ref: '#/components/schemas/Status'
+        level:
+          $ref: '#/components/schemas/Level'
+        huge:
+          type: number
+          format: float
+          maximum: 1.0e39
+          minimum: -1.0e39
+        clash:
+          $ref: '#/components/schemas/Validate'
+        error:
+          $ref: '#/components/schemas/ValidationError'
+    Patterns:
+      description: patterns the regex crate checks (ok_*) and patterns it skips (skip_*)
+      type: object
+      properties:
+        ok_phone:
+          type: string
+          pattern: '^\+[1-9][0-9]{1,14}$'
+        ok_slug:
+          type: string
+          pattern: '^[\w.-]{2,8}$'
+        ok_letters:
+          type: string
+          pattern: '^\p{L}+$'
+        ok_path:
+          type: string
+          pattern: '^\/[a-z]+(?:\/[a-z]+)*$'
+        ok_named:
+          type: string
+          pattern: '^(?<word>[a-z]+)$'
+        ok_lazy:
+          type: string
+          pattern: '^a+?b{2,}?$'
+        skip_empty_negated:
+          type: string
+          pattern: '[^]'
+        skip_bracket_first:
+          type: string
+          pattern: '^[]a]$'
+        skip_open_count:
+          type: string
+          pattern: '^a{,3}$'
+        skip_big_z:
+          type: string
+          pattern: '^a\Z'
+        skip_escape_e:
+          type: string
+          pattern: '^\e$'
+        skip_backreference:
+          type: string
+          pattern: '(a)\1'
+        skip_nested_class:
+          type: string
+          pattern: '[[a]]'
+        skip_double_star:
+          type: string
+          pattern: 'a**'
+        skip_word_start:
+          type: string
+          pattern: '\<a'
+        skip_dash_after_class:
+          type: string
+          pattern: '[\w-.]'
+        skip_inline_flag:
+          type: string
+          pattern: '^(?i)a$'
+        skip_control:
+          type: string
+          pattern: '\cJ'
+        skip_lookbehind:
+          type: string
+          pattern: '(?<=a)b'
+        skip_set_operation:
+          type: string
+          pattern: '[a&&b]'
+    Status:
+      type: string
+      enum: [draft, published]
+    Level:
+      type: integer
+      enum: [1, 2, 3]
+    Message:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10
+        name:
+          type: string
+          pattern: '^[a-z]+\d*$'
+    Point:
+      type: object
+      required: [x]
+      properties:
+        x:
+          type: number
+    Content:
+      oneOf:
+        - type: string
+          maxLength: 4
+        - type: array
+          items:
+            $ref: '#/components/schemas/Message'
+    Shape:
+      oneOf:
+        - $ref: '#/components/schemas/Circle'
+        - $ref: '#/components/schemas/Square'
+      discriminator:
+        propertyName: kind
+    Circle:
+      type: object
+      required: [kind, radius]
+      properties:
+        kind:
+          type: string
+          enum: [Circle]
+        radius:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+    Square:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [Square]
+        side:
+          type: integer
+    Node:
+      type: object
+      properties:
+        value:
+          type: integer
+          minimum: 0
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+        next:
+          $ref: '#/components/schemas/Node'
+    Holder:
+      description: holds a model without constraints of its own
+      type: object
+      properties:
+        inner:
+          $ref: '#/components/schemas/Message'
+        plain:
+          $ref: '#/components/schemas/Point'
+    Validate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+    ValidationError:
+      type: object
+      properties:
+        code:
+          type: integer
+          maximum: 10

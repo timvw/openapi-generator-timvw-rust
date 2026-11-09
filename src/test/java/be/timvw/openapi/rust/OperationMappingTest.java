@@ -68,7 +68,7 @@ class OperationMappingTest {
     void anOperationIsAnAsyncFunctionWithABuilder() throws IOException {
         String items = read("src/apis/items_api.rs");
         assertContains(items, "#[bon::builder]\npub async fn create_item(configuration: &configuration::Configuration, "
-                + "item: models::Item) -> Result<models::Item, Error<CreateItemError>> {");
+                + "item: &models::Item) -> Result<models::Item, Error<CreateItemError>> {");
     }
 
     @Test
@@ -121,7 +121,7 @@ class OperationMappingTest {
 
     @Test
     void aJsonBodyIsSentWithJson() throws IOException {
-        assertContains(function("items_api", "create_item"), "req_builder = req_builder.json(&p_body_item);");
+        assertContains(function("items_api", "create_item"), "req_builder = req_builder.json(p_body_item);");
     }
 
     @Test

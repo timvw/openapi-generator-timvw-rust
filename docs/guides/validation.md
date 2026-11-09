@@ -36,13 +36,27 @@ let bad = models::NewItem::builder()
     .name("Lamp".to_owned())
     .tags(vec!["light".to_owned(), "light".to_owned()])
     .build();
-let error = bad.validate().unwrap_err();
+let errors = bad.validate().unwrap_err();
+assert_eq!(errors.len(), 1);
+let error = errors.iter().next().unwrap();
 assert_eq!(error.path, "tags");
 assert_eq!(error.rule, models::validation::Rule::UniqueItems);
-assert_eq!(error.to_string(), "tags: items 0 and 1 are equal breaks uniqueItems");
+assert_eq!(errors.to_string(), "tags: items 0 and 1 are equal breaks uniqueItems");
+
+let worse = models::NewItem::builder()
+    .name(String::new())
+    .sku("lmp-1".to_owned())
+    .tags(vec!["light".to_owned(), "light".to_owned()])
+    .build();
+let errors: Vec<models::validation::ValidationError> = worse.validate().unwrap_err().into_vec();
+let paths: Vec<&str> = errors.iter().map(|error| error.path.as_str()).collect();
+assert_eq!(paths, ["name", "sku", "tags"]);
 ```
 
-`validate()` returns the **first** error it finds, as a `ValidationError`:
+`validate()` checks the whole value and returns **every** violation as a `ValidationErrors`, a non-empty list of
+`ValidationError`s in the order of the fields. It has `len()`, `iter()` and `into_vec()`, iterates with `for`
+(by value or by reference), and implements `Display` (one line per error) and `std::error::Error`, so `?` takes it into
+your error type. Each `ValidationError` holds:
 
 | Field | Holds |
 | --- | --- |
@@ -50,8 +64,9 @@ assert_eq!(error.to_string(), "tags: items 0 and 1 are equal breaks uniqueItems"
 | `rule` | the `Rule` it breaks, with its limit: `MinLength(1)`, `Pattern("^[A-Z]{3}-[0-9]{4}$")`, `Maximum(1.0)`, `UniqueItems`, ... (`#[non_exhaustive]`) |
 | `actual` | what the value had: `length 0`, `"abc"`, `-1`, `11 items`, `items 0 and 1 are equal` |
 
-It implements `Display` (`<path>: <actual> breaks <rule>`) and `std::error::Error`, so `?` takes it into your error
-type. Number limits are reported as `f64`, so an integer limit above 2^53 shows rounded.
+A `ValidationError` displays as `<path>: <actual> breaks <rule>`. Number limits are reported as `f64`, so an integer
+limit above 2^53 shows rounded. Map entries are visited in the map's order, which is unspecified, so with several bad
+entries in one map their order can vary.
 
 The generated functions **never call it**. The server checks the request anyway. A spec that is stricter than its
 server would otherwise block requests the server accepts, and a response that breaks a constraint the spec states is

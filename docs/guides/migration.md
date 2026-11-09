@@ -318,8 +318,8 @@ in the code; a value that decoded into the wrong branch now decodes into the rig
 
 ### Models implement `Validate`
 
-Every model implements `models::validation::Validate` (`validate()`), and constrained fields get a `Validation:` line
-in their documentation ([validation](validation.md)). Nothing calls it, so behaviour does not change. Three things to
+Every model implements `models::validation::Validate`. `validate()` returns every violation as a `ValidationErrors`
+list. Constrained fields get a `Validation:` line in their documentation ([validation](validation.md)). Nothing calls it, so behaviour does not change. Three things to
 check:
 
 - A crate with a checked `pattern` depends on `regex`. A hand-kept `Cargo.toml` adds `regex = "1"` (openai-client-base

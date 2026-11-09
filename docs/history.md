@@ -158,8 +158,9 @@ the code before and after, and the steps for a client repository.
   ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
   [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,
   `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems`
-  (by equality; arrays stay `Vec`), `minProperties` and `maxProperties`, recursively, and returns the first
-  `models::validation::ValidationError` (path, rule, offending value). Nothing generated calls it, and `Error` is unchanged.
+  (by equality; arrays stay `Vec`), `minProperties` and `maxProperties`, recursively, and returns every violation
+  as `models::validation::ValidationErrors`, a list of `ValidationError` (path, rule, offending value) with `len()`,
+  `iter()`, `into_vec()`, `IntoIterator` and a `Display` of one line per error. Nothing generated calls it, and `Error` is unchanged.
   The crate gains `src/models/validation.rs` (declared in `models/mod.rs`, so a client's own `lib.rs` needs no change), an `impl crate::models::validation::Validate` per model, and a `regex` dependency when
   the spec has a `pattern`; every constrained field's documentation lists its constraints. A client that wants
   validation calls `validate()` (with `use <crate>::models::validation::Validate;`); one that does not want the code sets

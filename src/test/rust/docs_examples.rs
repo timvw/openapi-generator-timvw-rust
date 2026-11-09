@@ -110,9 +110,13 @@ mod readme {
     fn validation() {
         use my_client::models::validation::Validate;
 
-        let draft = models::NewItem::builder().name(String::new()).build();
-        let error = draft.validate().unwrap_err();
-        assert_eq!(error.to_string(), "name: length 0 breaks minLength 1");
+        let draft = models::NewItem::builder().name(String::new()).price(-1.0).build();
+        let errors = draft.validate().unwrap_err();
+        assert_eq!(errors.len(), 2);
+        for error in &errors {
+            println!("{}: {}", error.path, error.rule);
+        }
+        assert_eq!(errors.to_string(), "name: length 0 breaks minLength 1\nprice: -1 breaks minimum 0");
     }
 }
 
@@ -217,10 +221,21 @@ mod validation {
             .name("Lamp".to_owned())
             .tags(vec!["light".to_owned(), "light".to_owned()])
             .build();
-        let error = bad.validate().unwrap_err();
+        let errors = bad.validate().unwrap_err();
+        assert_eq!(errors.len(), 1);
+        let error = errors.iter().next().unwrap();
         assert_eq!(error.path, "tags");
         assert_eq!(error.rule, models::validation::Rule::UniqueItems);
-        assert_eq!(error.to_string(), "tags: items 0 and 1 are equal breaks uniqueItems");
+        assert_eq!(errors.to_string(), "tags: items 0 and 1 are equal breaks uniqueItems");
+
+        let worse = models::NewItem::builder()
+            .name(String::new())
+            .sku("lmp-1".to_owned())
+            .tags(vec!["light".to_owned(), "light".to_owned()])
+            .build();
+        let errors: Vec<models::validation::ValidationError> = worse.validate().unwrap_err().into_vec();
+        let paths: Vec<&str> = errors.iter().map(|error| error.path.as_str()).collect();
+        assert_eq!(paths, ["name", "sku", "tags"]);
     }
 
     #[test]

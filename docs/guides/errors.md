@@ -156,5 +156,5 @@ if let Err(error) = &result {
   `Err(Error::Reqwest(_))` item and ends it.
 - A `_response` function of `responseFunctions` fails exactly like its operation; decoding happens later, in
   `ApiResponse::json()`, as a `serde_json::Error`.
-- `validate()` errors are a separate type, `ValidationError`; no generated function returns them
+- `validate()` errors are a separate type, `ValidationErrors` (a list of `ValidationError`); no generated function returns them
   ([validation](validation.md)).

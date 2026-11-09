@@ -148,10 +148,16 @@ Every model implements `Validate`. It checks the spec's `minLength`, `pattern`, 
 ```rust
 use my_client::models::validation::Validate;
 
-let draft = models::NewItem::builder().name(String::new()).build();
-let error = draft.validate().unwrap_err();
-assert_eq!(error.to_string(), "name: length 0 breaks minLength 1");
+let draft = models::NewItem::builder().name(String::new()).price(-1.0).build();
+let errors = draft.validate().unwrap_err();
+assert_eq!(errors.len(), 2);
+for error in &errors {
+    println!("{}: {}", error.path, error.rule);
+}
+assert_eq!(errors.to_string(), "name: length 0 breaks minLength 1\nprice: -1 breaks minimum 0");
 ```
+
+`validate()` reports every violation, with the path to it.
 
 See [validation](docs/guides/validation.md).
 

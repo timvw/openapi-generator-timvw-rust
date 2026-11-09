@@ -47,7 +47,7 @@ class ErrorsAndLintsTest {
         String mod = read("src/apis/mod.rs");
         assertTrue(mod.contains("    ResponseError(Box<ResponseContent<T>>),\n"), mod);
         String api = read("src/apis/widgets_api.rs");
-        assertTrue(api.contains("Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity })))"), api);
+        assertTrue(api.contains("Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity, headers })))"), api);
         assertFalse(api.contains("Err(Error::ResponseError(ResponseContent {"), api);
     }
 

@@ -106,9 +106,10 @@ class ErrorStatusTest {
         assertNotNull(result, "cargo did not finish");
         assertTrue(result.contains("test result: ok.") && !result.contains(" 0 passed"), result);
         // A range is a guard, so an exact code before its range is no overlap for clippy. The other templates still
-        // have return statements clippy finds needless (the clients allow that lint).
+        // have return statements clippy finds needless (the clients allow that lint), and without boxResponseError
+        // the error with its headers is larger than clippy's result_large_err allows.
         String clippy = cargo(output, 900, "clippy", "--all-targets", "--", "-D", "warnings", "-A",
-                "clippy::needless_return");
+                "clippy::needless_return", "-A", "clippy::result_large_err");
         Assumptions.assumeTrue(clippy == null || !clippy.contains("no such command"), "no clippy");
         assertNotNull(clippy, "clippy did not finish");
         assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("warning:"),

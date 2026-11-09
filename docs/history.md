@@ -33,6 +33,13 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   do not change, so nothing stops compiling; a client that matched on a `Status…` variant now gets the one of the
   status, and one that relied on a body of another response's type decoding (a 500 body in `Status400`) gets
   `UnknownValue`.
+- An error has the response's headers ([decision 4](decisions.md#4-response-headers-cannot-be-read)):
+  `ResponseContent` gets `headers: reqwest::header::HeaderMap`, filled on every error status (also of event-stream and
+  `contentTypeMethods` methods, and with `boxResponseError`), so `retry-after`, `x-request-id` and rate-limit headers
+  can be read. Code that builds a `ResponseContent` with a struct literal adds `headers` (e.g.
+  `reqwest::header::HeaderMap::new()`). The larger error makes clippy's `result_large_err` fire on every function of a
+  client without `boxResponseError`: such a client sets `boxResponseError=true` or adds `clippy::result_large_err` to
+  `apiLintAllows`. With `supportMultipleResponses`, the success `ResponseContent` has the headers too.
 - `date-time` parameters are sent in RFC 3339 ([decision 11](decisions.md#11-date-time-parameters-are-sent-in-display-form)):
   with `useChrono` (the default), a `date-time` path, query or header parameter or form field (urlencoded body,
   multipart text part), or each item of an array of them, was

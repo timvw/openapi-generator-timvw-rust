@@ -73,7 +73,7 @@ class GenerationTest {
     void stockErrorsLintsAndUserAgentWithoutOptions() throws IOException {
         assertTrue(read("src/apis/mod.rs").contains("    ResponseError(ResponseContent<T>),\n"));
         String api = read("src/apis/widgets_api.rs");
-        assertTrue(api.contains("Err(Error::ResponseError(ResponseContent { status, content, entity }))"), api);
+        assertTrue(api.contains("Err(Error::ResponseError(ResponseContent { status, content, entity, headers }))"), api);
         assertFalse(api.contains("#![allow("), api);
         assertTrue(read("src/apis/configuration.rs").contains("Some(\"OpenAPI-Generator/"));
     }

@@ -10,6 +10,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | `headers` of a response |
-| Rust | nothing: a JSON or text response returns only its decoded body, and an error response only `status`, the body and the decoded entity. A binary response returns the whole `reqwest::Response`, whose headers the caller can read |
-| Gap | the headers of a JSON or text response cannot be read |
-| Tests | [`OtherObjectsTest#responseHeadersAreNotExposed`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L76) |
+| Rust | no typed header fields. An error response's `ResponseContent` has `headers: reqwest::header::HeaderMap`, every header of the response, declared or not (see [`responses.statusCode`](responses.md#responsesstatuscode)). A JSON or text success returns only its decoded body. A binary response returns the whole `reqwest::Response`, whose headers the caller can read |
+| Library | `reqwest::header::HeaderMap` |
+| Gap | the headers of a JSON or text success cannot be read |
+| Tests | [`OtherObjectsTest#responseHeadersAreNotExposed`](../../src/test/java/be/timvw/openapi/rust/OtherObjectsTest.java#L76), [`ErrorStatusTest#whatItDecodesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/ErrorStatusTest.java#L91) |

@@ -154,7 +154,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | `application/octet-stream` success *(reqwest)* | `reqwest::Response`, to read as bytes or a stream | |
 | `text/event-stream` success *(reqwest)* | decoded as JSON, which fails | `typedEventStreams`: `apis::sse::EventStream<Event, <Op>Error>`, each `data:` decoded to the event schema, `[DONE]` ends it |
 | several success media types | the first | `contentTypeMethods`: `_json`, `_text`, `_bytes`, `_stream` methods |
-| error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content` and `entity: Option<<Op>Error>`; the error enum has a variant per response (`Status404(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The status picks the variant (the exact code, then its `4XX` range, then `default`) and the body decodes as that response's type; a body that does not decode is `UnknownValue` | `boxResponseError` boxes `ResponseContent` |
+| error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content`, `entity: Option<<Op>Error>` and `headers: reqwest::header::HeaderMap`; the error enum has a variant per response (`Status404(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The status picks the variant (the exact code, then its `4XX` range, then `default`) and the body decodes as that response's type; a body that does not decode is `UnknownValue` | `boxResponseError` boxes `ResponseContent` |
 | transport and decoding errors *(reqwest)* | `Error::Reqwest`, `Error::ReqwestMiddleware`, `Error::Serde`, `Error::Io` | |
 
 ### Configuration and authentication
@@ -173,7 +173,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 ## Known gaps
 
 - Cookie parameters are not sent.
-- Response headers of a JSON or text response cannot be read.
+- Response headers of a JSON or text success cannot be read (an error has them).
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
   ([mapping](mapping/README.md#objects)).
 - Validation keywords (`minLength`, `pattern`, `maximum`, ...) are not checked.

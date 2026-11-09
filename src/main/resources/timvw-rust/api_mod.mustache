@@ -6,6 +6,8 @@ pub struct ResponseContent<T> {
     pub status: reqwest::StatusCode,
     pub content: String,
     pub entity: Option<T>,
+    /// The response's headers (`retry-after`, `x-request-id`, rate limits, ...).
+    pub headers: reqwest::header::HeaderMap,
 }
 
 #[derive(Debug)]

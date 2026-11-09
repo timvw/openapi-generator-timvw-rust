@@ -69,7 +69,7 @@ working:
 | --- | --- | --- | --- |
 | `packageName` | `openapi` | crate name; `-` becomes `_` where the crate is imported | |
 | `packageVersion` | the spec's `info.version`, else `1.0.0` | crate version (`v1.2` becomes `1.2.0`) | |
-| `useChrono` | `true` | `date` and `date-time` as `chrono` types (a parameter is sent as `YYYY-MM-DD` and RFC 3339); `false` renders both as `String` | [`schema.format.date-time`](docs/mapping/schema.md#schemaformatdate-time) |
+| `useChrono` | `true` | `date` and `date-time` as `chrono` types (a parameter or form field is sent as `YYYY-MM-DD` and RFC 3339); `false` renders both as `String` | [`schema.format.date-time`](docs/mapping/schema.md#schemaformatdate-time) |
 | `useSerdePathToError` | `false` | responses decode through `serde_path_to_error`, so an error names the path of the value | |
 | `supportMultipleResponses` | `false` | a function returns `ResponseContent<<Operation>Success>`, an enum of the 2xx responses | |
 | `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none) | |

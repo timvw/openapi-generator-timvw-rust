@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@code date} and {@code date-time} path, query and header parameters (decision 11) on
  * src/test/resources/date_params.yaml: a {@code date-time} is sent in RFC 3339 ({@code to_rfc3339}), a {@code date}
- * as {@code YYYY-MM-DD}. What goes on the wire is in src/test/rust/date_params.rs, which {@link #whatItDoesAtRunTime}
+ * as {@code YYYY-MM-DD}; form fields (urlencoded and multipart text parts) alike. What goes on the wire is in src/test/rust/date_params.rs, which {@link #whatItDoesAtRunTime}
  * runs with cargo against a local server.
  */
 class DateParamsTest {
@@ -37,16 +37,23 @@ class DateParamsTest {
     @TempDir
     static Path strings;
 
+    @TempDir
+    static Path helper;
+
     @BeforeAll
     static void generate() {
-        generate(chrono, true);
-        generate(strings, false);
+        generate(chrono, true, false);
+        generate(strings, false, false);
+        generate(helper, true, true);
     }
 
-    private static void generate(Path output, boolean useChrono) {
+    private static void generate(Path output, boolean useChrono, boolean multipartHelper) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "date_params_fixture");
         props.put(RustCodegenBase.USE_CHRONO, String.valueOf(useChrono));
+        if (multipartHelper) {
+            props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
+        }
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(SPEC).toAbsolutePath().toString())
@@ -77,6 +84,22 @@ class DateParamsTest {
     }
 
     @Test
+    void aDateTimeFormFieldIsSentInRfc3339() throws IOException {
+        for (Path output : List.of(chrono, helper)) {
+            String api = api(output);
+            assertTrue(api.contains("multipart_form_params.insert(\"at\", p_form_at.to_rfc3339());"), api);
+            assertTrue(api.contains("multipart_form_params.insert(\"until\", param_value.to_rfc3339());"), api);
+            assertTrue(api.contains("multipart_form_params.insert(\"times\", param_value.into_iter()"
+                    + ".map(|p| p.to_rfc3339()).collect::<Vec<String>>().join(\",\").to_string());"), api);
+            assertTrue(api.contains("multipart_form_params.insert(\"day\", p_form_day.to_string());"), api);
+            assertTrue(api.contains("multipart_form = multipart_form.text(\"at\", p_form_at.to_rfc3339());"), api);
+            assertTrue(api.contains("multipart_form = multipart_form.text(\"until\", param_value.to_rfc3339());"),
+                    api);
+            assertTrue(api.contains("multipart_form = multipart_form.text(\"day\", p_form_day.to_string());"), api);
+        }
+    }
+
+    @Test
     void aDateIsSentWithDisplay() throws IOException {
         String api = api(chrono);
         assertTrue(api.contains("day=p_path_day,"), api);
@@ -95,6 +118,8 @@ class DateParamsTest {
         assertTrue(api.contains("ats=p_path_ats.join(\",\")"), api);
         assertTrue(api.contains("req_builder.query(&[(\"from\", &p_query_from.to_string())]);"), api);
         assertTrue(api.contains("req_builder.header(\"X-At\", p_header_x_at.to_string());"), api);
+        assertTrue(api.contains("multipart_form_params.insert(\"at\", p_form_at.to_string());"), api);
+        assertTrue(api.contains("multipart_form = multipart_form.text(\"at\", p_form_at.to_string());"), api);
     }
 
     /**

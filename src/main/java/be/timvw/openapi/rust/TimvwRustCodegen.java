@@ -187,10 +187,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
      */
     static final String DISPLAY_ITEMS = "x-rust-display-items";
     /**
-     * Set on every path, query and header parameter: the method that writes its value, or each item of an array, as
-     * text. {@code to_rfc3339} for a {@code date-time} ({@code chrono::DateTime}, whose {@code Display} is not RFC 3339),
-     * {@code to_string} otherwise ({@code date} is {@code chrono::NaiveDate}, whose {@code Display} is
-     * {@code YYYY-MM-DD}).
+     * Set on every path, query, header and form parameter (an urlencoded field or a multipart text part): the method
+     * that writes its value, or each item of an array, as text. {@code to_rfc3339} for a {@code date-time}
+     * ({@code chrono::DateTime}, whose {@code Display} is not RFC 3339), {@code to_string} otherwise ({@code date} is
+     * {@code chrono::NaiveDate}, whose {@code Display} is {@code YYYY-MM-DD}).
      */
     static final String TO_TEXT = "x-rust-to-text";
     /** Set on a path, query or header parameter whose value, or whose items, are a {@code chrono::DateTime}. */
@@ -1010,11 +1010,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
     }
 
     /**
-     * Marks how a path, query or header parameter becomes text: {@code date-time} values in RFC 3339, as
+     * Marks how a path, query, header or form parameter becomes text: {@code date-time} values in RFC 3339, as
      * {@code format: date-time} requires, everything else with {@code Display}.
      */
     static void markText(CodegenParameter p) {
-        if (!p.isPathParam && !p.isQueryParam && !p.isHeaderParam) {
+        if (!p.isPathParam && !p.isQueryParam && !p.isHeaderParam && !p.isFormParam) {
             return;
         }
         String type = p.isArray && p.items != null ? p.items.dataType : p.dataType;

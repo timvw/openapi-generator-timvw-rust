@@ -2,7 +2,8 @@ openapi: 3.0.3
 info:
   title: Date parameters
   version: 1.0.0
-# date and date-time values in path, query and header parameters: single, optional, nullable and arrays.
+# date and date-time values in path, query and header parameters (single, optional, nullable and arrays), and in
+# form fields: an urlencoded body and multipart text parts.
 paths:
   /days/{at}/{day}/{ats}/{days}:
     get:
@@ -113,6 +114,62 @@ paths:
             items:
               type: string
               format: date-time
+      responses:
+        '204':
+          description: Nothing
+  /form:
+    post:
+      operationId: postForm
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [at, day]
+              properties:
+                at:
+                  type: string
+                  format: date-time
+                until:
+                  type: string
+                  format: date-time
+                day:
+                  type: string
+                  format: date
+                times:
+                  type: array
+                  items:
+                    type: string
+                    format: date-time
+      responses:
+        '204':
+          description: Nothing
+  /upload:
+    post:
+      operationId: postUpload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [at, day]
+              properties:
+                at:
+                  type: string
+                  format: date-time
+                until:
+                  type: string
+                  format: date-time
+                day:
+                  type: string
+                  format: date
+                times:
+                  type: array
+                  items:
+                    type: string
+                    format: date-time
       responses:
         '204':
           description: Nothing

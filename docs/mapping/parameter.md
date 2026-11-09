@@ -21,7 +21,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `in: path` |
 | Rust | `&str` or the scalar, URL-encoded into the path (`crate::apis::urlencode`) |
 | Wire | a `date-time` is RFC 3339 (`to_rfc3339()`), URL-encoded (`2026-01-02T03%3A04%3A05%2B01%3A00`); an array of them encodes each item and joins them with `,`; a `date` is `YYYY-MM-DD` ([`schema.format.date-time`](schema.md#schemaformatdate-time)) |
-| Tests | [`OperationMappingTest#aPathParameterIsUrlEncodedIntoThePath`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L88), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L63), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L105) |
+| Tests | [`OperationMappingTest#aPathParameterIsUrlEncodedIntoThePath`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L88), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L70), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L130) |
 
 ### `parameter.in.query`
 
@@ -32,7 +32,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Wire | a `date-time` is RFC 3339 (`to_rfc3339()`), a `date` `YYYY-MM-DD`, each item of an array alike; `.query` percent-encodes the value (`from=2026-01-01T00%3A00%3A00%2B00%3A00`) ([`schema.format.date-time`](schema.md#schemaformatdate-time)) |
 | Options | `resetQueryParameterStyle=true` (openai-client-base) gives every query parameter the default style, so arrays are always repeated |
 | Library | `reqwest::RequestBuilder::query` |
-| Tests | [`OperationMappingTest#queryParametersFollowTheirStyle`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L94), [`SpecRulesTest#objectQueryParametersBecomeStringsUnlessAllowed`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L170), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L63), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L105) |
+| Tests | [`OperationMappingTest#queryParametersFollowTheirStyle`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L94), [`SpecRulesTest#objectQueryParametersBecomeStringsUnlessAllowed`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L170), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L70), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L130) |
 
 ### `parameter.style.deep-object`
 
@@ -51,7 +51,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Rust | `.header(<name>, value)`; an array is joined with `,` |
 | Wire | a `date-time` is RFC 3339 (`to_rfc3339()`, `2026-01-02T03:04:05+01:00`), a `date` `YYYY-MM-DD`, each item of an array alike ([`schema.format.date-time`](schema.md#schemaformatdate-time)) |
 | Options | always: a struct is serialized with `serde_json::to_string` ([`schema.properties.display`](schema.md#schemapropertiesdisplay)) |
-| Tests | [`OperationMappingTest#headersAreSentAndArraysJoined`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L103), [`NoStructDisplayTest#headers`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L97), [`ExtraRulesTest#arrayHeadersOfEnumsJoinTheirDisplay`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L87), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L63), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L105) |
+| Tests | [`OperationMappingTest#headersAreSentAndArraysJoined`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L103), [`NoStructDisplayTest#headers`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L97), [`ExtraRulesTest#arrayHeadersOfEnumsJoinTheirDisplay`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L87), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L70), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L130) |
 
 ### `parameter.in.cookie`
 

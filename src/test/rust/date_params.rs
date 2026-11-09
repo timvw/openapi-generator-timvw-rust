@@ -1,4 +1,4 @@
-//! What `date` and `date-time` parameters look like on the wire, on the crate generated from
+//! What `date` and `date-time` parameters and form fields look like on the wire, on the crate generated from
 //! src/test/resources/date_params.yaml. `DateParamsTest` copies this file into that crate's tests/ and runs cargo.
 //! A one-shot HTTP server on a local port answers each call with 204 and hands back the request it read.
 
@@ -8,7 +8,7 @@ use date_params_fixture::apis::default_api;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-/// Serves one request with 204; returns the request head.
+/// Serves one request with 204; returns the request.
 async fn serve() -> (Configuration, tokio::task::JoinHandle<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -19,7 +19,16 @@ async fn serve() -> (Configuration, tokio::task::JoinHandle<String>) {
         loop {
             let n = socket.read(&mut buf).await.unwrap();
             request.extend_from_slice(&buf[..n]);
-            if n == 0 || request.windows(4).any(|w| w == b"\r\n\r\n") {
+            let text = String::from_utf8_lossy(&request).to_string();
+            if let Some(end) = text.find("\r\n\r\n") {
+                let length = header(&text[..end], "content-length")
+                    .map(|v| v.parse::<usize>().unwrap())
+                    .unwrap_or(0);
+                if request.len() >= end + 4 + length {
+                    break;
+                }
+            }
+            if n == 0 {
                 break;
             }
         }
@@ -127,4 +136,66 @@ async fn optional_ones_left_out_are_not_sent() {
     assert_eq!(header(&request, "x-at"), Some("2026-05-06T07:08:09+00:00"));
     assert_eq!(header(&request, "x-until"), None);
     assert_eq!(header(&request, "x-times"), None);
+}
+
+/// The body of a request: what follows the head.
+fn body(request: &str) -> &str {
+    &request[request.find("\r\n\r\n").unwrap() + 4..]
+}
+
+/// An urlencoded form field is written like a query parameter: RFC 3339 for a date-time, `YYYY-MM-DD` for a date,
+/// an array joined with `,`.
+#[tokio::test]
+async fn an_urlencoded_form_field_is_rfc_3339() {
+    let (configuration, request) = serve().await;
+    default_api::post_form()
+        .configuration(&configuration)
+        .at(at("2026-01-02T03:04:05+01:00"))
+        .day(day("2026-01-31"))
+        .until(at("2026-12-31T23:59:59Z"))
+        .times(vec![at("2026-01-01T00:00:00Z"), at("2026-01-02T00:00:00+01:00")])
+        .call()
+        .await
+        .unwrap();
+    let request = request.await.unwrap();
+    assert_eq!(
+        header(&request, "content-type"),
+        Some("application/x-www-form-urlencoded")
+    );
+    // the fields come from a HashMap: compare them in order
+    let mut fields: Vec<&str> = body(&request).split('&').collect();
+    fields.sort();
+    assert_eq!(
+        fields,
+        vec![
+            "at=2026-01-02T03%3A04%3A05%2B01%3A00",
+            "day=2026-01-31",
+            "times=2026-01-01T00%3A00%3A00%2B00%3A00%2C2026-01-02T00%3A00%3A00%2B01%3A00",
+            "until=2026-12-31T23%3A59%3A59%2B00%3A00",
+        ]
+    );
+}
+
+/// A multipart text part holds the same text.
+#[tokio::test]
+async fn a_multipart_text_part_is_rfc_3339() {
+    let (configuration, request) = serve().await;
+    default_api::post_upload()
+        .configuration(&configuration)
+        .at(at("2026-01-02T03:04:05+01:00"))
+        .day(day("2026-01-31"))
+        .until(at("2026-12-31T23:59:59Z"))
+        .call()
+        .await
+        .unwrap();
+    let request = request.await.unwrap();
+    let body = body(&request);
+    for (name, value) in [
+        ("at", "2026-01-02T03:04:05+01:00"),
+        ("until", "2026-12-31T23:59:59+00:00"),
+        ("day", "2026-01-31"),
+    ] {
+        let part = format!("content-disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n");
+        assert!(body.to_ascii_lowercase().contains(&part.to_ascii_lowercase()), "{part:?} not in {body}");
+    }
 }

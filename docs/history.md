@@ -121,11 +121,14 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
 - `contentTypeMethods` with `typedEventStreams`: an event stream whose schema models the SSE envelope (required
   `event` and `data`), which gets no typed stream, now gets none in the method for another request media type either:
   that method returned `sse::EventStream<Envelope>` and now decodes the response as JSON like the operation's own.
-- The generated README's description (`info.description`) has its unlabelled, `rust` and indented code blocks marked
-  `text`, so `cargo test --doc` does not compile them; code blocks in another language stay as they are.
+- The generated README's description (`info.description`) has the code blocks rustdoc would compile marked `text`
+  (fenced without a language or with only `rust` and rustdoc attributes such as `no_run` or `ignore`, and indented
+  blocks, also inside a list item), so `cargo test --doc` does not compile them; code blocks in another language stay
+  as they are.
 - A discriminated union whose branches share one `enum` of every tag value (`kind: [cat, dog]` on both `Cat` and
   `Dog`) dispatches each value to the branch the `mapping` names (`cat` decodes `Cat`, `dog` decodes `Dog`), instead
-  of trying both in order for either value. The unused `decode` helper of `src/models/union_dispatch.rs` is now left
+  of trying both in order for either value: a branch's own tag values select it unless the mapping gives them to
+  another branch. The unused `decode` helper of `src/models/union_dispatch.rs` is now left
   out when only `first_of` is used (clippy `dead_code`).
 
 ## What the generator renders differently from `-g rust`

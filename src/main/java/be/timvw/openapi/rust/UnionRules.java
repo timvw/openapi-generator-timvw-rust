@@ -918,19 +918,22 @@ final class UnionRules {
                 continue;
             }
             Tagged tagged = own.get(i) == null ? null : tags.tagged(own.get(i), tag, identitySet());
-            // The discriminator mapping, where it names the branch, says which values select it; the values the
-            // branch's tag field allows only count without one (branches often share one enum of every tag value).
-            Set<String> mapped = new LinkedHashSet<>();
-            if (own.get(i) != null && own.get(i).get$ref() != null) {
-                String target = SpecRules.refName(own.get(i).get$ref());
-                mapping.forEach((key, ref) -> {
-                    if (SpecRules.refName(ref).equals(target)) {
-                        mapped.add(key);
-                    }
-                });
+            // The values that select the branch: the mapping keys that name it, and the values its tag field allows
+            // except those the mapping gives to another branch (branches often share one enum of every tag value).
+            String target = own.get(i) != null && own.get(i).get$ref() != null
+                    ? SpecRules.refName(own.get(i).get$ref()) : null;
+            Set<String> selected = new LinkedHashSet<>();
+            for (String value : tagged == null ? List.<String>of() : tagged.values) {
+                String ref = mapping.get(value);
+                if (ref == null || SpecRules.refName(ref).equals(target)) {
+                    selected.add(value);
+                }
             }
-            Set<String> selected = !mapped.isEmpty() ? mapped
-                    : new LinkedHashSet<>(tagged == null ? List.of() : tagged.values);
+            mapping.forEach((key, ref) -> {
+                if (SpecRules.refName(ref).equals(target)) {
+                    selected.add(key);
+                }
+            });
             if (selected.isEmpty()) {
                 throw new IllegalArgumentException(String.format("%s: union dispatch: %s is tagged on '%s', but no value selects "
                                 + "its variant %s (%s): the spec's branch needs fixed values or a discriminator mapping; "

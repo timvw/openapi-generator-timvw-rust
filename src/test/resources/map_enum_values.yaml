@@ -22,9 +22,19 @@ info:
         GET /x HTTP/1.1
         Host: example.com
 
+    ```no_run
+    attribute only, still rust
+    ```
+
+    ```rust,ignore
+    ignored rust
+    ```
+
     - a list item
 
-        with an indented continuation
+      with a continuation paragraph
+
+          code inside the item
 paths:
   /x:
     get:

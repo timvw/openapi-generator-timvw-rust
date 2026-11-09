@@ -31,6 +31,7 @@ class SmallFixesTest {
     private static final String MAP_SPEC = "src/test/resources/map_enum_values.yaml";
     private static final String STREAM_SPEC = "src/test/resources/stream_without_typed_streams.yaml";
     private static final String UNION_SPEC = "src/test/resources/union_shared_tag_enum.yaml";
+    private static final String UNION_MAPPING_SPEC = "src/test/resources/union_mapping_and_tag_values.yaml";
 
     @TempDir
     static Path mapEnums;
@@ -47,6 +48,9 @@ class SmallFixesTest {
     @TempDir
     static Path union;
 
+    @TempDir
+    static Path unionMapping;
+
     @BeforeAll
     static void generate() {
         generate(MAP_SPEC, mapEnums, Map.of());
@@ -55,6 +59,7 @@ class SmallFixesTest {
         generate(STREAM_SPEC, streamTyped, Map.of(TimvwRustCodegen.CONTENT_TYPE_METHODS, "true",
                 TimvwRustCodegen.TYPED_EVENT_STREAMS, "true"));
         generate(UNION_SPEC, union, Map.of());
+        generate(UNION_MAPPING_SPEC, unionMapping, Map.of());
     }
 
     private static void generate(String spec, Path output, Map<String, Object> options) {
@@ -109,7 +114,9 @@ class SmallFixesTest {
         assertContains(readme, "```text\nthis is not rust either\n```");
         assertContains(readme, "```json\n{\"stays\": \"json\"}\n```");
         assertContains(readme, "```text\nGET /x HTTP/1.1\nHost: example.com\n```");
-        assertContains(readme, "- a list item\n\n    with an indented continuation");
+        assertContains(readme, "```text\nattribute only, still rust\n```");
+        assertContains(readme, "```text\nignored rust\n```");
+        assertContains(readme, "- a list item\n\n  with a continuation paragraph\n\n  ```text\n  code inside the item\n  ```");
         // Every block is opened with a language: the bare fences are the closing ones.
         assertEquals(readme.split("```[a-z]+\n", -1).length - 1, readme.split("```\n", -1).length - 1, readme);
         Assumptions.assumeTrue(cargo(mapEnums, 30, "--version") != null, "no cargo");
@@ -171,6 +178,24 @@ class SmallFixesTest {
         String helper = Files.readString(union.resolve("src/models/union_dispatch.rs"));
         assertFalse(helper.contains("fn first_of"), helper);
         assertClippyClean(union);
+    }
+
+    /**
+     * A mapping that names some values and branches whose tag enums hold others: a branch is selected by the mapping
+     * keys that name it and by its own tag values the mapping does not give to another branch.
+     */
+    @Test
+    void theMappingAddsToTheBranchesOwnTagValues() throws IOException, InterruptedException {
+        String pet = Files.readString(unionMapping.resolve("src/models/pet.rs"));
+        assertContains(pet, "Tag::Value(\"cat\" | \"kitty\" | \"feline\") => dispatch::decode(value, UNION, \"Cat\")");
+        assertContains(pet, "Tag::Value(\"dog\" | \"puppy\") => dispatch::decode(value, UNION, \"Dog\")");
+        assertClippyClean(unionMapping);
+        Files.createDirectories(unionMapping.resolve("tests"));
+        Files.copy(Path.of("src/test/rust/union_mapping.rs"), unionMapping.resolve("tests/union_mapping.rs"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        String test = cargo(unionMapping, 900, "test", "--test", "union_mapping");
+        assertNotNull(test, "cargo did not finish");
+        assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
     }
 
     private static void assertClippyClean(Path crate) throws IOException, InterruptedException {

@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info: {title: Mapping and own tag values, version: "1"}
+paths:
+  /u:
+    get:
+      operationId: getU
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Pet"}
+components:
+  schemas:
+    Pet:
+      oneOf:
+        - $ref: "#/components/schemas/Cat"
+        - $ref: "#/components/schemas/Dog"
+      discriminator:
+        propertyName: kind
+        mapping: {cat: "#/components/schemas/Cat", feline: "#/components/schemas/Cat", dog: "#/components/schemas/Dog"}
+    Cat:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [cat, kitty]}
+    Dog:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [dog, puppy]}

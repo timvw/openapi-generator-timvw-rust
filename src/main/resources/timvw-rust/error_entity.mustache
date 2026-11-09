@@ -1,0 +1,23 @@
+{{#vendorExtensions.x-rust-error-match}}
+        let entity: Option<{{{vendorExtensions.x-rust-error-enum}}}> = match status.as_u16() {
+            {{#vendorExtensions.x-rust-error-arms}}
+            {{{pattern}}} => {{#decodes}}serde_json::from_str(&content).ok().map({{{enum}}}::{{{variant}}}){{/decodes}}{{^decodes}}Some({{{enum}}}::{{{variant}}}()){{/decodes}},
+            {{/vendorExtensions.x-rust-error-arms}}
+            {{#vendorExtensions.x-rust-error-default}}
+            _ => {{#decodes}}serde_json::from_str(&content).ok().map({{{enum}}}::{{{variant}}}){{/decodes}}{{^decodes}}Some({{{enum}}}::{{{variant}}}()){{/decodes}},
+            {{/vendorExtensions.x-rust-error-default}}
+            {{^vendorExtensions.x-rust-error-default}}
+            _ => None,
+            {{/vendorExtensions.x-rust-error-default}}
+        }
+        .or_else(|| serde_json::from_str(&content).ok().map({{{vendorExtensions.x-rust-error-enum}}}::UnknownValue));
+{{/vendorExtensions.x-rust-error-match}}
+{{^vendorExtensions.x-rust-error-match}}
+{{#vendorExtensions.x-rust-error-default}}
+        let entity: Option<{{{enum}}}> = {{#decodes}}serde_json::from_str(&content).ok().map({{{enum}}}::{{{variant}}}){{/decodes}}{{^decodes}}Some({{{enum}}}::{{{variant}}}()){{/decodes}}
+            .or_else(|| serde_json::from_str(&content).ok().map({{{enum}}}::UnknownValue));
+{{/vendorExtensions.x-rust-error-default}}
+{{^vendorExtensions.x-rust-error-default}}
+        let entity: Option<{{{vendorExtensions.x-rust-error-enum}}}> = serde_json::from_str(&content).ok().map({{{vendorExtensions.x-rust-error-enum}}}::UnknownValue);
+{{/vendorExtensions.x-rust-error-default}}
+{{/vendorExtensions.x-rust-error-match}}

@@ -194,6 +194,15 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * items' {@code Display}, as {@code .join(",")} only joins strings.
      */
     static final String DISPLAY_ITEMS = "x-rust-display-items";
+    /**
+     * Set on every path, query, header and form parameter (an urlencoded field or a multipart text part): the method
+     * that writes its value, or each item of an array, as text. {@code to_rfc3339} for a {@code date-time}
+     * ({@code chrono::DateTime}, whose {@code Display} is not RFC 3339), {@code to_string} otherwise ({@code date} is
+     * {@code chrono::NaiveDate}, whose {@code Display} is {@code YYYY-MM-DD}).
+     */
+    static final String TO_TEXT = "x-rust-to-text";
+    /** Set on a path, query or header parameter whose value, or whose items, are a {@code chrono::DateTime}. */
+    static final String RFC3339 = "x-rust-rfc3339";
     /** Set on a property or model that the model template marks {@code #[deprecated]}. */
     static final String DEPRECATED = "x-rust-deprecated";
     /** Set on an operation whose method returns {@code sse::EventStream}. */
@@ -1034,6 +1043,27 @@ public class TimvwRustCodegen extends RustCodegenBase {
     }
 
     /**
+     * Marks how a path, query, header or form parameter becomes text: {@code date-time} values in RFC 3339, as
+     * {@code format: date-time} requires, everything else with {@code Display}.
+     */
+    static void markText(CodegenParameter p) {
+        if (!p.isPathParam && !p.isQueryParam && !p.isHeaderParam && !p.isFormParam) {
+            return;
+        }
+        String type = p.isArray && p.items != null ? p.items.dataType : p.dataType;
+        boolean dateTime = type != null && type.startsWith("chrono::DateTime<");
+        p.vendorExtensions.put(TO_TEXT, dateTime ? "to_rfc3339" : "to_string");
+        if (dateTime) {
+            p.vendorExtensions.put(RFC3339, true);
+        }
+    }
+
+    /** Whether a Rust type is one of chrono's date types (with {@code useChrono}). */
+    private static boolean isChrono(String type) {
+        return type != null && (type.startsWith("chrono::DateTime<") || type.equals("chrono::NaiveDate"));
+    }
+
+    /**
      * The models that end up as a struct: no enum, discriminated union or {@code oneOf}, as in the model template.
      */
     private static Set<String> renderedStructs(List<ModelMap> allModels) {
@@ -1181,6 +1211,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     variant.authMethods = op.authMethods;
                     variant.hasAuthMethods = op.hasAuthMethods;
                     variant.vendorExtensions.put(ERROR_ENUM, op.operationIdCamelCase + "Error");
+                    ErrorStatus.mark(variant, op, op.operationIdCamelCase + "Error");
+                }
+                if (!op.vendorExtensions.containsKey(CONTENT_VARIANT)) {
+                    ErrorStatus.mark(op, op, String.valueOf(op.vendorExtensions.get(ERROR_ENUM)));
                 }
                 for (List<CodegenParameter> params : Arrays.asList(op.allParams, op.formParams, op.bodyParams,
                         op.queryParams, op.pathParams, op.headerParams, op.requiredParams, op.optionalParams)) {
@@ -1201,9 +1235,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
                             p.vendorExtensions.put(UnionRules.UNION_TEXT, true);
                         }
                         if (p.isArray && p.items != null && (p.items.isModel || p.items.isEnumRef
-                                || (p.items.dataType != null && p.items.dataType.startsWith("models::")))) {
+                                || (p.items.dataType != null && p.items.dataType.startsWith("models::"))
+                                || isChrono(p.items.dataType))) {
                             p.vendorExtensions.put(DISPLAY_ITEMS, true);
                         }
+                        markText(p);
                     }
                 }
                 if (multipartHelper && op.isMultipart && op.formParams != null && !op.formParams.isEmpty()) {

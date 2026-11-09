@@ -25,6 +25,21 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   general options, nor a key openapi-generator sets itself, was ignored and now fails with every unknown key and, for
   each, the closest option (`did you mean 'bonBuilders'?`). A client whose configuration only holds options sees no
   change; one with a misspelt or stale key removes or corrects it.
+- The error variant comes from the status, not the body's shape
+  ([decision 5](decisions.md#5-error-variant-chosen-by-body-shape-not-status)): `entity` holds the variant of the
+  response with the status's exact code, else of its range (`4XX`), else `DefaultResponse`, with the body decoded as
+  that response's type; a body that does not decode as it is `UnknownValue`. Before, the body went into the first
+  variant whose type accepted it, so a 404 with the 400's type came back as `Status400`. The enum's type and variants
+  do not change, so nothing stops compiling; a client that matched on a `Status…` variant now gets the one of the
+  status, and one that relied on a body of another response's type decoding (a 500 body in `Status400`) gets
+  `UnknownValue`.
+- `date-time` parameters are sent in RFC 3339 ([decision 11](decisions.md#11-date-time-parameters-are-sent-in-display-form)):
+  with `useChrono` (the default), a `date-time` path, query or header parameter or form field (urlencoded body,
+  multipart text part), or each item of an array of them, was
+  written with chrono's `Display` (`2026-01-02 03:04:05 +01:00`) and is now written with `to_rfc3339()`
+  (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of
+  `date` or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a
+  client that built such a request by hand to get RFC 3339 can call the generated function instead.
 
 - Every model implements a generated `Validate` trait
   ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with

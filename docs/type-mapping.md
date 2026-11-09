@@ -23,7 +23,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
 | `type: string` | `String` | |
-| `format: date`, `date-time` | `chrono::NaiveDate`, `chrono::DateTime<chrono::FixedOffset>` | `useChrono` (default `true`); `useChrono=false` gives `String` and no `chrono` dependency (openai-client-base sets it) |
+| `format: date`, `date-time` | `chrono::NaiveDate`, `chrono::DateTime<chrono::FixedOffset>`; a path, query or header parameter or a form field is sent as `YYYY-MM-DD` and RFC 3339 (`to_rfc3339()`) | `useChrono` (default `true`); `useChrono=false` gives `String` and no `chrono` dependency (openai-client-base sets it) |
 | `format: uuid` | `uuid::Uuid` in a model; `&str` as a header or query parameter | |
 | `format: byte` | `Vec<u8>`, base64 through `#[serde_as(as = "serde_with::base64::Base64")]` | |
 | `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response | |
@@ -154,7 +154,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | `application/octet-stream` success *(reqwest)* | `reqwest::Response`, to read as bytes or a stream | |
 | `text/event-stream` success *(reqwest)* | decoded as JSON, which fails | `typedEventStreams`: `apis::sse::EventStream<Event, <Op>Error>`, each `data:` decoded to the event schema, `[DONE]` ends it |
 | several success media types | the first | `contentTypeMethods`: `_json`, `_text`, `_bytes`, `_stream` methods |
-| error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content` and `entity: Option<<Op>Error>`; the error enum has a variant per response (`Status404(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The variant is chosen by the body's shape, not the status: two responses of one type always give the first | `boxResponseError` boxes `ResponseContent` |
+| error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content` and `entity: Option<<Op>Error>`; the error enum has a variant per response (`Status404(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The status picks the variant (the exact code, then its `4XX` range, then `default`) and the body decodes as that response's type; a body that does not decode is `UnknownValue` | `boxResponseError` boxes `ResponseContent` |
 | transport and decoding errors *(reqwest)* | `Error::Reqwest`, `Error::ReqwestMiddleware`, `Error::Serde`, `Error::Io` | |
 
 ### Configuration and authentication
@@ -177,5 +177,4 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
   ([mapping](mapping/README.md#objects)).
 - `readOnly`/`writeOnly` properties are in both directions.
-- The error enum variant comes from the body's shape, not the status code; read `status` from `ResponseContent`.
 - `format: uuid` is `uuid::Uuid` in models but `&str` in parameters.

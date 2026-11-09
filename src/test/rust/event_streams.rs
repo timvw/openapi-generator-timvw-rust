@@ -201,7 +201,7 @@ async fn the_stream_method_streams_the_response() {
     .await;
     let stream = default_api::create_response_stream()
         .configuration(&configuration)
-        .create_response(request())
+        .create_response(&request())
         .call()
         .await
         .unwrap();
@@ -260,7 +260,7 @@ async fn an_operation_that_only_streams_returns_the_stream() {
     .await;
     let chunks: Vec<Chunk> = default_api::create_chat_stream()
         .configuration(&configuration)
-        .create_response(request())
+        .create_response(&request())
         .call()
         .await
         .unwrap()
@@ -286,7 +286,7 @@ async fn errors_stay_typed() {
     .await;
     let error = default_api::create_response_stream()
         .configuration(&configuration)
-        .create_response(request())
+        .create_response(&request())
         .call()
         .await
         .unwrap_err();
@@ -309,7 +309,7 @@ async fn errors_stay_typed() {
         serve("200 OK", "application/json", vec!["{\"id\":\"r\"}"]).await;
     let error = default_api::create_response_stream()
         .configuration(&configuration)
-        .create_response(request())
+        .create_response(&request())
         .call()
         .await
         .unwrap_err();
@@ -327,7 +327,7 @@ async fn each_request_media_type_has_its_method() {
         serve("200 OK", "application/json", vec!["{\"text\":\"ok\"}"]).await;
     let out = default_api::create_edit_json()
         .configuration(&configuration)
-        .create_edit_json(CreateEditJson::builder().prompt("p".to_owned()).build())
+        .create_edit_json(&CreateEditJson::builder().prompt("p".to_owned()).build())
         .call()
         .await
         .unwrap();

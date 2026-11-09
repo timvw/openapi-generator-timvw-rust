@@ -207,6 +207,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String VARIANT_DOC = "x-rust-variant-doc";
     /** Set on a string body parameter sent as text with this media type (application/sdp, text/plain). */
     static final String TEXT_BODY = "x-rust-text-body";
+    /**
+     * Set on a request body the function only serializes: the borrowed type its argument has ({@code &models::Item},
+     * {@code &[models::Item]}, {@code &serde_json::Value}), without the {@code Option} around an optional one.
+     */
+    static final String BODY_REF = "x-rust-body-ref";
+    /** Set with {@link #BODY_REF} on a required, non-nullable body: the argument itself is the reference. */
+    static final String BODY_REF_DIRECT = "x-rust-body-ref-direct";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
     /** Set on a parameter whose dataType already carries {@code models::}. */
@@ -1000,6 +1007,40 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
     }
 
+    /**
+     * Marks a request body that is only serialized, so its argument borrows it: a model, a {@code Vec} (as a slice),
+     * a map or a {@code serde_json::Value}. A file ({@code PathBuf}) is opened, a string is already {@code &str}, and
+     * a boolean, number, date or date-time is {@code Copy} (chrono): those keep their type. A body whose type is
+     * {@code String} (a string enum without {@code typedEnumParameters}, {@code format: byte}) becomes {@code &str}.
+     */
+    static void markBodyRef(CodegenParameter p) {
+        if (!p.isBodyParam || p.isFile || p.isBinary || p.isString || p.isUuid || p.dataType == null
+                || p.isBoolean || p.isInteger || p.isLong || p.isShort || p.isNumber || p.isFloat || p.isDouble
+                || p.isDate || p.isDateTime) {
+            return;
+        }
+        // Mirrors the "### Models and primative types" line of the parameter type in api.mustache (the
+        // {{^isPrimitiveType}}{{^isContainer}}{{^x-rust-type-qualified}}models:: part): a model gets models::, a
+        // container, a path (serde_json::Value, std::collections::HashMap, models::X) or a primitive does not.
+        // x-rust-type-qualified is only set later, so a dataType that already contains "::" stands in for it.
+        String type = p.dataType;
+        if (!p.isPrimitiveType && !p.isContainer && !p.isFreeFormObject && !p.isAnyType && !type.contains("::")) {
+            type = "models::" + type;
+        }
+        String borrowed;
+        if ("String".equals(type)) {
+            borrowed = "&str";
+        } else if (p.isArray && type.startsWith("Vec<") && type.endsWith(">")) {
+            borrowed = "&[" + type.substring(4, type.length() - 1) + "]";
+        } else {
+            borrowed = "&" + type;
+        }
+        p.vendorExtensions.put(BODY_REF, borrowed);
+        if (p.required && !p.isNullable) {
+            p.vendorExtensions.put(BODY_REF_DIRECT, true);
+        }
+    }
+
     /** Marks a parameter whose type, or whose array items' type, is one of the structs. */
     static void markStructJson(CodegenParameter p, Set<String> structs) {
         boolean items = p.isArray && p.items != null;
@@ -1156,12 +1197,22 @@ public class TimvwRustCodegen extends RustCodegenBase {
         return co.produces == null || co.produces.isEmpty() ? "" : String.valueOf(co.produces.get(0).get("mediaType"));
     }
 
-    /** Every method names the error enum it returns: its own unless it is another method of an operation. */
+    /**
+     * Every method names the error enum it returns: its own unless it is another method of an operation. A body the
+     * method only serializes is borrowed ({@link #markBodyRef}).
+     */
     @Override
     public CodegenOperation fromOperation(String path, String httpMethod, io.swagger.v3.oas.models.Operation operation,
             List<io.swagger.v3.oas.models.servers.Server> servers) {
         CodegenOperation co = super.fromOperation(path, httpMethod, operation, servers);
         co.vendorExtensions.put(ERROR_ENUM, co.operationIdCamelCase + "Error");
+        // Here rather than in postProcessOperationsWithModels, which webhook operations never reach.
+        for (List<CodegenParameter> params : Arrays.asList(co.allParams, co.bodyParams, co.requiredParams,
+                co.optionalParams)) {
+            if (params != null) {
+                params.forEach(TimvwRustCodegen::markBodyRef);
+            }
+        }
         return co;
     }
 

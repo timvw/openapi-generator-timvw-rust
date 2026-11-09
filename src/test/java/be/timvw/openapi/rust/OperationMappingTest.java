@@ -150,7 +150,11 @@ class OperationMappingTest {
         assertContains(items, "#[serde(untagged)]\npub enum GetItemError {\n    Status404(models::Problem),\n"
                 + "    DefaultResponse(models::Problem),\n    UnknownValue(serde_json::Value),\n}");
         assertContains(function("items_api", "get_item"),
-                "let entity: Option<GetItemError> = serde_json::from_str(&content).ok();\n"
+                "let entity: Option<GetItemError> = match status.as_u16() {\n"
+                        + "            404 => serde_json::from_str(&content).ok().map(GetItemError::Status404),\n"
+                        + "            _ => serde_json::from_str(&content).ok().map(GetItemError::DefaultResponse),\n"
+                        + "        }\n"
+                        + "        .or_else(|| serde_json::from_str(&content).ok().map(GetItemError::UnknownValue));\n"
                         + "        Err(Error::ResponseError(ResponseContent { status, content, entity }))");
         String mod = read("src/apis/mod.rs");
         assertContains(mod, "pub struct ResponseContent<T> {\n    pub status: reqwest::StatusCode,\n"

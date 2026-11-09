@@ -31,6 +31,14 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   `contentTypeMethods` and `typedEventStreams` methods and webhooks included. Strings (`&str`), numbers, booleans,
   multipart parts, form fields and files (`PathBuf`) are unchanged. A caller passes `&request` instead of `request`
   (`.create_item(&request)`, `.maybe_create_item(Some(&request))`) and keeps its value; the bytes sent do not change.
+- The error variant comes from the status, not the body's shape
+  ([decision 5](decisions.md#5-error-variant-chosen-by-body-shape-not-status)): `entity` holds the variant of the
+  response with the status's exact code, else of its range (`4XX`), else `DefaultResponse`, with the body decoded as
+  that response's type; a body that does not decode as it is `UnknownValue`. Before, the body went into the first
+  variant whose type accepted it, so a 404 with the 400's type came back as `Status400`. The enum's type and variants
+  do not change, so nothing stops compiling; a client that matched on a `Status…` variant now gets the one of the
+  status, and one that relied on a body of another response's type decoding (a 500 body in `Status400`) gets
+  `UnknownValue`.
 - `date-time` parameters are sent in RFC 3339 ([decision 11](decisions.md#11-date-time-parameters-are-sent-in-display-form)):
   with `useChrono` (the default), a `date-time` path, query or header parameter or form field (urlencoded body,
   multipart text part), or each item of an array of them, was

@@ -37,6 +37,10 @@ Each rule has:
 | Library | only where the Rust depends on the HTTP library: which types come from it (see [HTTP library](#http-library)) |
 | Gap | only for a known gap: what is missing |
 
+Where an entry says "stock", it compares with openapi-generator's own Rust generator, `-g rust` 7.27.0: without the
+option `timvw-rust` renders what `-g rust` renders. That rendering is `timvw-rust`'s own code and templates (ported from
+`-g rust`), not something it inherits, so a rule can change it like any other.
+
 ## Baseline
 
 The **Rust** entry of every rule is the rendering with the options openai-client-base and langfuse-client-base both set:
@@ -46,16 +50,16 @@ boxOnlyCycles defaultOnlyWhereValid enumFromStr noStructDisplay integersAsI64 qu
 modelUnions unionDispatch openEnums schemaDefaultDocs nullableUnionFields
 ```
 
-with the stock options `timvw-rust` fixes (`library=reqwest`, `supportAsync=true`, `supportMiddleware=true`, ...;
-see the README's [configuration](../../README.md#configuration)). openai-client-base also sets `multipartHelper`, `typedEventStreams`,
+in the one client configuration `timvw-rust` generates (async reqwest with reqwest-middleware; the matching stock
+options are rejected, see the README's [configuration](../../README.md#configuration)). openai-client-base also sets `multipartHelper`, `typedEventStreams`,
 `contentTypeMethods`, `boxResponseError` and `useChrono=false`; langfuse-client-base also sets `typedEnumParameters` and
 `deprecatedAttributes`. The **Options** entry describes those and every other option as a variation of the baseline.
 
 ## HTTP library
 
 `timvw-rust` generates for one HTTP library, [reqwest](https://docs.rs/reqwest) (with
-[reqwest-middleware](https://docs.rs/reqwest-middleware)). The stock generator's other libraries (`hyper`, `hyper0x`,
-`reqwest-trait`) are rejected. The generated code uses reqwest directly; there is no transport layer in between.
+[reqwest-middleware](https://docs.rs/reqwest-middleware)). `--library` with anything else (stock `-g rust` also has `hyper`,
+`hyper0x` and `reqwest-trait`) is rejected. The generated code uses reqwest directly; there is no transport layer in between.
 
 Most of the mapping does not depend on that choice: the models, their names, and how they encode and decode are
 serde types. Some types come from the HTTP library, and would differ with another one. A rule that renders such a type

@@ -12,39 +12,6 @@ use tokio::fs::File as TokioFile;
 use tokio_util::codec::{BytesCodec, FramedRead};
 {{/x-rust-import-file-stream}}
 
-{{#operations}}
-{{#operation}}
-{{#vendorExtensions.x-group-parameters}}
-{{#allParams}}
-{{#-first}}
-/// struct for passing parameters to the method [`{{operationId}}`]
-#[derive(Clone, Debug)]
-pub struct {{{operationIdCamelCase}}}Params {
-{{/-first}}
-    {{#description}}
-    /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
-    {{/description}}
-    pub {{{paramName}}}: {{!
-    ### Option Start
-    }}{{^required}}Option<{{/required}}{{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{!
-    ### &str and Vec<&str>
-    }}{{^isUuid}}{{#isString}}{{#isArray}}Vec<{{/isArray}}String{{#isArray}}>{{/isArray}}{{/isString}}{{/isUuid}}{{!
-    ### UUIDs
-    }}{{#isUuid}}{{#isArray}}Vec<{{/isArray}}String{{#isArray}}>{{/isArray}}{{/isUuid}}{{!
-    ### Models and primative types
-    }}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}{{^vendorExtensions.x-rust-type-qualified}}models::{{/vendorExtensions.x-rust-type-qualified}}{{/isContainer}}{{/isPrimitiveType}}{{{dataType}}}{{/isUuid}}{{/isString}}{{!
-    ### Option End
-    }}{{^required}}>{{/required}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{!
-    ### Comma for next arguement
-    }}{{^-last}},{{/-last}}
-{{#-last}}
-}
-
-{{/-last}}
-{{/allParams}}
-{{/vendorExtensions.x-group-parameters}}
-{{/operation}}
-{{/operations}}
 
 {{#supportMultipleResponses}}
 {{#operations}}
@@ -107,31 +74,10 @@ pub enum {{{operationIdCamelCase}}}Error {
 {{#isDeprecated}}
 #[deprecated]
 {{/isDeprecated}}
-{{#vendorExtensions.x-group-parameters}}
 {{#bonBuilders}}
 #[bon::builder]
 {{/bonBuilders}}
-pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: &configuration::Configuration{{#allParams}}{{#-first}}, {{!
-### Params
-}}params: {{{operationIdCamelCase}}}Params{{/-first}}{{/allParams}}{{!
-### Function return type
-}}) -> Result<{{!
-### Response File Support
-}}{{#isResponseFile}}{{#supportAsync}}reqwest::Response{{/supportAsync}}{{^supportAsync}}reqwest::blocking::Response{{/supportAsync}}{{/isResponseFile}}{{!
-### Regular Responses
-}}{{^isResponseFile}}{{!
-### Multi response support
-}}{{#supportMultipleResponses}}ResponseContent<{{{operationIdCamelCase}}}Success>{{/supportMultipleResponses}}{{!
-### Regular return type
-}}{{^supportMultipleResponses}}{{#vendorExtensions.x-rust-event-stream}}super::sse::EventStream<{{{returnType}}}, {{{vendorExtensions.x-rust-error-enum}}}>{{/vendorExtensions.x-rust-event-stream}}{{^vendorExtensions.x-rust-event-stream}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/vendorExtensions.x-rust-event-stream}}{{/supportMultipleResponses}}{{/isResponseFile}}{{!
-### Error Type
-}}, Error<{{{vendorExtensions.x-rust-error-enum}}}>> {
-{{/vendorExtensions.x-group-parameters}}
-{{^vendorExtensions.x-group-parameters}}
-{{#bonBuilders}}
-#[bon::builder]
-{{/bonBuilders}}
-pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: &configuration::Configuration, {{#allParams}}{{{paramName}}}: {{!
+pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#allParams}}{{{paramName}}}: {{!
 ### Option Start
 }}{{^required}}Option<{{/required}}{{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{!
 ### &str and Vec<&str>
@@ -147,7 +93,7 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
 ### Function return type
 }}) -> Result<{{!
 ### Response File Support
-}}{{#isResponseFile}}{{#supportAsync}}reqwest::Response{{/supportAsync}}{{^supportAsync}}reqwest::blocking::Response{{/supportAsync}}{{/isResponseFile}}{{!
+}}{{#isResponseFile}}reqwest::Response{{/isResponseFile}}{{!
 ### Regular Responses
 }}{{^isResponseFile}}{{!
 ### Multi response support
@@ -162,7 +108,6 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     {{#allParams}}
     let {{{vendorExtensions.x-rust-param-identifier}}} = {{{paramName}}};
     {{/allParams}}
-{{/vendorExtensions.x-group-parameters}}
 
     let uri_str = format!("{}{{{path}}}", configuration.base_path{{#pathParams}}, {{{baseName}}}={{#isString}}crate::apis::urlencode({{/isString}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.to_string()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(",").as_ref(){{/isArray}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}.to_string(){{/isContainer}}{{/isPrimitiveType}}{{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-struct-json}}{{#isString}}){{/isString}}{{/pathParams}});
     let mut req_builder = configuration.client.request(reqwest::Method::{{{httpMethod}}}, &uri_str);
@@ -318,28 +263,6 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     {{/authMethods}}
     {{/hasAuthMethods}}
     {{#hasAuthMethods}}
-    {{#withAWSV4Signature}}
-    if let Some(ref aws_v4_key) = configuration.aws_v4_key {
-        let new_headers = match aws_v4_key.sign(
-	    &uri_str,
-	    "{{{httpMethod}}}",
-	    {{#hasBodyParam}}
-	    {{#bodyParams}}
-	    &serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}}).expect("param should serialize to string"),
-	    {{/bodyParams}}
-	    {{/hasBodyParam}}
-	    {{^hasBodyParam}}
-	    "",
-	    {{/hasBodyParam}}
-	    ) {
-	      Ok(new_headers) => new_headers,
-	      Err(err) => return Err(Error::AWSV4SignatureError(err)),
-	    };
-	for (name, value) in new_headers.iter() {
-	    req_builder = req_builder.header(name.as_str(), value.as_str());
-	}
-    }
-    {{/withAWSV4Signature}}
     {{/hasAuthMethods}}
     if let Some(ref user_agent) = configuration.user_agent {
         req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
@@ -366,14 +289,6 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     {{/hasHeaderParams}}
     {{#hasAuthMethods}}
     {{#authMethods}}
-    {{#supportTokenSource}}
-    // Obtain a token from source provider.
-    // Tokens can be Id or access tokens depending on the provider type and configuration.
-    let token = configuration.token_source.token().await.map_err(Error::TokenSource)?;
-    // The token format is the responsibility of the provider, thus we just set the authorization header with whatever is given.
-    req_builder = req_builder.header(reqwest::header::AUTHORIZATION, token);
-    {{/supportTokenSource}}
-    {{^supportTokenSource}}
     {{#isApiKey}}
     {{#isKeyInHeader}}
     if let Some(ref apikey) = configuration.api_key {
@@ -403,7 +318,6 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         req_builder = req_builder.bearer_auth(token.to_owned());
     };
     {{/isOAuth}}
-    {{/supportTokenSource}}
     {{/authMethods}}
     {{/hasAuthMethods}}
 {{#multipartHelper}}
@@ -599,54 +513,9 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
 {{^multipartHelper}}
     {{#isMultipart}}
     {{#hasFormParams}}
-    let mut multipart_form = reqwest{{^supportAsync}}::blocking{{/supportAsync}}::multipart::Form::new();
+    let mut multipart_form = reqwest::multipart::Form::new();
     {{#formParams}}
     {{#isFile}}
-    {{^supportAsync}}
-    {{#required}}
-    {{^isNullable}}
-    {{#isArray}}
-    for value in &{{{vendorExtensions.x-rust-param-identifier}}} {
-        multipart_form = multipart_form.file("{{{baseName}}}", value)?;
-    }
-    {{/isArray}}
-    {{^isArray}}
-    multipart_form = multipart_form.file("{{{baseName}}}", {{{vendorExtensions.x-rust-param-identifier}}})?;
-    {{/isArray}}
-    {{/isNullable}}
-    {{#isNullable}}
-    {{#isArray}}
-    match {{{vendorExtensions.x-rust-param-identifier}}} {
-        Some(param_value) => {
-            for value in param_value {
-                multipart_form = multipart_form.file("{{{baseName}}}", value)?;
-            }
-        },
-        None => { unimplemented!("Required nullable form file param not supported"); },
-    }
-    {{/isArray}}
-    {{^isArray}}
-    match {{{vendorExtensions.x-rust-param-identifier}}} {
-        Some(param_value) => { multipart_form = multipart_form.file("{{{baseName}}}", param_value)?; },
-        None => { unimplemented!("Required nullable form file param not supported"); },
-    }
-    {{/isArray}}
-    {{/isNullable}}
-    {{/required}}
-    {{^required}}
-    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        {{#isArray}}
-        for value in param_value {
-            multipart_form = multipart_form.file("{{{baseName}}}", value)?;
-        }
-        {{/isArray}}
-        {{^isArray}}
-        multipart_form = multipart_form.file("{{{baseName}}}", param_value)?;
-        {{/isArray}}
-    }
-    {{/required}}
-    {{/supportAsync}}
-    {{#supportAsync}}
     {{^required}}
     if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
         {{#isArray}}
@@ -685,7 +554,6 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     multipart_form = multipart_form.part("{{{baseName}}}", file_part);
     {{/isArray}}
     {{/required}}
-    {{/supportAsync}}
     {{/isFile}}
     {{^isFile}}
     {{#required}}
@@ -772,7 +640,6 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     {{#hasBodyParam}}
     {{#bodyParams}}
     {{#isFile}}
-    {{#supportAsync}}
     {{#required}}
     let file = TokioFile::open({{{vendorExtensions.x-rust-param-identifier}}}).await?;
     let stream = FramedRead::new(file, BytesCodec::new());
@@ -785,10 +652,6 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         req_builder = req_builder.body(reqwest::Body::wrap_stream(stream));
     }
     {{/required}}
-    {{/supportAsync}}
-    {{^supportAsync}}
-    req_builder = req_builder.body({{{vendorExtensions.x-rust-param-identifier}}});
-    {{/supportAsync}}
     {{/isFile}}
     {{^isFile}}
     {{#vendorExtensions.x-rust-text-body}}
@@ -812,12 +675,12 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
     req_builder = req_builder.header(reqwest::header::ACCEPT, "text/event-stream");
     {{/vendorExtensions.x-rust-event-stream}}
     let req = req_builder.build()?;
-    let resp = configuration.client.execute(req){{#supportAsync}}.await{{/supportAsync}}?;
+    let resp = configuration.client.execute(req).await?;
 
     let status = resp.status();
     {{#vendorExtensions.x-rust-event-stream}}
     if status.is_client_error() || status.is_server_error() {
-        let content = resp.text(){{#supportAsync}}.await{{/supportAsync}}?;
+        let content = resp.text().await?;
         let entity: Option<{{{vendorExtensions.x-rust-error-enum}}}> = serde_json::from_str(&content).ok();
         return Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}));
     }
@@ -856,7 +719,7 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         Ok(())
         {{/returnType}}
         {{#returnType}}
-        let content = resp.text(){{#supportAsync}}.await{{/supportAsync}}?;
+        let content = resp.text().await?;
         match content_type {
             {{^useSerdePathToError}}
             ContentType::Json => serde_json::from_str(&content).map_err(Error::from),
@@ -880,13 +743,13 @@ pub {{#supportAsync}}async {{/supportAsync}}fn {{{operationId}}}(configuration: 
         Ok(resp)
         {{/isResponseFile}}
         {{^isResponseFile}}
-        let content = resp.text(){{#supportAsync}}.await{{/supportAsync}}?;
+        let content = resp.text().await?;
         let entity: Option<{{{operationIdCamelCase}}}Success> = serde_json::from_str(&content).ok();
         Ok(ResponseContent { status, content, entity })
         {{/isResponseFile}}
         {{/supportMultipleResponses}}
     } else {
-        let content = resp.text(){{#supportAsync}}.await{{/supportAsync}}?;
+        let content = resp.text().await?;
         let entity: Option<{{{vendorExtensions.x-rust-error-enum}}}> = serde_json::from_str(&content).ok();
         Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}))
     }

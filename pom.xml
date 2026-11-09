@@ -9,7 +9,7 @@
     <packaging>jar</packaging>
 
     <name>openapi-generator-timvw-rust</name>
-    <description>A custom openapi-generator Rust client generator (timvw-rust) that extends the stock rust generator.</description>
+    <description>An openapi-generator plugin (timvw-rust) that generates async Rust clients from OpenAPI specs.</description>
     <url>https://github.com/timvw/openapi-generator-timvw-rust</url>
     <inceptionYear>2026</inceptionYear>
 
@@ -65,6 +65,26 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- timvw-rust.properties records the openapi-generator version the plugin is built against. -->
+            <resource>
+                <directory>src/main/resources-filtered</directory>
+                <filtering>true</filtering>
+            </resource>
+            <!-- RustCodegenBase and the templates derive from openapi-generator (Apache-2.0). -->
+            <resource>
+                <directory>${project.basedir}</directory>
+                <targetPath>META-INF</targetPath>
+                <includes>
+                    <include>NOTICE</include>
+                    <include>LICENSE-APACHE</include>
+                    <include>LICENSE-MIT</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

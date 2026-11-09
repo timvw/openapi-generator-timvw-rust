@@ -14,7 +14,6 @@ import org.openapitools.codegen.model.OperationsMap;
 import org.openapitools.codegen.InlineModelResolverAccess;
 import org.openapitools.codegen.CliOption;
 import org.openapitools.codegen.CodegenConstants;
-import org.openapitools.codegen.languages.RustClientCodegen;
 import org.openapitools.codegen.utils.ImplementationVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +28,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code timvw-rust}: a Rust client generator built on top of the stock {@link RustClientCodegen}.
+ * {@code timvw-rust}: a Rust client generator. {@link RustCodegenBase} holds the Rust language layer (ported from
+ * openapi-generator's {@code -g rust}); this class adds the generator's own options and rules.
  *
  * <p>The generator renders what {@code -g rust} renders, with these differences (Milestone 1):</p>
  * <ul>
@@ -85,11 +85,9 @@ import java.util.Set;
  *       {@link ContentTypeMethods}).</li>
  * </ul>
  *
- * <p>The stock templates differ per openapi-generator minor version, so the overrides are kept per version under
- * {@code timvw-rust/og<major.minor>.0/} and chosen at run time; files that are not overridden fall back to the stock
- * {@code rust} templates of the running openapi-generator. {@code tools/sync-templates.py} regenerates the sets.</p>
+ * <p>Every template is the generator's own, under {@code timvw-rust/}; none comes from the openapi-generator jar.</p>
  */
-public class TimvwRustCodegen extends RustClientCodegen {
+public class TimvwRustCodegen extends RustCodegenBase {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TimvwRustCodegen.class);
 
@@ -219,15 +217,22 @@ public class TimvwRustCodegen extends RustClientCodegen {
     /** Mustache lambda that templates wrap around doc-comment text. */
     static final String RUSTDOC_LAMBDA = "rustdoc";
 
-    static final String STOCK_TEMPLATE_DIR = "rust";
-    static final String TEMPLATE_ROOT = "timvw-rust";
-
-    /** openapi-generator major.minor version to the template set compiled for it. */
-    static final Map<String, String> TEMPLATE_SETS = templateSets();
+    /** Options of stock {@code -g rust} whose value timvw-rust fixes (see {@link #FIXED_VALUES}). */
+    public static final String SUPPORT_ASYNC = "supportAsync";
+    public static final String SUPPORT_MIDDLEWARE = "supportMiddleware";
+    public static final String PREFER_UNSIGNED_INT = "preferUnsignedInt";
+    public static final String BEST_FIT_INT = "bestFitInt";
+    /** Options of stock {@code -g rust} that timvw-rust does not support (see {@link #REJECTED_OPTIONS}). */
+    public static final String AVOID_BOXED_MODELS = "avoidBoxedModels";
+    public static final String MOCKALL = "mockall";
+    public static final String TOP_LEVEL_API_CLIENT = "topLevelApiClient";
+    public static final String SUPPORT_TOKEN_SOURCE = "supportTokenSource";
+    public static final String BON_BUILDER = "useBonBuilder";
 
     /**
-     * Stock options that timvw-rust fixes: always applied with this value, not advertised, and rejected when set,
-     * whatever the value. The generator only maintains the async reqwest-middleware client.
+     * Options of stock {@code -g rust} with the value timvw-rust always generates for: not advertised, and rejected
+     * when set, whatever the value, so a configuration taken over from {@code -g rust} fails instead of being
+     * silently ignored. The generator only renders the async reqwest-middleware client.
      */
     static final Map<String, String> FIXED_VALUES = fixedValues();
 
@@ -241,6 +246,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
             BON_BUILDER,
             CodegenConstants.TEMPLATE_DIR);
 
+    /** The openapi-generator version the generator runs in, e.g. {@code 7.27.0}. */
     private final String openApiGeneratorVersion;
     private boolean titleNaming = true;
     private String webhookModule;
@@ -283,12 +289,6 @@ public class TimvwRustCodegen extends RustClientCodegen {
     /** The methods per API module ({@code tag#operationId}), to fail on a suffixed name another operation has. */
     private final Map<String, String> methodNames = new HashMap<>();
 
-    private static Map<String, String> templateSets() {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("7.27", "og7.27.0");
-        return m;
-    }
-
     private static Map<String, String> fixedValues() {
         Map<String, String> m = new LinkedHashMap<>();
         m.put(CodegenConstants.LIBRARY, REQWEST_LIBRARY);
@@ -312,13 +312,6 @@ public class TimvwRustCodegen extends RustClientCodegen {
         this.openApiGeneratorVersion = openApiGeneratorVersion;
         outputFolder = "generated-code/" + GENERATOR_NAME;
 
-        // Our overrides first, then the stock rust templates of the running openapi-generator.
-        embeddedTemplateDir = STOCK_TEMPLATE_DIR;
-        String set = templateSetFor(openApiGeneratorVersion);
-        templateDir = set == null ? STOCK_TEMPLATE_DIR : TEMPLATE_ROOT + "/" + set;
-
-        // Advertise only what can be set: drop rejected and fixed options from `config-help`.
-        cliOptions.removeIf(o -> REJECTED_OPTIONS.contains(o.getOpt()) || FIXED_VALUES.containsKey(o.getOpt()));
         cliOptions.add(CliOption.newBoolean(BON_BUILDERS,
                 "Derive bon::Builder on model structs and put #[bon::builder] on API functions", true));
         cliOptions.add(CliOption.newBoolean(TITLE_NAMING,
@@ -425,31 +418,50 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         + "object-typed query parameter is sent as a string"));
     }
 
-    /** The template set for an openapi-generator version, or {@code null} when none was compiled for it. */
-    static String templateSetFor(String version) {
-        if (version == null) {
-            return null;
-        }
-        String[] parts = version.split("\\.");
-        if (parts.length < 2) {
-            return null;
-        }
-        return TEMPLATE_SETS.get(parts[0] + "." + parts[1]);
-    }
-
     @Override
     public String getName() {
         return GENERATOR_NAME;
     }
 
+    @Override
+    public String getHelp() {
+        return "Generates an async Rust client (reqwest with reqwest-middleware) whose public API is determined by "
+                + "the spec, the options and the generator version.";
+    }
+
     /**
-     * With {@code integersAsI64}, an integer the stock generator renders as {@code i32} is {@code i64} unless its
-     * format is {@code int32}. Every location (fields, container items, parameters, responses, union variants) gets
-     * its type from here. The stock flags are left alone, so {@code isInteger} still selects the integer enum
-     * rendering. {@code preferUnsignedInt} and {@code bestFitInt} are pinned to false; up to openapi-generator 7.25
-     * the stock mapping then only answers {@code i32} or {@code i64} for an integer, 7.27 also maps the formats
-     * {@code int8}, {@code int16} and {@code uint8} to {@code uint64} to sized and unsigned types, which the option
-     * turns into {@code i64} as well.
+     * The openapi-generator version the generator was built and tested against, or {@code null} when unknown (read
+     * from {@code timvw-rust.properties}, written by the Maven build).
+     */
+    static String builtAgainst() {
+        try (java.io.InputStream in = TimvwRustCodegen.class.getResourceAsStream("/timvw-rust.properties")) {
+            if (in == null) {
+                return null;
+            }
+            java.util.Properties properties = new java.util.Properties();
+            properties.load(in);
+            return properties.getProperty("openapi-generator.version");
+        } catch (java.io.IOException e) {
+            return null;
+        }
+    }
+
+    /** {@code major.minor} of a version, or the version itself when it has no minor. */
+    static String minorOf(String version) {
+        if (version == null) {
+            return null;
+        }
+        String[] parts = version.split("\\.");
+        return parts.length < 2 ? version : parts[0] + "." + parts[1];
+    }
+
+    /**
+     * With {@code integersAsI64}, an integer the base mapping ({@link RustCodegenBase#getSchemaType}) renders as
+     * {@code i32} is {@code i64} unless its format is {@code int32}. Every location (fields, container items,
+     * parameters, responses, union variants) gets its type from here. The schema flags are left alone, so
+     * {@code isInteger} still selects the integer enum rendering. The base mapping also maps the formats {@code int8},
+     * {@code int16} and {@code uint8} to {@code uint64} to sized and unsigned types, which the option turns into
+     * {@code i64} as well.
      */
     @Override
     @SuppressWarnings("rawtypes")
@@ -458,16 +470,16 @@ public class TimvwRustCodegen extends RustClientCodegen {
         return integersAsI64 && NARROW_INTEGER_TYPES.contains(type) && !"int32".equals(p.getFormat()) ? "i64" : type;
     }
 
-    /** The integer types other than {@code i64} the stock mapping can answer, which {@code integersAsI64} widens. */
+    /** The integer types other than {@code i64} the base mapping can answer, which {@code integersAsI64} widens. */
     private static final Set<String> NARROW_INTEGER_TYPES = Set.of("i8", "i16", "i32", "u8", "u16", "u32", "u64");
 
-    /** The model name the stock generator gives a composed schema without typed branches ({@code anyOf<>}). */
+    /** The model name the base generator gives a composed schema without typed branches ({@code anyOf<>}). */
     static final String UNTYPED_COMPOSED = "AnyOfLessThanGreaterThan";
     static final String UNTYPED_COMPOSED_TYPE = "models::" + UNTYPED_COMPOSED;
     static final String JSON_VALUE = "serde_json::Value";
 
     /**
-     * Drops {@code oneOf} variants that duplicate an earlier one in name and type. The stock generator names a
+     * Drops {@code oneOf} variants that duplicate an earlier one in name and type. The base generator names a
      * primitive branch after its title, so {@code oneOf: [{type: string, title: Text}, {type: string, enum: [..],
      * title: Text}]} renders two {@code Text(String)} variants, which does not compile.
      */
@@ -500,7 +512,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
 
     /**
      * Types a property whose schema is a composed schema without typed branches ({@code anyOf: [{}, null]}) as
-     * {@code serde_json::Value}. The stock generator derives the model name {@code AnyOfLessThanGreaterThan} from
+     * {@code serde_json::Value}. The base generator derives the model name {@code AnyOfLessThanGreaterThan} from
      * {@code anyOf<>} and references it, but never writes it. The property keeps its other flags, so a required
      * nullable field stays {@code Option<Box<serde_json::Value>>} as before. Every property list of the model holds
      * its own copies, so all of them are visited.
@@ -616,20 +628,20 @@ public class TimvwRustCodegen extends RustClientCodegen {
     }
 
     /**
-     * Validates the configuration before delegating to the stock generator.
+     * Validates the configuration before the base generator reads its options.
      *
      * @throws IllegalArgumentException naming the offending option and the supported value
      */
     @Override
     public void processOpts() {
-        if (templateSetFor(openApiGeneratorVersion) == null) {
-            throw new IllegalArgumentException(String.format(
-                    "%s: openapi-generator %s is not supported; templates exist for %s",
-                    GENERATOR_NAME, openApiGeneratorVersion, TEMPLATE_SETS.keySet()));
+        String built = builtAgainst();
+        if (built != null && !java.util.Objects.equals(minorOf(built), minorOf(openApiGeneratorVersion))) {
+            LOGGER.warn("{}: built and tested against openapi-generator {}, running in {}; the output may differ",
+                    GENERATOR_NAME, built, openApiGeneratorVersion);
         }
 
-        // The CLI applies `--library` through setLibrary() rather than additionalProperties. The stock constructor
-        // already sets the default library, so through the setter only another library can be told apart.
+        // The CLI applies `--library` through setLibrary() rather than additionalProperties. The constructor already
+        // sets the default library, so through the setter only another library can be told apart.
         if (getLibrary() != null && !REQWEST_LIBRARY.equals(getLibrary())) {
             throw new IllegalArgumentException(String.format(
                     "%s: option '%s' is not configurable: %s always generates for '%s'; remove it (it was set to '%s')",
@@ -651,7 +663,6 @@ public class TimvwRustCodegen extends RustClientCodegen {
                         "%s: option '%s' is not configurable: %s always uses '%s'; remove it (it was set to '%s')",
                         GENERATOR_NAME, option, GENERATOR_NAME, entry.getValue(), additionalProperties.get(option)));
             }
-            additionalProperties.put(option, entry.getValue());
         }
 
         setLibrary(REQWEST_LIBRARY);
@@ -980,7 +991,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     }
 
     /**
-     * {@code src/apis/mod.rs} declares the webhook module: the stock template lists only the path APIs
+     * {@code src/apis/mod.rs} declares the webhook module: the template lists only the path APIs
      * ({@code apiInfo.apis}), while webhooks are bundled apart under {@code webhooks}.
      */
     @Override
@@ -1005,7 +1016,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
     }
 
     /**
-     * Runs the steps that need the written crate (the union dispatch module, {@code enumFromStr}), then the stock
+     * Runs the steps that need the written crate (the union dispatch module, {@code enumFromStr}), then the default
      * post-processing.
      */
     @Override
@@ -1099,14 +1110,14 @@ public class TimvwRustCodegen extends RustClientCodegen {
 
     /**
      * With {@code contentTypeMethods} or {@code typedEventStreams}, adds the other methods of the operation next to its
-     * own (see {@link ContentTypeMethods}): each is the operation restricted to its media types, rendered by the stock
+     * own (see {@link ContentTypeMethods}): each is the operation restricted to its media types, rendered by
      * {@code fromOperation} under a suffixed operation id. Variants share the operation's error enum.
      */
     @Override
     public void addOperationToGroup(String tag, String resourcePath, io.swagger.v3.oas.models.Operation operation,
             CodegenOperation co, Map<String, List<CodegenOperation>> operations) {
         super.addOperationToGroup(tag, resourcePath, operation, co, operations);
-        // The stock grouping renames a method whose name another method of the tag has.
+        // The default grouping renames a method whose name another method of the tag has.
         co.vendorExtensions.put(ERROR_ENUM, co.operationIdCamelCase + "Error");
         if (!contentTypeMethods && !typedEventStreams) {
             return;
@@ -1144,10 +1155,6 @@ public class TimvwRustCodegen extends RustClientCodegen {
         contentVariants.put(co, variants);
         LOGGER.info("{}: {}: {} has {} more method(s): {}", GENERATOR_NAME, CONTENT_TYPE_METHODS, co.operationId,
                 variants.size(), variants.stream().map(v -> v.operationId).collect(java.util.stream.Collectors.toList()));
-    }
-
-    private boolean flag(String option) {
-        return Boolean.parseBoolean(String.valueOf(additionalProperties.get(option)));
     }
 
     /** Fails when a suffixed method takes the name of another method of the same API module. */
@@ -1273,7 +1280,7 @@ public class TimvwRustCodegen extends RustClientCodegen {
         if (helperUsed) {
             objs.put(MULTIPART_HELPER_IMPORT, true);
         }
-        Imports.markApi(objs, flag(SUPPORT_ASYNC), multipartHelper, flag(SUPPORT_MULTIPLE_RESPONSES));
+        Imports.markApi(objs, multipartHelper, isSupportMultipleResponses());
         if (webhookModuleReexport && objs.getOperations() != null
                 && toApiName("default").equals(objs.getOperations().getClassname())) {
             objs.put(WEBHOOK_REEXPORT_KEY, toApiFilename(webhookModule));

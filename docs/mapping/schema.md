@@ -26,7 +26,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `type: string` with `format: date-time` or `format: date` |
 | Rust | `chrono::DateTime<chrono::FixedOffset>` (`date-time`) and `chrono::NaiveDate` (`date`); the crate depends on `chrono` |
 | Wire | RFC 3339 text, through chrono's serde support |
-| Options | `useChrono` (stock option, default `true`). With `useChrono=false` both are `String` and the crate has no `chrono` dependency (openai-client-base sets this; langfuse-client-base keeps the default) |
+| Options | `useChrono` (default `true`, as in stock). With `useChrono=false` both are `String` and the crate has no `chrono` dependency (openai-client-base sets this; langfuse-client-base keeps the default) |
 | Tests | [`SchemaMappingTest#datesAreChronoUnlessUseChronoIsOff`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L90) |
 
 ### `schema.format.uuid`
@@ -64,7 +64,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: integer` |
 | Rust | `i64`; `format: int32` gives `i32`. Every other format (`int64`, `unixtime`, none, unknown, `int8`, `int16`, `uint8` to `uint64`) gives `i64`. Bounds (`minimum`, `maximum`) never pick a type, and nothing is unsigned or `NonZero`. This holds everywhere an integer appears: fields, items, map values, parameters, multipart fields, responses, constructors, builders and union variants |
-| Options | `integersAsI64` (baseline). Without it the stock rendering: `i32` unless `format: int64`, and on openapi-generator 7.27 `i8`/`i16` and `u8` to `u64` for the sized formats. `preferUnsignedInt` and `bestFitInt` are fixed to `false` |
+| Options | `integersAsI64` (baseline). Without it the stock rendering: `i32` unless `format: int64`, and on openapi-generator 7.27 `i8`/`i16` and `u8` to `u64` for the sized formats. Bounds never pick a type: stock's `preferUnsignedInt` and `bestFitInt` are rejected |
 | Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L75), [`IntegersAsI64Test#onlyInt32StaysI32OnModelFields`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L69), [`#sizedAndUnsignedFormatsAreI64`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L77), [`#containerItemsFollowTheRule`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L89), [`#pathQueryAndHeaderParametersFollowTheRule`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L126), [`#withoutTheOptionIntegersStayAsInStock`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L151) |
 
 ### `schema.type.integer-with-float-format`

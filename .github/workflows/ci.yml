@@ -10,8 +10,8 @@ permissions:
 
 jobs:
   pom-default:
-    # The release's Maven deploy builds with the pom's default version, so that version must be one the plugin has
-    # templates for. A dependency bump to a version without a template set fails here.
+    # The release's Maven deploy builds with the pom's default version: a dependency bump that changes what the
+    # generator renders, or breaks the API it builds on, fails here.
     name: Test with the pom's openapi-generator version
     runs-on: ubuntu-latest
     steps:

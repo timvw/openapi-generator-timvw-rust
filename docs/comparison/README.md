@@ -45,7 +45,7 @@ versions as before (openapi-generator 7.27.0, progenitor 0.16.0).
 | Constraints (`maxLength`, `minimum`, ...) | not checked | `validate()` on every model, called by the caller | a string with `minLength`, `maxLength` or `pattern` is a newtype checked when built and decoded |
 | Call shape | free functions taking `&Configuration` | a builder per function (`bonBuilders`), or free functions with `bonBuilders=false` | methods on one `Client` |
 | `cargo clippy` warnings | 45 | 0 | 0 |
-| Lines of Rust | 1,666 | 2,863 | 3,320 (one file) |
+| Lines of Rust | 1,666 | 3,369; 2,863 with `validateMethods=false` | 3,320 (one file) |
 
 The rest of the page shows each row in code.
 
@@ -198,7 +198,7 @@ progenitor also implements `FromStr` and `TryFrom` on its enums, and has no catc
 
 | Field (spec) | stock | timvw-rust | progenitor |
 | --- | --- | --- | --- |
-| `temperature: number, nullable` | `Option<Option<f64>>` | `Option<Option<f64>>` | `Option<f64>` |
+| `temperature: number, nullable, 0 to 2` | `Option<Option<f64>>` | `Option<Option<f64>>`, documented ``Validation: `minimum: 0`, `maximum: 2`.`` and checked by `validate()` | `Option<f64>` |
 | `max_tokens: integer, nullable` (no format) | `Option<Option<i32>>` | `Option<Option<i64>>` | `Option<i64>` |
 | `seed: integer, int64` | `Option<i64>` | `Option<i64>` | `Option<i64>` |
 | `n: integer, int32` | `Option<i32>` | `Option<i32>` | `Option<i32>` |

@@ -147,7 +147,7 @@ the same as an option; keep (success headers through 1 only).
 **Recommendation:** adopt the field, in a breaking generator release: one test line to fix, and it removes a reason
 for langfuse-ergonomic to bypass the generated client.
 
-**Decision:** adopt (2026-11-09): success headers through 1; `ResponseContent` gets `headers: reqwest::header::HeaderMap` for errors. Typed accessors for declared response headers are out of scope.
+**Decision:** adopt (2026-11-09): success headers through 1; `ResponseContent` gets `headers: reqwest::header::HeaderMap` for errors. Typed accessors for declared response headers are out of scope. Implemented in #68.
 
 ## 5. Error variant chosen by body shape, not status
 

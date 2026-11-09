@@ -48,9 +48,9 @@ generates (async reqwest with reqwest-middleware; the matching stock options are
 [configuration](../../README.md#configuration)). What used to be the baseline options (`boxOnlyCycles`,
 `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`,
 `unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) is always applied, and setting one fails
-generation.
+generation; so is the former `boxResponseError` (`ResponseError` holds a `Box`).
 
-openai-client-base also sets `multipartHelper`, `typedEventStreams`, `contentTypeMethods`, `boxResponseError` and
+openai-client-base also sets `multipartHelper`, `typedEventStreams`, `contentTypeMethods` and
 `useChrono=false`; langfuse-client-base also sets `typedEnumParameters` and `deprecatedAttributes`. The **Options**
 entry describes those and every other option as a variation of what the generator renders without options.
 

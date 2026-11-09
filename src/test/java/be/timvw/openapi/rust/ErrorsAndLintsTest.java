@@ -16,7 +16,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Milestone 2.6: boxResponseError, apiLintAllows and userAgentFromPackage. */
+/** Milestone 2.6: apiLintAllows and userAgentFromPackage, and the always boxed ResponseError. */
 class ErrorsAndLintsTest {
 
     @TempDir
@@ -26,7 +26,6 @@ class ErrorsAndLintsTest {
     static void generate() {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "errors-lints");
-        props.put(TimvwRustCodegen.BOX_RESPONSE_ERROR, "true");
         props.put(TimvwRustCodegen.API_LINT_ALLOWS, "clippy::needless_return, clippy::into_iter_on_ref");
         props.put(TimvwRustCodegen.USER_AGENT_FROM_PACKAGE, "true");
         CodegenConfigurator configurator = new CodegenConfigurator()
@@ -47,7 +46,7 @@ class ErrorsAndLintsTest {
         String mod = read("src/apis/mod.rs");
         assertTrue(mod.contains("    ResponseError(Box<ResponseContent<T>>),\n"), mod);
         String api = read("src/apis/widgets_api.rs");
-        assertTrue(api.contains("Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity })))"), api);
+        assertTrue(api.contains("Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity, headers })))"), api);
         assertFalse(api.contains("Err(Error::ResponseError(ResponseContent {"), api);
     }
 

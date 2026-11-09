@@ -122,7 +122,10 @@ class TimvwRustCodegenTest {
         assertTrue(e.getMessage().contains("not configurable"), e.getMessage());
     }
 
-    /** The former baseline options are always on: setting one, to any value, fails like a fixed option. */
+    /**
+     * The former baseline options, and boxResponseError (decision 4), are always on: setting one, to any value, fails
+     * like a fixed option.
+     */
     @ParameterizedTest(name = "{0} is not configurable")
     @ValueSource(strings = {
             "boxOnlyCycles",
@@ -136,6 +139,7 @@ class TimvwRustCodegenTest {
             "openEnums",
             "schemaDefaultDocs",
             "nullableUnionFields",
+            "boxResponseError",
     })
     void rejectsTheFormerBaselineOptionsWhenSet(String option) {
         for (Object value : new Object[]{"true", "false", Boolean.TRUE, Boolean.FALSE}) {

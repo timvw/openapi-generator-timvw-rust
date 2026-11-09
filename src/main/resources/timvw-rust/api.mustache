@@ -733,9 +733,10 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
     let status = resp.status();
     {{#vendorExtensions.x-rust-event-stream}}
     if status.is_client_error() || status.is_server_error() {
+        let headers = resp.headers().clone();
         let content = resp.text().await?;
 {{>error_entity}}
-        return Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}));
+        return Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity, headers })));
     }
     let content_type = resp
         .headers()
@@ -796,15 +797,17 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
         Ok(resp)
         {{/isResponseFile}}
         {{^isResponseFile}}
+        let headers = resp.headers().clone();
         let content = resp.text().await?;
         let entity: Option<{{{operationIdCamelCase}}}Success> = serde_json::from_str(&content).ok();
-        Ok(ResponseContent { status, content, entity })
+        Ok(ResponseContent { status, content, entity, headers })
         {{/isResponseFile}}
         {{/supportMultipleResponses}}
     } else {
+        let headers = resp.headers().clone();
         let content = resp.text().await?;
 {{>error_entity}}
-        Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}))
+        Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity, headers })))
     }
 }
     {{/vendorExtensions.x-rust-event-stream}}

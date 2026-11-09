@@ -273,13 +273,14 @@ async fn an_operation_that_only_streams_returns_the_stream() {
     );
 }
 
-/// An error status is the operation's typed error, as for the JSON method; a body that is not an event stream is an
-/// error instead of an empty stream.
+/// An error status is the operation's typed error, as for the JSON method, with the response's headers; a body that is
+/// not an event stream is an error instead of an empty stream.
 #[tokio::test]
 async fn errors_stay_typed() {
     let (configuration, _server) = serve(
         "400 Bad Request",
-        "application/json",
+        // Two more header lines after the content type.
+        "application/json\r\nx-request-id: req-stream\r\nretry-after: 7",
         vec!["{\"error\":{\"message\":\"no\"}}"],
     )
     .await;
@@ -292,6 +293,8 @@ async fn errors_stay_typed() {
     match error {
         Error::ResponseError(content) => {
             assert_eq!(content.status.as_u16(), 400);
+            assert_eq!(content.headers["x-request-id"], "req-stream");
+            assert_eq!(content.headers["retry-after"], "7");
             match content.entity {
                 Some(default_api::CreateResponseError::Status400(e)) => {
                     assert_eq!(e.error.message, "no")

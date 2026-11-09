@@ -251,11 +251,11 @@ class UnknownOptionsTest {
                 + "or correct its name (config-help -g timvw-rust lists the options)", cause.getMessage());
     }
 
-    /** The keys both clients set (without the options decision 12 removed) are all options. */
+    /** The keys both clients set (without the options decisions 12 and 4 removed) are all options. */
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {
             // openai: scripts/generator-config.json
-            "packageName,packageVersion,useChrono,titleNaming,multipartHelper,boxResponseError,apiLintAllows,"
+            "packageName,packageVersion,useChrono,titleNaming,multipartHelper,apiLintAllows,"
                     + "userAgentFromPackage,webhookModule,webhookModuleReexport,resetQueryParameterStyle,"
                     + "typedEventStreams,contentTypeMethods,preprocessedSpecFile,stringIdSchemas,stringIdProperties,"
                     + "stringProperties,fileProperties,deepObjectQueryParameters",

@@ -45,7 +45,7 @@ templates (ported from `-g rust`), not something it inherits, so a rule can chan
 
 The **Rust** entry of every rule is what `timvw-rust` renders without options, in the one client configuration it
 generates (async reqwest with reqwest-middleware; the matching stock options are rejected, see the README's
-[configuration](../../README.md#configuration)). What used to be the baseline options (`boxOnlyCycles`,
+[options](../../README.md#options)). What used to be the baseline options (`boxOnlyCycles`,
 `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`,
 `unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) is always applied, and setting one fails
 generation; so is the former `boxResponseError` (`ResponseError` holds a `Box`).
@@ -57,8 +57,9 @@ entry describes those and every other option as a variation of what the generato
 ## HTTP library
 
 `timvw-rust` generates for one HTTP library, [reqwest](https://docs.rs/reqwest) (with
-[reqwest-middleware](https://docs.rs/reqwest-middleware)). `--library` with anything else (stock `-g rust` also has `hyper`,
-`hyper0x` and `reqwest-trait`) is rejected. The generated code uses reqwest directly; there is no transport layer in between.
+[reqwest-middleware](https://docs.rs/reqwest-middleware)). `--library` with anything else (stock `-g rust` also has
+`hyper`, `hyper0x` and `reqwest-trait`) is rejected. The generated code uses reqwest directly; there is no transport
+layer in between.
 
 Most of the mapping does not depend on that choice: the models, their names, and how they encode and decode are
 serde types. Some types come from the HTTP library, and would differ with another one. A rule that renders such a type

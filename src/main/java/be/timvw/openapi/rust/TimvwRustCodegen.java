@@ -407,7 +407,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 "Schema.property entries rendered as a file (type: string, format: binary)"));
         cliOptions.add(CliOption.newString(API_LINT_ALLOWS,
                 "Lints allowed at the top of every API module and configuration.rs, written as "
-                        + "#![allow(<value>)], e.g. 'clippy::needless_return, clippy::into_iter_on_ref'"));
+                        + "#![allow(<value>)], e.g. 'clippy::too_many_arguments, clippy::large_enum_variant'"));
         cliOptions.add(CliOption.newBoolean(USER_AGENT_FROM_PACKAGE,
                 "Default user agent <packageName>/<crate version> (CARGO_PKG_VERSION) instead of "
                         + "OpenAPI-Generator/<spec version>/rust; httpUserAgent still wins", false));

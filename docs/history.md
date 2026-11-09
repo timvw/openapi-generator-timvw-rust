@@ -6,32 +6,69 @@
 fix into the generator. This page keeps that history: what each rendering replaced. What the generator renders today
 is the [mapping](mapping/README.md).
 
-**Status: Milestones 2 and 3 are complete.** openai-client-base and langfuse-client-base generate without scripts.
-The generator renders what stock `-g rust` renders plus the conventions below, which langfuse-client-base used to patch in after generation (its public API is
-byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that kept
-openai-client-base's type names stable across the openapi-generator 7.15 to 7.25 upgrade.
+**Status:** openai-client-base and langfuse-client-base generate without scripts (Milestones 2 and 3, up to 0.17),
+the plugin owns its Rust layer (0.20), and 0.21 renders the documented [mapping](mapping/README.md) with the changes
+of [decisions.md](decisions.md). The table [below](#what-the-generator-renders-differently-from--g-rust) records what
+each rendering replaced in the client repositories' scripts.
 
-## Unreleased (breaking)
+## 0.21.0 (breaking)
 
-- The 11 baseline options are no longer options ([decision 12](decisions.md#12-option-defaults-are-stock-not-the-baseline)):
-  `boxOnlyCycles`, `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`,
-  `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`, `schemaDefaultDocs` and `nullableUnionFields`.
-  Their `true` rendering is always applied, and setting one, to any value, fails generation as not configurable.
-  Their `false` renderings (the stock unions, boxing every reference, `Default` everywhere, `i32` integers, the stock
-  inline names, closed response enums, ...) are gone. A client that set all 11 to `true` removes them from its
-  configuration; its output does not change. A client that left any of them off gets the mapping's rendering.
+The release of the [mapping decisions](decisions.md): what roadmap step 2 decided, implemented under
+[step 3](roadmap.md#3-make-the-generator-conform). The [migration guide](guides/migration.md) has every change with
+the code before and after, and the steps for a client repository.
+
+### Configuration
+
+- The 11 baseline options are no longer options
+  ([decision 12](decisions.md#12-option-defaults-are-stock-not-the-baseline)): `boxOnlyCycles`, `defaultOnlyWhereValid`,
+  `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`, `unionDispatch`,
+  `openEnums`, `schemaDefaultDocs` and `nullableUnionFields`. Their `true` rendering is always applied, and setting one,
+  to any value, fails generation as not configurable. Their `false` renderings (the stock unions, boxing every
+  reference, `Default` everywhere, `i32` integers, the stock inline names, closed response enums, ...) are gone. A
+  client that set all 11 to `true` removes them from its configuration; its output does not change. A client that left
+  any of them off gets the mapping's rendering.
+- The error is always boxed (decision 4, follow-up): `Error::ResponseError` holds `Box<ResponseContent<T>>`, since
+  with the headers an unboxed error is over clippy's `result_large_err` limit in every function. `boxResponseError`
+  is no longer an option: setting it, to any value, fails generation as not configurable. openai-client-base removes
+  `"boxResponseError": true` from its configuration; its output does not change. langfuse-client-base, which did not
+  set it, gets the boxed error: code that builds `Error::ResponseError(content)` wraps it (`Box::new(content)` or
+  `content.into()`); code that matches `Error::ResponseError(response)` and reads its fields is unchanged (the `Box`
+  derefs), but one that moves the `ResponseContent` out gets a `Box` (`*response`).
 - An unknown option fails generation ([decision 10](decisions.md#10-unknown-generator-options-are-ignored)): a key
   of `--additional-properties` or of a `-c` file that is neither a timvw-rust option, nor one of openapi-generator's
   general options, nor a key openapi-generator sets itself, was ignored and now fails with every unknown key and, for
   each, the closest option (`did you mean 'bonBuilders'?`). A client whose configuration only holds options sees no
   change; one with a misspelt or stale key removes or corrects it.
+
+### Function signatures and models
+
 - A request body the function only serializes is borrowed ([decision 2](decisions.md#2-request-bodies-by-reference)):
   `create_item(configuration, item: models::Item)` becomes `item: &models::Item` (a union body too, an array body
-  `&[T]`, a map or `serde_json::Value` body a reference, an optional or nullable one `Option<&T>`), in every method
-  of an operation, the `contentTypeMethods` and `typedEventStreams` methods and webhooks included. Numbers, booleans,
-  dates and date-times (`Copy`), strings (`&str`), multipart parts, form fields and files (`PathBuf`) are unchanged.
-  A body whose type is `String` (a string enum without `typedEnumParameters`, `format: byte`) is now `&str`. A caller passes `&request` instead of `request`
-  (`.create_item(&request)`, `.maybe_create_item(Some(&request))`) and keeps its value; the bytes sent do not change.
+  `&[T]`, a map or `serde_json::Value` body a reference, an optional or nullable one `Option<&T>`), in every method of
+  an operation, the `contentTypeMethods` and `typedEventStreams` methods and webhooks included. Numbers, booleans, dates
+  and date-times (`Copy`), strings (`&str`), multipart parts, form fields and files (`PathBuf`) are unchanged. A body
+  whose type is `String` (a string enum without `typedEnumParameters`, `format: byte`) is now `&str`. A caller passes
+  `&request` instead of `request` (`.create_item(&request)`, `.maybe_create_item(Some(&request))`) and keeps its value;
+  the bytes sent do not change.
+- A `format: uuid` parameter is `uuid::Uuid` ([decision 6](decisions.md#6-uuid-parameters-are-str)): a path, query
+  or header parameter or form field took `&str` (an array already took `Vec<uuid::Uuid>`) and now takes `uuid::Uuid`
+  by value (`Option<uuid::Uuid>` when optional), as a model property does. It is sent hyphenated, as before. A client
+  passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
+  not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
+  makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
+- A map whose values are an inline enum (`additionalProperties: {type: string, enum: [..]}`) is
+  `HashMap<String, <Enum>>` (a map of lists of it `HashMap<String, Vec<<Enum>>>`, a list of such maps
+  `Vec<HashMap<String, <Enum>>>`); it was the enum itself (or a list of it), which the JSON does not decode to. The
+  field's type changes,
+  and `validate()` now checks its `minProperties`/`maxProperties` (its enum values have nothing to check).
+- A discriminated union whose branches share one `enum` of every tag value (`kind: [cat, dog]` on both `Cat` and
+  `Dog`) dispatches each value to the branch the `mapping` names (`cat` decodes `Cat`, `dog` decodes `Dog`), instead
+  of trying both in order for either value: a branch's own tag values select it unless the mapping gives them to
+  another branch. The unused `decode` helper of `src/models/union_dispatch.rs` is now left
+  out when only `first_of` is used (clippy `dead_code`).
+
+### Errors
+
 - The error variant comes from the status, not the body's shape
   ([decision 5](decisions.md#5-error-variant-chosen-by-body-shape-not-status)): `entity` holds the variant of the
   response with the status's exact code, else of its range (`4XX`), else `DefaultResponse`, with the body decoded as
@@ -47,43 +84,21 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   `supportMultipleResponses`, the success `ResponseContent` has the headers too. `{:?}` of an error now prints every
   response header, which can include `set-cookie` or tokens: a client that logs errors with `{:?}` may want to log
   `Display` (only the status) or redact; `Display` is unchanged.
-- The error is always boxed (decision 4, follow-up): `Error::ResponseError` holds `Box<ResponseContent<T>>`, since
-  with the headers an unboxed error is over clippy's `result_large_err` limit in every function. `boxResponseError`
-  is no longer an option: setting it, to any value, fails generation as not configurable. openai-client-base removes
-  `"boxResponseError": true` from its configuration; its output does not change. langfuse-client-base, which did not
-  set it, gets the boxed error: code that builds `Error::ResponseError(content)` wraps it (`Box::new(content)` or
-  `content.into()`); code that matches `Error::ResponseError(response)` and reads its fields is unchanged (the `Box`
-  derefs), but one that moves the `ResponseContent` out gets a `Box` (`*response`).
-- `date-time` parameters are sent in RFC 3339 ([decision 11](decisions.md#11-date-time-parameters-are-sent-in-display-form)):
-  with `useChrono` (the default), a `date-time` path, query or header parameter or form field (urlencoded body,
-  multipart text part), or each item of an array of them, was
-  written with chrono's `Display` (`2026-01-02 03:04:05 +01:00`) and is now written with `to_rfc3339()`
-  (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of
-  `date` or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a
-  client that built such a request by hand to get RFC 3339 can call the generated function instead.
-- `responseFunctions` (new option, off by default; [decision 1](decisions.md#1-response-functions-returning-apiresponset)):
-  every operation whose success is a JSON body, text or nothing also gets `<operation>_response`, which sends the
-  same request and fails with the same typed error but returns `apis::ApiResponse<T>`: the `status`, the `headers`
-  and the undecoded body, with `json()` (the generated type), `json_as::<U>()` (a type of the caller's, owned),
-  `json_borrowed::<U>()` (borrowing from the body) and `text()`. Binary responses, event streams and webhooks get
-  none. A twin whose name another operation of the module has fails generation. Without the option nothing changes;
-  see the [guide](guides/response-functions.md).
-- A `format: uuid` parameter is `uuid::Uuid` ([decision 6](decisions.md#6-uuid-parameters-are-str)): a path, query
-  or header parameter or form field took `&str` (an array already took `Vec<uuid::Uuid>`) and now takes `uuid::Uuid`
-  by value (`Option<uuid::Uuid>` when optional), as a model property does. It is sent hyphenated, as before. A client
-  passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
-  not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
-  makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
 - A `text/plain` error response holds its body as it is: a `string` error response (or `default`) whose media types
   are text and none JSON was decoded as JSON, so a plain-text body (`bad input`) gave no entity; it now gives
   `Status400("bad input")` (`DefaultResponse(..)` for the default), as decision 5 picks the variant by status (also in
   the `_response` function of `responseFunctions`). A client that read such an error from `content` can match the
   variant.
-- `supportMultipleResponses` with `typedEventStreams`: the stream function returns its `EventStream`, as without the
-  option (it returned the stream where `ResponseContent<..Success>` was declared, which did not compile).
-- A crate generated without options passes `cargo clippy -- -D warnings`: `ContentType::from` (`src/apis/mod.rs`) and
-  the content-type match of each function no longer `return` from their last expression (`needless_return`). A client
-  that allowed `clippy::needless_return` through `apiLintAllows` only for this can drop it.
+
+### On the wire
+
+- `date-time` parameters are sent in RFC 3339
+  ([decision 11](decisions.md#11-date-time-parameters-are-sent-in-display-form)): with `useChrono` (the default), a `date-time`
+  path, query or header parameter or form field (urlencoded body, multipart text part), or each item of an array of
+  them, was written with chrono's `Display` (`2026-01-02 03:04:05 +01:00`) and is now written with `to_rfc3339()`
+  (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of `date`
+  or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a client
+  that built such a request by hand to get RFC 3339 can call the generated function instead.
 - Cookie parameters are sent ([decision 3](decisions.md#3-cookie-parameters-are-not-sent)): the argument was
   accepted and never used. The cookie parameters that are set now go out in one `Cookie` header (`a=1; b=2`), each
   value percent-encoded where it is not an RFC 6265 cookie-octet, an exploded array as a pair per item. An api key
@@ -91,47 +106,6 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`additionalProperties`), which did not compile, is sent as its JSON. Signatures do not change. The generated header
   replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
   into the existing header rather than append a second one.
-- A map whose values are an inline enum (`additionalProperties: {type: string, enum: [..]}`) is
-  `HashMap<String, <Enum>>` (a map of lists of it `HashMap<String, Vec<<Enum>>>`, a list of such maps
-  `Vec<HashMap<String, <Enum>>>`); it was the enum itself (or a list of it), which the JSON does not decode to. The
-  field's type changes,
-  and `validate()` now checks its `minProperties`/`maxProperties` (its enum values have nothing to check).
-- `contentTypeMethods` without `typedEventStreams`: the method for another request media type of an operation whose
-  response is an event stream returned `sse::EventStream`, but `sse.rs` is only written with `typedEventStreams`, so
-  the crate did not compile. It now decodes the response as JSON, like the operation's own method.
-- `useSerdePathToError`: `Display` of `Error::SerdePathToError` no longer calls `to_string()` inside `format!`
-  (clippy `to_string_in_format_args`). An operation whose only error is a `text/plain` default sets
-  `Some(DefaultResponse(content.clone()))` without an `UnknownValue` fallback that could not apply.
-- `cargo test --doc` passes on a generated crate: `lib.rs` includes the README as the crate's documentation, and its
-  `Cargo.toml` line and `cargo doc --open` were bare code blocks, so rustdoc compiled them as Rust. They are marked
-  `toml` and `sh`.
-- Every model implements a generated `Validate` trait
-  ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
-  [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,
-  `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems`
-  (by equality; arrays stay `Vec`), `minProperties` and `maxProperties`, recursively, and returns every violation:
-  `models::validation::ValidationErrors`, a non-empty list of `ValidationError` (path, rule, offending value) in field
-  order, nested values depth-first, map entries by rendered key, with `Display` one line per error. A hand-written
-  impl implements `validate_into(path, errors)`. Nothing generated calls it, and `Error` is unchanged.
-  The crate gains `src/models/validation.rs` (declared in `models/mod.rs`, so a client's own `lib.rs` needs no change), an `impl crate::models::validation::Validate` per model, and a `regex` dependency when
-  the spec has a `pattern`; every constrained field's documentation lists its constraints. A client that wants
-  validation calls `validate()` (with `use <crate>::models::validation::Validate;`); one that does not want the code sets
-  `validateMethods=false`. A client that keeps its own `Cargo.toml` (openai-client-base) adds `regex = "1"` when its
-  spec has a `pattern`. The generator's own warnings (a skipped pattern, a union field that is not rendered, ...) now show in the
-  openapi-generator CLI and Docker image, which only print `org.openapitools` loggers; renames that are expected (a
-  keyword as `r#type`, a Rust type the base generator uses as a variable name) log at debug instead of warn.
-- `contentTypeMethods` with `typedEventStreams`: an event stream whose schema models the SSE envelope (required
-  `event` and `data`), which gets no typed stream, now gets none in the method for another request media type either:
-  that method returned `sse::EventStream<Envelope>` and now decodes the response as JSON like the operation's own.
-- The generated README's description (`info.description`) has the code blocks rustdoc would compile marked `text`
-  (fenced without a language or with only `rust` and rustdoc attributes such as `no_run` or `ignore`, and indented
-  blocks, also inside a list item), so `cargo test --doc` does not compile them; code blocks in another language stay
-  as they are.
-- A discriminated union whose branches share one `enum` of every tag value (`kind: [cat, dog]` on both `Cat` and
-  `Dog`) dispatches each value to the branch the `mapping` names (`cat` decodes `Cat`, `dog` decodes `Dog`), instead
-  of trying both in order for either value: a branch's own tag values select it unless the mapping gives them to
-  another branch. The unused `decode` helper of `src/models/union_dispatch.rs` is now left
-  out when only `first_of` is used (clippy `dead_code`).
 - Parameter serialization fixes (pre-existing bugs found in reviews):
   - A query parameter the spec declares `style: deepObject` (an object or a `$ref` to one) keeps its type and is
     sent as `name[field]=value`; it was turned into `&str` and then dropped, or, with `resetQueryParameterStyle`,
@@ -156,18 +130,50 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   A client passing a value to a declared `deepObject` parameter now passes the typed value instead of a string; a
   server reading form arrays as one `,`-joined field reads repeated fields instead.
 
+### Fixes
+
 - A query parameter whose type is a `oneOf` union (openai-client-base's vault `status`, `VaultStatusFilterParam`)
   goes out as the union's `Display`: a string variant unquoted (`status=active`, it was `status=%22active%22`),
   numbers and booleans as text, other variants as their JSON, as a path, header or cookie parameter already did.
   A union's `Display` writes a uuid variant hyphenated, a date `YYYY-MM-DD` and a date-time in RFC 3339 (they were
-  JSON-quoted, and a date-time was chrono's `Display`); a uuid or chrono type only in a union variant makes the crate
-  depend on `uuid` or `chrono` (it did not compile). A required query, header or cookie parameter of a nullable union
-  takes an `Option` (it was the union itself).
-- Two properties of a model that become the same Rust field (`foo-bar` and `foo_bar`) fail generation with both
-  names; the crate did not compile (E0124).
+  JSON-quoted, and a date-time was chrono's `Display`). A required query, header or cookie parameter of a nullable
+  union takes an `Option` (it was the union itself).
+- A `uuid`, `date` or `date-time` type only in a union variant makes the crate depend on `uuid` or `chrono`; such a
+  crate did not compile.
+- Two properties of a model that become the same Rust field (`foo-bar` and `foo_bar`) fail generation with both names:
+  `timvw-rust: model Thing: properties 'foo-bar' and 'foo_bar' both become the Rust field foo_bar; rename one in the
+  spec or map one with --name-mappings`. Before, the crate did not compile (E0124).
 - Generation logs only what a user can act on: identifier renames (`[Done]` as
-  `LeftSquareBracketDoneRightSquareBracket`, `application/json` as `ApplicationSlashJson`) log at debug, and the fields
-  declared on a union that a variant does not carry are one warning with their count (each at debug).
+  `LeftSquareBracketDoneRightSquareBracket`, `application/json` as `ApplicationSlashJson`) log at debug, and the
+  fields declared on a union that a variant does not carry are one warning with their count (each at debug).
+  openai-client-base's generation log goes from 5331 to 71 warnings and langfuse-client-base's from 1472 to 4; most
+  of what remains is openapi-generator's own.
+
+### New
+
+- Every model implements a generated `Validate` trait ([decision 9](decisions.md#9-validation-keywords-are-not-checked),
+  with [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,
+  `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems` (by
+  equality; arrays stay `Vec`), `minProperties` and `maxProperties`, recursively, and returns every violation:
+  `models::validation::ValidationErrors`, a non-empty list of `ValidationError` (path, rule, offending value) in field
+  order, nested values depth-first, map entries by rendered key, with `len()`, `iter()`, `into_vec()`, `IntoIterator`
+  and a `Display` of one line per error. A hand-written impl implements `validate_into(path, errors)`. Nothing generated
+  calls it, and `Error` is unchanged. The crate gains `src/models/validation.rs` (declared in `models/mod.rs`, so a
+  client's own `lib.rs` needs no change), an `impl crate::models::validation::Validate` per model, and a `regex`
+  dependency when the spec has a `pattern`; every constrained field's documentation lists its constraints. A client that
+  wants validation calls `validate()` (with `use <crate>::models::validation::Validate;`); one that does not want the
+  code sets `validateMethods=false`. A client that keeps its own `Cargo.toml` (openai-client-base) adds `regex = "1"`
+  when its spec has a `pattern`. The generator's own warnings (a skipped pattern, a union field that is not rendered,
+  ...) now show in the openapi-generator CLI and Docker image, which only print `org.openapitools` loggers; renames that
+  are expected (a keyword as `r#type`, a Rust type the base generator uses as a variable name) log at debug instead of
+  warn.
+- `responseFunctions` (new option, off by default;
+  [decision 1](decisions.md#1-response-functions-returning-apiresponset)): every operation whose success is a JSON body, text or
+  nothing also gets `<operation>_response`, which sends the same request and fails with the same typed error but returns
+  `apis::ApiResponse<T>`: the `status`, the `headers` and the undecoded body, with `json()` (the generated type),
+  `json_as::<U>()` (a type of the caller's, owned), `json_borrowed::<U>()` (borrowing from the body) and `text()`.
+  Binary responses, event streams and webhooks get none. A twin whose name another operation of the module has fails
+  generation. Without the option nothing changes; see the [guide](guides/response-functions.md).
 
 ## What the generator renders differently from `-g rust`
 

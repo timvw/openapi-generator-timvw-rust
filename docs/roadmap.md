@@ -7,8 +7,9 @@ documented mapping: a written definition of what Rust each OpenAPI construct bec
 against it, and improved through it.
 
 The generator stays a Java openapi-generator plugin. Both clients stay supported throughout. Its Rust layer and
-templates are its own (ported from `-g rust`, see [history](history.md#from-a-subclass-of--g-rust-to-its-own-rust-layer)),
-so a change the mapping decides on is made in the generator's code, not worked around a stock template.
+templates are its own (ported from `-g rust`, see
+[history](history.md#from-a-subclass-of--g-rust-to-its-own-rust-layer)), so a change the mapping decides on is made in
+the generator's code, not worked around a stock template.
 
 Out of scope: other implementations of the mapping, such as a rewrite in Rust. That would be a separate project that
 could reuse the mapping.
@@ -59,6 +60,13 @@ Each change is then decided separately: adopt, adopt as an option, or keep.
 **Done when:** each proposed change is decided, and the mapping holds the adopted ones as the next mapping version.
 
 ## 3. Make the generator conform
+
+**Status: done, released as 0.21.0.** Each adopted decision of [decisions.md](decisions.md) (1 to 6 and 8 to 12) is
+implemented, one pull request each, with its mapping rule and tests: request bodies by reference, cookies sent, error
+headers and status-based error variants, `uuid` and RFC 3339 parameters, `validate()`, `responseFunctions`, unknown
+options failing and the baseline options folded in. Both clients generate, build and pass clippy `-D warnings` on it.
+The [migration guide](guides/migration.md) lists what changed for a client, and the
+[history](history.md#0210-breaking) records each change.
 
 Change the generator so it renders the updated mapping, and update the tests that rules point to.
 

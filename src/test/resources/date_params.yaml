@@ -1,0 +1,175 @@
+openapi: 3.0.3
+info:
+  title: Date parameters
+  version: 1.0.0
+# date and date-time values in path, query and header parameters (single, optional, nullable and arrays), and in
+# form fields: an urlencoded body and multipart text parts.
+paths:
+  /days/{at}/{day}/{ats}/{days}:
+    get:
+      operationId: getDays
+      parameters:
+        - name: at
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: day
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: ats
+          in: path
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+              format: date-time
+        - name: days
+          in: path
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+              format: date
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: before
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            nullable: true
+        - name: onDay
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: sinceDay
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: times
+          in: query
+          required: true
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              format: date-time
+        - name: timesCsv
+          in: query
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              format: date-time
+        - name: dates
+          in: query
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              format: date
+        - name: X-At
+          in: header
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: X-Until
+          in: header
+          schema:
+            type: string
+            format: date-time
+        - name: X-Day
+          in: header
+          schema:
+            type: string
+            format: date
+        - name: X-Times
+          in: header
+          schema:
+            type: array
+            items:
+              type: string
+              format: date-time
+      responses:
+        '204':
+          description: Nothing
+  /form:
+    post:
+      operationId: postForm
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [at, day]
+              properties:
+                at:
+                  type: string
+                  format: date-time
+                until:
+                  type: string
+                  format: date-time
+                day:
+                  type: string
+                  format: date
+                times:
+                  type: array
+                  items:
+                    type: string
+                    format: date-time
+      responses:
+        '204':
+          description: Nothing
+  /upload:
+    post:
+      operationId: postUpload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [at, day]
+              properties:
+                at:
+                  type: string
+                  format: date-time
+                until:
+                  type: string
+                  format: date-time
+                day:
+                  type: string
+                  format: date
+                times:
+                  type: array
+                  items:
+                    type: string
+                    format: date-time
+      responses:
+        '204':
+          description: Nothing

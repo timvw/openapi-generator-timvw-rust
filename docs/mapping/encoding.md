@@ -14,5 +14,5 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `encoding: {<property>: {contentType: ..}}` of a `multipart/form-data` body |
 | Rust | ignored |
-| Options | `multipartHelper` (openai-client-base) applies it to scalar and object parts; a file part keeps the file's own type |
+| Options | `multipartHelper` (openai-client-base) applies it to scalar and object parts; a file part keeps the file's own type. A scalar part with a text `contentType` is its value's text (a `date-time` in RFC 3339, [`schema.format.date-time`](schema.md#schemaformatdate-time)) |
 | Tests | [`MultipartTest#helperRulesPerParameterShape`](../../src/test/java/be/timvw/openapi/rust/MultipartTest.java#L73), [`MultipartFileUnionsTest#anEncodingContentTypeIsForTheOtherVariantsNotTheFile`](../../src/test/java/be/timvw/openapi/rust/MultipartFileUnionsTest.java#L105) |

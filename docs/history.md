@@ -28,9 +28,16 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
 - A request body the function only serializes is borrowed ([decision 2](decisions.md#2-request-bodies-by-reference)):
   `create_item(configuration, item: models::Item)` becomes `item: &models::Item` (an array body `&[T]`, a map or
   `serde_json::Value` body a reference too, an optional one `Option<&T>`), in every method of an operation, the
-  `contentTypeMethods` and `typedEventStreams` methods and webhooks included. Strings (`&str`), numbers, booleans, multipart parts,
-  form fields and files (`PathBuf`) are unchanged. A caller passes `&request` instead of `request`
+  `contentTypeMethods` and `typedEventStreams` methods and webhooks included. Strings (`&str`), numbers, booleans,
+  multipart parts, form fields and files (`PathBuf`) are unchanged. A caller passes `&request` instead of `request`
   (`.create_item(&request)`, `.maybe_create_item(Some(&request))`) and keeps its value; the bytes sent do not change.
+- `date-time` parameters are sent in RFC 3339 ([decision 11](decisions.md#11-date-time-parameters-are-sent-in-display-form)):
+  with `useChrono` (the default), a `date-time` path, query or header parameter or form field (urlencoded body,
+  multipart text part), or each item of an array of them, was
+  written with chrono's `Display` (`2026-01-02 03:04:05 +01:00`) and is now written with `to_rfc3339()`
+  (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of
+  `date` or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a
+  client that built such a request by hand to get RFC 3339 can call the generated function instead.
 
 ## What the generator renders differently from `-g rust`
 

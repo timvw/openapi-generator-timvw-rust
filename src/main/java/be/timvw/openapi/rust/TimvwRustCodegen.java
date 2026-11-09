@@ -1010,15 +1010,19 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /**
      * Marks a request body that is only serialized, so its argument borrows it: a model, a {@code Vec} (as a slice),
      * a map or a {@code serde_json::Value}. A file ({@code PathBuf}) is opened, a string is already {@code &str}, and
-     * a boolean or number is {@code Copy}: those keep their type.
+     * a boolean, number, date or date-time is {@code Copy} (chrono): those keep their type. A body whose type is
+     * {@code String} (a string enum without {@code typedEnumParameters}, {@code format: byte}) becomes {@code &str}.
      */
     static void markBodyRef(CodegenParameter p) {
         if (!p.isBodyParam || p.isFile || p.isBinary || p.isString || p.isUuid || p.dataType == null
-                || p.isBoolean || p.isInteger || p.isLong || p.isShort || p.isNumber || p.isFloat || p.isDouble) {
+                || p.isBoolean || p.isInteger || p.isLong || p.isShort || p.isNumber || p.isFloat || p.isDouble
+                || p.isDate || p.isDateTime) {
             return;
         }
-        // As the api template qualifies a type: a model gets models::, a container, a path
-        // (serde_json::Value, std::collections::HashMap, models::X) or a primitive does not.
+        // Mirrors the "### Models and primative types" line of the parameter type in api.mustache (the
+        // {{^isPrimitiveType}}{{^isContainer}}{{^x-rust-type-qualified}}models:: part): a model gets models::, a
+        // container, a path (serde_json::Value, std::collections::HashMap, models::X) or a primitive does not.
+        // x-rust-type-qualified is only set later, so a dataType that already contains "::" stands in for it.
         String type = p.dataType;
         if (!p.isPrimitiveType && !p.isContainer && !p.isFreeFormObject && !p.isAnyType && !type.contains("::")) {
             type = "models::" + type;

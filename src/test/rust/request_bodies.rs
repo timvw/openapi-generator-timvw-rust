@@ -152,3 +152,47 @@ async fn maps_values_and_numbers() {
         .unwrap();
     assert_eq!(server.await.unwrap(), "7");
 }
+
+/// An array of numbers is a slice, a union and a `oneOf` with a null branch are borrowed, a date-time is passed by
+/// value.
+#[tokio::test]
+async fn numbers_unions_and_dates() {
+    let (configuration, server) = serve().await;
+    default_api::set_counts()
+        .configuration(&configuration)
+        .request_body(&[1, 2])
+        .call()
+        .await
+        .unwrap();
+    assert_eq!(server.await.unwrap(), "[1,2]");
+
+    let shape = request_bodies::models::Shape::Item(item());
+    let (configuration, server) = serve().await;
+    default_api::send_shape()
+        .configuration(&configuration)
+        .shape(&shape)
+        .call()
+        .await
+        .unwrap();
+    assert_eq!(server.await.unwrap(), "{\"name\":\"a\"}");
+
+    let item = item();
+    let (configuration, server) = serve().await;
+    default_api::send_maybe_item()
+        .configuration(&configuration)
+        .item(&item)
+        .call()
+        .await
+        .unwrap();
+    assert_eq!(server.await.unwrap(), "{\"name\":\"a\"}");
+
+    let when = chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05+01:00").unwrap();
+    let (configuration, server) = serve().await;
+    default_api::set_when()
+        .configuration(&configuration)
+        .body(when)
+        .call()
+        .await
+        .unwrap();
+    assert_eq!(server.await.unwrap(), "\"2026-01-02T03:04:05+01:00\"");
+}

@@ -26,10 +26,11 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   each, the closest option (`did you mean 'bonBuilders'?`). A client whose configuration only holds options sees no
   change; one with a misspelt or stale key removes or corrects it.
 - A request body the function only serializes is borrowed ([decision 2](decisions.md#2-request-bodies-by-reference)):
-  `create_item(configuration, item: models::Item)` becomes `item: &models::Item` (an array body `&[T]`, a map or
-  `serde_json::Value` body a reference too, an optional one `Option<&T>`), in every method of an operation, the
-  `contentTypeMethods` and `typedEventStreams` methods and webhooks included. Strings (`&str`), numbers, booleans,
-  multipart parts, form fields and files (`PathBuf`) are unchanged. A caller passes `&request` instead of `request`
+  `create_item(configuration, item: models::Item)` becomes `item: &models::Item` (a union body too, an array body
+  `&[T]`, a map or `serde_json::Value` body a reference, an optional or nullable one `Option<&T>`), in every method
+  of an operation, the `contentTypeMethods` and `typedEventStreams` methods and webhooks included. Numbers, booleans,
+  dates and date-times (`Copy`), strings (`&str`), multipart parts, form fields and files (`PathBuf`) are unchanged.
+  A body whose type is `String` (a string enum without `typedEnumParameters`, `format: byte`) is now `&str`. A caller passes `&request` instead of `request`
   (`.create_item(&request)`, `.maybe_create_item(Some(&request))`) and keeps its value; the bytes sent do not change.
 - The error variant comes from the status, not the body's shape
   ([decision 5](decisions.md#5-error-variant-chosen-by-body-shape-not-status)): `entity` holds the variant of the

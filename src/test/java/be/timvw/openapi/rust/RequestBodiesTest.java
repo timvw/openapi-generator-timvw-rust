@@ -86,6 +86,30 @@ class RequestBodiesTest {
     }
 
     @Test
+    void anArrayOfNumbersIsASliceToo() throws IOException {
+        assertContains(function("set_counts"), "request_body: &[i64])");
+        assertContains(function("set_counts"), "req_builder = req_builder.json(p_body_request_body);");
+    }
+
+    @Test
+    void aUnionIsBorrowedAndANullBranchMakesItOptional() throws IOException {
+        assertContains(function("send_shape"), "shape: &models::Shape)");
+        assertContains(function("send_maybe_item"), "item: Option<&models::Item>)");
+        assertContains(function("send_maybe_item"), "req_builder = req_builder.json(&p_body_item);");
+    }
+
+    @Test
+    void datesStayByValueAndStringTypedBodiesAreStr() throws IOException {
+        assertContains(function("set_when"), "body: chrono::DateTime<chrono::FixedOffset>)");
+        assertContains(function("set_day"), "body: chrono::NaiveDate)");
+        assertContains(function("set_color"), "body: &str)");
+        assertContains(function("set_blob"), "body: &str)");
+        // Both are String, not isString: borrowed by this rule (they were `body: String`), so sent without a second &.
+        assertContains(function("set_color"), "req_builder = req_builder.json(p_body_body);");
+        assertContains(function("set_blob"), "req_builder = req_builder.json(p_body_body);");
+    }
+
+    @Test
     void aWebhookBodyIsBorrowedToo() throws IOException {
         String hooks = Files.readString(out.resolve("src/apis/hooks_api.rs"));
         assertContains(hooks, "item_created_post(configuration: &configuration::Configuration, "

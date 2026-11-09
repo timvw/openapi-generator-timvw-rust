@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info:
+  title: A date-time only in an error response
+  version: 1.0.0
+# No model or parameter has a date or date-time: only an error response.
+paths:
+  /retry:
+    get:
+      operationId: getRetry
+      responses:
+        '204':
+          description: Nothing
+        '503':
+          description: When to retry
+          content:
+            application/json:
+              schema:
+                type: string
+                format: date-time

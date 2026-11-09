@@ -25,6 +25,13 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   general options, nor a key openapi-generator sets itself, was ignored and now fails with every unknown key and, for
   each, the closest option (`did you mean 'bonBuilders'?`). A client whose configuration only holds options sees no
   change; one with a misspelt or stale key removes or corrects it.
+- A request body the function only serializes is borrowed ([decision 2](decisions.md#2-request-bodies-by-reference)):
+  `create_item(configuration, item: models::Item)` becomes `item: &models::Item` (a union body too, an array body
+  `&[T]`, a map or `serde_json::Value` body a reference, an optional or nullable one `Option<&T>`), in every method
+  of an operation, the `contentTypeMethods` and `typedEventStreams` methods and webhooks included. Numbers, booleans,
+  dates and date-times (`Copy`), strings (`&str`), multipart parts, form fields and files (`PathBuf`) are unchanged.
+  A body whose type is `String` (a string enum without `typedEnumParameters`, `format: byte`) is now `&str`. A caller passes `&request` instead of `request`
+  (`.create_item(&request)`, `.maybe_create_item(Some(&request))`) and keeps its value; the bytes sent do not change.
 - The error variant comes from the status, not the body's shape
   ([decision 5](decisions.md#5-error-variant-chosen-by-body-shape-not-status)): `entity` holds the variant of the
   response with the status's exact code, else of its range (`4XX`), else `DefaultResponse`, with the body decoded as
@@ -40,6 +47,12 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of
   `date` or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a
   client that built such a request by hand to get RFC 3339 can call the generated function instead.
+- A `format: uuid` parameter is `uuid::Uuid` ([decision 6](decisions.md#6-uuid-parameters-are-str)): a path, query
+  or header parameter or form field took `&str` (an array already took `Vec<uuid::Uuid>`) and now takes `uuid::Uuid`
+  by value (`Option<uuid::Uuid>` when optional), as a model property does. It is sent hyphenated, as before. A client
+  passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
+  not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
+  makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
 - Every model implements a generated `Validate` trait
   ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
   [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,

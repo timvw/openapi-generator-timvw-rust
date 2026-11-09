@@ -24,7 +24,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | --- | --- | --- |
 | `type: string` | `String` | |
 | `format: date`, `date-time` | `chrono::NaiveDate`, `chrono::DateTime<chrono::FixedOffset>`; a path, query or header parameter or a form field is sent as `YYYY-MM-DD` and RFC 3339 (`to_rfc3339()`) | `useChrono` (default `true`); `useChrono=false` gives `String` and no `chrono` dependency (openai-client-base sets it) |
-| `format: uuid` | `uuid::Uuid` in a model; `&str` as a header or query parameter | |
+| `format: uuid` | `uuid::Uuid` in a model, a parameter and a form field, sent hyphenated | |
 | `format: byte` | `Vec<u8>`, base64 through `#[serde_as(as = "serde_with::base64::Base64")]` | |
 | `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response | |
 | `format: email`, `uri`, any other | `String` | |
@@ -120,7 +120,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | parameters | one argument each, in spec order: required as `T`/`&str`, optional as `Option<..>` | |
 | `deprecated` operation | `#[deprecated]` | |
 | `webhooks` | a module of their own, tagged `webhookModule` | `webhookModule`, `webhookModuleReexport` |
-| request body | the last argument, named after the schema (`create_chat_completion_request: models::CreateChatCompletionRequest`) | |
+| request body | the last argument, named after the schema; a JSON body is borrowed (`create_chat_completion_request: &models::CreateChatCompletionRequest`, an array as a slice `&[T]`) | |
 
 ### Parameters
 
@@ -177,4 +177,3 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
   ([mapping](mapping/README.md#objects)).
 - `readOnly`/`writeOnly` properties are in both directions.
-- `format: uuid` is `uuid::Uuid` in models but `&str` in parameters.

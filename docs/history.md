@@ -20,6 +20,11 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   Their `false` renderings (the stock unions, boxing every reference, `Default` everywhere, `i32` integers, the stock
   inline names, closed response enums, ...) are gone. A client that set all 11 to `true` removes them from its
   configuration; its output does not change. A client that left any of them off gets the mapping's rendering.
+- An unknown option fails generation ([decision 10](decisions.md#10-unknown-generator-options-are-ignored)): a key
+  of `--additional-properties` or of a `-c` file that is neither a timvw-rust option, nor one of openapi-generator's
+  general options, nor a key openapi-generator sets itself, was ignored and now fails with every unknown key and, for
+  each, the closest option (`did you mean 'bonBuilders'?`). A client whose configuration only holds options sees no
+  change; one with a misspelt or stale key removes or corrects it.
 
 ## What the generator renders differently from `-g rust`
 

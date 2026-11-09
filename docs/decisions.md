@@ -288,7 +288,7 @@ verified); the message names the closest known option ("did you mean `boxOnlyCyc
 
 **Recommendation:** adopt as an error: it is the same reasoning as rejecting stock options, and it breaks no client.
 
-**Decision:** adopt (2026-11-09): an unknown option fails generation and names the closest known option. The allow-list holds the generator's options, openapi-generator's general options and the keys it sets itself (taken from a run). `boxOnlyCycles` is registered as an option first.
+**Decision:** adopt (2026-11-09): an unknown option fails generation and names the closest known option. The allow-list holds the generator's options, openapi-generator's general options and the keys it sets itself (taken from a run). `boxOnlyCycles` is registered as an option first. Implemented in #62.
 
 ## 11. `date-time` parameters are sent in `Display` form
 

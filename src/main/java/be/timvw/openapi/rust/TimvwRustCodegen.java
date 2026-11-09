@@ -579,30 +579,43 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     GENERATOR_NAME, CodegenConstants.LIBRARY, GENERATOR_NAME, REQWEST_LIBRARY, getLibrary()));
         }
 
+        // These keys are matched ignoring case, so that `BoxOnlyCycles` gets the message of `boxOnlyCycles` rather
+        // than the unknown-option one.
         for (String option : REJECTED_OPTIONS) {
-            if (additionalProperties.containsKey(option)) {
+            String key = keyIgnoringCase(option);
+            if (key != null) {
                 throw new IllegalArgumentException(String.format(
                         "%s: option '%s' is not supported; remove it (it was set to '%s')",
-                        GENERATOR_NAME, option, additionalProperties.get(option)));
+                        GENERATOR_NAME, key, additionalProperties.get(key)));
             }
         }
 
         for (String option : ALWAYS_ON) {
-            if (additionalProperties.containsKey(option)) {
+            String key = keyIgnoringCase(option);
+            if (key != null) {
                 throw new IllegalArgumentException(String.format(
                         "%s: option '%s' is not configurable: %s always uses 'true'; remove it (it was set to '%s')",
-                        GENERATOR_NAME, option, GENERATOR_NAME, additionalProperties.get(option)));
+                        GENERATOR_NAME, key, GENERATOR_NAME, additionalProperties.get(key)));
             }
         }
 
         for (Map.Entry<String, String> entry : FIXED_VALUES.entrySet()) {
-            String option = entry.getKey();
-            if (additionalProperties.containsKey(option)) {
+            String key = keyIgnoringCase(entry.getKey());
+            if (key != null) {
                 throw new IllegalArgumentException(String.format(
                         "%s: option '%s' is not configurable: %s always uses '%s'; remove it (it was set to '%s')",
-                        GENERATOR_NAME, option, GENERATOR_NAME, entry.getValue(), additionalProperties.get(option)));
+                        GENERATOR_NAME, key, GENERATOR_NAME, entry.getValue(), additionalProperties.get(key)));
             }
         }
+
+        // After the options with a message of their own, so those keep it; the removed options get theirs below.
+        List<String> notSuggested = new ArrayList<>(ALWAYS_ON);
+        notSuggested.addAll(FIXED_VALUES.keySet());
+        notSuggested.addAll(REJECTED_OPTIONS);
+        notSuggested.add(JSON_VALUE_SCHEMAS);
+        notSuggested.add(LEGACY_MODEL_REWRITES);
+        UnknownOptions.check(GENERATOR_NAME, additionalProperties.keySet(), cliOptions(),
+                List.of(JSON_VALUE_SCHEMAS, LEGACY_MODEL_REWRITES), notSuggested);
 
         setLibrary(REQWEST_LIBRARY);
         super.processOpts();
@@ -675,6 +688,19 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
         additionalProperties.put(RUSTDOC_LAMBDA,
                 (Mustache.Lambda) (fragment, out) -> out.write(RustDoc.wrapBareUrls(fragment.execute())));
+    }
+
+    /** The key of {@code additionalProperties} equal to {@code option} ignoring case, or {@code null}. */
+    private String keyIgnoringCase(String option) {
+        if (additionalProperties.containsKey(option)) {
+            return option;
+        }
+        for (String key : additionalProperties.keySet()) {
+            if (key.equalsIgnoreCase(option)) {
+                return key;
+            }
+        }
+        return null;
     }
 
     /**

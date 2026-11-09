@@ -106,6 +106,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     public static final String USE_CHRONO = "useChrono";
     public static final String SUPPORT_MULTIPLE_RESPONSES = "supportMultipleResponses";
     public static final String REQWEST_DEFAULT_FEATURES = "reqwestDefaultFeatures";
+    /** Cargo.toml {@code publish}, {@code repository}, {@code documentation} and {@code homepage} (as stock -g rust). */
+    public static final String PUBLISH_RUST_REGISTRY = "publishRustRegistry";
+    public static final String REPOSITORY_URL = "repositoryUrl";
+    public static final String DOCUMENTATION_URL = "documentationUrl";
+    public static final String HOME_PAGE_URL = "homePageUrl";
 
     /** Vendor extension holding the name a parameter is bound to inside the API function. */
     static final String VENDOR_EXTENSION_PARAM_IDENTIFIER = "x-rust-param-identifier";
@@ -226,6 +231,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         cliOptions.add(new CliOption(REQWEST_DEFAULT_FEATURES,
                 "Default features of the generated crate, passed on to reqwest (comma-separated; empty for none)")
                 .defaultValue("native-tls"));
+        cliOptions.add(new CliOption(PUBLISH_RUST_REGISTRY,
+                "Registry the crate may be published to: Cargo.toml publish = [\"<value>\"]; unset leaves it out"));
+        cliOptions.add(new CliOption(REPOSITORY_URL, "Cargo.toml repository; unset leaves it out"));
+        cliOptions.add(new CliOption(DOCUMENTATION_URL, "Cargo.toml documentation; unset leaves it out"));
+        cliOptions.add(new CliOption(HOME_PAGE_URL, "Cargo.toml homepage; unset leaves it out"));
 
         supportedLibraries.put(REQWEST_LIBRARY, "HTTP client: reqwest with reqwest-middleware (async).");
         setLibrary(REQWEST_LIBRARY);

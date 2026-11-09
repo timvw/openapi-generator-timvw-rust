@@ -71,7 +71,7 @@ working:
 | `packageVersion` | the spec's `info.version`, else `1.0.0` | crate version (`v1.2` becomes `1.2.0`) | |
 | `useChrono` | `true` | `date` and `date-time` as `chrono` types (a parameter or form field is sent as `YYYY-MM-DD` and RFC 3339); `false` renders both as `String` | [`schema.format.date-time`](docs/mapping/schema.md#schemaformatdate-time) |
 | `useSerdePathToError` | `false` | responses decode through `serde_path_to_error`, so an error names the path of the value | |
-| `supportMultipleResponses` | `false` | a function returns `ResponseContent<<Operation>Success>`, an enum of the 2xx responses | |
+| `supportMultipleResponses` | `false` | a function returns `ResponseContent<<Operation>Success>`, an enum of the 2xx responses, with the response's `headers` | |
 | `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none) | |
 | `publishRustRegistry` | unset | `Cargo.toml` `publish = ["<value>"]` | |
 | `repositoryUrl` | unset | `Cargo.toml` `repository` | |
@@ -97,7 +97,6 @@ The options of the generator itself:
 | `typedEnumParameters` | `false` | inline enums of parameters and form/multipart body properties become component enums the functions take, see [the comparison](docs/comparison/README.md#typedenumparameters-enum-parameters-take-the-enum) | |
 | `deprecatedAttributes` | `false` | `#[deprecated]` on deprecated properties and schemas; generated files start with `#![allow(deprecated)]` | [`schema.deprecated`](docs/mapping/schema.md#schemadeprecated) |
 | `pruneAllHelpers` | `false` | helpers nobody calls are always left out; with this option also those marked `#[allow(dead_code)]` | |
-| `boxResponseError` | `false` | box the `ResponseError` payload | |
 | `apiLintAllows` | unset | `#![allow(..)]` contents for API modules and `configuration.rs` | |
 | `userAgentFromPackage` | `false` | default user agent from `packageName` and the crate version | |
 | `preprocessedSpecFile` | unset | output-relative path the preprocessed spec is written to, as JSON | |
@@ -111,7 +110,8 @@ anything but `reqwest`. Stock options it does not support are rejected too: `avo
 `templateDir` (`-t`; the templates are part of the generator). The options that were the mapping's baseline are not
 options any more either: their rendering is always applied, and setting `boxOnlyCycles`, `defaultOnlyWhereValid`,
 `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`,
-`schemaDefaultDocs` or `nullableUnionFields`, to any value, fails generation as not configurable. An operation with
+`schemaDefaultDocs` or `nullableUnionFields`, to any value, fails generation as not configurable. So does
+`boxResponseError`: `Error::ResponseError` always holds `Box<ResponseContent<T>>`. An operation with
 the `x-group-parameters` extension (one parameter struct per operation in stock `-g rust`) fails generation as well. A
 configuration taken over from `-g rust`, or from an earlier `timvw-rust`, therefore fails instead of being silently
 ignored:

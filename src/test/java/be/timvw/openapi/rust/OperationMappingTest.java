@@ -155,12 +155,14 @@ class OperationMappingTest {
                         + "            _ => serde_json::from_str(&content).ok().map(GetItemError::DefaultResponse),\n"
                         + "        }\n"
                         + "        .or_else(|| serde_json::from_str(&content).ok().map(GetItemError::UnknownValue));\n"
-                        + "        Err(Error::ResponseError(ResponseContent { status, content, entity }))");
+                        + "        Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity, headers })))");
         String mod = read("src/apis/mod.rs");
         assertContains(mod, "pub struct ResponseContent<T> {\n    pub status: reqwest::StatusCode,\n"
-                + "    pub content: String,\n    pub entity: Option<T>,\n}");
+                + "    pub content: String,\n    pub entity: Option<T>,\n"
+                + "    /// The response's headers (`retry-after`, `x-request-id`, rate limits, ...).\n"
+                + "    pub headers: reqwest::header::HeaderMap,\n}");
         assertContains(mod, "    Reqwest(reqwest::Error),\n    ReqwestMiddleware(reqwest_middleware::Error),\n"
-                + "    Serde(serde_json::Error),\n    Io(std::io::Error),\n    ResponseError(ResponseContent<T>),");
+                + "    Serde(serde_json::Error),\n    Io(std::io::Error),\n    ResponseError(Box<ResponseContent<T>>),");
     }
 
     @Test

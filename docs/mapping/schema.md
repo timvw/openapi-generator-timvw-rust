@@ -61,7 +61,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | Wire | the file's bytes, streamed from disk; the response body as it comes |
 | Library | `reqwest::Response`; the file is opened with tokio and streamed as a `reqwest::Body` or `reqwest::multipart::Part` |
 | Options | `fileProperties` renders listed `Schema.property` entries as files |
-| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L107), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L139) |
+| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L107), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L138) |
 
 ### `schema.type.integer`
 
@@ -79,7 +79,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | `type: integer` with `format: float` or `format: double` |
 | Rust | read as `type: number` (logged) |
 | Options | always |
-| Tests | [`GenerationTest#integerWithFloatFormatIsRenderedAsNumber`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L105), [`SpecNormalizerTest#rewritesIntegerWithFloatFormatWhereverItAppears`](../../src/test/java/be/timvw/openapi/rust/SpecNormalizerTest.java#L31) |
+| Tests | [`GenerationTest#integerWithFloatFormatIsRenderedAsNumber`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L106), [`SpecNormalizerTest#rewritesIntegerWithFloatFormatWhereverItAppears`](../../src/test/java/be/timvw/openapi/rust/SpecNormalizerTest.java#L31) |
 
 ### `schema.type.number`
 
@@ -222,7 +222,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | --- | --- |
 | OpenAPI | `description` |
 | Rust | `///` on the type or field; bare URLs are wrapped in `<...>` (rustdoc's `bare_urls`). A type without a description has no empty `///` |
-| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L89), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L200) |
+| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L90), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L200) |
 
 ## Arrays
 

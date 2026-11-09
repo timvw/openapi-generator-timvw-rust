@@ -22,7 +22,9 @@ import java.util.regex.Pattern;
  * escaped letter, {@code \<} and {@code \>} (word boundaries in Rust, literals in ECMA), the empty classes {@code []}
  * and {@code [^]}, a {@code [} inside a class and {@code &&}, {@code --}, {@code ~~} (Rust's nested classes and set
  * operations), a {@code -} after a class escape or a range, a {@code \b} or a class escape as a range end, {@code {,m}} and any other {@code {} that is no
- * counted repetition or counts above 1000, an unescaped {@code ]} or {@code }} outside a class, a quantifier with nothing to repeat or
+ * counted repetition, repetition counts that multiply to more than 1000 (100 for {@code \\w}, {@code \\p{..}} and
+ * other large Unicode classes, which the crate's size limit rejects), code points that are no Unicode scalar value,
+ * reversed ranges, a group name used twice, an unescaped {@code ]} or {@code }} outside a class, a quantifier with nothing to repeat or
  * after another quantifier, inline flags, and unbalanced parentheses.</p>
  */
 final class RustRegex {
@@ -35,8 +37,20 @@ final class RustRegex {
     private static final Pattern COUNTED = Pattern.compile("\\{(\\d+)(,(\\d*))?}");
     private static final Pattern GROUP_NAME = Pattern.compile("\\?P?<([A-Za-z_][A-Za-z0-9_]*)>");
 
+    /** The most a counted repetition may multiply to, nested repetitions included. */
+    static final int MAX_REPETITION = 1000;
+    /** The most a large Unicode class ({@code \w}, {@code \p{L}}, ...) may be repeated, nested repetitions included. */
+    static final int MAX_CLASS_REPETITION = 100;
+    /** Class escapes whose Unicode class compiles large: repeating them often exceeds the crate's size limit. */
+    private static final Set<Character> LARGE_CLASSES = Set.of('w', 'W', 'S', 'D', 'p', 'P');
+
     private final String p;
     private int i;
+    /** The code point of the last single-character escape read. */
+    private int codePoint;
+    /** Whether the last class escape, or the last character class, holds a large Unicode class. */
+    private boolean large;
+    private final Set<String> names = new java.util.HashSet<>();
 
     private RustRegex(String pattern) {
         this.p = pattern;
@@ -58,26 +72,49 @@ final class RustRegex {
         }
     }
 
+    /** What a group repeats: the largest repetition product inside it, and whether it holds a large class. */
+    private static final class Frame {
+        long product = 1;
+        boolean large;
+    }
+
     private void parse() throws Unsupported {
-        int depth = 0;
+        java.util.Deque<Frame> frames = new java.util.ArrayDeque<>();
+        frames.push(new Frame());
         boolean repeatable = false;
+        long atomProduct = 1;
+        boolean atomLarge = false;
         while (i < p.length()) {
             char c = p.charAt(i);
             switch (c) {
-                case '\\' -> repeatable = escape(false) != Escape.ASSERTION;
+                case '\\' -> {
+                    Escape kind = escape(false);
+                    repeatable = kind != Escape.ASSERTION;
+                    atomProduct = 1;
+                    atomLarge = kind == Escape.CLASS && large;
+                    frames.peek().large |= atomLarge;
+                }
                 case '[' -> {
                     charClass();
                     repeatable = true;
+                    atomProduct = 1;
+                    atomLarge = large;
+                    frames.peek().large |= atomLarge;
                 }
                 case '(' -> {
                     group();
-                    depth++;
+                    frames.push(new Frame());
                     repeatable = false;
                 }
                 case ')' -> {
-                    if (--depth < 0) {
+                    if (frames.size() == 1) {
                         throw new Unsupported("an unbalanced ')'");
                     }
+                    Frame inner = frames.pop();
+                    frames.peek().product = Math.max(frames.peek().product, inner.product);
+                    frames.peek().large |= inner.large;
+                    atomProduct = inner.product;
+                    atomLarge = inner.large;
                     i++;
                     repeatable = true;
                 }
@@ -95,12 +132,22 @@ final class RustRegex {
                         throw new Unsupported("a '{' that is no counted repetition {n}, {n,} or {n,m}");
                     }
                     String max = m.group(3) == null || m.group(3).isEmpty() ? m.group(1) : m.group(3);
-                    if (m.group(1).length() > 4 || max.length() > 4 || Integer.parseInt(max) > 1000) {
-                        throw new Unsupported("a repetition count above 1000");
+                    if (m.group(1).length() > 4 || max.length() > 4) {
+                        throw new Unsupported("a repetition count above " + MAX_REPETITION);
                     }
                     if (Integer.parseInt(m.group(1)) > Integer.parseInt(max)) {
                         throw new Unsupported("a counted repetition whose minimum exceeds its maximum");
                     }
+                    long product = Integer.parseInt(max) * atomProduct;
+                    if (product > MAX_REPETITION) {
+                        throw new Unsupported("repetition counts that multiply to more than " + MAX_REPETITION
+                                + " (beyond the regex crate's size limit)");
+                    }
+                    if (atomLarge && product > MAX_CLASS_REPETITION) {
+                        throw new Unsupported("a large Unicode class (\\w, \\p{..}, ...) repeated more than "
+                                + MAX_CLASS_REPETITION + " times (beyond the regex crate's size limit)");
+                    }
+                    frames.peek().product = Math.max(frames.peek().product, product);
                     quantifier(repeatable, m.end() - i);
                     repeatable = false;
                 }
@@ -108,10 +155,12 @@ final class RustRegex {
                 default -> {
                     i++;
                     repeatable = true;
+                    atomProduct = 1;
+                    atomLarge = false;
                 }
             }
         }
-        if (depth != 0) {
+        if (frames.size() != 1) {
             throw new Unsupported("an unclosed '('");
         }
     }
@@ -137,6 +186,9 @@ final class RustRegex {
         }
         Matcher name = GROUP_NAME.matcher(p).region(i, p.length());
         if (name.lookingAt()) {
+            if (!names.add(name.group(1))) {
+                throw new Unsupported("the group name '" + name.group(1) + "' twice");
+            }
             i = name.end();
             return;
         }
@@ -155,9 +207,17 @@ final class RustRegex {
         }
         char e = p.charAt(i++);
         if (SIMPLE_ESCAPES.contains(e)) {
+            codePoint = switch (e) {
+                case 'n' -> '\n';
+                case 'r' -> '\r';
+                case 't' -> '\t';
+                case 'f' -> '\f';
+                default -> 0x0B;
+            };
             return Escape.CHARACTER;
         }
         if (CLASS_ESCAPES.contains(e)) {
+            large = LARGE_CLASSES.contains(e);
             return Escape.CLASS;
         }
         if ((e == 'b' || e == 'B') && !inClass) {
@@ -187,9 +247,11 @@ final class RustRegex {
                 throw new Unsupported("the Unicode property \\" + e + "{" + category + "} (only general categories "
                         + "are checked)");
             }
+            large = true;
             return Escape.CLASS;
         }
         if (e < 128 && !Character.isLetterOrDigit(e) && e != '<' && e != '>' && e > ' ' && e != 127) {
+            codePoint = e;
             return Escape.CHARACTER;
         }
         throw new Unsupported(Character.isDigit(e) ? "a backreference or octal escape \\" + e
@@ -197,18 +259,26 @@ final class RustRegex {
     }
 
     private Escape hex(int digits) throws Unsupported {
+        String hex;
         if (i < p.length() && p.charAt(i) == '{') {
             int close = p.indexOf('}', i);
             if (close < 0 || close == i + 1 || !p.substring(i + 1, close).matches("[0-9A-Fa-f]{1,6}")) {
                 throw new Unsupported("a malformed code point escape");
             }
+            hex = p.substring(i + 1, close);
             i = close + 1;
-            return Escape.CHARACTER;
+        } else {
+            if (i + digits > p.length() || !p.substring(i, i + digits).matches("[0-9A-Fa-f]+")) {
+                throw new Unsupported("a malformed code point escape");
+            }
+            hex = p.substring(i, i + digits);
+            i += digits;
         }
-        if (i + digits > p.length() || !p.substring(i, i + digits).matches("[0-9A-Fa-f]+")) {
-            throw new Unsupported("a malformed code point escape");
+        codePoint = Integer.parseInt(hex, 16);
+        if (codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
+            throw new Unsupported("the code point escape of " + hex + ", which is no Unicode scalar value "
+                    + "(a surrogate or beyond U+10FFFF)");
         }
-        i += digits;
         return Escape.CHARACTER;
     }
 
@@ -223,6 +293,8 @@ final class RustRegex {
         }
         boolean previousSingle = false;
         boolean first = true;
+        boolean holdsLarge = false;
+        int previous = -1;
         while (true) {
             if (i >= p.length()) {
                 throw new Unsupported("an unclosed '['");
@@ -230,6 +302,7 @@ final class RustRegex {
             char c = p.charAt(i);
             if (c == ']') {
                 i++;
+                large = holdsLarge;
                 return;
             }
             if (c == '[') {
@@ -243,23 +316,33 @@ final class RustRegex {
                     throw new Unsupported("a '-' after a class escape or a range (a range in Rust, a literal in ECMA)");
                 }
                 i++;
+                int end;
                 if (p.charAt(i) == '\\') {
                     if (escape(true) != Escape.CHARACTER) {
                         throw new Unsupported("a range ending in a class escape");
                     }
+                    end = codePoint;
                 } else if (p.charAt(i) == '[') {
                     throw new Unsupported("a '[' inside a class (a nested class in Rust)");
                 } else {
-                    i++;
+                    end = p.codePointAt(i);
+                    i += Character.charCount(end);
+                }
+                if (end < previous) {
+                    throw new Unsupported("a range whose start is after its end");
                 }
                 previousSingle = false;
                 first = false;
                 continue;
             }
             if (c == '\\') {
-                previousSingle = escape(true) == Escape.CHARACTER;
+                Escape kind = escape(true);
+                previousSingle = kind == Escape.CHARACTER;
+                previous = codePoint;
+                holdsLarge |= kind == Escape.CLASS && large;
             } else {
-                i++;
+                previous = p.codePointAt(i);
+                i += Character.charCount(previous);
                 previousSingle = true;
             }
             first = false;

@@ -26,8 +26,8 @@ import java.util.function.Consumer;
  * {@code multipleOf} of a number, {@code minItems}, {@code maxItems} and {@code uniqueItems} (by equality) of a
  * {@code Vec}, {@code minProperties} and {@code maxProperties} of a map. An optional or nullable field is checked
  * when it holds a value. Enums, {@code serde_json::Value}, byte arrays, files, dates and other typed scalars have
- * nothing to check. A pattern the {@code regex} crate cannot compile (lookaround, backreferences) is skipped with a
- * warning (see {@link RustRegex}).</p>
+ * nothing to check. A pattern {@link RustRegex} does not accept (lookaround, backreferences, ...) is skipped with a
+ * warning.</p>
  *
  * <p>The body of every {@code validate()} is computed here and stored on the model as {@value #BODY}; the patterns it
  * uses as {@value #PATTERNS}. A model whose {@code validate()} can never fail (an enum, a struct without constraints
@@ -142,7 +142,7 @@ final class ValidateRules {
         return new Result(models.size(), checking.size(), patterns, skipped);
     }
 
-    /** Reports every {@code pattern} of {@code cp} and its items that the regex crate cannot compile. */
+    /** Reports every {@code pattern} of {@code cp} and its items that {@link RustRegex} does not accept. */
     private static void skippedPatterns(CodegenProperty cp, String where, List<String> out) {
         for (int depth = 0; cp != null && depth < 8; depth++, cp = cp.isEnum ? null : cp.items) {
             String why = cp.getPattern() == null ? null : RustRegex.unsupported(cp.getPattern());

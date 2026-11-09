@@ -40,6 +40,9 @@ links the mapping instead of describing renderings itself.
 
 ## 2. Decide what to change
 
+**Status: done.** Every entry of [decisions.md](decisions.md) is decided; the adopted ones ship together in one
+breaking release (step 3).
+
 Proposals so far: [decoding only what is needed, and ownership](design/partial-decoding-and-ownership.md), and the
 [proposed changes to the mapping](decisions.md), each with a recommendation and a decision to record.
 

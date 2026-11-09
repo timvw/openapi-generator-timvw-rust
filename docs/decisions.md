@@ -5,6 +5,9 @@ names the [mapping](mapping/README.md) rule it changes, what it renders today, w
 measured impact on openai-client-base, langfuse-client-base and their ergonomic crates, the options, and a
 recommendation. Nothing here is implemented.
 
+**Status: decided** (2026-11-09). All adopted entries ship together in one breaking release of the generator,
+with the client changes in the same round; see [Release](#release).
+
 The maintainer decides each entry separately. A decision is recorded by replacing `open` on its **Decision** line
 (and in the table) with `adopt`, `adopt as option <name>`, or `keep`, with a short reason and the date. An adopted
 entry then becomes a rule change in the mapping, and is implemented under [step 3](roadmap.md#3-make-the-generator-conform).
@@ -13,18 +16,18 @@ entry then becomes a rule change in the mapping, and is implemented under [step 
 
 | # | Entry | Rule | Recommendation | Breaking for the clients? | Decision |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [Response functions returning `ApiResponse<T>`](#1-response-functions-returning-apiresponset) | [`response.content.json`](mapping/response.md#responsecontentjson) | adopt as option `responseFunctions` | no (functions are added) | open |
-| 2 | [Request bodies by reference](#2-request-bodies-by-reference) | [`requestBody.content.json`](mapping/request-body.md#requestbodycontentjson) | adopt as option `borrowedRequestBodies`, off in both clients for now | yes, if turned on: 27 + 7 call sites | open |
-| 3 | [Cookie parameters are not sent](#3-cookie-parameters-are-not-sent) | [`parameter.in.cookie`](mapping/parameter.md#parameterincookie) | adopt | no (no cookie parameters) | open |
-| 4 | [Response headers cannot be read](#4-response-headers-cannot-be-read) | [`header.schema`](mapping/header.md#headerschema), [`responses.statusCode`](mapping/responses.md#responsesstatuscode) | adopt: success headers through 1, `headers` on `ResponseContent` for errors | yes, small: 1 struct literal in a test | open |
-| 5 | [Error variant chosen by body shape](#5-error-variant-chosen-by-body-shape-not-status) | [`responses.statusCode`](mapping/responses.md#responsesstatuscode) | adopt | no compile break; `entity` changes variant (no uses) | open |
-| 6 | [`uuid` parameters are `&str`](#6-uuid-parameters-are-str) | [`schema.format.uuid`](mapping/schema.md#schemaformatuuid) | adopt | no (no uuid parameters) | open |
-| 7 | [`readOnly`/`writeOnly` in both directions](#7-readonly-and-writeonly-in-both-directions) | [`schema.readOnly`](mapping/schema.md#schemareadonly) | keep | no | open |
-| 8 | [`uniqueItems` is a `Vec`](#8-uniqueitems-is-a-vec) | [`schema.uniqueItems`](mapping/schema.md#schemauniqueitems) | keep | no (not used) | open |
-| 9 | [Validation keywords not checked](#9-validation-keywords-are-not-checked) | [`schema.pattern`](mapping/schema.md#schemapattern) | keep | only if adopted as checked types (openai-client-base) | open |
-| 10 | [Unknown generator options are ignored](#10-unknown-generator-options-are-ignored) | none (options, see the [README](../README.md#configuration)) | adopt | no (every key both clients pass is known) | open |
-| 11 | [`date-time` parameters are sent in `Display` form](#11-date-time-parameters-are-sent-in-display-form) | [`schema.format.date-time`](mapping/schema.md#schemaformatdate-time), [`parameter.in.query`](mapping/parameter.md#parameterinquery) | adopt | no (wire fix; 29 parameters in langfuse-client-base) | open |
-| 12 | [Option defaults are stock, not the baseline](#12-option-defaults-are-stock-not-the-baseline) | [baseline](mapping/README.md#baseline) | adopt in a breaking generator release | no (both set every baseline option) | open |
+| 1 | [Response functions returning `ApiResponse<T>`](#1-response-functions-returning-apiresponset) | [`response.content.json`](mapping/response.md#responsecontentjson) | adopt as option `responseFunctions` | no (functions are added) | adopt as option `responseFunctions` |
+| 2 | [Request bodies by reference](#2-request-bodies-by-reference) | [`requestBody.content.json`](mapping/request-body.md#requestbodycontentjson) | adopt as option `borrowedRequestBodies`, off in both clients for now | yes, if turned on: 27 + 7 call sites | adopt: always by reference, no option |
+| 3 | [Cookie parameters are not sent](#3-cookie-parameters-are-not-sent) | [`parameter.in.cookie`](mapping/parameter.md#parameterincookie) | adopt | no (no cookie parameters) | adopt |
+| 4 | [Response headers cannot be read](#4-response-headers-cannot-be-read) | [`header.schema`](mapping/header.md#headerschema), [`responses.statusCode`](mapping/responses.md#responsesstatuscode) | adopt: success headers through 1, `headers` on `ResponseContent` for errors | yes, small: 1 struct literal in a test | adopt |
+| 5 | [Error variant chosen by body shape](#5-error-variant-chosen-by-body-shape-not-status) | [`responses.statusCode`](mapping/responses.md#responsesstatuscode) | adopt | no compile break; `entity` changes variant (no uses) | adopt |
+| 6 | [`uuid` parameters are `&str`](#6-uuid-parameters-are-str) | [`schema.format.uuid`](mapping/schema.md#schemaformatuuid) | adopt | no (no uuid parameters) | adopt, no switch |
+| 7 | [`readOnly`/`writeOnly` in both directions](#7-readonly-and-writeonly-in-both-directions) | [`schema.readOnly`](mapping/schema.md#schemareadonly) | keep | no | keep |
+| 8 | [`uniqueItems` is a `Vec`](#8-uniqueitems-is-a-vec) | [`schema.uniqueItems`](mapping/schema.md#schemauniqueitems) | keep | no (not used) | keep `Vec`; `validate()` checks it |
+| 9 | [Validation keywords not checked](#9-validation-keywords-are-not-checked) | [`schema.pattern`](mapping/schema.md#schemapattern) | keep | only if adopted as checked types (openai-client-base) | adopt: `validate()` on every model, generated by default, never called by the generated code |
+| 10 | [Unknown generator options are ignored](#10-unknown-generator-options-are-ignored) | none (options, see the [README](../README.md#configuration)) | adopt | no (every key both clients pass is known) | adopt |
+| 11 | [`date-time` parameters are sent in `Display` form](#11-date-time-parameters-are-sent-in-display-form) | [`schema.format.date-time`](mapping/schema.md#schemaformatdate-time), [`parameter.in.query`](mapping/parameter.md#parameterinquery) | adopt | no (wire fix; 29 parameters in langfuse-client-base) | adopt |
+| 12 | [Option defaults are stock, not the baseline](#12-option-defaults-are-stock-not-the-baseline) | [baseline](mapping/README.md#baseline) | adopt in a breaking generator release | no (both set every baseline option) | adopt: the 11 options are removed; their behaviour is the only one |
 
 "Others" below means stock `-g rust` 7.27.0 (its templates in the openapi-generator jar), progenitor 0.16.0 with
 typify 0.8.0 (their source), and, where it helps, oapi-codegen (Go, from its README). What could not be checked is
@@ -62,7 +65,7 @@ every spec); keep.
 **Recommendation:** adopt as option `responseFunctions`: it gives subsets, borrowing and headers for any spec without
 changing an existing function.
 
-**Decision:** open
+**Decision:** adopt as option `responseFunctions` (2026-11-09). Documented in full: a mapping rule, a usage guide with examples (the generated type, a subset, a borrowed subset, headers, errors) and the README option entry.
 
 ## 2. Request bodies by reference
 
@@ -90,7 +93,7 @@ caller); keep.
 **Recommendation:** adopt as option `borrowedRequestBodies`, left off in both clients until a caller needs it: it is
 cheap to offer, but today the edit buys the two clients nothing.
 
-**Decision:** open
+**Decision:** adopt, always, with no option (2026-11-09). A function that only serializes its body borrows it (`&models::Item`), as the Rust API guidelines advise; the clients' call sites change in the same release.
 
 ## 3. Cookie parameters are not sent
 
@@ -111,7 +114,7 @@ client changes.
 
 **Recommendation:** adopt: the argument already exists and silently dropping it is a bug.
 
-**Decision:** open
+**Decision:** adopt (2026-11-09): the operation's cookie parameters that are set go out in one `Cookie` header, percent-encoded where the cookie syntax needs it.
 
 ## 4. Response headers cannot be read
 
@@ -144,7 +147,7 @@ the same as an option; keep (success headers through 1 only).
 **Recommendation:** adopt the field, in a breaking generator release: one test line to fix, and it removes a reason
 for langfuse-ergonomic to bypass the generated client.
 
-**Decision:** open
+**Decision:** adopt (2026-11-09): success headers through 1; `ResponseContent` gets `headers: reqwest::header::HeaderMap` for errors. Typed accessors for declared response headers are out of scope.
 
 ## 5. Error variant chosen by body shape, not status
 
@@ -172,7 +175,7 @@ wins. A 404 whose type is the same as the 400's comes back as `Status400`.
 **Recommendation:** adopt: the variant names promise a status, and no caller of the two clients depends on the
 wrong one.
 
-**Decision:** open
+**Decision:** adopt (2026-11-09): the generated code matches the status code first and decodes the body as that status's type; an unlisted status falls back to `DefaultResponse`, a body that does not decode to `UnknownValue`.
 
 ## 6. `uuid` parameters are `&str`
 
@@ -190,7 +193,7 @@ wrong one.
 
 **Recommendation:** adopt: it makes models and parameters agree, and costs the two clients nothing.
 
-**Decision:** open
+**Decision:** adopt, with no option (2026-11-09). The mapping records the rule behind it: a format has one Rust type wherever it appears (model, parameter, body); its crate is a dependency only when the API uses the format; a fallback to `String` exists only where a user needs it (`useChrono`). `uri`, `email` and `decimal` stay `String`.
 
 ## 7. `readOnly` and `writeOnly` in both directions
 
@@ -212,7 +215,7 @@ a write-only field is optional when decoding. Separate request and response type
 
 **Recommendation:** keep: neither spec has a case where it matters, and no other Rust generator does it.
 
-**Decision:** open
+**Decision:** keep (2026-11-09): `readOnly` and `writeOnly` stay ignored.
 
 ## 8. `uniqueItems` is a `Vec`
 
@@ -232,7 +235,7 @@ keep.
 
 **Recommendation:** keep: no client uses it and a set type does not work for every item type.
 
-**Decision:** open
+**Decision:** keep `Vec` (2026-11-09); the generated `validate()` of 9 reports duplicates (by equality, so any item type works).
 
 ## 9. Validation keywords are not checked
 
@@ -257,7 +260,7 @@ caller, no type change; keep.
 **Recommendation:** keep: the server checks anyway, and decode-time checks would make openai-client-base fail on
 responses it decodes today. Revisit `validate()` if a caller asks.
 
-**Decision:** open
+**Decision:** adopt (2026-11-09): every model implements a generated `Validate` trait (`fn validate(&self) -> Result<(), ValidationError>`), also models without constraints of their own, which check their nested models. It checks string length and `pattern` (with `regex`, a dependency only when a spec has a pattern; a pattern `regex` cannot express is skipped with a generation warning), number bounds and `multipleOf`, item counts and `uniqueItems`, recursively. Generated functions never call it: validating is the caller's choice, so a spec stricter than its server never blocks a request, and `Error` gets no new variant. Generated by default; an option turns the generation off. Constraints are also written in the field's documentation.
 
 ## 10. Unknown generator options are ignored
 
@@ -285,7 +288,7 @@ verified); the message names the closest known option ("did you mean `boxOnlyCyc
 
 **Recommendation:** adopt as an error: it is the same reasoning as rejecting stock options, and it breaks no client.
 
-**Decision:** open
+**Decision:** adopt (2026-11-09): an unknown option fails generation and names the closest known option. The allow-list holds the generator's options, openapi-generator's general options and the keys it sets itself (taken from a run). `boxOnlyCycles` is registered as an option first.
 
 ## 11. `date-time` parameters are sent in `Display` form
 
@@ -312,7 +315,7 @@ signatures stay the same, so nothing breaks.
 
 **Recommendation:** adopt: it is a wire bug, and fixing it lets langfuse-ergonomic call the generated `trace_list`.
 
-**Decision:** open
+**Decision:** adopt (2026-11-09): `date-time` parameters are sent with `to_rfc3339()`, `date` parameters as `YYYY-MM-DD`, in path, query and header.
 
 ## 12. Option defaults are stock, not the baseline
 
@@ -334,4 +337,12 @@ keep.
 **Recommendation:** adopt in a breaking generator release: the documented mapping should be what the generator renders
 without options.
 
-**Decision:** open
+**Decision:** adopt, further than recommended (2026-11-09): the 11 baseline options are removed and their behaviour is always applied; setting one fails generation as "not configurable", like the fixed stock options. `false` gave no rendering worth keeping: boxing every reference, `Default` where invalid, no `FromStr`, a JSON `Display` on structs, `i32` that overflows, ambiguous inline names, the stock unions, unions that ignore their tag, response enums that fail on a new value (request enums stay closed), no default in the docs, and nullable unions that cannot send `null`. The clients remove the 11 lines in the same release; their output does not change.
+
+## Release
+
+Every adopted entry (1–6 and 8–12) ships in one breaking release of the generator, implemented under
+[step 3](roadmap.md#3-make-the-generator-conform), one change at a time with its mapping rule and tests. Before the
+release, each change is checked against both clients. openai-client-base and langfuse-client-base then upgrade in the
+same round: they remove the 11 baseline options from their configuration, and their ergonomic crates pass request
+bodies by reference (2) and may use the response functions (1), the headers on errors (4) and `validate()` (9).

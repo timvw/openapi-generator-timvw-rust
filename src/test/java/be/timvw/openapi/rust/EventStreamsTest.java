@@ -137,7 +137,8 @@ class EventStreamsTest {
 
     @Test
     void requestBodiesGoOutAsTheirMediaType() throws IOException {
-        assertTrue(signature(on, "create_edit_json").contains("create_edit_json: models::CreateEditJson"));
+        assertTrue(signature(on, "create_edit_json").contains("create_edit_json: &models::CreateEditJson"));
+        assertTrue(signature(on, "create_response_stream").contains("create_response: &models::CreateResponse"));
         assertTrue(signature(on, "create_voice_multipart").contains("audio: std::path::PathBuf"));
         String api = api(on);
         assertTrue(api.contains("req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, \"application/sdp\")"

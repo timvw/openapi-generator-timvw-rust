@@ -80,12 +80,14 @@ pub enum {{{operationIdCamelCase}}}Error {
 pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#allParams}}{{{paramName}}}: {{!
 ### Option Start
 }}{{^required}}Option<{{/required}}{{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{!
+### A body that is only serialized is borrowed
+}}{{#vendorExtensions.x-rust-body-ref}}{{{.}}}{{/vendorExtensions.x-rust-body-ref}}{{^vendorExtensions.x-rust-body-ref}}{{!
 ### &str and Vec<&str>
 }}{{#isString}}{{#isArray}}Vec<{{/isArray}}{{^isUuid}}&str{{/isUuid}}{{#isArray}}>{{/isArray}}{{/isString}}{{!
 ### UUIDs
 }}{{#isUuid}}{{#isArray}}Vec<{{/isArray}}uuid::Uuid{{#isArray}}>{{/isArray}}{{/isUuid}}{{!
 ### Models and primative types
-}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}{{^vendorExtensions.x-rust-type-qualified}}models::{{/vendorExtensions.x-rust-type-qualified}}{{/isContainer}}{{/isPrimitiveType}}{{{dataType}}}{{/isUuid}}{{/isString}}{{!
+}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}{{^vendorExtensions.x-rust-type-qualified}}models::{{/vendorExtensions.x-rust-type-qualified}}{{/isContainer}}{{/isPrimitiveType}}{{{dataType}}}{{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-body-ref}}{{!
 ### Option End
 }}{{^required}}>{{/required}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{!
 ### Comma for next arguement
@@ -665,7 +667,7 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
     {{/required}}
     {{/vendorExtensions.x-rust-text-body}}
     {{^vendorExtensions.x-rust-text-body}}
-    req_builder = req_builder.json(&{{{vendorExtensions.x-rust-param-identifier}}});
+    req_builder = req_builder.json({{^vendorExtensions.x-rust-body-ref-direct}}&{{/vendorExtensions.x-rust-body-ref-direct}}{{{vendorExtensions.x-rust-param-identifier}}});
     {{/vendorExtensions.x-rust-text-body}}
     {{/isFile}}
     {{/bodyParams}}

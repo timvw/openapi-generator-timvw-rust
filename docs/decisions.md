@@ -93,7 +93,7 @@ caller); keep.
 **Recommendation:** adopt as option `borrowedRequestBodies`, left off in both clients until a caller needs it: it is
 cheap to offer, but today the edit buys the two clients nothing.
 
-**Decision:** adopt, always, with no option (2026-11-09). A function that only serializes its body borrows it (`&models::Item`), as the Rust API guidelines advise; the clients' call sites change in the same release.
+**Decision:** adopt, always, with no option (2026-11-09). A function that only serializes its body borrows it (`&models::Item`), as the Rust API guidelines advise; the clients' call sites change in the same release. Implemented in #65.
 
 ## 3. Cookie parameters are not sent
 

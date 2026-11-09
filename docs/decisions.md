@@ -337,7 +337,7 @@ keep.
 **Recommendation:** adopt in a breaking generator release: the documented mapping should be what the generator renders
 without options.
 
-**Decision:** adopt, further than recommended (2026-11-09): the 11 baseline options are removed and their behaviour is always applied; setting one fails generation as "not configurable", like the fixed stock options. `false` gave no rendering worth keeping: boxing every reference, `Default` where invalid, no `FromStr`, a JSON `Display` on structs, `i32` that overflows, ambiguous inline names, the stock unions, unions that ignore their tag, response enums that fail on a new value (request enums stay closed), no default in the docs, and nullable unions that cannot send `null`. The clients remove the 11 lines in the same release; their output does not change.
+**Decision:** adopt, further than recommended (2026-11-09): the 11 baseline options are removed and their behaviour is always applied; setting one fails generation as "not configurable", like the fixed stock options. `false` gave no rendering worth keeping: boxing every reference, `Default` where invalid, no `FromStr`, a JSON `Display` on structs, `i32` that overflows, ambiguous inline names, the stock unions, unions that ignore their tag, response enums that fail on a new value (request enums stay closed), no default in the docs, and nullable unions that cannot send `null`. The clients remove the 11 lines in the same release; their output does not change. Implemented in #61.
 
 ## Release
 

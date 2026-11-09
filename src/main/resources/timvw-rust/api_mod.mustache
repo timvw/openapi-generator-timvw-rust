@@ -85,8 +85,9 @@ impl <T> From<std::io::Error> for Error<T> {
     }
 }
 
+/// Percent-encodes a path segment: a space is `%20` (form encoding's `+` would be a literal plus in a path).
 pub fn urlencode<T: AsRef<str>>(s: T) -> String {
-    ::url::form_urlencoded::byte_serialize(s.as_ref().as_bytes()).collect()
+    ::url::form_urlencoded::byte_serialize(s.as_ref().as_bytes()).collect::<String>().replace('+', "%20")
 }
 
 {{#usesCookies}}

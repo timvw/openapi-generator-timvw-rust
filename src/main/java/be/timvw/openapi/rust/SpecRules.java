@@ -564,7 +564,8 @@ final class SpecRules {
     /**
      * Query parameters typed as an object (inline, or a reference to an object schema) become strings; the allow
      * list ({@code <path>?<name>}) names the parameters that are kept as objects and sent as {@code deepObject}
-     * (a nullable type loses its null). With {@code resetStyle}, every other query parameter gets the defaults a
+     * (a nullable type loses its null), and so is an object the spec declares with {@code style: deepObject}. A
+     * {@code deepObject} style left on anything that is not an object becomes {@code form}. With {@code resetStyle}, every other query parameter gets the defaults a
      * parameter without {@code style}/{@code explode} is parsed with ({@code form}, exploded), so arrays are sent as
      * repeated parameters whatever the spec said.
      */
@@ -592,7 +593,14 @@ final class SpecRules {
                         continue;
                     }
                     Schema schema = p.getSchema();
-                    if (deepObject.contains(path + "?" + p.getName())) {
+                    boolean object = "object".equals(singleType(schema));
+                    if (!object && schema.get$ref() != null) {
+                        Schema target = schemas.get(refName(schema.get$ref()));
+                        object = target != null && isObjectLike(target);
+                    }
+                    // listed, or an object the spec itself sends in deepObject style: kept as an object
+                    boolean declared = object && p.getStyle() == Parameter.StyleEnum.DEEPOBJECT;
+                    if (deepObject.contains(path + "?" + p.getName()) || declared) {
                         p.setStyle(Parameter.StyleEnum.DEEPOBJECT);
                         p.setExplode(true);
                         if (schema.getTypes() != null && schema.getTypes().contains("null")) {
@@ -603,14 +611,14 @@ final class SpecRules {
                         changed.add(path + "?" + p.getName() + " kept as deepObject");
                         continue;
                     }
-                    boolean object = "object".equals(singleType(schema));
-                    if (!object && schema.get$ref() != null) {
-                        Schema target = schemas.get(refName(schema.get$ref()));
-                        object = target != null && isObjectLike(target);
-                    }
                     if (object) {
                         p.setSchema(new StringSchema());
                         changed.add(path + "?" + p.getName() + " -> string");
+                    }
+                    if (p.getStyle() == Parameter.StyleEnum.DEEPOBJECT) {
+                        // deepObject is for objects: anything else is sent as name=value
+                        p.setStyle(Parameter.StyleEnum.FORM);
+                        p.setExplode(true);
                     }
                     if (resetStyle && (p.getStyle() != Parameter.StyleEnum.FORM || !Boolean.TRUE.equals(p.getExplode()))) {
                         p.setStyle(Parameter.StyleEnum.FORM);

@@ -104,6 +104,29 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   spec has a `pattern`. The generator's own warnings (a skipped pattern, a union field that is not rendered, ...) now show in the
   openapi-generator CLI and Docker image, which only print `org.openapitools` loggers; renames that are expected (a
   keyword as `r#type`, a Rust type the base generator uses as a variable name) log at debug instead of warn.
+- Parameter serialization fixes (pre-existing bugs found in reviews):
+  - A query parameter the spec declares `style: deepObject` (an object or a `$ref` to one) keeps its type and is
+    sent as `name[field]=value`; it was turned into `&str` and then dropped, or, with `resetQueryParameterStyle`,
+    sent as one `name=<text>` string (openai-client-base's vault `metadata`).
+  - A model parameter listed in `deepObjectQueryParameters` is sent as `name[field]=value`; it went with flat
+    `field=value` keys (openai-client-base's audit log `effective_at`). A required listed one is sent in `deepObject`
+    style too (it went as its JSON).
+  - `pipeDelimited` and `spaceDelimited` query arrays are joined with `|` and a space (they were joined with `,`),
+    or repeated with `explode: true`.
+  - An array of arrays (or of maps) in the query is sent as each item's JSON; it did not compile.
+  - Path arrays URL-encode each item, and a path value encodes a space as `%20` (it was `+`); path and header arrays
+    of integers, uuids, enums and structs compile and join their items' text (structs their JSON). A single enum,
+    struct or map path value is URL-encoded too (a struct or map as its JSON).
+  - An urlencoded form body is a list of pairs in the spec's order (it was a `HashMap`): an array field is a pair
+    per item (`style: form, explode: true`) unless the `encoding` says `explode: false` (joined with `,`, or `|` and a
+    space for a `pipeDelimited` or `spaceDelimited` encoding), and a required nullable
+    field left `None` is sent empty (it did not compile).
+  - A JSON body that is an array of uuids is named `uuid` (it was `uuid_colon_colon_uuid`).
+  - A model cycle through an inline union is boxed (E0072).
+  - The generated parameter code passes `clippy -D warnings`: no `into_iter()` on a reference, no redundant
+    closure.
+  A client passing a value to a declared `deepObject` parameter now passes the typed value instead of a string; a
+  server reading form arrays as one `,`-joined field reads repeated fields instead.
 
 ## What the generator renders differently from `-g rust`
 

@@ -94,8 +94,8 @@ class OperationMappingTest {
     void queryParametersFollowTheirStyle() throws IOException {
         String get = function("items_api", "get_item");
         assertContains(get, "req_builder = req_builder.query(&[(\"limit\", &param_value.to_string())]);");
-        assertContains(get, "match \"multi\" {");
-        assertContains(get, "match \"csv\" {");
+        assertContains(get, "req_builder = req_builder.query(&[(\"tag\", item)]);");
+        assertContains(get, "items.join(\",\"))]);");
         assertContains(get, "req_builder = req_builder.query(&[(\"filter\", &param_value.to_string())]);");
     }
 

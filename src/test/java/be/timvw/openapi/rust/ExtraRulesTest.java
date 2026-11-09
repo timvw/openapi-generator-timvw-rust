@@ -90,7 +90,8 @@ class ExtraRulesTest {
         assertContains(api, "param_value.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(\",\")");
         // an array of strings renders as before
         assertContains(api, "req_builder.header(\"Trace-Ids\", param_value.join(\",\").to_string())");
-        assertFalse(read(off, "src/apis/default_api.rs").contains(".iter().map(|p| p.to_string())"));
+        assertContains(read(off, "src/apis/default_api.rs"),
+                "req_builder.header(\"Beta-Features\", param_value.join(\",\").to_string())");
     }
 
     @Test

@@ -92,7 +92,9 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
   into the existing header rather than append a second one.
 - A map whose values are an inline enum (`additionalProperties: {type: string, enum: [..]}`) is
-  `HashMap<String, <Enum>>`; it was the enum itself, which a JSON object does not decode to. The field's type changes,
+  `HashMap<String, <Enum>>` (a map of lists of it `HashMap<String, Vec<<Enum>>>`, a list of such maps
+  `Vec<HashMap<String, <Enum>>>`); it was the enum itself (or a list of it), which the JSON does not decode to. The
+  field's type changes,
   and `validate()` now checks its `minProperties`/`maxProperties` (its enum values have nothing to check).
 - `contentTypeMethods` without `typedEventStreams`: the method for another request media type of an operation whose
   response is an event stream returned `sse::EventStream`, but `sse.rs` is only written with `typedEventStreams`, so
@@ -116,6 +118,15 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   spec has a `pattern`. The generator's own warnings (a skipped pattern, a union field that is not rendered, ...) now show in the
   openapi-generator CLI and Docker image, which only print `org.openapitools` loggers; renames that are expected (a
   keyword as `r#type`, a Rust type the base generator uses as a variable name) log at debug instead of warn.
+- `contentTypeMethods` with `typedEventStreams`: an event stream whose schema models the SSE envelope (required
+  `event` and `data`), which gets no typed stream, now gets none in the method for another request media type either:
+  that method returned `sse::EventStream<Envelope>` and now decodes the response as JSON like the operation's own.
+- The generated README's description (`info.description`) has its unlabelled, `rust` and indented code blocks marked
+  `text`, so `cargo test --doc` does not compile them; code blocks in another language stay as they are.
+- A discriminated union whose branches share one `enum` of every tag value (`kind: [cat, dog]` on both `Cat` and
+  `Dog`) dispatches each value to the branch the `mapping` names (`cat` decodes `Cat`, `dog` decodes `Dog`), instead
+  of trying both in order for either value. The unused `decode` helper of `src/models/union_dispatch.rs` is now left
+  out when only `first_of` is used (clippy `dead_code`).
 
 ## What the generator renders differently from `-g rust`
 

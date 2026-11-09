@@ -1,5 +1,30 @@
 openapi: 3.0.3
-info: {title: Map enum values, version: "1"}
+info:
+  title: Map enum values
+  version: "1"
+  description: |
+    A description with code blocks, which the README (the crate's documentation) must not run as doctests.
+
+    ```
+    curl https://example.com/x
+    ```
+
+    ```rust
+    this is not rust either
+    ```
+
+    ```json
+    {"stays": "json"}
+    ```
+
+    An indented block:
+
+        GET /x HTTP/1.1
+        Host: example.com
+
+    - a list item
+
+        with an indented continuation
 paths:
   /x:
     get:
@@ -24,5 +49,19 @@ components:
           type: object
           additionalProperties:
             type: string
-            enum: [on, off]
+            enum: [high, low]
+        array_labels:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              enum: [up, down]
+        label_maps:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+              enum: [left, right]
       required: [required_labels]

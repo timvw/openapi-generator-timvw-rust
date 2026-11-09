@@ -803,6 +803,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
     @Override
     public void preprocessOpenAPI(OpenAPI openAPI) {
+        if (openAPI.getInfo() != null && openAPI.getInfo().getDescription() != null
+                && !openAPI.getInfo().getDescription().isBlank()) {
+            additionalProperties.put(ReadmeText.DESCRIPTION,
+                    ReadmeText.withoutDoctests(openAPI.getInfo().getDescription().strip()));
+        }
         // The spec rules edit the document as a file would be edited, so they run on a non-resolving parse of the
         // input file: the resolving parse the CLI did shares one Schema instance between identical subtrees (two
         // components with the same inline union hold the same object) and drops `required` names that are not

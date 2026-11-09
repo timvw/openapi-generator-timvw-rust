@@ -88,6 +88,14 @@ components:
           additionalProperties:
             type: string
             enum: [low, high]
+        rating_lists:
+          type: object
+          additionalProperties:
+            type: array
+            maxItems: 1
+            items:
+              type: string
+              enum: [low, high]
         stops:
           type: array
           items:

@@ -159,8 +159,9 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | `additionalProperties: <schema>`, or `true` |
-| Rust | `std::collections::HashMap<String, T>`; `true` gives `HashMap<String, serde_json::Value>`. Values that are an inline enum give `HashMap<String, <Property>>`, with the enum `<Property>` rendered next to the struct; `validate()` checks its `minProperties`/`maxProperties` like any map's ([`schema.pattern`](#schemapattern)) |
-| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L132), [`SmallFixesTest#aMapOfAnInlineEnumIsAMapOfTheEnum`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L67) |
+| Rust | `std::collections::HashMap<String, T>`; `true` gives `HashMap<String, serde_json::Value>`. Values that are an inline enum give `HashMap<String, <Property>>`, with the enum `<Property>` rendered next to the struct, and values that are a list of one `HashMap<String, Vec<<Property>>>` (a list of such maps is `Vec<HashMap<String, <Property>>>`); `validate()` checks its `minProperties`/`maxProperties` like any map's ([`schema.pattern`](#schemapattern)) |
+| Gap | an inline enum two or more lists or maps deep (a map of lists of lists) is typed one level deep only |
+| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L132), [`SmallFixesTest#aMapOfAnInlineEnumIsAMapOfTheEnum`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L77) |
 
 ### `schema.type.free-form-object`
 

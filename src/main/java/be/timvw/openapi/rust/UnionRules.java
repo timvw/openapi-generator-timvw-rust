@@ -918,15 +918,19 @@ final class UnionRules {
                 continue;
             }
             Tagged tagged = own.get(i) == null ? null : tags.tagged(own.get(i), tag, identitySet());
-            Set<String> selected = new LinkedHashSet<>(tagged == null ? List.of() : tagged.values);
+            // The discriminator mapping, where it names the branch, says which values select it; the values the
+            // branch's tag field allows only count without one (branches often share one enum of every tag value).
+            Set<String> mapped = new LinkedHashSet<>();
             if (own.get(i) != null && own.get(i).get$ref() != null) {
                 String target = SpecRules.refName(own.get(i).get$ref());
                 mapping.forEach((key, ref) -> {
                     if (SpecRules.refName(ref).equals(target)) {
-                        selected.add(key);
+                        mapped.add(key);
                     }
                 });
             }
+            Set<String> selected = !mapped.isEmpty() ? mapped
+                    : new LinkedHashSet<>(tagged == null ? List.of() : tagged.values);
             if (selected.isEmpty()) {
                 throw new IllegalArgumentException(String.format("%s: union dispatch: %s is tagged on '%s', but no value selects "
                                 + "its variant %s (%s): the spec's branch needs fixed values or a discriminator mapping; "
@@ -1289,13 +1293,13 @@ final class UnionRules {
                         _ => kind(&value).to_owned(),
                     };
                     let mut errors = Vec::with_capacity(attempts.len());
-                    for (index, (variant, decode)) in attempts.iter().enumerate() {
+                    for (index, (variant, attempt)) in attempts.iter().enumerate() {
                         let input = if index + 1 == attempts.len() {
                             std::mem::take(&mut value)
                         } else {
                             value.clone()
                         };
-                        match decode(input) {
+                        match attempt(input) {
                             Ok(decoded) => return Ok(decoded),
                             Err(e) => errors.push(format!("{variant}: {e}")),
                         }

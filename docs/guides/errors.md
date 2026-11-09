@@ -67,7 +67,8 @@ async fn item_name(configuration: &Configuration, id: &str) -> Result<Option<Str
 }
 ```
 
-A response the spec declares without a body has a variant without a value (`Status409()`), whatever the server sends.
+A response the spec declares without a body has a variant without a value, whatever the server sends: in a spec whose
+`409` has no content, that is `Status409()`.
 A response whose media type is `text/plain` with a `string` schema holds the body as it is. `create_item` declares
 `400` as text:
 
@@ -156,5 +157,5 @@ if let Err(error) = &result {
   `Err(Error::Reqwest(_))` item and ends it.
 - A `_response` function of `responseFunctions` fails exactly like its operation; decoding happens later, in
   `ApiResponse::json()`, as a `serde_json::Error`.
-- `validate()` errors are a separate type, `ValidationErrors` (a list of `ValidationError`); no generated function returns them
-  ([validation](validation.md)).
+- `validate()` errors are a separate type, `ValidationErrors` (a list of `ValidationError`); no generated function
+  returns them ([validation](validation.md)).

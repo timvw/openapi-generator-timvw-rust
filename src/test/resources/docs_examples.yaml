@@ -260,11 +260,13 @@ components:
           deleted: '#/components/schemas/DeletedEvent'
     CreatedEvent:
       type: object
-      required: [type, item]
+      required: [type, id, item]
       properties:
         type:
           type: string
           enum: [created]
+        id:
+          type: string
         item:
           $ref: '#/components/schemas/Item'
     DeletedEvent:
@@ -276,6 +278,9 @@ components:
           enum: [deleted]
         id:
           type: string
+        item:
+          description: the item as it was, when the server still has it
+          $ref: '#/components/schemas/Item'
     Problem:
       type: object
       required: [detail]

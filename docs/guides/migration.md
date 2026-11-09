@@ -25,6 +25,9 @@ the bytes on the wire, and a few in the generator's configuration. In short:
 | [cookies sent](#cookie-parameters-are-sent) | nothing in the code | check middleware that sets `Cookie` |
 | [parameter serialization](#parameters-are-serialized-as-the-spec-says) | a declared `deepObject` parameter taken as `&str` | pass the typed value; check servers that read the old forms |
 | [maps of inline enums](#a-map-of-an-inline-enum-is-a-map) | code that used the field as the enum | use the map |
+| [array-of-uuid bodies](#parameters-are-serialized-as-the-spec-says) | the body argument `uuid_colon_colon_uuid` | call `.uuid(..)` |
+| [nullable union parameters](#smaller-fixes) | a required query, header or cookie parameter of a nullable union | wrap it in `Some(..)` |
+| [union query parameters](#smaller-fixes) | nothing in the code: sent as `Display` (`status=active`) | check servers that parsed the quoted JSON |
 | [discriminator mapping](#a-shared-tag-enum-follows-the-mapping) | nothing in the code | a value now decodes the branch the mapping names |
 | [validation](#models-implement-validate) | a hand-kept `Cargo.toml` with checked patterns | add `regex` |
 | [clippy-clean](#generated-code-is-clippy-clean) | nothing | drop `needless_return` and `into_iter_on_ref` from `apiLintAllows` |
@@ -66,9 +69,11 @@ After:
 ```
 
 A configuration that set all of them to `true` generates the same code as before, except for the other changes on
-this page. One that left any of them off now gets the mapping's rendering: the unions of
-[`schema.oneOf`](../mapping/schema.md#schemaoneof), boxes only on cycles, `Default` only where valid, `i64` integers,
-open response enums and boxed errors. Review the generated diff in that case.
+this page. One that left any of them off now gets the mapping's rendering, among others: the unions of
+[`schema.oneOf`](../mapping/schema.md#schemaoneof) decoded by their tag, `Option<Option<U>>` for a nullable union field,
+boxes only on cycles, `Default` only where valid, `FromStr` on closed enums, no JSON `Display` on structs, `i64`
+integers, open response enums, inline schemas named after where they stand (which renames public types whose title was
+not unique), defaults in the field documentation, and boxed errors. Review the generated diff in that case.
 
 ### An unknown option fails generation
 
@@ -300,14 +305,15 @@ let page = items_api::list_items()
 - **`pipeDelimited` and `spaceDelimited` query arrays** are joined with `|` and a space; before, they were joined with
   `,`. With `explode: true` they repeat.
 - An array of arrays (or of maps) in the query is sent as each item's JSON; it did not compile. A JSON body that is
-  an array of uuids is named `uuid` (it was `uuid_colon_colon_uuid`). A model cycle through an inline union is boxed.
+  an array of uuids is named `uuid` (it was `uuid_colon_colon_uuid`): call the builder's `.uuid(&ids)` instead of
+  `.uuid_colon_colon_uuid(..)`. A model cycle through an inline union is boxed.
 
 ### A map of an inline enum is a map
 
 A property `additionalProperties: {type: string, enum: [..]}` was rendered as the enum itself (or a list of it), which
-the JSON does not decode to. It is now `HashMap<String, <Enum>>`. A map of lists of it is `HashMap<String, Vec<<Enum>>>`,
-and a list of such maps is `Vec<HashMap<String, <Enum>>>`. The field's type changes, and `validate()` checks its
-`minProperties`/`maxProperties`.
+the JSON does not decode to. It is now `HashMap<String, <Enum>>`. A map of lists of it is `HashMap<String,
+Vec<<Enum>>>`, and a list of such maps is `Vec<HashMap<String, <Enum>>>`. The field's type changes, and `validate()`
+checks its `minProperties`/`maxProperties`.
 
 ### A shared tag enum follows the mapping
 
@@ -319,18 +325,21 @@ in the code; a value that decoded into the wrong branch now decodes into the rig
 ### Models implement `Validate`
 
 Every model implements `models::validation::Validate`. `validate()` returns every violation as a `ValidationErrors`
-list. Constrained fields get a `Validation:` line in their documentation ([validation](validation.md)). Nothing calls it, so behaviour does not change. Three things to
-check:
+list. Constrained fields get a `Validation:` line in their documentation ([validation](validation.md)). Nothing calls
+it, so behaviour does not change. Three things to check:
 
 - A crate with a checked `pattern` depends on `regex`. A hand-kept `Cargo.toml` adds `regex = "1"` (openai-client-base
   does).
 - A schema whose module would be `models::validation` fails generation. Rename it, or set `validateMethods=false`.
 - A trait of yours with a method named `validate`, in scope next to `Validate`, makes a call ambiguous. Call it by its
   path (`Validate::validate(&value)`).
-- The generator's own warnings now reach the CLI and the Docker image log, among them one per `pattern` that is not
-  checked ([which](validation.md#what-is-not-checked)). Identifier renames and union fields a variant does not carry
-  log at debug, so only warnings you can act on remain (openai-client-base: 71 instead of 5331, langfuse-client-base:
-  4 instead of 1472, most of them openapi-generator's own). Read them once.
+
+### The generator's warnings reach the log
+
+The generator's own warnings now reach the CLI and the Docker image log, among them one per `pattern` that is not
+checked ([which](validation.md#what-is-not-checked)). Identifier renames and union fields a variant does not carry log
+at debug, so only warnings you can act on remain (openai-client-base: 71 instead of 5331, langfuse-client-base: 4
+instead of 1472, most of them openapi-generator's own). Read them once.
 
 ### Generated code is clippy-clean
 
@@ -369,7 +378,7 @@ After: no `apiLintAllows`.
   compile:
 
   ```text
-  model Thing: properties 'foo-bar' and 'foo_bar' both become the Rust field foo_bar; rename one in the spec or map one with --name-mappings
+  timvw-rust: model Thing: properties 'foo-bar' and 'foo_bar' both become the Rust field foo_bar; rename one in the spec or map one with --name-mappings
   ```
 
 - `cargo test --doc` passes on a generated crate. The generated README's `Cargo.toml` line and `cargo doc --open` are

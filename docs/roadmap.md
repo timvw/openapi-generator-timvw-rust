@@ -7,8 +7,9 @@ documented mapping: a written definition of what Rust each OpenAPI construct bec
 against it, and improved through it.
 
 The generator stays a Java openapi-generator plugin. Both clients stay supported throughout. Its Rust layer and
-templates are its own (ported from `-g rust`, see [history](history.md#from-a-subclass-of--g-rust-to-its-own-rust-layer)),
-so a change the mapping decides on is made in the generator's code, not worked around a stock template.
+templates are its own (ported from `-g rust`, see
+[history](history.md#from-a-subclass-of--g-rust-to-its-own-rust-layer)), so a change the mapping decides on is made in
+the generator's code, not worked around a stock template.
 
 Out of scope: other implementations of the mapping, such as a rewrite in Rust. That would be a separate project that
 could reuse the mapping.

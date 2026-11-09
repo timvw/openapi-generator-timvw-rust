@@ -55,9 +55,9 @@ assert_eq!(paths, ["name", "sku", "tags"]);
 
 `validate()` checks the whole value and returns **every** violation as a `ValidationErrors`, a non-empty list of
 `ValidationError`s: in the order of the fields, nested values depth-first, the entries of a map ordered by their
-rendered (escaped) key. The order is stable, and a valid value allocates nothing. It has `len()`, `iter()` and `into_vec()`, iterates with `for`
-(by value or by reference), and implements `Display` (one line per error) and `std::error::Error`, so `?` takes it into
-your error type. Each `ValidationError` holds:
+rendered (escaped) key. The order is stable, and a valid value allocates nothing. It has `len()`, `iter()` and
+`into_vec()`, iterates with `for` (by value or by reference), and implements `Display` (one line per error) and
+`std::error::Error`, so `?` takes it into your error type. Each `ValidationError` holds:
 
 | Field | Holds |
 | --- | --- |
@@ -158,8 +158,8 @@ WARN o.o.codegen.timvw.TimvwRustCodegen - timvw-rust: validate: Patterns.skip_bi
 
 `validateMethods` is on by default. With `--additional-properties=validateMethods=false` there is no
 `models/validation.rs`, no `Validate` impl and no `regex` dependency. The field documentation stays. Turn it off for a
-crate whose size or compile time matters more than the checks. openai-client-base's spec gives about 1,300 checks, which make its
-generated code 9% longer. Nothing else changes, since no generated code calls it.
+crate whose size or compile time matters more than the checks. openai-client-base's spec gives about 1,300 checks, which
+make its generated code 9% longer. Nothing else changes, since no generated code calls it.
 
 ### Implementing `Validate` yourself
 

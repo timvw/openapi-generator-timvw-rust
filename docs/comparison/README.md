@@ -2,8 +2,8 @@
 
 This page compares three ways to generate a Rust client from the same spec:
 
-- **stock**: openapi-generator 7.27.0, `-g rust`, with the settings timvw-rust always generates for (`library=reqwest`, `supportAsync`,
-  `supportMiddleware`, `useChrono=false`).
+- **stock**: openapi-generator 7.27.0, `-g rust`, with the settings timvw-rust always generates for (`library=reqwest`,
+  `supportAsync`, `supportMiddleware`, `useChrono=false`).
 - **timvw-rust**: this generator, with the options openai-client-base runs, minus its OpenAI-specific lists
   ([`timvw-rust-config.json`](timvw-rust-config.json)).
 - **progenitor**: Oxide's generator, 0.16.0, through `cargo progenitor --interface builder`. Its types come from typify.
@@ -363,9 +363,9 @@ An enum with a description keeps it. openai-client-base: 379 lines removed; lang
 
 An inline `enum` of a query, path, header or cookie parameter, or of a property of a `multipart/form-data` or
 `application/x-www-form-urlencoded` body, becomes a component enum before inline schemas are named:
-`<operationId>_<parameter>` for a parameter, `<Schema>_<property>` for a body property (`<operationId>_request_<property>`
-when the body is inline), with `_item` for the items of an array. The function takes the enum, which has `Display`
-(and `FromStr` with `enumFromStr`):
+`<operationId>_<parameter>` for a parameter, `<Schema>_<property>` for a body property
+(`<operationId>_request_<property>` when the body is inline), with `_item` for the items of an array. The function takes
+the enum, which has `Display` (and `FromStr` with `enumFromStr`):
 
 ```diff
 -pub async fn list_models(configuration: &configuration::Configuration, limit: Option<i64>, order: Option<&str>, after: Option<&str>) -> ...
@@ -405,9 +405,9 @@ that came in went out as an absent field. With the option it renders like any ot
 +    pub stop: Option<Option<models::CreateChatCompletionRequestStop>>,
 ```
 
-`None` leaves the field out, `Some(None)` sends `"stop": null`, `Some(Some(v))` sends the value. A required nullable union
-field goes from `U` to `Option<U>`. The union keeps the property's `nullable` when the always-on spec rule hoists an
-inline union into a component (that rule dropped it until now; it still does without the option).
+`None` leaves the field out, `Some(None)` sends `"stop": null`, `Some(Some(v))` sends the value. A required nullable
+union field goes from `U` to `Option<U>`. The union keeps the property's `nullable` when the always-on spec rule hoists
+an inline union into a component (that rule dropped it until now; it still does without the option).
 
 ### `schemaDefaultDocs`: defaults in the documentation
 

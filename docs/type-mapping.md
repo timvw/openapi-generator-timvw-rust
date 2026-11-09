@@ -2,12 +2,12 @@
 
 How `timvw-rust` renders each OpenAPI construct. The **Rust** column is the rendering without options
 (openai-client-base also sets `multipartHelper`, `typedEventStreams` and `contentTypeMethods`; langfuse-client-base
-`typedEnumParameters` and `deprecatedAttributes`). The **Option** column
-names what changes it, and where stock `-g rust` renders something else, what. The former baseline options
-(`boxOnlyCycles`, `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`,
-`modelUnions`, `unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) are always applied and cannot
-be set, and so is the former `boxResponseError`. The [README](../README.md#options) explains each option; the [generator comparison](comparison/README.md) holds the same
-constructs against stock `-g rust` and progenitor.
+`typedEnumParameters` and `deprecatedAttributes`). The **Option** column names what changes it, and where stock `-g
+rust` renders something else, what. The former baseline options (`boxOnlyCycles`, `defaultOnlyWhereValid`,
+`enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`,
+`schemaDefaultDocs`, `nullableUnionFields`) are always applied and cannot be set, and so is the former
+`boxResponseError`. The [README](../README.md#options) explains each option; the [generator
+comparison](comparison/README.md) holds the same constructs against stock `-g rust` and progenitor.
 
 The rendering assumes `library=reqwest`, the only HTTP library `timvw-rust` supports. Rows marked *(reqwest)*
 render types that come from the HTTP library; the others do not depend on it
@@ -110,7 +110,8 @@ These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
 
 Each of these is a rule with its tests in [mapping/](mapping/README.md#objects): [operation.md](mapping/operation.md),
 [parameter.md](mapping/parameter.md), [request-body.md](mapping/request-body.md), [response.md](mapping/response.md),
-[responses.md](mapping/responses.md), [server.md](mapping/server.md) and [security-scheme.md](mapping/security-scheme.md).
+[responses.md](mapping/responses.md), [server.md](mapping/server.md) and
+[security-scheme.md](mapping/security-scheme.md).
 
 ### Functions and modules
 

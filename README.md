@@ -34,12 +34,12 @@ adapt a spec; none of them makes the models or the error handling "more correct"
 ## What you get
 
 The examples use a small API with an `Items` tag (it is in
-[`src/test/resources/docs_examples.yaml`](src/test/resources/docs_examples.yaml), and every example on this page and
-in the guides is compiled by the tests).
+[`src/test/resources/docs_examples.yaml`](src/test/resources/docs_examples.yaml)). Every Rust example on this page and
+in the guides, except those marked as 0.20 code or abridged signatures, is compiled by the tests.
 
 ```text
 my-client/
-  Cargo.toml          bon, serde, serde_json, reqwest, reqwest-middleware (+ chrono, uuid, regex where used)
+  Cargo.toml          bon, serde, serde_json, reqwest, reqwest-middleware, ... (see below)
   src/lib.rs
   src/apis/           configuration.rs, mod.rs (Error, ResponseContent), items_api.rs: one module per tag
   src/models/         one file per schema, mod.rs, validation.rs (the Validate trait)
@@ -176,11 +176,11 @@ Pass options with `--additional-properties=<name>=<value>,...` or in a `-c` conf
 | `useChrono` | `true` | `date`/`date-time` as chrono types; `false` renders both as `String` ([rule](docs/mapping/schema.md#schemaformatdate-time)) |
 | `useSerdePathToError` | `false` | success bodies decode through `serde_path_to_error`, so a decoding error names the path |
 | `supportMultipleResponses` | `false` | a function returns `ResponseContent<<Operation>Success>`, an enum of its 2xx responses, with status and headers |
-| `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none) |
+| `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none). Several values only work in a `-c` config file, as a comma ends an `--additional-properties` value |
 | `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl` | unset | `Cargo.toml` `publish`, `repository`, `documentation`, `homepage` |
 | `bonBuilders` | `true` | `bon::Builder` on model structs and `#[bon::builder]` on API functions; `false` makes the functions take positional arguments ([rule](docs/mapping/schema.md#schemaproperties)) |
 | `userAgentFromPackage` | `false` | default user agent `<packageName>/<crate version>` |
-| `apiLintAllows` | unset | `#![allow(..)]` at the top of the API modules and `configuration.rs` |
+| `apiLintAllows` | unset | `#![allow(..)]` at the top of the API modules and `configuration.rs`. Several lints (comma-separated) only work in a `-c` config file, as a comma ends an `--additional-properties` value |
 
 **Extra functions and modules.** All are off by default except `validateMethods`, and each one adds to the crate.
 
@@ -233,7 +233,8 @@ operation with `x-group-parameters` fails too. The [migration guide](docs/guides
 The image is a drop-in for `openapitools/openapi-generator-cli`: same arguments, same `/local` mount, same
 `JAVA_OPTS`.
 
-With the [openapi-generator Maven plugin](https://github.com/OpenAPITools/openapi-generator/tree/master/modules/openapi-generator-maven-plugin),
+With the openapi-generator Maven plugin
+([openapi-generator-maven-plugin](https://github.com/OpenAPITools/openapi-generator/tree/master/modules/openapi-generator-maven-plugin)),
 add the generator as a dependency of the plugin:
 
 ```xml
@@ -266,9 +267,23 @@ Use `<additionalProperties>` rather than `<configOptions>`. The plugin silently 
 not know, so a misspelt one there is never checked.
 
 Files you maintain by hand in the output directory (`Cargo.toml`, `README.md`, `lib.rs`) go in its
-`.openapi-generator-ignore`, as with any openapi-generator run. A hand-kept `Cargo.toml` then has to follow the
-dependencies the generator would write: `chrono`, `uuid` and `regex` (once a checked `pattern` appears) when the spec
-uses them. Generating once into an empty directory shows the generated `Cargo.toml` to compare with.
+`.openapi-generator-ignore`, as with any openapi-generator run. A hand-kept `Cargo.toml` has to follow the
+dependencies the generator writes, which depend on the spec and the options:
+
+| Dependency | When |
+| --- | --- |
+| `serde`, `serde_json`, `serde_repr`, `url`, `reqwest`, `reqwest-middleware` | always |
+| `bon` | `bonBuilders` (the default) |
+| `serde_with` | a nullable optional property (`Option<Option<T>>`) or a `format: byte` property |
+| `chrono` | a `date` or `date-time` anywhere (model, parameter, union variant), with `useChrono` (the default) |
+| `uuid` | a `format: uuid` anywhere |
+| `regex` | a `pattern` that `validate()` checks |
+| `futures-core`, reqwest's `stream` feature | `typedEventStreams` with an operation that streams |
+| `tokio` (`fs`), `tokio-util` (`codec`), reqwest's `stream` feature | a file body, or a multipart file without `multipartHelper` |
+| `serde_path_to_error` | `useSerdePathToError` |
+
+The rule: on every upgrade of the generator (and every spec update), generate once into an empty directory and
+compare its `Cargo.toml` with yours.
 
 ## Documentation
 
@@ -294,11 +309,11 @@ Maven comes with the wrapper.
 ./mvnw verify
 ```
 
-The tests generate in-process from the specs in `src/test/resources/`. Each rule of the [mapping](docs/mapping/README.md)
-links the tests that show it (`MappingDocsTest` checks the links; `python3 tools/link-mapping-tests.py` rewrites their
-line numbers). The runtime tests compile generated crates and run `src/test/rust/*.rs` against them with cargo,
-`cargo clippy -D warnings` included. To try another openapi-generator version:
-`./mvnw -Dopenapi-generator.version=<version> verify`.
+The tests generate in-process from the specs in `src/test/resources/`. Each rule of the
+[mapping](docs/mapping/README.md) links the tests that show it (`MappingDocsTest` checks the links; `python3
+tools/link-mapping-tests.py` rewrites their line numbers). The runtime tests compile generated crates and run
+`src/test/rust/*.rs` against them with cargo, `cargo clippy -- -D warnings` included. To try another openapi-generator
+version: `./mvnw -Dopenapi-generator.version=<version> verify`.
 
 Build the image and generate the petstore smoke test with it:
 

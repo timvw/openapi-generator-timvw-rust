@@ -195,10 +195,10 @@ let names: ItemNames = response.json_borrowed()?;   // lives as long as `respons
 println!("{} {}", names.id, names.name);
 ```
 
-Use `Cow<'a, str>` with `#[serde(borrow)]` for strings that may contain escapes, and `&'a str` only where they
-cannot. `&'a serde_json::value::RawValue` keeps a part of the body as JSON text, checked but not parsed, to decode
-later or pass on; it needs serde_json's `raw_value` feature in your `Cargo.toml`
-(`serde_json = { version = "1", features = ["raw_value"] }`). The value cannot outlive `response`; to keep it, decode with `json_as` instead.
+Use `Cow<'a, str>` with `#[serde(borrow)]` for strings that may contain escapes, and `&'a str` only where they cannot.
+`&'a serde_json::value::RawValue` keeps a part of the body as JSON text, checked but not parsed, to decode later or pass
+on; it needs serde_json's `raw_value` feature in your `Cargo.toml` (`serde_json = { version = "1", features =
+["raw_value"] }`). The value cannot outlive `response`; to keep it, decode with `json_as` instead.
 
 ### Status and headers
 

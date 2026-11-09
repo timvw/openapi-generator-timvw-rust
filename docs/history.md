@@ -105,6 +105,19 @@ the code before and after, and the steps for a client repository.
 
 ### New
 
+- Every model implements a generated `Validate` trait
+  ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
+  [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,
+  `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems`
+  (by equality; arrays stay `Vec`), `minProperties` and `maxProperties`, recursively, and returns the first
+  `models::validation::ValidationError` (path, rule, offending value). Nothing generated calls it, and `Error` is unchanged.
+  The crate gains `src/models/validation.rs` (declared in `models/mod.rs`, so a client's own `lib.rs` needs no change), an `impl crate::models::validation::Validate` per model, and a `regex` dependency when
+  the spec has a `pattern`; every constrained field's documentation lists its constraints. A client that wants
+  validation calls `validate()` (with `use <crate>::models::validation::Validate;`); one that does not want the code sets
+  `validateMethods=false`. A client that keeps its own `Cargo.toml` (openai-client-base) adds `regex = "1"` when its
+  spec has a `pattern`. The generator's own warnings (a skipped pattern, a union field that is not rendered, ...) now show in the
+  openapi-generator CLI and Docker image, which only print `org.openapitools` loggers; renames that are expected (a
+  keyword as `r#type`, a Rust type the base generator uses as a variable name) log at debug instead of warn.
 - `responseFunctions` (new option, off by default; [decision 1](decisions.md#1-response-functions-returning-apiresponset)):
   every operation whose success is a JSON body, text or nothing also gets `<operation>_response`, which sends the
   same request and fails with the same typed error but returns `apis::ApiResponse<T>`: the `status`, the `headers`

@@ -83,12 +83,20 @@ import java.util.Set;
  */
 public class TimvwRustCodegen extends RustCodegenBase {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(TimvwRustCodegen.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger("org.openapitools.codegen.timvw.TimvwRustCodegen");
 
     public static final String GENERATOR_NAME = "timvw-rust";
 
     /** Our own option: derive {@code bon::Builder} on model structs and {@code #[bon::builder]} on API functions. */
     public static final String BON_BUILDERS = "bonBuilders";
+
+    /**
+     * Our own option (default on): every model implements the generated {@code models::validation::Validate} trait, which
+     * checks the validation keywords of its schema (see {@link ValidateRules}).
+     */
+    public static final String VALIDATE_METHODS = "validateMethods";
+    /** Set when a generated {@code validate()} matches a {@code pattern}: the crate depends on {@code regex}. */
+    static final String VALIDATION_REGEX = "validationRegex";
 
     /** Our own option: let schema titles name, merge and replace types (stock openapi-generator 7.2x behaviour). */
     public static final String TITLE_NAMING = "titleNaming";
@@ -313,6 +321,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private final Set<String> deprecatedModels = new java.util.TreeSet<>();
     private OpenEnums.Census openEnumsCensus;
     private String unionPlanFile;
+    private boolean validateMethods = true;
     private final Map<String, CodegenModel> unionModels = new HashMap<>();
     private boolean typedEventStreams;
     /** Some operation got a typed event stream: only then are {@code sse.rs} and its {@code mod} line written. */
@@ -349,6 +358,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
         cliOptions.add(CliOption.newBoolean(BON_BUILDERS,
                 "Derive bon::Builder on model structs and put #[bon::builder] on API functions", true));
+        cliOptions.add(CliOption.newBoolean(VALIDATE_METHODS,
+                "Every model implements the generated models::validation::Validate trait: validate() checks minLength, "
+                        + "maxLength, pattern (with the regex crate), minimum, maximum, exclusiveMinimum, "
+                        + "exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties and "
+                        + "maxProperties, in every nested model, and returns the first violation. Nothing calls it. "
+                        + "Set to false to generate no trait, no impls and no regex dependency", true));
         cliOptions.add(CliOption.newBoolean(TITLE_NAMING,
                 "Let schema titles take part in type naming: titled component schemas of the same shape are merged, "
                         + "inline schemas matching a titled component are replaced by it, and an inline array's title "
@@ -524,6 +539,17 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 openEnumsCensus.reachableTagged().size(), openEnumsCensus.guardedUnions().size(),
                 openEnumsCensus.untaggedUnions().size());
         writeUnionPlan(unions);
+        if (validateMethods) {
+            ValidateRules.checkModuleName(objs);
+        }
+        ValidateRules.Result validation = ValidateRules.apply(objs, validateMethods,
+                msg -> LOGGER.warn("{}: validate: {}", GENERATOR_NAME, msg));
+        if (validateMethods) {
+            additionalProperties.put(VALIDATION_REGEX, validation.patterns() > 0);
+            LOGGER.info("{}: validate: {} models, {} of them check something; {} patterns, {} skipped",
+                    GENERATOR_NAME, validation.models(), validation.checking(), validation.patterns(),
+                    validation.skippedPatterns().size());
+        }
         DefaultRules.mark(objs);
         Imports.markModels(objs);
         return objs;
@@ -661,6 +687,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
         boolean bonBuilders = !additionalProperties.containsKey(BON_BUILDERS)
                 || convertPropertyToBooleanAndWriteBack(BON_BUILDERS);
         additionalProperties.put(BON_BUILDERS, bonBuilders);
+
+        validateMethods = !additionalProperties.containsKey(VALIDATE_METHODS)
+                || convertPropertyToBooleanAndWriteBack(VALIDATE_METHODS);
+        additionalProperties.put(VALIDATE_METHODS, validateMethods);
+        if (validateMethods) {
+            supportingFiles.add(new SupportingFile("validation.mustache", modelFolder, "validation.rs"));
+        }
 
         titleNaming = !additionalProperties.containsKey(TITLE_NAMING)
                 || convertPropertyToBooleanAndWriteBack(TITLE_NAMING);

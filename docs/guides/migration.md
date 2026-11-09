@@ -272,6 +272,9 @@ check:
 - A schema whose module would be `models::validation` fails generation. Rename it, or set `validateMethods=false`.
 - A trait of yours with a method named `validate`, in scope next to `Validate`, makes a call ambiguous. Call it by its
   path (`Validate::validate(&value)`).
+- The generator's own warnings now reach the CLI and the Docker image log, among them one per `pattern` that is not
+  checked ([which](validation.md#what-is-not-checked)). Expected renames (a keyword field as `r#type`) moved to debug.
+  A generation log that was quiet may now show warnings; read them once.
 
 ### Generated code is clippy-clean
 

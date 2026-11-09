@@ -61,3 +61,10 @@ impl std::fmt::Display for Tool {
     }
 }
 
+impl crate::models::validation::Validate for Tool {
+    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {
+        Ok(())
+    }
+}
+
+

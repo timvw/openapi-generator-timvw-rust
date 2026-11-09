@@ -84,7 +84,8 @@ async fn create(configuration: &Configuration, new_item: &models::NewItem) -> Re
 
 The check is recursive. A model checks the models it holds, the items of its `Vec`s, the values of its maps, the
 `Option`s that hold a value (nullable ones included), boxed values and the active variant of a union. A model without
-constraints of its own still implements `Validate`, for the models it holds, or returns `Ok(())`. `Box<T>`,
+constraints of its own still implements `Validate`, for the models it holds, or returns `Ok(())`; so does every enum
+(`Status::validate()` is `Ok(())`), so any model can be validated without knowing what it holds. `Box<T>`,
 `Option<T>`, `Vec<T>` and `HashMap<String, T>` implement it for any `T: Validate` and add `[i]` or `["key"]` to the
 path.
 
@@ -102,11 +103,27 @@ depends on `regex` only when the spec has a pattern that is checked.
 
 ## What is not checked
 
-- **Patterns `regex` does not read like JavaScript.** A spec's patterns are ECMA-262 regular expressions. The
-  generator checks a pattern only when every construct in it reads the same in both languages. A pattern with
-  lookaround (`(?!..)`), backreferences, `\Z`, `\c`, `[]`, `[^]`, `a{,3}`, surrogate escapes (`\uD83D`), set
-  operations, inline flags, nested classes, repetition counts that would exceed `regex`'s size limit, and so on, is
-  skipped. The generator logs a warning that names the schema, the property and the construct:
+- **Patterns `regex` does not read like JavaScript.** A spec's patterns are ECMA-262 regular expressions, and the
+  `regex` crate reads some constructs differently or not at all. The generator therefore checks a pattern only when
+  every construct in it is on a whitelist that both engines read alike:
+  - literals, `.`, `^` and `$`;
+  - groups `(...)`, `(?:...)`, `(?<name>...)` with distinct names;
+  - the quantifiers `*`, `+`, `?`, `{n}`, `{n,}`, `{n,m}`;
+  - `\d \w \s \b` and their negations;
+  - code point escapes for Unicode scalar values, and general categories (`\p{L}`);
+  - escaped punctuation;
+  - classes with single-character ranges in order.
+
+  Repetition counts must also keep the compiled regex under `regex`'s 10 MB size limit. Nested counts may multiply to
+  at most 1000, or at most 100 around `\w`, `\p{..}` and other large Unicode classes.
+
+  Anything else is skipped. That includes lookaround (`(?!..)`), backreferences, `\Z`, `\c`, `[]`, `[^]`, `a{,3}`,
+  surrogate escapes (`\uD83D`), reversed ranges (`[z-a]`), a group name used twice, `\w{1000}`, nested classes, set
+  operations and inline flags. One difference stays: `regex`'s `\d` and `\w` are Unicode-aware, ECMA-262's are
+  ASCII, so `\d` also accepts other scripts' digits. For a skipped pattern the generator logs a warning that names the
+  schema, the property and the construct. Since 0.21 the plugin's warnings reach the openapi-generator CLI and the
+  Docker image (they log under `org.openapitools.codegen.timvw`), and expected renames (a keyword field as `r#type`)
+  log at debug, so what the CLI prints is worth reading:
 
 ```text
 WARN o.o.codegen.timvw.TimvwRustCodegen - timvw-rust: validate: Patterns.skip_big_z: pattern ^a\Z is not checked: it holds the escape \Z
@@ -114,9 +131,10 @@ WARN o.o.codegen.timvw.TimvwRustCodegen - timvw-rust: validate: Patterns.skip_bi
 
   A skipped pattern accepts any value. Check the warnings once when you adopt a new spec version. A pattern that is
   accepted but still fails to compile at run time is treated the same way; it never panics.
-- **Types with nothing to check:** inline string enums (they are `String` without `typedEnumParameters`),
+- **Types with nothing to check:** enums (their `validate()` is `Ok(())`), inline string enums,
   `serde_json::Value`, byte arrays, files, dates, uuids and `bool`.
-- **A bound every value of the type meets** (an `int64` field with the full `int64` range) is not compared.
+- **A bound every value of the type meets** (an `int64` field with the full `int64` range) is not compared. A float
+  bound beyond `f32` is compared as `f64`; one beyond `f64` is not checked.
 - **`minProperties`/`maxProperties` of a struct**, and of a map whose values are an inline enum (a known gap in
   [`schema.pattern`](../mapping/schema.md#schemapattern)).
 - **`readOnly`, `writeOnly`, `format`** (beyond the type it picks), `const`, `not`, `if`/`then`, `dependentRequired`:

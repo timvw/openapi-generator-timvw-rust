@@ -33,7 +33,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | `type: integer` | `i64`; `format: int32` gives `i32` | always (stock: `i32` unless `format: int64`) |
 | `type: integer` with `format: float`/`double` | read as `type: number` (logged) | |
 | `type: boolean` | `bool` | |
-| `minLength`, `maximum`, `pattern`, ... | not checked; the type stays as above | |
+| `minLength`, `maximum`, `pattern`, ... | the type stays as above; the generated `validate()` of the model checks them and the field's docs list them (`Validation: ...`) | `validateMethods` (default `true`): `false` generates no `Validate` trait |
 | a component that is only a scalar (`Name: {type: string}`) | no type of its own: a reference to it is the scalar, with the component's description | `stringIdSchemas` renders listed components as `String` whatever they hold |
 
 ### Objects
@@ -62,7 +62,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
 | `type: array` | `Vec<T>`; items are never boxed | |
-| `uniqueItems: true` | `Vec<T>` (not a set) | |
+| `uniqueItems: true` | `Vec<T>` (not a set); `validate()` reports two equal items | |
 | inline items that are objects | a model named after the array (`ChatCompletionChoicesInner`) | always: named `<Schema><property>_inner` unless its title is unique |
 
 ### Enums
@@ -177,6 +177,4 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
   (an error always has them). Declared response headers get no typed accessor.
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
   ([mapping](mapping/README.md#objects)).
-- Validation keywords (`minLength`, `pattern`, `maximum`, ...) are not checked.
 - `readOnly`/`writeOnly` properties are in both directions.
-- `uniqueItems` gives a `Vec`, not a set.

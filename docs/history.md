@@ -130,6 +130,29 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   of trying both in order for either value: a branch's own tag values select it unless the mapping gives them to
   another branch. The unused `decode` helper of `src/models/union_dispatch.rs` is now left
   out when only `first_of` is used (clippy `dead_code`).
+- Parameter serialization fixes (pre-existing bugs found in reviews):
+  - A query parameter the spec declares `style: deepObject` (an object or a `$ref` to one) keeps its type and is
+    sent as `name[field]=value`; it was turned into `&str` and then dropped, or, with `resetQueryParameterStyle`,
+    sent as one `name=<text>` string (openai-client-base's vault `metadata`).
+  - A model parameter listed in `deepObjectQueryParameters` is sent as `name[field]=value`; it went with flat
+    `field=value` keys (openai-client-base's audit log `effective_at`). A required listed one is sent in `deepObject`
+    style too (it went as its JSON).
+  - `pipeDelimited` and `spaceDelimited` query arrays are joined with `|` and a space (they were joined with `,`),
+    or repeated with `explode: true`.
+  - An array of arrays (or of maps) in the query is sent as each item's JSON; it did not compile.
+  - Path arrays URL-encode each item, and a path value encodes a space as `%20` (it was `+`); path and header arrays
+    of integers, uuids, enums and structs compile and join their items' text (structs their JSON). A single enum,
+    struct or map path value is URL-encoded too (a struct or map as its JSON).
+  - An urlencoded form body is a list of pairs in the spec's order (it was a `HashMap`): an array field is a pair
+    per item (`style: form, explode: true`) unless the `encoding` says `explode: false` (joined with `,`, or `|` and a
+    space for a `pipeDelimited` or `spaceDelimited` encoding), and a required nullable
+    field left `None` is sent empty (it did not compile).
+  - A JSON body that is an array of uuids is named `uuid` (it was `uuid_colon_colon_uuid`).
+  - A model cycle through an inline union is boxed (E0072).
+  - The generated parameter code passes `clippy -D warnings`: no `into_iter()` on a reference, no redundant
+    closure.
+  A client passing a value to a declared `deepObject` parameter now passes the typed value instead of a string; a
+  server reading form arrays as one `,`-joined field reads repeated fields instead.
 
 ## What the generator renders differently from `-g rust`
 

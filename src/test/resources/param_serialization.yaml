@@ -1,0 +1,183 @@
+openapi: 3.0.3
+info:
+  title: Parameter serialization
+  version: 1.0.0
+# Parameter shapes whose serialization was wrong or did not compile: a deepObject model, pipe- and space-delimited
+# arrays, nested arrays, path and header arrays of strings and integers, urlencoded form arrays and a required
+# nullable form field, a JSON body that is an array of uuids, and a model cycle through an inline oneOf union
+# (Top -> TopChild -> Leaf -> Top).
+paths:
+  /items/{names}/{nums}/{status}/{scope}:
+    get:
+      operationId: getItems
+      parameters:
+        - name: names
+          in: path
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: nums
+          in: path
+          required: true
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int64
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            $ref: '#/components/schemas/Filter'
+        - name: pipes
+          in: query
+          style: pipeDelimited
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: spaces
+          in: query
+          style: spaceDelimited
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: pipesExploded
+          in: query
+          style: pipeDelimited
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: status
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Status'
+        - name: scope
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Filter'
+        - name: matrix
+          in: query
+          schema:
+            type: array
+            items:
+              type: array
+              items:
+                type: integer
+        - name: tags
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: X-Nums
+          in: header
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int64
+      responses:
+        '204':
+          description: Nothing
+  /form:
+    post:
+      operationId: postForm
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  nullable: true
+                tags:
+                  type: array
+                  items:
+                    type: string
+                labels:
+                  type: array
+                  items:
+                    type: string
+                bars:
+                  type: array
+                  items:
+                    type: string
+            encoding:
+              labels:
+                style: form
+                explode: false
+              bars:
+                style: pipeDelimited
+      responses:
+        '204':
+          description: Nothing
+  /ids:
+    post:
+      operationId: postIds
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+      responses:
+        '204':
+          description: Nothing
+  /tops:
+    get:
+      operationId: getTop
+      responses:
+        '200':
+          description: A top
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Top'
+components:
+  schemas:
+    Status:
+      type: string
+      enum: [a b, c/d]
+    Filter:
+      type: object
+      properties:
+        name:
+          type: string
+        min:
+          type: integer
+    Top:
+      type: object
+      properties:
+        child:
+          oneOf:
+            - $ref: '#/components/schemas/Leaf'
+            - $ref: '#/components/schemas/Other'
+    Leaf:
+      type: object
+      required: [top]
+      properties:
+        top:
+          $ref: '#/components/schemas/Top'
+    Other:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string

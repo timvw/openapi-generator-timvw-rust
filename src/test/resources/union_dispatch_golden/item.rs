@@ -67,8 +67,11 @@ impl std::fmt::Display for Item {
 }
 
 impl crate::models::validation::Validate for Item {
-    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {
-        Ok(())
+    fn validate_into(
+        &self,
+        _path: &crate::models::validation::Path<'_>,
+        _errors: &mut Vec<crate::models::validation::ValidationError>,
+    ) {
     }
 }
 

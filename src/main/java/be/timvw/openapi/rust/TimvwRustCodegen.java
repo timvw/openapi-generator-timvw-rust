@@ -317,6 +317,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private List<String> stringIdSchemas = new ArrayList<>();
     private List<String> stringIdProperties = new ArrayList<>();
     private List<String> stringProperties = new ArrayList<>();
+    /** The unions that are nullable, whose parameters take an {@code Option} (see {@link ExtraRules#nullableUnions}). */
+    private final Set<String> nullableUnionModels = new HashSet<>();
     private List<String> deepObjectQueryParameters = new ArrayList<>();
     private String preprocessedSpecFile;
     private boolean resetQueryParameterStyle;
@@ -525,10 +527,19 @@ public class TimvwRustCodegen extends RustCodegenBase {
     @Override
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
         objs = super.postProcessAllModels(objs);
+        List<String> ownFields = new ArrayList<>();
         Map<String, CodegenModel> unions = UnionRules.plan(objs,
-                msg -> LOGGER.warn("{}: unions: {}", GENERATOR_NAME, msg));
+                msg -> LOGGER.warn("{}: unions: {}", GENERATOR_NAME, msg), ownFields::add);
+        // A field declared next to oneOf/anyOf that a variant lacks: one line per field is thousands for
+        // openai-client-base, so one warning with the count, and each field at debug.
+        ownFields.forEach(msg -> LOGGER.debug("{}: unions: {}", GENERATOR_NAME, msg));
+        if (!ownFields.isEmpty()) {
+            LOGGER.warn("{}: unions: {} fields declared on a union itself are not rendered, as a variant does not "
+                    + "carry them (debug logging lists them)", GENERATOR_NAME, ownFields.size());
+        }
         LOGGER.info("{}: {} fields of a nullable union made nullable", GENERATOR_NAME,
                 ExtraRules.nullableUnionFields(objs, unions, openAPI));
+        nullableUnionModels.addAll(ExtraRules.nullableUnions(unions, openAPI));
         if (deprecatedAttributes) {
             deprecatedModels.addAll(ExtraRules.markDeprecated(objs));
         }
@@ -1474,6 +1485,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         }
                         if (p.dataType != null && unionModels.containsKey(p.dataType.replaceFirst("^models::", ""))) {
                             p.vendorExtensions.put(UnionRules.UNION_TEXT, true);
+                            // a required parameter of a nullable union takes an Option, as a field of one does
+                            if (nullableUnionModels.contains(p.dataType.replaceFirst("^models::", ""))
+                                    && !p.isPathParam && !p.isBodyParam) {
+                                p.isNullable = true;
+                            }
                         }
                         if (p.isArray && p.items != null && !"String".equals(p.items.dataType)
                                 && !p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS)) {

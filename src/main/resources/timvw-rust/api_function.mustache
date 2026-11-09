@@ -116,6 +116,13 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{/isMap}}
     {{/isNullable}}
     {{#isNullable}}
+    {{#vendorExtensions.x-rust-union-text}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        // a union's Display: a scalar variant as its plain text, any other as its JSON
+        req_builder = req_builder.query(&[("{{{baseName}}}", &param_value.to_string())]);
+    };
+    {{/vendorExtensions.x-rust-union-text}}
+    {{^vendorExtensions.x-rust-union-text}}
     {{#isObject}}
     if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
         req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
@@ -154,12 +161,18 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{/isEnumRef}}
     {{/isModel}}
     {{/isObject}}
+    {{/vendorExtensions.x-rust-union-text}}
     {{/isNullable}}
     {{/isArray}}
     {{/required}}
     {{^required}}
     if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
         {{^isArray}}
+        {{#vendorExtensions.x-rust-union-text}}
+        // a union's Display: a scalar variant as its plain text, any other as its JSON
+        req_builder = req_builder.query(&[("{{{baseName}}}", &param_value.to_string())]);
+        {{/vendorExtensions.x-rust-union-text}}
+        {{^vendorExtensions.x-rust-union-text}}
             {{#isObject}}
         req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
         {{/isObject}}
@@ -186,6 +199,7 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
         {{/isEnum}}
         {{/isModel}}
         {{/isObject}}
+        {{/vendorExtensions.x-rust-union-text}}
             {{/isArray}}
     }
     {{/required}}

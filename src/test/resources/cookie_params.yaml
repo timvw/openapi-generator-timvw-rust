@@ -3,7 +3,7 @@ info:
   title: Cookie parameters
   version: 1.0.0
 # Cookie parameters (required, optional, a date-time, a uuid, arrays with explode true and false), alone and together
-# with an api key sent as a cookie.
+# with an api key sent as a cookie; a map (additionalProperties) as a cookie and as a header.
 paths:
   /items:
     get:
@@ -63,6 +63,25 @@ paths:
       operationId: getKeyed
       security:
         - cookieKey: []
+      responses:
+        '204':
+          description: Nothing
+  /maps:
+    get:
+      operationId: getMaps
+      parameters:
+        - name: prefs
+          in: cookie
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+        - name: X-Labels
+          in: header
+          schema:
+            type: object
+            additionalProperties:
+              type: string
       responses:
         '204':
           description: Nothing

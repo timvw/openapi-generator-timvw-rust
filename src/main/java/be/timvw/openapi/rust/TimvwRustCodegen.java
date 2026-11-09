@@ -1047,8 +1047,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
     }
 
-    /** Marks a parameter whose type, or whose array items' type, is one of the structs. */
+    /** Marks a parameter whose type, or whose array items' type, is one of the structs, or that is a map. */
     static void markStructJson(CodegenParameter p, Set<String> structs) {
+        if (p.isMap) {
+            // a map (additionalProperties) has no Display either: its JSON, as for a struct
+            p.vendorExtensions.put(STRUCT_JSON, true);
+            return;
+        }
         boolean items = p.isArray && p.items != null;
         String type = items ? p.items.dataType : p.dataType;
         if (type != null && structs.contains(type.replaceFirst("^models::", ""))) {
@@ -1276,7 +1281,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
                             p.vendorExtensions.put(TYPE_QUALIFIED, true);
                         }
                         markStructJson(p, structs);
-                        if (p.vendorExtensions.containsKey(STRUCT_JSON)) {
+                        if (p.vendorExtensions.containsKey(STRUCT_JSON) && !p.isMap) {
                             structJsonModels.add(p.dataType.replaceFirst("^models::", ""));
                         } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS)) {
                             structJsonModels.add(p.items.dataType.replaceFirst("^models::", ""));

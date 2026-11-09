@@ -48,20 +48,20 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | `in: header` |
-| Rust | `.header(<name>, value)`; an array is joined with `,` |
+| Rust | `.header(<name>, value)`; an array is joined with `,`; a map (`additionalProperties`) is sent as its JSON, as a struct is |
 | Wire | a `date-time` is RFC 3339 (`to_rfc3339()`, `2026-01-02T03:04:05+01:00`), a `date` `YYYY-MM-DD`, each item of an array alike ([`schema.format.date-time`](schema.md#schemaformatdate-time)) |
 | Options | always: a struct is serialized with `serde_json::to_string` ([`schema.properties.display`](schema.md#schemapropertiesdisplay)) |
-| Tests | [`OperationMappingTest#headersAreSentAndArraysJoined`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L103), [`NoStructDisplayTest#headers`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L97), [`ExtraRulesTest#arrayHeadersOfEnumsJoinTheirDisplay`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L87), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L71), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L131) |
+| Tests | [`OperationMappingTest#headersAreSentAndArraysJoined`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L103), [`NoStructDisplayTest#headers`](../../src/test/java/be/timvw/openapi/rust/NoStructDisplayTest.java#L97), [`ExtraRulesTest#arrayHeadersOfEnumsJoinTheirDisplay`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L87), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L71), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L131), [`CookieParamsTest#aMapIsSentAsItsJson`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L90) |
 
 ### `parameter.in.cookie`
 
 | | |
 | --- | --- |
 | OpenAPI | `in: cookie` |
-| Rust | an argument like any other, of its format's type (`uuid::Uuid`, `chrono::DateTime<..>`, ...); every cookie parameter that is set goes into one `Cookie` header, `name=value` pairs joined with `; `, in the spec's order, then an api key sent as a cookie ([`securityScheme.type.api-key`](security-scheme.md#securityschemetypeapi-key)). An unset optional one is left out; with none set, there is no `Cookie` header |
-| Wire | the value is its text (a `date-time` RFC 3339, [`schema.format.date-time`](schema.md#schemaformatdate-time); a struct its JSON), with every byte that is not an RFC 6265 cookie-octet, and `%`, percent-encoded (`crate::apis::cookie_encode`: space, `"`, `,`, `;`, `\`, controls and non-ASCII bytes become `%XX`). An array (`style: form`): with `explode: true` (the default) a pair per item (`tag=a; tag=b`), with `explode: false` one pair with the encoded items joined by `,` (`tag=a,b`) |
+| Rust | an argument like any other, of its format's type (`uuid::Uuid`, `chrono::DateTime<..>`, ...); every cookie parameter that is set goes into one `Cookie` header, `name=value` pairs joined with `; `, in the spec's order, then an api key sent as a cookie ([`securityScheme.type.api-key`](security-scheme.md#securityschemetypeapi-key)). An unset optional one is left out; with none set, there is no `Cookie` header. The generated header replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge into the existing header rather than append a second one |
+| Wire | the value is its text (a `date-time` RFC 3339, [`schema.format.date-time`](schema.md#schemaformatdate-time); a struct or a map its JSON), with every byte that is not an RFC 6265 cookie-octet, and `%`, percent-encoded (`crate::apis::cookie_encode`: space, `"`, `,`, `;`, `\`, controls and non-ASCII bytes become `%XX`). An array (`style: form`): with `explode: true` (the default) a pair per item (`tag=a; tag=b`), with `explode: false` one pair with the encoded items joined by `,` (`tag=a,b`) |
 | Library | `reqwest::header::COOKIE` |
-| Tests | [`OperationMappingTest#aCookieParameterIsSentInTheCookieHeader`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L110), [`CookieParamsTest#theArgumentsKeepTheirTypes`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L63), [`#eachCookieIsAPairOfOneHeader`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L70), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L105) |
+| Tests | [`OperationMappingTest#aCookieParameterIsSentInTheCookieHeader`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L110), [`CookieParamsTest#theArgumentsKeepTheirTypes`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L63), [`#eachCookieIsAPairOfOneHeader`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L70), [`#aMapIsSentAsItsJson`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L90), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L114) |
 
 ### `parameter.schema.enum`
 

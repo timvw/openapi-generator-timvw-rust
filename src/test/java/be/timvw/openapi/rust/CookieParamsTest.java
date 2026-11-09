@@ -85,6 +85,15 @@ class CookieParamsTest {
         assertTrue(Files.readString(out.resolve("src/apis/mod.rs")).contains("pub fn cookie_encode<T: AsRef<str>>("));
     }
 
+    /** A map has no {@code Display}: as a cookie and as a header it is sent as its JSON. */
+    @Test
+    void aMapIsSentAsItsJson() throws IOException {
+        String get = function("get_maps");
+        assertTrue(get.contains("cookies.push(format!(\"prefs={}\", "
+                + "crate::apis::cookie_encode(serde_json::to_string(param_value)?)));"), get);
+        assertTrue(get.contains("req_builder.header(\"X-Labels\", serde_json::to_string(&param_value)?);"), get);
+    }
+
     /** A crate whose operations send no cookie has no {@code cookie_encode}. */
     @Test
     void withoutCookiesThereIsNoEncoder(@TempDir Path none) throws IOException {

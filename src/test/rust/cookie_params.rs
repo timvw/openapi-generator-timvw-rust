@@ -141,6 +141,23 @@ async fn an_api_key_cookie() {
     assert_eq!(header(&request.await.unwrap(), "cookie"), None);
 }
 
+/// A map (`additionalProperties`) goes as its JSON, as a cookie (encoded) and as a header.
+#[tokio::test]
+async fn a_map_is_sent_as_json() {
+    let (configuration, request) = serve().await;
+    let map = std::collections::HashMap::from([("a".to_owned(), "1".to_owned())]);
+    default_api::get_maps()
+        .configuration(&configuration)
+        .prefs(map.clone())
+        .x_labels(map)
+        .call()
+        .await
+        .unwrap();
+    let request = request.await.unwrap();
+    assert_eq!(header(&request, "cookie"), Some("prefs={%22a%22:%221%22}"));
+    assert_eq!(header(&request, "x-labels"), Some("{\"a\":\"1\"}"));
+}
+
 /// The encoding on its own: cookie-octets stay, everything else becomes `%XX` (UTF-8 bytes).
 #[test]
 fn cookie_encode_keeps_cookie_octets() {

@@ -329,8 +329,8 @@ check:
   path (`Validate::validate(&value)`).
 - The generator's own warnings now reach the CLI and the Docker image log, among them one per `pattern` that is not
   checked ([which](validation.md#what-is-not-checked)). Identifier renames and union fields a variant does not carry
-  log at debug, so only warnings you can act on remain (openai-client-base: 71 instead of 5331, most of them
-  openapi-generator's own). Read them once.
+  log at debug, so only warnings you can act on remain (openai-client-base: 71 instead of 5331, langfuse-client-base:
+  4 instead of 1472, most of them openapi-generator's own). Read them once.
 
 ### Generated code is clippy-clean
 
@@ -357,13 +357,21 @@ After: no `apiLintAllows`.
   operation decodes JSON. Before, it returned an `sse::EventStream` without `sse.rs`, which did not compile. With
   `typedEventStreams`, an SSE envelope schema gets no stream in those methods either.
 - A map cookie or header parameter (`additionalProperties`), which did not compile, is sent as its JSON.
-- An optional query parameter whose type is a union goes out as the union's `Display`: a string variant as plain
-  text, no longer quoted JSON (openai-client-base's vault `status`: `status=active`, not `status=%22active%22`).
-  A `uuid` or `date-time` variant prints as plain text as well (a `date-time` in RFC 3339).
-- A union with a `uuid` or chrono variant adds the `uuid` or `chrono` dependency; a hand-kept `Cargo.toml` adds it
-  too.
-- Two property names that become the same Rust field (`user-id` and `user_id`) fail generation, naming both. Before,
-  the crate did not compile; rename one in the spec or map it with the spec rules your generation script applies.
+- A query parameter whose type is a union goes out as the union's `Display`: a string variant as plain text, no
+  longer quoted JSON (openai-client-base's vault `status`: `status=active`, not `status=%22active%22`). A union's
+  `Display` writes a uuid variant hyphenated, a date as `YYYY-MM-DD` and a date-time in RFC 3339; they were
+  JSON-quoted.
+- A required query, header or cookie parameter whose type is a nullable union takes an `Option` (it took the union
+  itself): pass `Some(value)`; `None` stands for the spec's `null`.
+- A `uuid` or chrono type that only a union variant uses adds the `uuid` or `chrono` dependency (the crate did not
+  compile); a hand-kept `Cargo.toml` adds it too.
+- Two properties of a model that become the same Rust field fail generation, naming both. Before, the crate did not
+  compile:
+
+  ```text
+  model Thing: properties 'foo-bar' and 'foo_bar' both become the Rust field foo_bar; rename one in the spec or map one with --name-mappings
+  ```
+
 - `cargo test --doc` passes on a generated crate. The generated README's `Cargo.toml` line and `cargo doc --open` are
   marked `toml` and `sh`. Code blocks of the spec's `info.description` that rustdoc would compile (no language,
   `rust`, or indented) are marked `text`. A client that kept its own README or disabled doctests for this can drop

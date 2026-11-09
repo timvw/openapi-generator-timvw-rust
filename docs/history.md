@@ -130,40 +130,22 @@ the code before and after, and the steps for a client repository.
 
 ### Fixes
 
-- An optional or nullable query parameter whose type is a union is sent as the union's `Display`: a string or enum
-  variant as plain text, a number or boolean as its text, any other variant as its JSON. It was sent as JSON, so a
-  string went out quoted (openai-client-base's vault `status` filter: `status=%22active%22`, now `status=active`).
-  A `uuid` or `date-time` variant of a union prints as plain text too, a `date-time` in RFC 3339, wherever the
-  union's `Display` is used (parameters, form fields, multipart text parts).
-- A union with a `uuid`, `date` or `date-time` variant makes the crate depend on `uuid` or `chrono`; a crate whose
-  only use of such a type was a union variant did not compile.
-- Two spec property names that map to the same Rust field identifier (`user-id` and `user_id`, say) fail generation
-  with a message naming both properties; the crate had two fields of one name and did not compile.
-- Generation warns only where a user can act: identifier renames (`application/json` → `ApplicationSlashJson`,
-  `[Done]` → `LeftSquareBracketDoneRightSquareBracket`) and each union field a variant does not carry log at debug,
-  the latter with one summary warning. openai-client-base's generation log goes from 5331 to 71 warnings,
-  langfuse-client-base's from 1472 to 4; most of what remains is openapi-generator's own.
-- `supportMultipleResponses` with `typedEventStreams`: the stream function returns its `EventStream`, as without the
-  option (it returned the stream where `ResponseContent<..Success>` was declared, which did not compile).
-- A crate generated without options passes `cargo clippy -- -D warnings`: `ContentType::from` (`src/apis/mod.rs`) and
-  the content-type match of each function no longer `return` from their last expression (`needless_return`). A client
-  that allowed `clippy::needless_return` through `apiLintAllows` only for this can drop it.
-- `contentTypeMethods` without `typedEventStreams`: the method for another request media type of an operation whose
-  response is an event stream returned `sse::EventStream`, but `sse.rs` is only written with `typedEventStreams`, so
-  the crate did not compile. It now decodes the response as JSON, like the operation's own method.
-- `contentTypeMethods` with `typedEventStreams`: an event stream whose schema models the SSE envelope (required
-  `event` and `data`), which gets no typed stream, now gets none in the method for another request media type either:
-  that method returned `sse::EventStream<Envelope>` and now decodes the response as JSON like the operation's own.
-- `useSerdePathToError`: `Display` of `Error::SerdePathToError` no longer calls `to_string()` inside `format!`
-  (clippy `to_string_in_format_args`). An operation whose only error is a `text/plain` default sets
-  `Some(DefaultResponse(content.clone()))` without an `UnknownValue` fallback that could not apply.
-- `cargo test --doc` passes on a generated crate: `lib.rs` includes the README as the crate's documentation, and its
-  `Cargo.toml` line and `cargo doc --open` were bare code blocks, so rustdoc compiled them as Rust. They are marked
-  `toml` and `sh`.
-- The generated README's description (`info.description`) has the code blocks rustdoc would compile marked `text`
-  (fenced without a language or with only `rust` and rustdoc attributes such as `no_run` or `ignore`, and indented
-  blocks, also inside a list item), so `cargo test --doc` does not compile them; code blocks in another language stay
-  as they are.
+- A query parameter whose type is a `oneOf` union (openai-client-base's vault `status`, `VaultStatusFilterParam`)
+  goes out as the union's `Display`: a string variant unquoted (`status=active`, it was `status=%22active%22`),
+  numbers and booleans as text, other variants as their JSON, as a path, header or cookie parameter already did.
+  A union's `Display` writes a uuid variant hyphenated, a date `YYYY-MM-DD` and a date-time in RFC 3339 (they were
+  JSON-quoted, and a date-time was chrono's `Display`). A required query, header or cookie parameter of a nullable
+  union takes an `Option` (it was the union itself).
+- A `uuid`, `date` or `date-time` type only in a union variant makes the crate depend on `uuid` or `chrono`; such a
+  crate did not compile.
+- Two properties of a model that become the same Rust field (`foo-bar` and `foo_bar`) fail generation with both
+  names: `model Thing: properties 'foo-bar' and 'foo_bar' both become the Rust field foo_bar; rename one in the spec
+  or map one with --name-mappings`. Before, the crate did not compile (E0124).
+- Generation logs only what a user can act on: identifier renames (`[Done]` as
+  `LeftSquareBracketDoneRightSquareBracket`, `application/json` as `ApplicationSlashJson`) log at debug, and the
+  fields declared on a union that a variant does not carry are one warning with their count (each at debug).
+  openai-client-base's generation log goes from 5331 to 71 warnings and langfuse-client-base's from 1472 to 4; most
+  of what remains is openapi-generator's own.
 
 ### New
 

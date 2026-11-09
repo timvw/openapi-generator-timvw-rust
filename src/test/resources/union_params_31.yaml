@@ -1,0 +1,28 @@
+openapi: 3.1.0
+info:
+  title: Nullable union parameters
+  version: 1.0.0
+# A required query parameter of a union with a null branch: the argument is an Option, and None sends nothing.
+paths:
+  /things:
+    get:
+      operationId: listThings
+      parameters:
+        - name: maybe
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/MaybeMixed'
+      responses:
+        '204':
+          description: Nothing
+components:
+  schemas:
+    MaybeMixed:
+      oneOf:
+        - $ref: '#/components/schemas/Mixed'
+        - type: 'null'
+    Mixed:
+      oneOf:
+        - type: integer
+        - type: boolean

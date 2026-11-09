@@ -78,6 +78,8 @@ final class UnionRules {
     static final String PAYLOAD = "x-rust-enum-payload";
     /** On a variant: its {@code Display} prints the value itself, not its JSON. */
     static final String PLAIN_DISPLAY = "x-rust-enum-plain-display";
+    /** Set on a union variant holding a {@code chrono::DateTime}: it prints as RFC 3339. */
+    static final String RFC3339_DISPLAY = "x-rust-enum-rfc3339-display";
     /** On a variant holding an enum made from its branch: the model, which the union's module also exports. */
     static final String ENUM_MODEL = "x-rust-enum-model";
     /** On a variant holding a {@code Vec}: the name of its constructor. */
@@ -255,6 +257,15 @@ final class UnionRules {
      * @return the unions by model name
      */
     static Map<String, CodegenModel> plan(Map<String, ModelsMap> allModels, Consumer<String> warn) {
+        return plan(allModels, warn, warn);
+    }
+
+    /**
+     * {@link #plan(Map, Consumer)}, with the fields of a union that a variant does not carry, which are not rendered,
+     * reported to {@code ownFields} rather than {@code warn}.
+     */
+    static Map<String, CodegenModel> plan(Map<String, ModelsMap> allModels, Consumer<String> warn,
+                                          Consumer<String> ownFields) {
         Map<String, CodegenModel> byName = byName(allModels);
         Map<String, CodegenModel> unions = new LinkedHashMap<>();
         Map<String, List<CodegenProperty>> branches = new LinkedHashMap<>();
@@ -277,7 +288,7 @@ final class UnionRules {
         Shapes shapes = new Shapes(byName, branches);
         for (Map.Entry<String, CodegenModel> e : unions.entrySet()) {
             CodegenModel cm = e.getValue();
-            warnAboutOwnFields(cm, branches.get(e.getKey()), byName, warn);
+            warnAboutOwnFields(cm, branches.get(e.getKey()), byName, ownFields);
             clearFields(cm);
             List<CodegenProperty> ordered = shapes.order(branches.get(e.getKey()));
             cm.vendorExtensions.put(VARIANTS, ordered);
@@ -311,9 +322,15 @@ final class UnionRules {
                 CodegenModel model = target == null ? null : byName.get(target);
                 boolean box = model != null && !model.isEnum && Boolean.TRUE.equals(v.vendorExtensions.get(BoxRules.BOX));
                 v.vendorExtensions.put(PAYLOAD, box ? "Box<" + v.dataType + ">" : v.dataType);
-                boolean plain = "String".equals(v.dataType) || (model != null && (model.isEnum || unions.containsKey(target)));
+                // A scalar with a text form of its own prints as that text: a string, a uuid (hyphenated), a date
+                // (YYYY-MM-DD), an enum or a union; a date-time as RFC 3339, which its Display is not.
+                boolean plain = "String".equals(v.dataType) || "uuid::Uuid".equals(v.dataType)
+                        || "chrono::NaiveDate".equals(v.dataType)
+                        || (model != null && (model.isEnum || unions.containsKey(target)));
                 if (plain) {
                     v.vendorExtensions.put(PLAIN_DISPLAY, true);
+                } else if (v.dataType != null && v.dataType.startsWith("chrono::DateTime<")) {
+                    v.vendorExtensions.put(RFC3339_DISPLAY, true);
                 }
                 if (model != null && model.isEnum && target.equals(cm.classname + v.name + "Enum")) {
                     v.vendorExtensions.put(ENUM_MODEL, target);

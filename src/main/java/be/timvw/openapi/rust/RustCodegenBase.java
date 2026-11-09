@@ -477,16 +477,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
 
         String casedOriginalName = casingFunction.apply(originalName);
         if (!casedOriginalName.equals(name)) {
-            // A keyword as a raw identifier (type => r#type), a name that already is one, or a Rust type the base
-            // generator names a composed-schema variable after (Vec<String>) is renamed as expected: not worth a
-            // warning, which the CLI prints for every such field.
-            boolean expected = name.equals("r#" + casedOriginalName) || originalName.startsWith("r#")
-                    || originalName.contains("<") || originalName.contains("::");
-            if (expected) {
-                LOGGER.debug("{} cannot be used as a {} name. Renamed to {}", casedOriginalName, type, name);
-            } else {
-                LOGGER.warn("{} cannot be used as a {} name. Renamed to {}", casedOriginalName, type, name);
-            }
+            // Every rename here is mechanical (a keyword as r#type, [Done] as LeftSquareBracketDoneRightSquareBracket,
+            // application/json as ApplicationSlashJson) and the wire keeps the spec's name (serde rename): nothing for
+            // the user to act on, and the base generator asks for some names thousands of times. Two fields of one
+            // model that end up with the same name fail generation (postProcessModels).
+            LOGGER.debug("{} cannot be used as a {} name. Renamed to {}", casedOriginalName, type, name);
         }
         return name;
     }
@@ -805,6 +800,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     public ModelsMap postProcessModels(ModelsMap objs) {
         for (ModelMap model : objs.getModels()) {
             CodegenModel cm = model.getModel();
+            failOnFieldNameCollisions(cm);
 
             if (cm.discriminator != null) {
                 // serde handles the discriminator: it is no field of the model
@@ -978,7 +974,8 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         if (!hasUUIDs) {
             for (ModelMap map : allModels) {
                 CodegenModel m = map.getModel();
-                if (m.getIsUuid() || anyProperty(m.vars, p -> p.isUuid)) {
+                if (m.getIsUuid() || anyProperty(fieldsAndVariants(m), p -> p.isUuid
+                        || (p.dataType != null && p.dataType.contains("uuid::Uuid")))) {
                     hasUUIDs = true;
                     break;
                 }
@@ -987,7 +984,8 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         if (useChrono && !usesChronoTypes) {
             for (ModelMap map : allModels) {
                 CodegenModel m = map.getModel();
-                if (m.getIsDate() || anyProperty(m.vars, p -> p.isDate || p.isDateTime)) {
+                if (m.getIsDate() || anyProperty(fieldsAndVariants(m), p -> p.isDate || p.isDateTime
+                        || (p.dataType != null && p.dataType.contains("chrono::")))) {
                     usesChronoTypes = true;
                     break;
                 }
@@ -1015,6 +1013,43 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             }
         }
         return types.stream().anyMatch(t -> t != null && t.contains(type));
+    }
+
+    /**
+     * Two properties whose names become the same Rust field ({@code foo-bar} and {@code foo_bar} are both
+     * {@code foo_bar}) would not compile (E0124): fail with both spec names, so the spec or a {@code nameMappings}
+     * entry can tell them apart.
+     */
+    void failOnFieldNameCollisions(CodegenModel cm) {
+        if (cm.vars == null) {
+            return;
+        }
+        Map<String, String> seen = new HashMap<>();
+        for (CodegenProperty p : cm.vars) {
+            String other = seen.putIfAbsent(p.name, p.baseName);
+            if (other != null && !other.equals(p.baseName)) {
+                throw new IllegalArgumentException(String.format("%s: model %s: properties '%s' and '%s' both become "
+                                + "the Rust field %s; rename one in the spec or map one with --name-mappings",
+                        getName(), cm.classname, other, p.baseName, p.name));
+            }
+        }
+    }
+
+    /** A model's fields and, for a union, its variants (a uuid or date-time variant needs the crate too). */
+    private static List<CodegenProperty> fieldsAndVariants(CodegenModel m) {
+        List<CodegenProperty> all = new ArrayList<>();
+        if (m.vars != null) {
+            all.addAll(m.vars);
+        }
+        if (m.getComposedSchemas() != null) {
+            for (List<CodegenProperty> list : Arrays.asList(m.getComposedSchemas().getOneOf(),
+                    m.getComposedSchemas().getAnyOf(), m.getComposedSchemas().getAllOf())) {
+                if (list != null) {
+                    all.addAll(list);
+                }
+            }
+        }
+        return all;
     }
 
     /** Whether a property, its items, its map values or its nested properties satisfy {@code check}. */

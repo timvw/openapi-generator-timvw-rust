@@ -76,6 +76,13 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
 - A crate generated without options passes `cargo clippy -- -D warnings`: `ContentType::from` (`src/apis/mod.rs`) and
   the content-type match of each function no longer `return` from their last expression (`needless_return`). A client
   that allowed `clippy::needless_return` through `apiLintAllows` only for this can drop it.
+- Cookie parameters are sent ([decision 3](decisions.md#3-cookie-parameters-are-not-sent)): the argument was
+  accepted and never used. The cookie parameters that are set now go out in one `Cookie` header (`a=1; b=2`), each
+  value percent-encoded where it is not an RFC 6265 cookie-octet, an exploded array as a pair per item. An api key
+  with `in: cookie`, which was not sent either, joins the same header. A map cookie or header parameter
+  (`additionalProperties`), which did not compile, is sent as its JSON. Signatures do not change. The generated header
+  replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
+  into the existing header rather than append a second one.
 
 ## What the generator renders differently from `-g rust`
 

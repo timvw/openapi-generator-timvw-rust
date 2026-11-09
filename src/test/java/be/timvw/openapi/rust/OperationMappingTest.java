@@ -107,11 +107,12 @@ class OperationMappingTest {
     }
 
     @Test
-    void aCookieParameterIsNotSent() throws IOException {
+    void aCookieParameterIsSentInTheCookieHeader() throws IOException {
         String get = function("items_api", "get_item");
-        assertContains(get, "let p_cookie_session = session;");
-        assertFalse(get.contains("p_cookie_session)"), get);
-        assertFalse(get.contains("COOKIE"), get);
+        assertContains(get, "if let Some(ref param_value) = p_cookie_session {\n"
+                + "        cookies.push(format!(\"session={}\", crate::apis::cookie_encode(param_value)));");
+        assertContains(get, "req_builder = req_builder.header(reqwest::header::COOKIE, cookies.join(\"; \"));");
+        assertFalse(function("items_api", "delete_item").contains("COOKIE"));
     }
 
     @Test

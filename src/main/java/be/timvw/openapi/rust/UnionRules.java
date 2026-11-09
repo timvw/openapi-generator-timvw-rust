@@ -28,7 +28,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * Decides how a union renders ({@code modelUnions}, Milestone 3.3): which variants it has, what they are called and in
+ * Decides how a union renders (Milestone 3.3): which variants it has, what they are called and in
  * which order they are tried. The decisions are stored as {@code x-rust-enum*} vendor extensions, which the model
  * template renders; nothing looks at the rendered text.
  *
@@ -62,10 +62,10 @@ import java.util.function.Function;
  * tells two variants apart leaves them where they are. Two variants that accept the same values remain ambiguous: only
  * tag dispatch can tell them apart.</p>
  *
- * <p><b>Tag dispatch</b> ({@code unionDispatch}) decodes a union with a tag by that tag; see {@link #dispatch}. It does
+ * <p><b>Tag dispatch</b> decodes a union with a tag by that tag; see {@link #dispatch}. It does
  * not touch the variants, their payloads, their order or how they serialize.</p>
  *
- * <p>{@code openEnums} adds a catch-all to some tagged unions, and decides which by the variant order and tags settled
+ * <p>Open enums add a catch-all to some tagged unions, and decides which by the variant order and tags settled
  * here; see {@link OpenEnums}.</p>
  */
 final class UnionRules {
@@ -94,9 +94,9 @@ final class UnionRules {
     static final String UNION_TEXT = "x-rust-union-text";
     /** On a branch schema: the variant name the rules chose before the schema lost the title it came from. */
     static final String VARIANT_NAME = "x-rust-variant-name";
-    /** On a model with {@code unionDispatch} and a tag: what its {@code Deserialize} does, for the template. */
+    /** On a model with a tag: what its {@code Deserialize} does, for the template. */
     static final String DISPATCH = "x-rust-enum-dispatch";
-    /** The module holding what every generated {@code Deserialize} of {@code unionDispatch} shares. */
+    /** The module holding what every generated tag-dispatching {@code Deserialize} shares. */
     static final String DISPATCH_MODULE = "union_dispatch";
 
     private UnionRules() {
@@ -118,44 +118,6 @@ final class UnionRules {
                 }
             }
         });
-    }
-
-    /**
-     * An inline schema with the title of the schema it stands in gets a title of its own. The inline-model resolver names
-     * both after the title, and the outer one overwrites the inner one, which then refers to itself: a union holding
-     * itself, or a struct requiring itself. {@code qualifiedInlineNames} needs no such help.
-     *
-     * @return what was renamed
-     */
-    @SuppressWarnings("rawtypes")
-    static List<String> retitleNestedTwins(OpenAPI openAPI, Function<String, String> modelName) {
-        List<String> renamed = new ArrayList<>();
-        SpecRules.forEachSchema(openAPI, s -> {
-            if (s.getTitle() == null) {
-                return;
-            }
-            String own = modelName.apply(s.getTitle());
-            for (List<Schema> branches : Arrays.asList(s.getOneOf(), s.getAnyOf())) {
-                if (branches != null) {
-                    for (Schema<?> b : branches) {
-                        retitle(b, own, "object", modelName, renamed);
-                    }
-                }
-            }
-            if (s.getProperties() != null) {
-                Map<String, Schema> properties = s.getProperties();
-                properties.forEach((name, p) -> retitle(p, own, name, modelName, renamed));
-            }
-        });
-        return renamed;
-    }
-
-    private static void retitle(Schema<?> inner, String outerModel, String suffix, Function<String, String> modelName,
-                                List<String> renamed) {
-        if (inner.get$ref() == null && inner.getTitle() != null && outerModel.equals(modelName.apply(inner.getTitle()))) {
-            renamed.add("'" + inner.getTitle() + "' -> '" + inner.getTitle() + " " + suffix + "'");
-            inner.setTitle(inner.getTitle() + " " + suffix);
-        }
     }
 
     /**
@@ -1246,11 +1208,12 @@ final class UnionRules {
     /**
      * Writes {@code src/models/union_dispatch.rs} and declares it in {@code mod.rs}.
      *
-     * @param open with {@code openEnums} every tagged union can have a catch-all, and then nothing calls the error of an
-     *             unknown tag
+     * Every tagged union can have a catch-all, so nothing may call the error of an unknown tag: it is marked
+     * {@code #[allow(dead_code)]}.
+     *
      * @throws IllegalStateException when a schema already takes the module's name
      */
-    static void writeDispatchModule(java.nio.file.Path models, boolean open) throws java.io.IOException {
+    static void writeDispatchModule(java.nio.file.Path models) throws java.io.IOException {
         java.nio.file.Path mod = models.resolve("mod.rs");
         String declarations = java.nio.file.Files.readString(mod);
         if (java.util.regex.Pattern.compile("\\b" + DISPATCH_MODULE + "\\b").matcher(declarations).find()) {
@@ -1258,7 +1221,7 @@ final class UnionRules {
                     + " needs the module " + DISPATCH_MODULE + ", which a schema already has");
         }
         String module = dispatchModule();
-        java.nio.file.Files.writeString(models.resolve(DISPATCH_MODULE + ".rs"), !open ? module : module.replace(
+        java.nio.file.Files.writeString(models.resolve(DISPATCH_MODULE + ".rs"), module.replace(
                 "pub(crate) fn unknown_tag", "#[allow(dead_code)]\npub(crate) fn unknown_tag"));
         java.nio.file.Files.writeString(mod, declarations + "pub(crate) mod " + DISPATCH_MODULE + ";\n");
     }
@@ -1370,7 +1333,7 @@ final class UnionRules {
 
     /** The plan as data ({@code unionPlanFile}), for tools that hold a generated crate against the spec. */
     @SuppressWarnings({"rawtypes", "unchecked"})
-    static Map<String, Object> describe(Map<String, CodegenModel> unions, OpenAPI openAPI, boolean dispatched) {
+    static Map<String, Object> describe(Map<String, CodegenModel> unions, OpenAPI openAPI) {
         Map<String, Schema> schemas = SpecRules.schemas(openAPI);
         List<Map<String, Object>> described = new ArrayList<>();
         for (CodegenModel cm : unions.values()) {
@@ -1397,10 +1360,8 @@ final class UnionRules {
             union.put("nullable", own != null && (Boolean.TRUE.equals(own.getNullable())
                     || (own.getTypes() != null && own.getTypes().contains("null"))));
             union.put("variants", variants);
-            if (dispatched) {
-                Object table = cm.vendorExtensions.get(DISPATCH);
-                union.put("dispatch", table == null ? null : ((Dispatch) table).describe());
-            }
+            Object table = cm.vendorExtensions.get(DISPATCH);
+            union.put("dispatch", table == null ? null : ((Dispatch) table).describe());
             described.add(union);
         }
         Map<String, Object> plan = new LinkedHashMap<>();

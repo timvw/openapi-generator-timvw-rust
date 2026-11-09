@@ -21,27 +21,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Milestone 3.2: enumFromStr gives closed enums FromStr and TryFrom, matching what their Display prints. */
+/** Milestone 3.2: closed enums get FromStr and TryFrom, matching what their Display prints. */
 class EnumFromStrTest {
 
     @TempDir
     static Path on;
 
-    @TempDir
-    static Path off;
-
     @BeforeAll
     static void generate() {
-        generate(on, true);
-        generate(off, false);
+        generate(on);
     }
 
-    private static void generate(Path output, boolean enumFromStr) {
+    private static void generate(Path output) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "enums");
-        if (enumFromStr) {
-            props.put(TimvwRustCodegen.ENUM_FROM_STR, "true");
-        }
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of("src/test/resources/enum_display.yaml").toAbsolutePath().toString())
@@ -100,14 +93,6 @@ class EnumFromStrTest {
         assertEquals(1, count(mod, "pub mod parse_enum_error;"), mod);
         assertEquals(1, count(mod, "pub use self::parse_enum_error::ParseEnumError;"), mod);
         assertTrue(read(on, "parse_enum_error").contains("pub struct ParseEnumError {"));
-    }
-
-    @Test
-    void offChangesNothing() throws IOException {
-        assertFalse(Files.exists(off.resolve("src/models/parse_enum_error.rs")));
-        assertFalse(read(off, "mod").contains("parse_enum_error"));
-        assertFalse(read(off, "color").contains("FromStr"));
-        assertFalse(read(off, "holder").contains("Display for Quality"));
     }
 
     @Test

@@ -57,13 +57,6 @@ class EventStreamsTest {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "event_streams_fixture");
         props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
-        props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
-        props.put(TimvwRustCodegen.DEFAULT_ONLY_WHERE_VALID, "true");
-        props.put(TimvwRustCodegen.INTEGERS_AS_I64, "true");
-        props.put(TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true");
-        props.put(TimvwRustCodegen.MODEL_UNIONS, "true");
-        props.put(TimvwRustCodegen.UNION_DISPATCH, "true");
-        props.put(TimvwRustCodegen.OPEN_ENUMS, "true");
         props.put(TimvwRustCodegen.BOX_RESPONSE_ERROR, "true");
         if (typedEventStreams) {
             props.put(TimvwRustCodegen.TYPED_EVENT_STREAMS, "true");

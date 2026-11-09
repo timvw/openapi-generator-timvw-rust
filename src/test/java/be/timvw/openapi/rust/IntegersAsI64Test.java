@@ -6,7 +6,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.openapitools.codegen.ClientOptInput;
 import org.openapitools.codegen.DefaultGenerator;
 import org.openapitools.codegen.config.CodegenConfigurator;
-import org.openapitools.codegen.utils.ImplementationVersion;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,19 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Milestone 3.4: integersAsI64 renders an integer as i64 unless the spec says format: int32. */
+/** Milestone 3.4: an integer is i64 unless the spec says format: int32. */
 class IntegersAsI64Test {
 
     @TempDir
     static Path on;
 
-    @TempDir
-    static Path off;
-
     @BeforeAll
     static void generate() {
-        generate(on, Map.of(TimvwRustCodegen.INTEGERS_AS_I64, "true"));
-        generate(off, Map.of());
+        generate(on, Map.of());
     }
 
     private static void generate(Path output, Map<String, Object> options) {
@@ -102,7 +97,7 @@ class IntegersAsI64Test {
 
     @Test
     void numbersAreUntouched() throws IOException {
-        for (Path output : List.of(on, off)) {
+        for (Path output : List.of(on)) {
             assertContainsAll(model(output, "thing"), List.of("pub price: Option<f64>,", "pub ratio: Option<f64>,"));
         }
     }
@@ -110,8 +105,7 @@ class IntegersAsI64Test {
     @Test
     void integerEnumsKeepTheirRendering() throws IOException {
         assertContainsAll(model(on, "priority"), List.of("#[repr(i64)]", "pub enum Priority {", "Serialize_repr"));
-        assertEquals(model(off, "priority"), model(on, "priority"));
-        assertEquals(inlineEnum(off), inlineEnum(on));
+        assertContainsAll(inlineEnum(on), List.of("Variant10 = 10,", "Variant20 = 20,"));
     }
 
     /** The inline enum rendered behind the struct, which the template handles apart from component enums. */
@@ -148,22 +142,10 @@ class IntegersAsI64Test {
     }
 
     @Test
-    void withoutTheOptionIntegersStayAsInStock() throws IOException {
-        // openapi-generator 7.27 maps format: int16 to i16; before, every format other than int64 was i32.
-        String odd = Integer.parseInt(ImplementationVersion.read().split("\\.")[1]) < 27 ? "i32" : "i16";
-        assertContainsAll(model(off, "thing"), List.of(
-                "pub plain: i32,", "pub small: i32,", "pub big: i64,", "pub stamp: i32,", "pub odd: " + odd + ",",
-                "pub bounded: i32,", "pub count: i32,", "pub list: Option<Vec<i32>>,"));
-        assertContainsAll(function(off, "get_thing"), List.of("id: i32,", "limit: Option<i32>,", "after: Option<i64>,"));
-        assertTrue(model(off, "epochs").contains("Integer(i32),"), model(off, "epochs"));
-    }
-
-    @Test
     void unsignedAndBestFitStayRejected() {
         for (String option : List.of("preferUnsignedInt", "bestFitInt")) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> {
                 TimvwRustCodegen codegen = new TimvwRustCodegen();
-                codegen.additionalProperties().put(TimvwRustCodegen.INTEGERS_AS_I64, "true");
                 codegen.additionalProperties().put(option, "true");
                 codegen.processOpts();
             });

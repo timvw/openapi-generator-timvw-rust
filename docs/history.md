@@ -11,6 +11,16 @@ The generator renders what stock `-g rust` renders plus the conventions below, w
 byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that kept
 openai-client-base's type names stable across the openapi-generator 7.15 to 7.25 upgrade.
 
+## Unreleased (breaking)
+
+- The 11 baseline options are no longer options ([decision 12](decisions.md#12-option-defaults-are-stock-not-the-baseline)):
+  `boxOnlyCycles`, `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`,
+  `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`, `schemaDefaultDocs` and `nullableUnionFields`.
+  Their `true` rendering is always applied, and setting one, to any value, fails generation as not configurable.
+  Their `false` renderings (the stock unions, boxing every reference, `Default` everywhere, `i32` integers, the stock
+  inline names, closed response enums, ...) are gone. A client that set all 11 to `true` removes them from its
+  configuration; its output does not change. A client that left any of them off gets the mapping's rendering.
+
 ## What the generator renders differently from `-g rust`
 
 For a side-by-side view of stock `-g rust`, timvw-rust and progenitor on one spec (generated types, what each
@@ -25,7 +35,7 @@ decodes, clippy, operations), see [docs/comparison](comparison/README.md).
 | `type: integer` with `format: float`/`double` is read as `type: number` (logged) | `normalize_openapi_schema.py` |
 | `titleNaming=false`: schema titles never name, merge or replace types. openapi-generator 7.2x merges titled component schemas of the same shape into one model, swaps an inline schema for a titled component that matches it, and names inline array items after the array's title (`ArrayOfItemsInner5`); with the option off, the generator removes component and array titles before running the inline-model resolver (which it therefore runs itself), so names come from schema keys and property paths as on 7.15. Default `true` (stock behaviour). | the openapi-generator 7.25 upgrade of openai-client-base (95 public types kept) |
 | An optional multipart text part whose schema is a referenced string enum carries the enum's wire value (`param_value.to_string()`); stock 7.25 JSON-encodes every non-primitive part, so `verbose_json` arrived as `"verbose_json"`. Objects still travel as JSON. | the openapi-generator 7.25 upgrade of openai-client-base |
-| A `oneOf` whose branches render to the same variant (two primitive branches with the same `title` give two `Text(String)`) keeps one variant; the drop is logged. | `fix_generator_artifacts.py` (openai-client-base) |
+| A `oneOf` whose branches render to the same variant (two primitive branches with the same `title` give two `Text(String)`) kept one variant and logged the drop; since unions always render from the model, the enum branch is a model of its own and both variants stay. | `fix_generator_artifacts.py` (openai-client-base) |
 | An `anyOf` with no typed branch (`anyOf: [{}, {type: null}]`) is `serde_json::Value`; the stock generator references a model named `AnyOfLessThanGreaterThan` that it never writes. | `fix_generator_artifacts.py` (openai-client-base) |
 | A required nullable model field is built with `name.map(Box::new)` in `new()`; stock renders `if let Some(x) = name {Some(Box::new(x))} else {None}` (clippy `manual_map`). | `fix_generated_code.py` (openai-client-base) |
 | Spec rules, applied before inline schemas are named: `default` and `propertyNames` are removed from component schemas; a `$ref` keeps only the `$ref`; a `oneOf`/`anyOf` whose branches only state `required` is dropped; an untitled, non-reference branch gets the title its variant is named after (`Text`, `Integer`, `Number`, `Boolean`, `ArrayOf<Item>s`, `Object<i>`); an inline `oneOf`/`anyOf` of a property whose branches are all inline, none null and at least one array or object is hoisted into a component `<Schema><Property>` (the stock generator fails on the flattened composed model); a top-level union branch referencing a plain string component is inlined; schema names with hyphens are normalized (`Thing-2` → `Thing2`); an inline object title that would name an existing component's model is renamed `<Schema><Property>` (stock writes both to one file). | `patch_spec_rust_compat.py`, `fix_model_fields.py`, `prompt_cache_title_disambiguation.py` (openai-client-base) |

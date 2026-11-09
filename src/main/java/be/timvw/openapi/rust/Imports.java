@@ -19,8 +19,7 @@ import java.util.Map;
  *
  * <ul>
  *   <li>{@value #USES_MODELS} on a model: its file refers to another model through {@code models::}, so it needs
- *       {@code use crate::models;}. With {@code modelUnions} off the stock union and discriminator renderings are used
- *       and every model keeps the import, as before.</li>
+ *       {@code use crate::models;}.</li>
  *   <li>{@value #CONTENT_TYPE} on an API module: an operation decodes a response body by its content type
  *       ({@code ContentType}).</li>
  *   <li>{@value #SERDE_ERROR} on an API module: an operation builds a {@code serde_json::Error::custom} (response
@@ -46,11 +45,11 @@ final class Imports {
     }
 
     /** Marks every model that refers to another model with {@value #USES_MODELS}. */
-    static void markModels(Map<String, ModelsMap> allModels, boolean modelUnions) {
+    static void markModels(Map<String, ModelsMap> allModels) {
         for (ModelsMap models : allModels.values()) {
             for (ModelMap mm : models.getModels()) {
                 CodegenModel cm = mm.getModel();
-                if (usesModels(cm, modelUnions)) {
+                if (usesModels(cm)) {
                     cm.vendorExtensions.put(USES_MODELS, true);
                 } else {
                     cm.vendorExtensions.remove(USES_MODELS);
@@ -60,10 +59,7 @@ final class Imports {
     }
 
     /** Whether the rendered model mentions {@code models::}, as the model template prints it. */
-    static boolean usesModels(CodegenModel cm, boolean modelUnions) {
-        if (!modelUnions) {
-            return true;
-        }
+    static boolean usesModels(CodegenModel cm) {
         if (cm.vendorExtensions.containsKey(UnionRules.DISPATCH)) {
             // The generated Deserialize calls models::union_dispatch.
             return true;

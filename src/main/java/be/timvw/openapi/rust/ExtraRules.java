@@ -38,7 +38,7 @@ final class ExtraRules {
     private ExtraRules() {
     }
 
-    // ---------------------------------------------------------------- schemaDefaultDocs
+    // ---------------------------------------------------------------- schema defaults in the documentation
 
     /**
      * Appends {@code Defaults to `<value>`.} to the description of every property and parameter whose schema has a
@@ -258,7 +258,7 @@ final class ExtraRules {
         return raw.replaceAll("[^A-Za-z0-9_]+", "_").replaceAll("_+$", "");
     }
 
-    // ---------------------------------------------------------------- nullableUnionFields
+    // ---------------------------------------------------------------- nullable union fields
 
     /**
      * Makes nullable every field that refers to a nullable union, so it renders as {@code Option<Option<U>>} (optional)

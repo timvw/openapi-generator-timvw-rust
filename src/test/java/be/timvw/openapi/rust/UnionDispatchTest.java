@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Milestone 3.3: unionDispatch decodes a union by its tag. What the generated code does at run time is in
+ * Milestone 3.3: a union with a tag decodes by that tag. What the generated code does at run time is in
  * src/test/rust/union_dispatch.rs, which {@link #whatItDoesAtRunTime} runs with cargo.
  */
 class UnionDispatchTest {
@@ -39,33 +39,19 @@ class UnionDispatchTest {
     @TempDir
     static Path on;
 
-    @TempDir
-    static Path off;
-
     private static JsonNode plan;
 
     @BeforeAll
     static void generate() throws IOException {
-        generate(SPEC, on, true, true);
-        generate(SPEC, off, true, false);
+        generate(SPEC, on);
         plan = new ObjectMapper().readTree(on.resolve("target/union_plan.json").toFile());
     }
 
-    private static void generate(String spec, Path output, boolean modelUnions, boolean dispatch) {
+    private static void generate(String spec, Path output) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "dispatch_fixture");
         props.put(TimvwRustCodegen.BON_BUILDERS, "false");
-        props.put(TimvwRustCodegen.BOX_ONLY_CYCLES, "true");
-        props.put(TimvwRustCodegen.DEFAULT_ONLY_WHERE_VALID, "true");
-        props.put(TimvwRustCodegen.INTEGERS_AS_I64, "true");
-        props.put(TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true");
-        if (modelUnions) {
-            props.put(TimvwRustCodegen.MODEL_UNIONS, "true");
-            props.put(TimvwRustCodegen.UNION_PLAN_FILE, "target/union_plan.json");
-        }
-        if (dispatch) {
-            props.put(TimvwRustCodegen.UNION_DISPATCH, "true");
-        }
+        props.put(TimvwRustCodegen.UNION_PLAN_FILE, "target/union_plan.json");
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(spec).toAbsolutePath().toString())
@@ -190,7 +176,6 @@ class UnionDispatchTest {
         assertTrue(shape.contains("#[derive(Clone, Debug, PartialEq, Serialize)]\n#[serde(untagged)]\npub enum Shape {"), shape);
         assertTrue(shape.contains("impl<'de> Deserialize<'de> for Shape {"), shape);
         assertTrue(read(on, "circle").contains("#[serde(rename = \"kind\")]\n    pub kind: Kind,"));
-        assertEquals(read(off, "circle"), read(on, "circle"));
     }
 
     @Test
@@ -213,39 +198,6 @@ class UnionDispatchTest {
     }
 
     @Test
-    void theOnlyDifferenceIsInTheUnionsWithATag() throws IOException {
-        Map<String, Boolean> differs = new TreeMap<>();
-        try (Stream<Path> files = Files.list(off.resolve("src/models"))) {
-            for (Path file : (Iterable<Path>) files::iterator) {
-                String name = file.getFileName().toString().replace(".rs", "");
-                if (!name.equals("mod")) {
-                    differs.put(name, !Files.readString(file).equals(read(on, name)));
-                }
-            }
-        }
-        differs.entrySet().removeIf(e -> !e.getValue());
-        assertEquals(List.of("content", "event", "event_alias", "input_item", "item", "measure", "part", "run_event", "shape",
-                "stream", "tool", "tool_choice", "two_candidates"), new ArrayList<>(differs.keySet()));
-    }
-
-    @Test
-    void withoutTheOptionThereIsNoDispatch() throws IOException {
-        assertFalse(Files.exists(off.resolve("src/models/union_dispatch.rs")));
-        String shape = read(off, "shape");
-        assertTrue(shape.contains("#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]\n#[serde(untagged)]"), shape);
-        assertFalse(shape.contains("fn dispatch"), shape);
-        assertFalse(Files.readString(off.resolve("src/models/mod.rs")).contains("union_dispatch"));
-        assertFalse(Files.readString(off.resolve("target/union_plan.json")).contains("\"dispatch\""));
-    }
-
-    @Test
-    void itRequiresModelUnions(@TempDir Path output) {
-        String message = assertThrows(IllegalArgumentException.class,
-                () -> generate(SPEC, output, false, true)).getMessage();
-        assertEquals("timvw-rust: unionDispatch requires modelUnions: it decodes the unions that option renders", message);
-    }
-
-    @Test
     void aVariantWithoutTheFieldFailsGeneration(@TempDir Path output) {
         String message = failure("src/test/resources/union_dispatch_no_field.yaml", output);
         assertTrue(message.contains("Broken is tagged on 'type', but its variant WithoutTag holds models::WithoutTag, "
@@ -261,12 +213,12 @@ class UnionDispatchTest {
     @Test
     void aSchemaWithTheNameOfTheHelperFailsGeneration(@TempDir Path output) {
         String message = assertThrows(IllegalStateException.class,
-                () -> generate("src/test/resources/union_dispatch_reserved.yaml", output, true, true)).getMessage();
+                () -> generate("src/test/resources/union_dispatch_reserved.yaml", output)).getMessage();
         assertTrue(message.contains("unionDispatch needs the module union_dispatch"), message);
     }
 
     private static String failure(String spec, Path output) {
-        return assertThrows(IllegalArgumentException.class, () -> generate(spec, output, true, true)).getMessage();
+        return assertThrows(IllegalArgumentException.class, () -> generate(spec, output)).getMessage();
     }
 
     /**

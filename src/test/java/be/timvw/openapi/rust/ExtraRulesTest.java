@@ -22,8 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The opt-in renderings from the generator comparison (docs/comparison): typedEnumParameters, nullableUnionFields,
- * schemaDefaultDocs, deprecatedAttributes. Each is off by default and leaves the output as it was.
+ * The renderings from the generator comparison (docs/comparison): the options typedEnumParameters and
+ * deprecatedAttributes, which are off by default and leave the output as it was, and nullable union fields and schema
+ * defaults in the documentation, which are always on.
  */
 class ExtraRulesTest {
 
@@ -33,20 +34,12 @@ class ExtraRulesTest {
     @TempDir
     static Path off;
 
-    private static final Map<String, Object> BASE = Map.of(
-            TimvwRustCodegen.MODEL_UNIONS, "true",
-            TimvwRustCodegen.UNION_DISPATCH, "true",
-            TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true",
-            TimvwRustCodegen.MULTIPART_HELPER, "true",
-            TimvwRustCodegen.BOX_ONLY_CYCLES, "true",
-            TimvwRustCodegen.ENUM_FROM_STR, "true");
+    private static final Map<String, Object> BASE = Map.of(TimvwRustCodegen.MULTIPART_HELPER, "true");
 
     @BeforeAll
     static void generate() {
         Map<String, Object> all = new LinkedHashMap<>(BASE);
         all.put(TimvwRustCodegen.TYPED_ENUM_PARAMETERS, "true");
-        all.put(TimvwRustCodegen.NULLABLE_UNION_FIELDS, "true");
-        all.put(TimvwRustCodegen.SCHEMA_DEFAULT_DOCS, "true");
         all.put(TimvwRustCodegen.DEPRECATED_ATTRIBUTES, "true");
         generate(on, all, "src/test/resources/extras.yaml");
         generate(off, BASE, "src/test/resources/extras.yaml");
@@ -137,7 +130,7 @@ class ExtraRulesTest {
         return all.toString();
     }
 
-    // ---------------------------------------------------------------- nullableUnionFields
+    // ---------------------------------------------------------------- nullable union fields
 
     @Test
     void nullableUnionFieldsCanHoldNull() throws IOException {
@@ -147,29 +140,13 @@ class ExtraRulesTest {
         assertContains(create, "#[serde(rename = \"hint\", default, with = \"::serde_with::rust::double_option\"");
     }
 
-    @Test
-    void nullableUnionFieldsAreOptionsWithoutTheOption() throws IOException {
-        String create = read(off, "src/models/create_thing.rs");
-        assertContains(create, "pub stop: models::CreateThingStop,");
-        assertContains(create, "pub hint: Option<models::CreateThingHint>,");
-    }
-
-    @Test
-    void nullableUnionFieldsRequiresModelUnions(@TempDir Path out) {
-        RuntimeException e = assertThrows(RuntimeException.class, () -> generate(out,
-                Map.of(TimvwRustCodegen.NULLABLE_UNION_FIELDS, "true"), "src/test/resources/extras.yaml"));
-        assertTrue(rootMessage(e).contains(TimvwRustCodegen.MODEL_UNIONS), rootMessage(e));
-    }
-
-    // ---------------------------------------------------------------- schemaDefaultDocs
+    // ---------------------------------------------------------------- schema defaults
 
     @Test
     void defaultsAreDocumented() throws IOException {
         String create = read(on, "src/models/create_thing.rs");
         assertContains(create, "/// Stream the answer.  Defaults to `false`.");
         assertContains(read(on, "docs/DefaultApi.md"), "Defaults to `20`.");
-        assertFalse(read(off, "src/models/create_thing.rs").contains("Defaults to"));
-        assertFalse(read(off, "docs/DefaultApi.md").contains("Defaults to"));
     }
 
     // ---------------------------------------------------------------- deprecatedAttributes

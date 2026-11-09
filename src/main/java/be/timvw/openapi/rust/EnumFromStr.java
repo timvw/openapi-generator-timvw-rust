@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Milestone 3.2 ({@code enumFromStr}): gives every closed value enum {@code FromStr} and {@code TryFrom<&str>},
+ * Milestone 3.2: gives every closed value enum {@code FromStr} and {@code TryFrom<&str>},
  * {@code TryFrom<&String>} and {@code TryFrom<String>}, accepting exactly the strings its {@code Display} prints.
  *
  * <p>This runs over the written crate rather than in the model template: the final text says which enums exist and

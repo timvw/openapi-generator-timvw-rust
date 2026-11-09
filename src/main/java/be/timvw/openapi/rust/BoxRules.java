@@ -18,18 +18,17 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Decides which model references are rendered as {@code Box<T>} (Milestone 3.1, {@code boxOnlyCycles}).
+ * Decides which model references are rendered as {@code Box<T>} (Milestone 3.1).
  *
  * <p>A Rust type that holds itself by value has no finite size, so a reference has to go through a pointer somewhere
- * on every cycle of the model graph. The stock generator boxes every model reference. With {@code boxOnlyCycles} a
+ * on every cycle of the model graph. The stock generator boxes every model reference; here a
  * reference is boxed only when it points into the strongly connected component of the model that holds it, which
  * covers every cycle and nothing else. Only references held by value count as edges: a struct field (required or
  * {@code Option}) and an enum variant payload. {@code Vec} and maps hold their items on the heap already and are never
  * edges.</p>
  *
  * <p>The decision is stored per property as the vendor extension {@value #BOX}, which the model template reads in
- * place of the stock {@code avoidBoxedModels} flag. Without the option every property gets {@code true}, which is the
- * stock rendering.</p>
+ * place of the stock {@code avoidBoxedModels} flag.</p>
  */
 final class BoxRules {
 
@@ -54,14 +53,11 @@ final class BoxRules {
     }
 
     /**
-     * Marks every property of every model with {@value #BOX}.
+     * Marks every property of every model with {@value #BOX}: {@code true} only for a reference inside a cycle.
      *
-     * @param boxOnlyCycles {@code false} boxes every model reference (stock); {@code true} only references inside a
-     *                      cycle
-     * @return model name to strongly connected component (empty without {@code boxOnlyCycles}), for
-     *         {@link #inCycle}
+     * @return model name to strongly connected component, for {@link #inCycle}
      */
-    static Map<String, Integer> mark(Map<String, ModelsMap> allModels, boolean boxOnlyCycles) {
+    static Map<String, Integer> mark(Map<String, ModelsMap> allModels) {
         Map<String, CodegenModel> byName = new LinkedHashMap<>();
         for (ModelsMap models : allModels.values()) {
             for (ModelMap mm : models.getModels()) {
@@ -70,11 +66,11 @@ final class BoxRules {
             }
         }
 
-        Map<String, Integer> component = boxOnlyCycles ? components(byName) : Map.of();
+        Map<String, Integer> component = components(byName);
         for (CodegenModel cm : byName.values()) {
             for (List<CodegenProperty> list : propertyLists(cm)) {
                 for (CodegenProperty p : list) {
-                    boolean box = !boxOnlyCycles || sameComponent(component, cm.classname, target(p, byName));
+                    boolean box = sameComponent(component, cm.classname, target(p, byName));
                     p.vendorExtensions.put(BOX, box);
                 }
             }

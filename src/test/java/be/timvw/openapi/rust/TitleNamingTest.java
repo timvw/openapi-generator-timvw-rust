@@ -128,13 +128,13 @@ class TitleNamingTest {
         assertTrue(Files.exists(models.resolve("object_027.rs")));
         String message = Files.readString(models.resolve("message.rs"));
         boolean deduplicated = !Files.exists(models.resolve("beta_apply_patch_call_status.rs"));
-        boolean titleNamedArray = Files.exists(models.resolve("array_of_content_parts_inner.rs"));
-        // openapi-generator 7.25 merges the twins and names the array items after the title; 7.15 does neither.
-        assertEquals(deduplicated, titleNamedArray, String.join(",", list(models)));
+        // openapi-generator 7.25 merges the twins; 7.15 does not.
         if (deduplicated) {
             assertTrue(message.contains("pub status: models::ApplyPatchCallStatus,"), message);
-            assertTrue(message.contains("pub content: Vec<models::ArrayOfContentPartsInner>,"), message);
         }
+        // An inline array's items are named after where they stand, not after the array's title.
+        assertFalse(Files.exists(models.resolve("array_of_content_parts_inner.rs")), String.join(",", list(models)));
+        assertTrue(message.contains("pub content: Vec<models::MessageContentInner>,"), message);
     }
 
     private static List<String> list(Path dir) throws IOException {

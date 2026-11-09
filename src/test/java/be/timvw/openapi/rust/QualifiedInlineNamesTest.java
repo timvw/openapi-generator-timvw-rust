@@ -6,7 +6,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.openapitools.codegen.ClientOptInput;
 import org.openapitools.codegen.DefaultGenerator;
 import org.openapitools.codegen.config.CodegenConfigurator;
-import org.openapitools.codegen.utils.ImplementationVersion;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,35 +30,17 @@ class QualifiedInlineNamesTest {
     static Path qualified;
 
     @TempDir
-    static Path stock;
-
-    @TempDir
     static Path other;
-
-    /**
-     * Before openapi-generator 7.27, an inline schema carrying the title of its union or parent replaced that
-     * model, losing its own fields. 7.27 keeps them; qualifiedInlineNames still renames it either way.
-     */
-    private static final boolean STOCK_LOSES_TITLED_FIELDS = minorVersion() < 27;
-
-    /** The minor version of the running openapi-generator 7.x. */
-    private static int minorVersion() {
-        return Integer.parseInt(ImplementationVersion.read().split("\\.")[1]);
-    }
 
     @BeforeAll
     static void generate() {
-        generate("inline_names.yaml", qualified, true);
-        generate("inline_names.yaml", stock, false);
+        generate("inline_names.yaml", qualified);
     }
 
-    private static void generate(String spec, Path output, boolean option) {
+    private static void generate(String spec, Path output) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "names");
         props.put(TimvwRustCodegen.TITLE_NAMING, "false");
-        if (option) {
-            props.put(TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true");
-        }
         CodegenConfigurator configurator = new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of("src/test/resources/" + spec).toAbsolutePath().toString())
@@ -78,15 +59,12 @@ class QualifiedInlineNamesTest {
     }
 
     private static String failure(String spec, Path output) {
-        return assertThrows(IllegalArgumentException.class, () -> generate(spec, output, true)).getMessage();
+        return assertThrows(IllegalArgumentException.class, () -> generate(spec, output)).getMessage();
     }
 
     @Test
     void anInlineTitleCannotReplaceTheComponentItNormalizesTo() throws IOException {
-        // Stock: one file, last write wins, so the component lost its fields and the branch holds a reference to itself.
-        assertFalse(read(stock, "static_chunking_strategy").contains("max_chunk_size_tokens"));
-
-        assertTrue(read(qualified, "static_chunking_strategy").contains("pub max_chunk_size_tokens: i32,"));
+        assertTrue(read(qualified, "static_chunking_strategy").contains("pub max_chunk_size_tokens: i64,"));
         String branch = read(qualified, "chunking_strategy_static_chunking_strategy");
         assertTrue(branch.contains("pub struct ChunkingStrategyStaticChunkingStrategy {"), branch);
         assertTrue(branch.contains("models::StaticChunkingStrategy"), branch);
@@ -94,14 +72,6 @@ class QualifiedInlineNamesTest {
 
     @Test
     void aBranchWithTheTitleOfItsUnionKeepsItsFields() throws IOException {
-        String stockModel = read(stock, "tracing_configuration");
-        if (STOCK_LOSES_TITLED_FIELDS) {
-            // Stock: the object is overwritten by the union, which then references itself.
-            assertTrue(stockModel.contains("models::TracingConfiguration"), stockModel);
-        } else {
-            // openapi-generator 7.27 keeps the object's fields under the title.
-            assertTrue(stockModel.contains("pub workflow_name:"), stockModel);
-        }
         assertFalse(exists(qualified, "tracing_configuration"));
 
         String union = read(qualified, "session_tracing");
@@ -112,14 +82,6 @@ class QualifiedInlineNamesTest {
 
     @Test
     void aPropertyWithTheTitleOfItsParentKeepsItsFields() throws IOException {
-        String stockModel = read(stock, "grammar_format");
-        if (STOCK_LOSES_TITLED_FIELDS) {
-            // Stock: the object requires a box of itself, and can never decode.
-            assertTrue(stockModel.contains("pub grammar: Box<models::GrammarFormat>,"), stockModel);
-        } else {
-            // openapi-generator 7.27 keeps the inner object's fields under the title.
-            assertTrue(stockModel.contains("pub definition:"), stockModel);
-        }
         assertFalse(exists(qualified, "grammar_format"));
 
         String outer = read(qualified, "session_format");
@@ -129,9 +91,6 @@ class QualifiedInlineNamesTest {
 
     @Test
     void unnamedBranchesAreQualifiedInsteadOfNumbered() throws IOException {
-        assertTrue(exists(stock, "object0"));
-        assertTrue(exists(stock, "object0_1"));
-
         assertFalse(exists(qualified, "object0"));
         assertFalse(exists(qualified, "object0_1"));
         assertTrue(read(qualified, "left_union_object0").contains("pub left:"));
@@ -189,8 +148,8 @@ class QualifiedInlineNamesTest {
     void theOutcomeDoesNotDependOnTheOrderOfTheSpec() throws IOException {
         Path forward = other.resolve("forward");
         Path reversed = other.resolve("reversed");
-        generate("title_order_forward.yaml", forward, true);
-        generate("title_order_reversed.yaml", reversed, true);
+        generate("title_order_forward.yaml", forward);
+        generate("title_order_reversed.yaml", reversed);
         // Two shapes: neither has the title, whichever comes first.
         for (Path output : List.of(forward, reversed)) {
             assertFalse(exists(output, "tool_filter"));
@@ -215,8 +174,6 @@ class QualifiedInlineNamesTest {
 
     @Test
     void oneTitleAtTwoPlacesIsTwoModels() throws IOException {
-        assertTrue(exists(stock, "tool_filter_1"));
-
         assertFalse(exists(qualified, "tool_filter"));
         assertTrue(read(qualified, "first_filter").contains("pub one:"));
         assertTrue(read(qualified, "second_filter").contains("pub two:"));
@@ -276,26 +233,5 @@ class QualifiedInlineNamesTest {
         assertTrue(message.contains("model FooAB"), message);
         assertTrue(message.contains("#/components/schemas/Foo/properties/a_b"), message);
         assertTrue(message.contains("#/components/schemas/Foo/properties/a/properties/b"), message);
-    }
-
-    @Test
-    void withoutTheOptionACollisionStaysSilent() throws IOException {
-        Path output = other.resolve("stock-components");
-        generate("name_collision_components.yaml", output, false);
-        assertTrue(exists(output, "static_chunking_strategy"));
-        assertEquals(1, countModels(output, "static_chunking_strategy"));
-    }
-
-    private static long countModels(Path output, String model) throws IOException {
-        return Files.readAllLines(output.resolve("src/models/mod.rs")).stream()
-                .filter(l -> l.equals("pub mod " + model + ";")).count();
-    }
-
-    @Test
-    void theOptionIsOffByDefaultAndAdvertised() {
-        TimvwRustCodegen codegen = new TimvwRustCodegen();
-        assertTrue(codegen.cliOptions().stream()
-                .anyMatch(o -> TimvwRustCodegen.QUALIFIED_INLINE_NAMES.equals(o.getOpt())
-                        && "false".equals(o.getDefault())));
     }
 }

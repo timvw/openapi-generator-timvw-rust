@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The objects of docs/mapping that render little or nothing: operation summary and description, Header, Callback,
- * Link, Example, Tag, External Documentation, XML and OAuth Flows, rendered with the mapping's baseline options from
+ * Link, Example, Tag, External Documentation, XML and OAuth Flows, rendered without options from
  * {@code src/test/resources/other_objects.yaml}. Each marker in the spec (TAGDESC, HEADERDESC, ...) is looked up in
  * the generated Rust ({@code src/}) and in the generated Markdown ({@code docs/}, {@code README.md}).
  */

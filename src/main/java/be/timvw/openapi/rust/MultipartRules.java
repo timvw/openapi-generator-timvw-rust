@@ -36,7 +36,7 @@ import java.util.regex.Pattern;
  *       part;</li>
  *   <li>{@code x-multipart-text-media-type}: a scalar with an explicit {@code contentType}, sent with that media
  *       type;</li>
- *   <li>{@code x-multipart-file-union}: with {@code modelUnions}, a union with file variants, matched on; see
+ *   <li>{@code x-multipart-file-union}: a union with file variants, matched on; see
  *       {@link #fileUnion};</li>
  *   <li>{@code x-multipart-stock}: anything else, rendered by the stock branch.</li>
  * </ul>
@@ -69,7 +69,7 @@ final class MultipartRules {
     /**
      * Sets the multipart vendor extensions on every non-file form parameter of a multipart operation.
      *
-     * @param unions the unions of {@code modelUnions} by class name, empty without the option
+     * @param unions the unions by class name
      */
     static void classify(OpenAPI openAPI, CodegenOperation op, Map<String, CodegenModel> unions, Consumer<String> warn) {
         Map<String, Schema> properties = null;

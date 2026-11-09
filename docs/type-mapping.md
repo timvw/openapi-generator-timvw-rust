@@ -1,11 +1,12 @@
 # From OpenAPI to Rust
 
-How `timvw-rust` renders each OpenAPI construct. The **Rust** column is the rendering with the options
-openai-client-base and langfuse-client-base set (`boxOnlyCycles`, `defaultOnlyWhereValid`, `enumFromStr`,
-`noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`;
-openai-client-base also sets `multipartHelper`, `typedEventStreams` and `contentTypeMethods`). The **Option** column names
-what changes it, and what it renders without the option where that differs. The [README](../README.md) explains each
-option; the [generator comparison](comparison/README.md) holds the same constructs against stock `-g rust` and progenitor.
+How `timvw-rust` renders each OpenAPI construct. The **Rust** column is the rendering without options
+(openai-client-base also sets `multipartHelper`, `typedEventStreams` and `contentTypeMethods`). The **Option** column
+names what changes it, and where stock `-g rust` renders something else, what. The former baseline options
+(`boxOnlyCycles`, `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`,
+`modelUnions`, `unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) are always applied and cannot
+be set. The [README](../README.md) explains each option; the [generator comparison](comparison/README.md) holds the same
+constructs against stock `-g rust` and progenitor.
 
 The rendering assumes `library=reqwest`, the only HTTP library `timvw-rust` supports. Rows marked *(reqwest)*
 render types that come from the HTTP library; the others do not depend on it
@@ -28,7 +29,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response | |
 | `format: email`, `uri`, any other | `String` | |
 | `type: number` | `f64`; `format: float` gives `f32` | |
-| `type: integer` | `i64`; `format: int32` gives `i32` | `integersAsI64`; without it `i32` unless `format: int64` |
+| `type: integer` | `i64`; `format: int32` gives `i32` | always (stock: `i32` unless `format: int64`) |
 | `type: integer` with `format: float`/`double` | read as `type: number` (logged) | |
 | `type: boolean` | `bool` | |
 | `minLength`, `maximum`, `pattern`, ... | not checked; the type stays as above | |
@@ -43,17 +44,17 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | optional property | `Option<T>`, `skip_serializing_if = "Option::is_none"` | |
 | `nullable: true` (or `type: [T, null]`), optional | `Option<Option<T>>` through `serde_with::rust::double_option`: `None` leaves the field out, `Some(None)` sends `null` | |
 | `nullable: true`, required | `Option<T>` that must be present | |
-| nullable property that is a union | `Option<U>`: `null` and absent are the same | `nullableUnionFields` gives `Option<Option<U>>` |
-| a property referencing a model | the model, by value | `boxOnlyCycles`: `Box<T>` only on a reference that closes a cycle (`parent: Option<Box<ThreadNode>>`); without it every model reference is boxed |
+| nullable property that is a union | `Option<Option<U>>` (optional) or `Option<U>` (required), like any nullable field, so a request can send `null` | |
+| a property referencing a model | the model, by value | always: `Box<T>` only on a reference that closes a cycle (`parent: Option<Box<ThreadNode>>`); stock boxes every model reference |
 | `additionalProperties: <schema>` | `std::collections::HashMap<String, T>` | |
 | `additionalProperties: true` | `HashMap<String, serde_json::Value>` | |
 | `type: object` without properties, or `{}` | `serde_json::Value` (`{}` is nullable: `Option<Option<serde_json::Value>>`) | |
 | `readOnly`, `writeOnly` | ignored: the field is there in both directions | |
-| `default` | not applied | `schemaDefaultDocs` notes it in the field's docs (``Defaults to `false`.``) |
+| `default` | not applied; noted in the field's docs (``Defaults to `false`.``) | |
 | `deprecated: true` | no marker | `deprecatedAttributes` adds `#[deprecated]` |
 | `description` | `///` on the field or type; bare URLs wrapped in `<...>` | |
-| `Default` | only on a struct whose fields are all optional | `defaultOnlyWhereValid`; without it every struct derives `Default` |
-| `Display` of a struct | none | `noStructDisplay`; without it a JSON `Display` |
+| `Default` | only on a struct whose fields are all optional | always (stock: every struct) |
+| `Display` of a struct | none; the API code serializes a struct parameter as JSON | |
 
 ### Arrays
 
@@ -61,7 +62,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | --- | --- | --- |
 | `type: array` | `Vec<T>`; items are never boxed | |
 | `uniqueItems: true` | `Vec<T>` (not a set) | |
-| inline items that are objects | a model named after the array (`ChatCompletionChoicesInner`) | `qualifiedInlineNames` names it `<Schema><property>_inner` unless its title is unique |
+| inline items that are objects | a model named after the array (`ChatCompletionChoicesInner`) | always: named `<Schema><property>_inner` unless its title is unique |
 
 ### Enums
 
@@ -70,9 +71,9 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | `type: string, enum: [...]` (component) | `pub enum` with a unit variant per value (`#[serde(rename = "<value>")]`), `Copy`, `Eq`, `Hash`, `Ord` and a `Display` printing the value | |
 | an inline string enum of a property | an enum of the same shape in the model's file, named after the property (`Role`, `Object`) | |
 | `type: integer, enum: [...]` | `#[repr(i64)]` enum with `serde_repr`, variants `Variant1 = 1`, ... | |
-| parsing | `FromStr` and `TryFrom<&str>`, `TryFrom<&String>`, `TryFrom<String>` accept exactly what `Display` prints; `models::ParseEnumError` otherwise | `enumFromStr` |
-| a value the spec does not list, in a response | the variant `Unknown` (`#[serde(rename = "unknown", other)]`; an integer enum `Unknown = i64::MAX`) | `openEnums`; without it decoding fails. Enums only requests use stay closed |
-| `Default` | none | `defaultOnlyWhereValid`; without it the first variant |
+| parsing | `FromStr` and `TryFrom<&str>`, `TryFrom<&String>`, `TryFrom<String>` accept exactly what `Display` prints; `models::ParseEnumError` otherwise | |
+| a value the spec does not list, in a response | the variant `Unknown` (`#[serde(rename = "unknown", other)]`; an integer enum `Unknown = i64::MAX`) | always. Enums only requests use stay closed |
+| `Default` | none | always (stock: the first variant) |
 
 ### Unions: `oneOf`, `anyOf`, discriminators
 
@@ -81,15 +82,15 @@ These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
 
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
-| `oneOf` / `anyOf` | `#[serde(untagged)]` enum with a variant per branch, ordered so the narrower one decodes first ([variant order](mapping/schema.md#schemaoneofvariant-order)) | `modelUnions`; without it stock renders `oneOf` only, and a discriminator as `#[serde(tag)]`, which does not decode when the branch structs keep the tag field |
-| `discriminator` | the same enum, serialized untagged, decoded by the tag: only the selected variant is tried, and its error is the error (``Message::User: missing field `content` ``) | `unionDispatch` |
-| no `discriminator`, but every branch requires one property with fixed values | dispatched on that property like a discriminator | `unionDispatch` |
-| an unknown tag in a response | `Unknown(serde_json::Value)` holding what came | `openEnums` |
+| `oneOf` / `anyOf` | `#[serde(untagged)]` enum with a variant per branch, ordered so the narrower one decodes first ([variant order](mapping/schema.md#schemaoneofvariant-order)) | always (stock renders `oneOf` only, and a discriminator as `#[serde(tag)]`, which does not decode when the branch structs keep the tag field) |
+| `discriminator` | the same enum, serialized untagged, decoded by the tag: only the selected variant is tried, and its error is the error (``Message::User: missing field `content` ``) | |
+| no `discriminator`, but every branch requires one property with fixed values | dispatched on that property like a discriminator | |
+| an unknown tag in a response | `Unknown(serde_json::Value)` holding what came | |
 | a `type: null` branch | no variant; the union is nullable | |
 | variant names | discriminator mapping key, referenced schema, title, then type (`Text(String)`, `ArrayOfStrings(Vec<String>)`) | |
-| a string enum branch | its own model `<Union><Variant>Enum` | `modelUnions` |
-| helpers on a union | `Display` (a string or enum variant prints itself, others their JSON); with a string variant `From<String>`, `From<&str>`, `new_text` | `modelUnions` |
-| `allOf` of one union | that union's variants | `modelUnions` |
+| a string enum branch | its own model `<Union><Variant>Enum` | |
+| helpers on a union | `Display` (a string or enum variant prints itself, others their JSON); with a string variant `From<String>`, `From<&str>`, `new_text` | |
+| `allOf` of one union | that union's variants | |
 | an inline union of a property whose branches are inline and at least one is an object or array | moved to a component `<Schema><Property>` | always |
 | `anyOf` with no typed branch (`anyOf: [{}, {type: null}]`) | `serde_json::Value` | always |
 
@@ -99,9 +100,9 @@ These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
 | --- | --- | --- |
 | `allOf` of objects | one struct holding the properties of every part; each referenced part also has its own struct | |
 | `$ref` | the referenced model; siblings of a `$ref` are dropped | |
-| a recursive schema | by value through `Vec`, boxed on a direct reference (`Option<Box<T>>`) | `boxOnlyCycles` |
+| a recursive schema | by value through `Vec`, boxed on a direct reference (`Option<Box<T>>`) | |
 | component names | `CamelCase` model, `snake_case` file (`ChatCompletion` in `chat_completion.rs`), re-exported as `models::ChatCompletion`; hyphens removed (`Thing-2` → `Thing2`) | |
-| inline schema names | after where they stand: property `p` of `P` is `PP`, items `P_inner`, map values `P_value`, branches `P_<title>`, bodies `<op>_request`, responses `<op>_<code>_response`; a unique title wins. Two different schemas with one Rust name fail generation | `qualifiedInlineNames`; without it the stock names (`Object0_17`), with `titleNaming=false` without titles |
+| inline schema names | after where they stand: property `p` of `P` is `PP`, items `P_inner`, map values `P_value`, branches `P_<title>`, bodies `<op>_request`, responses `<op>_<code>_response`; a unique title wins. Two different schemas with one Rust name fail generation | `titleNaming=false` keeps component and array titles out of naming (stock names number a taken title, `Object0_17`) |
 | `title` | names an inline schema only when unique (above) | `titleNaming=false` stops titles from merging or replacing component types |
 
 ## Operations

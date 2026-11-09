@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The Schema Object rules of docs/mapping/schema.md that no option test covers: scalars and formats, properties,
- * nullability, maps, arrays, enums and {@code allOf} of objects, rendered with the mapping's baseline options from
+ * nullability, maps, arrays, enums and {@code allOf} of objects, rendered without options from
  * {@code src/test/resources/schema_mapping.yaml}.
  */
 class SchemaMappingTest {
@@ -29,19 +29,11 @@ class SchemaMappingTest {
     @TempDir
     static Path noChrono;
 
-    /** The baseline of docs/mapping/README.md: the options openai-client-base and langfuse-client-base both set. */
-    static final Map<String, Object> BASELINE = Map.ofEntries(
-            Map.entry(TimvwRustCodegen.BOX_ONLY_CYCLES, "true"),
-            Map.entry(TimvwRustCodegen.DEFAULT_ONLY_WHERE_VALID, "true"),
-            Map.entry(TimvwRustCodegen.ENUM_FROM_STR, "true"),
-            Map.entry(TimvwRustCodegen.NO_STRUCT_DISPLAY, "true"),
-            Map.entry(TimvwRustCodegen.INTEGERS_AS_I64, "true"),
-            Map.entry(TimvwRustCodegen.QUALIFIED_INLINE_NAMES, "true"),
-            Map.entry(TimvwRustCodegen.MODEL_UNIONS, "true"),
-            Map.entry(TimvwRustCodegen.UNION_DISPATCH, "true"),
-            Map.entry(TimvwRustCodegen.OPEN_ENUMS, "true"),
-            Map.entry(TimvwRustCodegen.SCHEMA_DEFAULT_DOCS, "true"),
-            Map.entry(TimvwRustCodegen.NULLABLE_UNION_FIELDS, "true"));
+    /**
+     * Options every mapping test starts from. The former baseline options are always on and cannot be set, so it is
+     * empty: the mapping is what the generator renders without options.
+     */
+    static final Map<String, Object> BASELINE = Map.of();
 
     @BeforeAll
     static void generate() {

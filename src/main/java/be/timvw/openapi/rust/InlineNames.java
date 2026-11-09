@@ -26,8 +26,7 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
- * Decides the name of every inline schema that becomes a model, before the inline-model resolver runs
- * ({@code qualifiedInlineNames}, Milestone 3.3).
+ * Decides the name of every inline schema that becomes a model, before the inline-model resolver runs (Milestone 3.3).
  *
  * <p>The resolver names an inline schema after its title when it has one, and after its location otherwise. Left
  * alone, a title that is already taken becomes {@code Title_1}, a schema nested in one with the same title overwrites

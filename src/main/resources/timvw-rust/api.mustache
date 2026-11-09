@@ -99,9 +99,11 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
 ### Regular Responses
 }}{{^isResponseFile}}{{!
 ### Multi response support
-}}{{#supportMultipleResponses}}ResponseContent<{{{operationIdCamelCase}}}Success>{{/supportMultipleResponses}}{{!
+}}{{#vendorExtensions.x-rust-event-stream}}super::sse::EventStream<{{{returnType}}}, {{{vendorExtensions.x-rust-error-enum}}}>{{/vendorExtensions.x-rust-event-stream}}{{!
+### (a stream method returns the stream, also with supportMultipleResponses)
+}}{{^vendorExtensions.x-rust-event-stream}}{{#supportMultipleResponses}}ResponseContent<{{{operationIdCamelCase}}}Success>{{/supportMultipleResponses}}{{!
 ### Regular return type
-}}{{^supportMultipleResponses}}{{#vendorExtensions.x-rust-event-stream}}super::sse::EventStream<{{{returnType}}}, {{{vendorExtensions.x-rust-error-enum}}}>{{/vendorExtensions.x-rust-event-stream}}{{^vendorExtensions.x-rust-event-stream}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/vendorExtensions.x-rust-event-stream}}{{/supportMultipleResponses}}{{/isResponseFile}}{{!
+}}{{^supportMultipleResponses}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/supportMultipleResponses}}{{/vendorExtensions.x-rust-event-stream}}{{/isResponseFile}}{{!
 ### Error Type
 }}, Error<{{{vendorExtensions.x-rust-error-enum}}}>> {
     {{#allParams.0}}
@@ -731,12 +733,12 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
             ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
             {{/useSerdePathToError}}
             {{#vendorExtensions.x-supports-plain-text}}
-            ContentType::Text => return Ok(content),
+            ContentType::Text => Ok(content),
             {{/vendorExtensions.x-supports-plain-text}}
             {{^vendorExtensions.x-supports-plain-text}}
-            ContentType::Text => return Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `{{returnType}}`"))),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `{{returnType}}`"))),
             {{/vendorExtensions.x-supports-plain-text}}
-            ContentType::Unsupported(unknown_type) => return Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `{{returnType}}`")))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `{{returnType}}`")))),
         }
         {{/returnType}}
         {{/isResponseFile}}

@@ -108,6 +108,16 @@ class ErrorStatusTest {
     }
 
     @Test
+    void aTextErrorHoldsTheBodyAsItIs() throws IOException {
+        assertContains(api(), """
+                        let entity: Option<GetTextError> = match status.as_u16() {
+                            400 => Some(GetTextError::Status400(content.clone())),
+                            _ => Some(GetTextError::DefaultResponse(content.clone())),
+                        }
+                """);
+    }
+
+    @Test
     void theErrorEnumKeepsItsShape() throws IOException {
         assertContains(api(), "#[serde(untagged)]\npub enum GetThingError {\n    Status400(models::Problem),\n"
                 + "    Status404(models::Problem),\n    Status409(),\n    Status4XX(models::Problem),\n"
@@ -133,10 +143,9 @@ class ErrorStatusTest {
         String result = cargo(output, 900, "test", "--test", "error_status");
         assertNotNull(result, "cargo did not finish");
         assertTrue(result.contains("test result: ok.") && !result.contains(" 0 passed"), result);
-        // A range is a guard, so an exact code before its range is no overlap for clippy. The other templates still
-        // have return statements clippy finds needless (the clients allow that lint).
-        String clippy = cargo(output, 900, "clippy", "--all-targets", "--", "-D", "warnings", "-A",
-                "clippy::needless_return");
+        // A range is a guard, so an exact code before its range is no overlap for clippy. No lint is allowed: a
+        // crate generated without options passes clippy.
+        String clippy = cargo(output, 900, "clippy", "--all-targets", "--", "-D", "warnings");
         Assumptions.assumeTrue(clippy == null || !clippy.contains("no such command"), "no clippy");
         assertNotNull(clippy, "clippy did not finish");
         assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("warning:"),

@@ -136,7 +136,7 @@ class OperationMappingTest {
     void aJsonResponseIsDecodedAndATextResponseIsAString() throws IOException {
         assertContains(function("items_api", "get_item"),
                 "ContentType::Json => serde_json::from_str(&content).map_err(Error::from),");
-        assertContains(function("default_api", "login"), "ContentType::Text => return Ok(content),");
+        assertContains(function("default_api", "login"), "ContentType::Text => Ok(content),");
     }
 
     @Test

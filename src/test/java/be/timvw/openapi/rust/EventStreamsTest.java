@@ -46,15 +46,27 @@ class EventStreamsTest {
     @TempDir
     static Path streamsOnly;
 
+    /** Both options with {@code supportMultipleResponses}. */
+    @TempDir
+    static Path multiple;
+
     @BeforeAll
     static void generate() {
         generate(on, true, true);
         generate(off, false, false);
         generate(streamsOnly, true, false);
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES, "true");
+        generate(multiple, true, true, props);
     }
 
     private static void generate(Path output, boolean typedEventStreams, boolean contentTypeMethods) {
-        Map<String, Object> props = new LinkedHashMap<>();
+        generate(output, typedEventStreams, contentTypeMethods, Map.of());
+    }
+
+    private static void generate(Path output, boolean typedEventStreams, boolean contentTypeMethods,
+            Map<String, Object> extra) {
+        Map<String, Object> props = new LinkedHashMap<>(extra);
         props.put("packageName", "event_streams_fixture");
         props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
         if (typedEventStreams) {
@@ -207,6 +219,22 @@ class EventStreamsTest {
 
     private static OpenAPI parse() {
         return new OpenAPIParser().readLocation(Path.of(SPEC).toAbsolutePath().toString(), null, null).getOpenAPI();
+    }
+
+    /**
+     * With supportMultipleResponses the stream method still returns the stream (a stream response has no other
+     * success to choose from), while the other methods return {@code ResponseContent<..Success>}; the crate builds.
+     */
+    @Test
+    void aStreamMethodReturnsTheStreamWithSupportMultipleResponses() throws IOException, InterruptedException {
+        String api = Files.readString(multiple.resolve("src/apis/default_api.rs"));
+        assertTrue(api.contains("-> Result<super::sse::EventStream<models::ResponseStreamEvent, CreateResponseError>, "
+                + "Error<CreateResponseError>>"), api);
+        assertTrue(api.contains("-> Result<ResponseContent<CreateResponseSuccess>, Error<CreateResponseError>>"), api);
+        Assumptions.assumeTrue(cargo(multiple, 30, "--version") != null, "no cargo");
+        String build = cargo(multiple, 900, "build");
+        assertNotNull(build, "cargo did not finish");
+        assertTrue(build.contains("Finished") && !build.contains("error:") && !build.contains("error["), build);
     }
 
     /** Runs src/test/rust/event_streams.rs on the generated crate. Needs cargo; without it there is nothing to run. */

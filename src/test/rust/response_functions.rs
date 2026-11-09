@@ -183,3 +183,132 @@ async fn an_error_status_is_the_typed_error() {
         other => panic!("{other:?}"),
     }
 }
+
+/// The examples of docs/guides/response-functions.md, compiled here so that the guide stays right.
+#[allow(unused)]
+mod guide {
+    use response_functions::apis::{items_api, configuration, ApiResponse};
+    use response_functions::models;
+
+    async fn intro(configuration: configuration::Configuration) -> Result<(), response_functions::apis::Error<items_api::GetItemError>> {
+        let item: models::Item = items_api::get_item()
+            .configuration(&configuration)
+            .id("42")
+            .call()
+            .await?;
+        Ok(())
+    }
+
+    async fn whole(configuration: configuration::Configuration) -> Result<(), response_functions::apis::Error<items_api::GetItemError>> {
+        let response = items_api::get_item_response()
+            .configuration(&configuration)
+            .id("42")
+            .call()
+            .await?;
+        let item: models::Item = response.json()?;
+
+        use serde::Deserialize;
+        #[derive(Deserialize)]
+        struct ItemSummary {
+            id: String,
+            name: String,
+        }
+        let summary: ItemSummary = response.json_as()?;
+
+        use std::borrow::Cow;
+        #[derive(Deserialize)]
+        struct ItemNames<'a> {
+            id: &'a str,
+            #[serde(borrow)]
+            name: Cow<'a, str>,
+        }
+        let names: ItemNames = response.json_borrowed()?;
+        println!("{} {}", names.id, names.name);
+        Ok(())
+    }
+
+    async fn headers(configuration: configuration::Configuration) -> Result<(), Box<dyn std::error::Error>> {
+        let response = items_api::get_item_response()
+            .configuration(&configuration)
+            .id("42")
+            .call()
+            .await?;
+
+        if response.status == reqwest::StatusCode::NON_AUTHORITATIVE_INFORMATION {
+            // ...
+        }
+        let request_id = response
+            .headers
+            .get("x-request-id")
+            .and_then(|value| value.to_str().ok());
+        let item: models::Item = response.json()?;
+
+        let deleted = items_api::delete_item_response()
+            .configuration(&configuration)
+            .id("42")
+            .call()
+            .await?;
+        assert_eq!(deleted.status, reqwest::StatusCode::NO_CONTENT);
+        let location = deleted.headers.get(reqwest::header::LOCATION);
+        let body: &str = response.text();
+        Ok(())
+    }
+
+    async fn errors(configuration: configuration::Configuration) -> Result<(), response_functions::apis::Error<items_api::GetItemError>> {
+        use response_functions::apis::Error;
+
+        match items_api::get_item_response()
+            .configuration(&configuration)
+            .id("42")
+            .call()
+            .await
+        {
+            Ok(response) => {
+                let item: models::Item = response.json()?;
+            }
+            Err(Error::ResponseError(content)) => match content.entity {
+                Some(items_api::GetItemError::Status404(problem)) => println!("not found: {}", problem.detail),
+                _ => println!("status {}: {}", content.status, content.content),
+            },
+            Err(other) => return Err(other),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn in_tests() -> Result<(), serde_json::Error> {
+        let response: ApiResponse<models::Item> = ApiResponse::new(
+            reqwest::StatusCode::OK,
+            reqwest::header::HeaderMap::new(),
+            r#"{"id":"42","name":"first"}"#.to_owned(),
+        );
+        assert_eq!(response.json()?.name, "first");
+        Ok(())
+    }
+
+    /// `ApiResponse<T>` is `Send + Sync` whatever `T` is.
+    fn assert_send_sync<T: Send + Sync>() {}
+    #[test]
+    fn send_sync() {
+        assert_send_sync::<ApiResponse<models::Item>>();
+        assert_send_sync::<ApiResponse<std::rc::Rc<u8>>>();
+    }
+
+    /// A `_response` future is `Send`: it can be spawned.
+    fn spawnable(c: configuration::Configuration) {
+        let _handle = tokio::spawn(async move {
+            let r = items_api::get_item_response().configuration(&c).id("1").call().await;
+            r.map(|r| r.status)
+        });
+    }
+
+    /// `json()` of `ApiResponse<String>` wants a JSON string literal and of `ApiResponse<()>` a `null`: use `text()`.
+    #[test]
+    fn text_json_on_string() {
+        let r: ApiResponse<String> = ApiResponse::new(reqwest::StatusCode::OK, Default::default(), "1.2.3".into());
+        assert_eq!(r.text(), "1.2.3");
+        assert!(r.json().is_err());
+        let u: ApiResponse<()> = ApiResponse::new(reqwest::StatusCode::NO_CONTENT, Default::default(), String::new());
+        assert!(u.json().is_err());
+    }
+}

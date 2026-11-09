@@ -21,7 +21,12 @@ use serde::Deserialize;
 ///   `Cow<str>`), so it lives as long as the `ApiResponse`.
 /// - [`text`](Self::text): the body as it arrived.
 ///
-/// [`status`](Self::status) and [`headers`](Self::headers) are those of the response.
+/// [`status`](Self::status) and [`headers`](Self::headers) are those of the response. Every method borrows it, so
+/// the body can be decoded more than once, or in two ways. `ApiResponse<T>` is `Send`, `Sync` and `Clone` whatever
+/// `T` is: it holds no `T`.
+///
+/// For a text success (`ApiResponse<String>`) use [`text`](Self::text): `json()` expects a JSON string literal
+/// (`"..."`). For a success without content (`ApiResponse<()>`), `json()` expects `null`; use the status and headers.
 ///
 /// ```
 /// use std::borrow::Cow;
@@ -96,8 +101,9 @@ impl<T> ApiResponse<T> {
         serde_json::from_str(&self.body)
     }
 
-    /// Decodes the body as `U`, which may borrow from it (`&'a str`, `Cow<'a, str>` with `#[serde(borrow)]`,
-    /// `&'a serde_json::value::RawValue`). The value lives as long as this response.
+    /// Decodes the body as `U`, which may borrow from it (`&'a str`, `Cow<'a, str>` with `#[serde(borrow)]`, or
+    /// `&'a serde_json::value::RawValue`, which needs serde_json's `raw_value` feature in the caller's
+    /// `Cargo.toml`). The value lives as long as this response.
     pub fn json_borrowed<'a, U: Deserialize<'a>>(&'a self) -> Result<U, serde_json::Error> {
         serde_json::from_str(&self.body)
     }

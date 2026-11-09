@@ -123,6 +123,10 @@ class ResponseFunctionsTest {
                 + "but returns the\n/// success undecoded, with its status and headers: an "
                 + "[`ApiResponse`](super::ApiResponse) that decodes the body as\n/// `models::Item` (`json()`)");
         assertContains(text, "#[bon::builder]\npub async fn get_item_response(");
+        // No empty doc line ahead of the paragraph when the operation has no doc lines of its own; one when it has.
+        assertContains(text, "}\n\n/// Sends the same request as [`get_item`]");
+        assertContains(read(variants, "src/apis/default_api.rs"),
+                "`.\n///\n/// Sends the same request as [`create_edit_json`]");
     }
 
     @Test

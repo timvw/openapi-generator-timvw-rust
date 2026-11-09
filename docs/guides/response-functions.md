@@ -49,7 +49,9 @@ file:
 ```
 
 It adds functions and `src/apis/api_response.rs`; nothing that exists changes, so turning it on is not a breaking
-change. Turning it off again removes the functions.
+change. Turning it off again removes the functions and the `mod` line, but `src/apis/api_response.rs` stays on disk
+until it is deleted (openapi-generator does not remove files it no longer writes), unless the client's generation
+script cleans the output directory first.
 
 ## What is generated
 
@@ -91,18 +93,20 @@ Which functions get a twin:
 | The method returns | `_response` twin |
 | --- | --- |
 | a JSON body (`models::Item`, `Vec<models::Item>`, ...) | yes, `ApiResponse<models::Item>` |
-| a text body (`String`) | yes, `ApiResponse<String>`; read it with `text()` |
+| a text body (`String`) | yes, `ApiResponse<String>`; read it with `text()` (`json()` expects a JSON string literal, `"..."`) |
 | nothing (`()`) | yes, `ApiResponse<()>`, for the status and headers |
 | a binary body (`reqwest::Response`) | no: that already is the response, with `status()`, `headers()` and the bytes |
 | an event stream (`typedEventStreams`, `EventStream<..>`) | no: the body is a stream, not a value to hold |
-| a webhook (`webhookModule`) | no |
+| a webhook (`webhookModule`) | no: a webhook function describes a request the API sends to you, so there is no response to read |
 
 With `contentTypeMethods`, every method of an operation that returns a body gets one: `create_edit_json_response`
 for the JSON request variant of `create_edit`, `create_transcription_text_response` for its text response variant.
 The `_stream` and `_bytes` methods get none.
 
 A twin's name must be free: an operation `getItemResponse` in the same API module as `getItem` fails generation,
-naming both. Rename one of them (its `operationId`) or leave the option off.
+naming both. Rename one of them (its `operationId`) or leave the option off. An operation whose name already ends in
+`_response` gets a twin ending in `_response_response`: in openai-client-base `create_response`, `get_response`,
+`cancel_response` and `delete_response` (and their `beta_` versions) get `create_response_response` and so on.
 
 ## `ApiResponse<T>`
 
@@ -125,8 +129,9 @@ impl<T: DeserializeOwned> ApiResponse<T> {
 }
 ```
 
-It is in `src/apis/api_response.rs` and re-exported as `apis::ApiResponse`. It implements `Clone` and `Debug` for any
-`T`. Every method borrows the response, so you can decode it more than once, or in two ways.
+It is in `src/apis/api_response.rs` and re-exported as `apis::ApiResponse`. It holds no `T`, so it is `Send`, `Sync`,
+`Clone` and `Debug` whatever `T` is, and a `_response` future can be spawned. Every method borrows the response, so
+you can decode it more than once, or in two ways.
 
 ## Examples
 
@@ -188,7 +193,8 @@ println!("{} {}", names.id, names.name);
 
 Use `Cow<'a, str>` with `#[serde(borrow)]` for strings that may contain escapes, and `&'a str` only where they
 cannot. `&'a serde_json::value::RawValue` keeps a part of the body as JSON text, checked but not parsed, to decode
-later or pass on. The value cannot outlive `response`; to keep it, decode with `json_as` instead.
+later or pass on; it needs serde_json's `raw_value` feature in your `Cargo.toml`
+(`serde_json = { version = "1", features = ["raw_value"] }`). The value cannot outlive `response`; to keep it, decode with `json_as` instead.
 
 ### Status and headers
 
@@ -261,8 +267,9 @@ A transport failure is `Error::Reqwest` or `Error::ReqwestMiddleware`, as in the
 happens afterwards, in `json()`, `json_as()` or `json_borrowed()`, and fails as a `serde_json::Error`, which
 converts into the crate's `Error` (`Error::Serde`) with `?` in a function returning it.
 
-`ApiResponse` covers successes. What an error response carries is the operation's `Error::ResponseError`, as
-described in [`responses`](../mapping/responses.md).
+`ApiResponse` covers successes. An error status is the operation's `Error::ResponseError`, which holds a
+`Box<ResponseContent<GetItemError>>` with the `status`, the body text (`content`), the decoded `entity` and the error
+response's `headers` (a `Retry-After` of a `429`, say), as described in [`responses`](../mapping/responses.md).
 
 ### In tests
 
@@ -319,8 +326,15 @@ function makes too, before it decodes and drops it.
 - **The content type is not checked.** The operation's function fails a success that is not JSON (or text, where the
   spec allows it) with a message naming the content type. The twin returns whatever came, and `json()` fails later
   with serde's message. Look at `response.headers.get(reqwest::header::CONTENT_TYPE)` if it matters.
-- **`json()` decodes with `serde_json`**, also when the crate is generated with `useSerdePathToError`: its error does
-  not carry the path. Decode with `serde_path_to_error` on `response.text()` where you need it.
+- **`json()` decodes with `serde_json`** and returns a `serde_json::Error`, also when the crate is generated with
+  `useSerdePathToError`, so its error does not carry the path. Where you need the path, decode the text yourself:
+
+  ```rust
+  let item: models::Item =
+      serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(response.text()))?;
+  ```
+- **`json()` of `ApiResponse<String>`** expects a JSON string literal (`"1.2.3"` with the quotes), which a
+  `text/plain` body is not. Read text with `text()`.
 - **`json()` of `ApiResponse<()>`** expects a JSON `null`, which a `204` does not have. Use `status`, `headers` and
   `text()` for those.
 - **Two functions per operation** make the API modules about twice as long (each twin repeats the request code), so

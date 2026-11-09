@@ -1185,6 +1185,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             Map<String, Object> context = new HashMap<>();
             context.put("x-rust-as-response", true);
             context.put("x-rust-response-type", type);
+            // The twin's doc paragraph follows the operation's doc lines with an empty line, only when there are some.
+            context.put("x-rust-doc-gap", (op.notes != null && !op.notes.isEmpty())
+                    || op.vendorExtensions.containsKey(VARIANT_DOC));
             op.vendorExtensions.put(RESPONSE_FUNCTION, context);
         }
     }

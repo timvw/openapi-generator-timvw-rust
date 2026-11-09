@@ -1148,6 +1148,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     variant.authMethods = op.authMethods;
                     variant.hasAuthMethods = op.hasAuthMethods;
                     variant.vendorExtensions.put(ERROR_ENUM, op.operationIdCamelCase + "Error");
+                    ErrorStatus.mark(variant, op, op.operationIdCamelCase + "Error");
+                }
+                if (!op.vendorExtensions.containsKey(CONTENT_VARIANT)) {
+                    ErrorStatus.mark(op, op, String.valueOf(op.vendorExtensions.get(ERROR_ENUM)));
                 }
                 for (List<CodegenParameter> params : Arrays.asList(op.allParams, op.formParams, op.bodyParams,
                         op.queryParams, op.pathParams, op.headerParams, op.requiredParams, op.optionalParams)) {

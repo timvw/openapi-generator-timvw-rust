@@ -25,6 +25,14 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   general options, nor a key openapi-generator sets itself, was ignored and now fails with every unknown key and, for
   each, the closest option (`did you mean 'bonBuilders'?`). A client whose configuration only holds options sees no
   change; one with a misspelt or stale key removes or corrects it.
+- The error variant comes from the status, not the body's shape
+  ([decision 5](decisions.md#5-error-variant-chosen-by-body-shape-not-status)): `entity` holds the variant of the
+  response with the status's exact code, else of its range (`4XX`), else `DefaultResponse`, with the body decoded as
+  that response's type; a body that does not decode as it is `UnknownValue`. Before, the body went into the first
+  variant whose type accepted it, so a 404 with the 400's type came back as `Status400`. The enum's type and variants
+  do not change, so nothing stops compiling; a client that matched on a `Status…` variant now gets the one of the
+  status, and one that relied on a body of another response's type decoding (a 500 body in `Status400`) gets
+  `UnknownValue`.
 
 ## What the generator renders differently from `-g rust`
 

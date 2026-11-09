@@ -1,0 +1,12 @@
+openapi: 3.0.3
+info:
+  title: validate_reserved
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Validation:
+      type: object
+      properties:
+        name:
+          type: string

@@ -225,6 +225,12 @@ pub enum {{{classname}}} {
         {{#description}}
         /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
         {{/description}}
+        {{#vendorExtensions.x-rust-validation-note}}
+        {{#description}}
+        ///
+        {{/description}}
+        /// {{{.}}}
+        {{/vendorExtensions.x-rust-validation-note}}
         #[serde(rename = "{{{baseName}}}"{{^required}}, skip_serializing_if = "Option::is_none"{{/required}})]
         {{{name}}}: {{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{^required}}Option<{{/required}}{{#isEnum}}{{{enumName}}}{{/isEnum}}{{^isEnum}}{{#isModel}}{{#vendorExtensions.x-rust-box}}Box<{{/vendorExtensions.x-rust-box}}{{{dataType}}}{{#vendorExtensions.x-rust-box}}>{{/vendorExtensions.x-rust-box}}{{/isModel}}{{^isModel}}{{{dataType}}}{{/isModel}}{{/isEnum}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{^required}}>{{/required}},
     {{/vars}}
@@ -245,6 +251,12 @@ pub struct {{{classname}}} {
     {{#description}}
     /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
     {{/description}}
+    {{#vendorExtensions.x-rust-validation-note}}
+    {{#description}}
+    ///
+    {{/description}}
+    /// {{{.}}}
+    {{/vendorExtensions.x-rust-validation-note}}
     {{#isByteArray}}
     {{#vendorExtensions.isMandatory}}#[serde_as(as = "serde_with::base64::Base64")]{{/vendorExtensions.isMandatory}}{{^vendorExtensions.isMandatory}}#[serde_as(as = "{{^serdeAsDoubleOption}}Option{{/serdeAsDoubleOption}}{{#serdeAsDoubleOption}}super::DoubleOption{{/serdeAsDoubleOption}}<serde_with::base64::Base64>")]{{/vendorExtensions.isMandatory}}
     {{/isByteArray}}
@@ -296,6 +308,21 @@ impl {{{classname}}} {
 {{/discriminator}}
 {{/isEnum}}
 {{/vendorExtensions.x-rust-enum}}
+{{#validateMethods}}
+
+impl crate::models::validation::Validate for {{{classname}}} {
+    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {
+{{{vendorExtensions.x-rust-validate}}}        Ok(())
+    }
+}
+{{#vendorExtensions.x-rust-validate-patterns}}
+{{#-first}}
+
+{{/-first}}
+static {{{name}}}: std::sync::LazyLock<Option<regex::Regex>> = std::sync::LazyLock::new(|| regex::Regex::new({{{literal}}}).ok());
+{{/vendorExtensions.x-rust-validate-patterns}}
+
+{{/validateMethods}}
 {{!-- for properties that are of enum type --}}
 {{#vars}}
 {{#isEnum}}

@@ -91,6 +91,19 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`additionalProperties`), which did not compile, is sent as its JSON. Signatures do not change. The generated header
   replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
   into the existing header rather than append a second one.
+- Every model implements a generated `Validate` trait
+  ([decision 9](decisions.md#9-validation-keywords-are-not-checked), with
+  [decision 8](decisions.md#8-uniqueitems-is-a-vec)): `validate()` checks `minLength`, `maxLength`, `pattern`,
+  `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems`
+  (by equality; arrays stay `Vec`), `minProperties` and `maxProperties`, recursively, and returns the first
+  `models::validation::ValidationError` (path, rule, offending value). Nothing generated calls it, and `Error` is unchanged.
+  The crate gains `src/models/validation.rs` (declared in `models/mod.rs`, so a client's own `lib.rs` needs no change), an `impl crate::models::validation::Validate` per model, and a `regex` dependency when
+  the spec has a `pattern`; every constrained field's documentation lists its constraints. A client that wants
+  validation calls `validate()` (with `use <crate>::models::validation::Validate;`); one that does not want the code sets
+  `validateMethods=false`. A client that keeps its own `Cargo.toml` (openai-client-base) adds `regex = "1"` when its
+  spec has a `pattern`. The generator's own warnings (a skipped pattern, a union field that is not rendered, ...) now show in the
+  openapi-generator CLI and Docker image, which only print `org.openapitools` loggers; renames that are expected (a
+  keyword as `r#type`, a Rust type the base generator uses as a variable name) log at debug instead of warn.
 - Parameter serialization fixes (pre-existing bugs found in reviews):
   - A query parameter the spec declares `style: deepObject` (an object or a `$ref` to one) keeps its type and is
     sent as `name[field]=value`; it was turned into `&str` and silently dropped. A required one listed in
@@ -104,8 +117,8 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
     field left `None` is sent empty (it did not compile).
   - A JSON body that is an array of uuids is named `uuid` (it was `uuid_colon_colon_uuid`).
   - A model cycle through an inline union is boxed (E0072).
-  - The generated API code passes `clippy -D warnings`: no `into_iter()` on a reference, no `return` in the
-    response `match`, no redundant closure.
+  - The generated parameter code passes `clippy -D warnings`: no `into_iter()` on a reference, no redundant
+    closure.
   A client passing a value to a declared `deepObject` parameter now passes the typed value instead of a string; a
   server reading form arrays as one `,`-joined field reads repeated fields instead.
 

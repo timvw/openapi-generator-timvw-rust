@@ -71,26 +71,28 @@ class NoStructDisplayTest {
 
     @Test
     void requiredQueryParameter() throws IOException {
-        assertTrue(api(on).contains("&[(\"filter\", &serde_json::to_string(&p_query_filter)?)]"), api(on));
+        // listed in deepObjectQueryParameters: sent in deepObject style, not as its JSON
+        assertTrue(api(on).contains("let param_value = &p_query_filter;\n        req_builder = req_builder.query("
+                + "&crate::apis::parse_deep_object(\"filter\", &serde_json::to_value(param_value)?));"), api(on));
     }
 
     @Test
     void queryArraysSerializeTheirItems() throws IOException {
         String on = api(NoStructDisplayTest.on);
+        String items = "let items: Vec<String> = param_value.iter().map(serde_json::to_string).collect::<Result<_, _>>()?;";
         for (String id : List.of("p_query_filters", "p_query_joined")) {
-            assertTrue(on.contains("&" + id + ".into_iter().map(|p| serde_json::to_string(&p)"
-                    + ".map(|value| (\"" + id.substring(8) + "\".to_owned(), value)))"
-                    + ".collect::<Result<Vec<(std::string::String, std::string::String)>, _>>()?)"), on);
-            assertTrue(on.contains("&" + id + ".into_iter().map(|p| serde_json::to_string(&p))"
-                    + ".collect::<Result<Vec<String>, _>>()?.join(\",\")"), on);
+            assertTrue(on.contains("let param_value = &" + id + ";\n        " + items), on);
         }
-        assertTrue(on.contains("&param_value.into_iter().map(|p| serde_json::to_string(&p))"
-                + ".collect::<Result<Vec<String>, _>>()?.join(\",\")"), on);
+        assertTrue(on.contains("for item in items {\n            req_builder = req_builder.query(&[(\"filters\", item)]);"),
+                on);
+        assertTrue(on.contains("req_builder = req_builder.query(&[(\"joined\", items.join(\",\"))]);"), on);
+        assertTrue(on.contains("if let Some(ref param_value) = p_query_maybe_joined {\n        " + items), on);
     }
 
     @Test
     void enumArraysStayOnDisplay() throws IOException {
-        assertTrue(api(on).contains("(\"colors\".to_owned(), p.to_string())"), api(on));
+        assertTrue(api(on).contains("if let Some(ref param_value) = p_query_colors {\n"
+                + "        let items: Vec<String> = param_value.iter().map(|p| p.to_string()).collect();"), api(on));
     }
 
     @Test
@@ -104,13 +106,14 @@ class NoStructDisplayTest {
 
     @Test
     void urlencodedForms() throws IOException {
-        assertTrue(api(on).contains("multipart_form_params.insert(\"filter\", serde_json::to_string(&p_form_filter)?);"),
-                api(on));
-        assertTrue(api(on).contains("multipart_form_params.insert(\"maybe_filter\", serde_json::to_string(&param_value)?);"),
-                api(on));
-        assertTrue(api(on).contains("multipart_form_params.insert(\"filters\", p_form_filters.into_iter()"
-                + ".map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(\",\"));"), api(on));
-        assertTrue(api(on).contains("multipart_form_params.insert(\"color\", param_value.to_string());"), api(on));
+        String api = api(on);
+        assertTrue(api.contains("let param_value = &p_form_filter;\n"
+                + "        multipart_form_params.push((\"filter\", serde_json::to_string(param_value)?));"), api);
+        assertTrue(api.contains("multipart_form_params.push((\"maybe_filter\", serde_json::to_string(param_value)?));"),
+                api);
+        assertTrue(api.contains("let param_value = &p_form_filters;\n        let items: Vec<String> = param_value.iter()"
+                + ".map(serde_json::to_string).collect::<Result<_, _>>()?;"), api);
+        assertTrue(api.contains("multipart_form_params.push((\"filters\", item));"), api);
     }
 
     @Test

@@ -111,17 +111,53 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
     let {{{vendorExtensions.x-rust-param-identifier}}} = {{{paramName}}};
     {{/allParams}}
 
-    let uri_str = format!("{}{{{path}}}", configuration.base_path{{#pathParams}}, {{{baseName}}}={{#vendorExtensions.x-rust-rfc3339}}{{^isArray}}crate::apis::urlencode({{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}.to_rfc3339()){{/isArray}}{{#isArray}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}.iter().map(|p| crate::apis::urlencode(p.to_rfc3339())).collect::<Vec<String>>().join(","){{/isArray}}{{/vendorExtensions.x-rust-rfc3339}}{{^vendorExtensions.x-rust-rfc3339}}{{#isString}}{{^isUuid}}crate::apis::urlencode({{/isUuid}}{{/isString}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.to_string()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(","){{/isArray}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}.to_string(){{/isContainer}}{{/isPrimitiveType}}{{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-struct-json}}{{#isString}}{{^isUuid}}){{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-rfc3339}}{{/pathParams}});
+    let uri_str = format!("{}{{{path}}}", configuration.base_path{{#pathParams}}, {{{baseName}}}={{#vendorExtensions.x-rust-rfc3339}}{{^isArray}}crate::apis::urlencode({{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}.to_rfc3339()){{/isArray}}{{#isArray}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}.iter().map(|p| crate::apis::urlencode(p.to_rfc3339())).collect::<Vec<String>>().join(","){{/isArray}}{{/vendorExtensions.x-rust-rfc3339}}{{^vendorExtensions.x-rust-rfc3339}}{{#isString}}{{^isUuid}}crate::apis::urlencode({{/isUuid}}{{/isString}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}{{#isArray}}{{#vendorExtensions.x-rust-struct-json-items}}.iter().map(|p| serde_json::to_string(p).map(crate::apis::urlencode)).collect::<Result<Vec<String>, _>>()?{{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-str-items}}.iter().map(crate::apis::urlencode){{/vendorExtensions.x-rust-str-items}}{{^vendorExtensions.x-rust-str-items}}.iter().map(|p| crate::apis::urlencode(p.{{{vendorExtensions.x-rust-to-text}}}())){{/vendorExtensions.x-rust-str-items}}.collect::<Vec<String>>(){{/vendorExtensions.x-rust-struct-json-items}}.join(","){{/isArray}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}.to_string(){{/isContainer}}{{/isPrimitiveType}}{{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-struct-json}}{{#isString}}{{^isUuid}}){{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-rfc3339}}{{/pathParams}});
     let mut req_builder = configuration.client.request(reqwest::Method::{{{httpMethod}}}, &uri_str);
 
     {{#queryParams}}
-    {{#required}}
     {{#isArray}}
-    req_builder = match "{{collectionFormat}}" {
-        "multi" => {{#vendorExtensions.x-rust-struct-json-items}}req_builder.query(&{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| serde_json::to_string(&p).map(|value| ("{{{baseName}}}".to_owned(), value))).collect::<Result<Vec<(std::string::String, std::string::String)>, _>>()?){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}req_builder.query(&{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| ("{{{baseName}}}".to_owned(), p.{{{vendorExtensions.x-rust-to-text}}}())).collect::<Vec<(std::string::String, std::string::String)>>()){{/vendorExtensions.x-rust-struct-json-items}},
-        _ => req_builder.query(&[("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}&{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}&{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/vendorExtensions.x-rust-struct-json-items}})]),
-    };
+    {{#required}}
+    {{^isNullable}}
+    {
+        let param_value = &{{{vendorExtensions.x-rust-param-identifier}}};
+    {{/isNullable}}
+    {{#isNullable}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+    {{/isNullable}}
+    {{/required}}
+    {{^required}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+    {{/required}}
+        let items: Vec<String> = {{#vendorExtensions.x-rust-struct-json-items}}param_value.iter().map(serde_json::to_string).collect::<Result<_, _>>()?{{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}param_value.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect(){{/vendorExtensions.x-rust-struct-json-items}};
+        {{#vendorExtensions.x-rust-repeat}}
+        for item in items {
+            req_builder = req_builder.query(&[("{{{baseName}}}", item)]);
+        }
+        {{/vendorExtensions.x-rust-repeat}}
+        {{^vendorExtensions.x-rust-repeat}}
+        req_builder = req_builder.query(&[("{{{baseName}}}", items.join("{{{vendorExtensions.x-rust-separator}}}"))]);
+        {{/vendorExtensions.x-rust-repeat}}
+    }
     {{/isArray}}
+    {{^isArray}}
+    {{#isDeepObject}}
+    {{#required}}
+    {{^isNullable}}
+    {
+        let param_value = &{{{vendorExtensions.x-rust-param-identifier}}};
+    {{/isNullable}}
+    {{#isNullable}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+    {{/isNullable}}
+    {{/required}}
+    {{^required}}
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+    {{/required}}
+        req_builder = req_builder.query(&crate::apis::parse_deep_object("{{{baseName}}}", &serde_json::to_value(param_value)?));
+    }
+    {{/isDeepObject}}
+    {{^isDeepObject}}
+    {{#required}}
     {{^isArray}}
     {{^isNullable}}
     {{#isMap}}
@@ -132,24 +168,6 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
     {{/isMap}}
     {{/isNullable}}
     {{#isNullable}}
-    {{#isDeepObject}}
-    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        {{^isExplode}}
-        let params = crate::apis::parse_deep_object("{{{baseName}}}", &serde_json::to_value(param_value)?);
-        req_builder = req_builder.query(&params);
-        {{/isExplode}}
-        {{#isExplode}}
-        {{#isModel}}
-        req_builder = req_builder.query(&param_value);
-        {{/isModel}}
-        {{#isMap}}
-        let params = crate::apis::parse_deep_object("{{{baseName}}}", &serde_json::to_value(param_value)?);
-        req_builder = req_builder.query(&params);
-        {{/isMap}}
-        {{/isExplode}}
-    };
-    {{/isDeepObject}}
-    {{^isDeepObject}}
     {{#isObject}}
     if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
         req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
@@ -160,7 +178,6 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
         req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
     };
     {{/isModel}}
-    {{/isDeepObject}}
     {{^isObject}}
     {{^isModel}}
     {{^isEnum}}
@@ -194,30 +211,8 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
     {{/required}}
     {{^required}}
     if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        {{#isArray}}
-        req_builder = match "{{collectionFormat}}" {
-            "multi" => {{#vendorExtensions.x-rust-struct-json-items}}req_builder.query(&param_value.into_iter().map(|p| serde_json::to_string(&p).map(|value| ("{{{baseName}}}".to_owned(), value))).collect::<Result<Vec<(std::string::String, std::string::String)>, _>>()?){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}req_builder.query(&param_value.into_iter().map(|p| ("{{{baseName}}}".to_owned(), p.{{{vendorExtensions.x-rust-to-text}}}())).collect::<Vec<(std::string::String, std::string::String)>>()){{/vendorExtensions.x-rust-struct-json-items}},
-            _ => req_builder.query(&[("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}&param_value.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}&param_value.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/vendorExtensions.x-rust-struct-json-items}})]),
-        };
-        {{/isArray}}
         {{^isArray}}
-        {{#isDeepObject}}
-        {{^isExplode}}
-        let params = crate::apis::parse_deep_object("{{{baseName}}}", &serde_json::to_value(param_value)?);
-        req_builder = req_builder.query(&params);
-        {{/isExplode}}
-        {{#isExplode}}
-        {{#isModel}}
-        req_builder = req_builder.query(&param_value);
-        {{/isModel}}
-        {{#isMap}}
-        let params = crate::apis::parse_deep_object("{{{baseName}}}", &serde_json::to_value(param_value)?);
-        req_builder = req_builder.query(&params);
-        {{/isMap}}
-        {{/isExplode}}
-        {{/isDeepObject}}
-        {{^isDeepObject}}
-        {{#isObject}}
+            {{#isObject}}
         req_builder = req_builder.query(&[("{{{baseName}}}", &serde_json::to_string(param_value)?)]);
         {{/isObject}}
         {{#isModel}}
@@ -243,10 +238,11 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
         {{/isEnum}}
         {{/isModel}}
         {{/isObject}}
-        {{/isDeepObject}}
-        {{/isArray}}
+            {{/isArray}}
     }
     {{/required}}
+    {{/isDeepObject}}
+    {{/isArray}}
     {{/queryParams}}
     {{#hasAuthMethods}}
     {{#authMethods}}
@@ -273,18 +269,18 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
     {{#headerParams}}
     {{#required}}
     {{^isNullable}}
-    req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}});
+    req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}{{#vendorExtensions.x-rust-struct-json-items}}.iter().map(serde_json::to_string).collect::<Result<Vec<String>, _>>()?{{/vendorExtensions.x-rust-struct-json-items}}.join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}});
     {{/isNullable}}
     {{#isNullable}}
     match {{{vendorExtensions.x-rust-param-identifier}}} {
-        Some(param_value) => { req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}); },
+        Some(param_value) => { req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}{{#vendorExtensions.x-rust-struct-json-items}}.iter().map(serde_json::to_string).collect::<Result<Vec<String>, _>>()?{{/vendorExtensions.x-rust-struct-json-items}}.join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}); },
         None => { req_builder = req_builder.header("{{{baseName}}}", ""); },
     }
     {{/isNullable}}
     {{/required}}
     {{^required}}
     if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}.join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}});
+        req_builder = req_builder.header("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}{{#vendorExtensions.x-rust-display-items}}.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>(){{/vendorExtensions.x-rust-display-items}}{{#vendorExtensions.x-rust-struct-json-items}}.iter().map(serde_json::to_string).collect::<Result<Vec<String>, _>>()?{{/vendorExtensions.x-rust-struct-json-items}}.join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}});
     }
     {{/required}}
     {{/headerParams}}
@@ -648,42 +644,60 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
 {{/multipartHelper}}
     {{^isMultipart}}
     {{#hasFormParams}}
-    let mut multipart_form_params = std::collections::HashMap::new();
+    let mut multipart_form_params: Vec<(&str, String)> = Vec::new();
     {{#formParams}}
     {{#isFile}}
     {{#required}}
     {{^isNullable}}
-    multipart_form_params.insert("{{{baseName}}}", unimplemented!("File form param not supported with x-www-form-urlencoded content"));
+    multipart_form_params.push(("{{{baseName}}}", unimplemented!("File form param not supported with x-www-form-urlencoded content")));
     {{/isNullable}}
     {{#isNullable}}
     match {{{vendorExtensions.x-rust-param-identifier}}} {
-        Some(param_value) => { multipart_form_params.insert("{{{baseName}}}", unimplemented!("File form param not supported with x-www-form-urlencoded content")); },
+        Some(param_value) => { multipart_form_params.push(("{{{baseName}}}", unimplemented!("File form param not supported with x-www-form-urlencoded content"))); },
         None => { unimplemented!("Required nullable file form param not supported with x-www-form-urlencoded content"); },
     }
     {{/isNullable}}
     {{/required}}
     {{^required}}
     if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        multipart_form_params.insert("{{{baseName}}}", unimplemented!("File form param not supported with x-www-form-urlencoded content"));
+        multipart_form_params.push(("{{{baseName}}}", unimplemented!("File form param not supported with x-www-form-urlencoded content")));
     }
     {{/required}}
     {{/isFile}}
     {{^isFile}}
     {{#required}}
     {{^isNullable}}
-    multipart_form_params.insert("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}{{{vendorExtensions.x-rust-param-identifier}}}.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}})?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{{vendorExtensions.x-rust-param-identifier}}}{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}});
+    {
+        let param_value = &{{{vendorExtensions.x-rust-param-identifier}}};
     {{/isNullable}}
     {{#isNullable}}
-    match {{{vendorExtensions.x-rust-param-identifier}}} {
-        Some(param_value) => { multipart_form_params.insert("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}param_value.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}}); },
-        None => { multipart_form_params.insert("{{{baseName}}}", ""); },
-    }
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
     {{/isNullable}}
     {{/required}}
     {{^required}}
-    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        multipart_form_params.insert("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json-items}}param_value.into_iter().map(|p| serde_json::to_string(&p)).collect::<Result<Vec<String>, _>>()?.join(","){{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(&param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value{{#isArray}}.into_iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect::<Vec<String>>().join(",").to_string(){{/isArray}}{{^isArray}}.{{{vendorExtensions.x-rust-to-text}}}(){{/isArray}}{{/vendorExtensions.x-rust-struct-json}}{{/vendorExtensions.x-rust-struct-json-items}});
+    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+    {{/required}}
+        {{#isArray}}
+        let items: Vec<String> = {{#vendorExtensions.x-rust-struct-json-items}}param_value.iter().map(serde_json::to_string).collect::<Result<_, _>>()?{{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}param_value.iter().map(|p| p.{{{vendorExtensions.x-rust-to-text}}}()).collect(){{/vendorExtensions.x-rust-struct-json-items}};
+        {{#vendorExtensions.x-rust-repeat}}
+        for item in items {
+            multipart_form_params.push(("{{{baseName}}}", item));
+        }
+        {{/vendorExtensions.x-rust-repeat}}
+        {{^vendorExtensions.x-rust-repeat}}
+        multipart_form_params.push(("{{{baseName}}}", items.join("{{{vendorExtensions.x-rust-separator}}}")));
+        {{/vendorExtensions.x-rust-repeat}}
+        {{/isArray}}
+        {{^isArray}}
+        multipart_form_params.push(("{{{baseName}}}", {{#vendorExtensions.x-rust-struct-json}}serde_json::to_string(param_value)?{{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}param_value.{{{vendorExtensions.x-rust-to-text}}}(){{/vendorExtensions.x-rust-struct-json}}));
+        {{/isArray}}
     }
+    {{#required}}
+    {{#isNullable}}
+    else {
+        multipart_form_params.push(("{{{baseName}}}", String::new()));
+    }
+    {{/isNullable}}
     {{/required}}
     {{/isFile}}
     {{/formParams}}
@@ -782,12 +796,12 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
             ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
             {{/useSerdePathToError}}
             {{#vendorExtensions.x-supports-plain-text}}
-            ContentType::Text => return Ok(content),
+            ContentType::Text => Ok(content),
             {{/vendorExtensions.x-supports-plain-text}}
             {{^vendorExtensions.x-supports-plain-text}}
-            ContentType::Text => return Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `{{returnType}}`"))),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `{{returnType}}`"))),
             {{/vendorExtensions.x-supports-plain-text}}
-            ContentType::Unsupported(unknown_type) => return Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `{{returnType}}`")))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `{{returnType}}`")))),
         }
         {{/returnType}}
         {{/isResponseFile}}

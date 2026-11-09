@@ -140,7 +140,8 @@ async fn a_uuid_form_field_is_sent_hyphenated() {
         fields,
         vec![
             format!("id={A}"),
-            format!("ids={B}%2C{C}"),
+            format!("ids={C}"),
+            format!("ids={B}"),
             format!("parent={B}"),
         ]
     );

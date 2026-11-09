@@ -76,8 +76,10 @@ class DateParamsTest {
         assertTrue(api.contains("req_builder.query(&[(\"from\", &p_query_from.to_rfc3339())]);"), api);
         assertTrue(api.contains("req_builder.query(&[(\"until\", &param_value.to_rfc3339())]);"), api);
         assertTrue(api.contains("req_builder.query(&[(\"before\", &param_value.to_rfc3339())]);"), api);
-        assertTrue(api.contains("(\"times\".to_owned(), p.to_rfc3339())"), api);
-        assertTrue(api.contains("(\"timesCsv\", &param_value.into_iter().map(|p| p.to_rfc3339())"), api);
+        assertTrue(api.contains("let items: Vec<String> = param_value.iter().map(|p| p.to_rfc3339()).collect();"),
+                api);
+        assertTrue(api.contains("req_builder = req_builder.query(&[(\"times\", item)]);"), api);
+        assertTrue(api.contains("req_builder = req_builder.query(&[(\"timesCsv\", items.join(\",\"))]);"), api);
         assertTrue(api.contains("req_builder.header(\"X-At\", p_header_x_at.to_rfc3339());"), api);
         assertTrue(api.contains("req_builder.header(\"X-Until\", param_value.to_rfc3339());"), api);
         assertTrue(api.contains("req_builder.header(\"X-Times\", param_value.iter().map(|p| p.to_rfc3339())"
@@ -88,11 +90,13 @@ class DateParamsTest {
     void aDateTimeFormFieldIsSentInRfc3339() throws IOException {
         for (Path output : List.of(chrono, helper)) {
             String api = api(output);
-            assertTrue(api.contains("multipart_form_params.insert(\"at\", p_form_at.to_rfc3339());"), api);
-            assertTrue(api.contains("multipart_form_params.insert(\"until\", param_value.to_rfc3339());"), api);
-            assertTrue(api.contains("multipart_form_params.insert(\"times\", param_value.into_iter()"
-                    + ".map(|p| p.to_rfc3339()).collect::<Vec<String>>().join(\",\").to_string());"), api);
-            assertTrue(api.contains("multipart_form_params.insert(\"day\", p_form_day.to_string());"), api);
+            assertTrue(api.contains("let param_value = &p_form_at;\n"
+                    + "        multipart_form_params.push((\"at\", param_value.to_rfc3339()));"), api);
+            assertTrue(api.contains("multipart_form_params.push((\"until\", param_value.to_rfc3339()));"), api);
+            assertTrue(api.contains("let items: Vec<String> = param_value.iter().map(|p| p.to_rfc3339()).collect();\n"
+                    + "        for item in items {\n            multipart_form_params.push((\"times\", item));"), api);
+            assertTrue(api.contains("let param_value = &p_form_day;\n"
+                    + "        multipart_form_params.push((\"day\", param_value.to_string()));"), api);
             assertTrue(api.contains("multipart_form = multipart_form.text(\"at\", p_form_at.to_rfc3339());"), api);
             assertTrue(api.contains("multipart_form = multipart_form.text(\"until\", param_value.to_rfc3339());"),
                     api);
@@ -104,10 +108,11 @@ class DateParamsTest {
     void aDateIsSentWithDisplay() throws IOException {
         String api = api(chrono);
         assertTrue(api.contains("day=p_path_day,"), api);
-        assertTrue(api.contains("days=p_path_days.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(\",\")"),
-                api);
+        assertTrue(api.contains("days=p_path_days.iter().map(|p| crate::apis::urlencode(p.to_string()))"
+                + ".collect::<Vec<String>>().join(\",\")"), api);
         assertTrue(api.contains("req_builder.query(&[(\"onDay\", &p_query_on_day.to_string())]);"), api);
-        assertTrue(api.contains("(\"dates\".to_owned(), p.to_string())"), api);
+        assertTrue(api.contains("let items: Vec<String> = param_value.iter().map(|p| p.to_string()).collect();\n"
+                + "        for item in items {\n            req_builder = req_builder.query(&[(\"dates\", item)]);"), api);
         assertTrue(api.contains("req_builder.header(\"X-Day\", param_value.to_string());"), api);
     }
 
@@ -116,10 +121,11 @@ class DateParamsTest {
         String api = api(strings);
         assertFalse(api.contains("to_rfc3339"), api);
         assertTrue(api.contains("at=p_path_at,"), api);
-        assertTrue(api.contains("ats=p_path_ats.join(\",\")"), api);
+        assertTrue(api.contains("ats=p_path_ats.iter().map(crate::apis::urlencode).collect::<Vec<String>>().join(\",\")"),
+                api);
         assertTrue(api.contains("req_builder.query(&[(\"from\", &p_query_from.to_string())]);"), api);
         assertTrue(api.contains("req_builder.header(\"X-At\", p_header_x_at.to_string());"), api);
-        assertTrue(api.contains("multipart_form_params.insert(\"at\", p_form_at.to_string());"), api);
+        assertTrue(api.contains("multipart_form_params.push((\"at\", param_value.to_string()));"), api);
         assertTrue(api.contains("multipart_form = multipart_form.text(\"at\", p_form_at.to_string());"), api);
     }
 

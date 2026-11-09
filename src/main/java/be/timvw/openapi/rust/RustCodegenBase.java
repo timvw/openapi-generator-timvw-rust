@@ -489,6 +489,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         if (parameterNameMapping.containsKey(name)) {
             return parameterNameMapping.get(name);
         }
+        if (name != null && name.contains("::")) {
+            // a body that is an array of uuid::Uuid is named after its items' Rust type: uuid, not uuid_colon_colon_uuid
+            String type = name.contains("<") ? name.substring(0, name.indexOf('<')) : name;
+            name = type.substring(type.lastIndexOf("::") + 2);
+        }
         return sanitizeIdentifier(name, CasingType.SNAKE_CASE, "param", "parameter", true);
     }
 

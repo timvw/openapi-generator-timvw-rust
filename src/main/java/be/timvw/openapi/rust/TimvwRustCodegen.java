@@ -199,6 +199,14 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String TO_TEXT = "x-rust-to-text";
     /** Set on a path, query, header, cookie or form parameter whose argument is a {@code &str}: it is its own text. */
     static final String STR = "x-rust-str";
+    /** Set on an array parameter of strings: an item is its own text. */
+    static final String STR_ITEMS = "x-rust-str-items";
+    /** Set on an urlencoded form field array whose encoding says {@code explode: false}. */
+    static final String FORM_JOINED = "x-rust-form-joined";
+    /** Set on a query or form array that is sent as one pair per item. */
+    static final String REPEAT = "x-rust-repeat";
+    /** Set on a query or form array: the delimiter its items are joined with when it is not repeated. */
+    static final String SEPARATOR = "x-rust-separator";
     /** Set on an operation that sends a {@code Cookie} header (see {@link #markCookies}). */
     static final String COOKIES = "x-rust-cookies";
     /** Set when an operation sends a {@code Cookie} header: {@code apis/mod.rs} then has {@code cookie_encode}. */
@@ -1058,6 +1066,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
             return;
         }
         boolean items = p.isArray && p.items != null;
+        if (items && (p.items.isArray || p.items.isMap)) {
+            // an array of arrays or of maps: each item has no text form of its own, so it is sent as its JSON
+            p.vendorExtensions.put(STRUCT_JSON_ITEMS, true);
+            return;
+        }
         String type = items ? p.items.dataType : p.dataType;
         if (type != null && structs.contains(type.replaceFirst("^models::", ""))) {
             p.vendorExtensions.put(items ? STRUCT_JSON_ITEMS : STRUCT_JSON, true);
@@ -1081,6 +1094,33 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (dateTime) {
             p.vendorExtensions.put(RFC3339, true);
         }
+        if (p.isArray && p.items != null) {
+            if ("String".equals(p.items.dataType)) {
+                p.vendorExtensions.put(STR_ITEMS, true);
+            }
+            // A query array is repeated for style: form, explode: true (collectionFormat multi), a form field array
+            // unless its encoding says explode: false; otherwise the items are joined with the style's delimiter.
+            boolean repeat = p.isFormParam ? !p.vendorExtensions.containsKey(FORM_JOINED)
+                    : "multi".equals(p.collectionFormat);
+            if (repeat) {
+                p.vendorExtensions.put(REPEAT, true);
+            }
+            p.vendorExtensions.put(SEPARATOR, separator(p.collectionFormat));
+        }
+    }
+
+    /** The delimiter a non-exploded array is joined with: {@code |} for pipeDelimited, a space for spaceDelimited. */
+    static String separator(String collectionFormat) {
+        if ("pipes".equals(collectionFormat)) {
+            return "|";
+        }
+        if ("ssv".equals(collectionFormat)) {
+            return " ";
+        }
+        if ("tsv".equals(collectionFormat)) {
+            return "\\t";
+        }
+        return ",";
     }
 
     /**
@@ -1246,7 +1286,40 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 params.forEach(TimvwRustCodegen::markBodyRef);
             }
         }
+        markFormExplode(co, operation);
         return co;
+    }
+
+    /**
+     * An urlencoded form field array is sent as a pair per item ({@code style: form, explode: true}, the default)
+     * unless the body's {@code encoding} gives it {@code explode: false}: marks those with {@link #FORM_JOINED}.
+     */
+    private void markFormExplode(CodegenOperation co, io.swagger.v3.oas.models.Operation operation) {
+        if (operation.getRequestBody() == null) {
+            return;
+        }
+        io.swagger.v3.oas.models.parameters.RequestBody body =
+                org.openapitools.codegen.utils.ModelUtils.getReferencedRequestBody(openAPI, operation.getRequestBody());
+        if (body == null || body.getContent() == null) {
+            return;
+        }
+        io.swagger.v3.oas.models.media.MediaType form = body.getContent().get("application/x-www-form-urlencoded");
+        if (form == null || form.getEncoding() == null) {
+            return;
+        }
+        for (List<CodegenParameter> params : Arrays.asList(co.allParams, co.formParams, co.requiredParams,
+                co.optionalParams)) {
+            if (params == null) {
+                continue;
+            }
+            for (CodegenParameter p : params) {
+                io.swagger.v3.oas.models.media.Encoding encoding = p.isFormParam ? form.getEncoding().get(p.baseName)
+                        : null;
+                if (encoding != null && Boolean.FALSE.equals(encoding.getExplode())) {
+                    p.vendorExtensions.put(FORM_JOINED, true);
+                }
+            }
+        }
     }
 
     /** {@code default_api} re-exports the webhook module when {@code webhookModuleReexport} is set. */
@@ -1286,15 +1359,14 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         markStructJson(p, structs);
                         if (p.vendorExtensions.containsKey(STRUCT_JSON) && !p.isMap) {
                             structJsonModels.add(p.dataType.replaceFirst("^models::", ""));
-                        } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS)) {
+                        } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS) && !p.items.isContainer) {
                             structJsonModels.add(p.items.dataType.replaceFirst("^models::", ""));
                         }
                         if (p.dataType != null && unionModels.containsKey(p.dataType.replaceFirst("^models::", ""))) {
                             p.vendorExtensions.put(UnionRules.UNION_TEXT, true);
                         }
-                        if (p.isArray && p.items != null && (p.items.isModel || p.items.isEnumRef
-                                || (p.items.dataType != null && p.items.dataType.startsWith("models::"))
-                                || isChrono(p.items.dataType) || p.items.isUuid)) {
+                        if (p.isArray && p.items != null && !"String".equals(p.items.dataType)
+                                && !p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS)) {
                             p.vendorExtensions.put(DISPLAY_ITEMS, true);
                         }
                         markText(p);

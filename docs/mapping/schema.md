@@ -159,7 +159,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | --- | --- |
 | OpenAPI | `additionalProperties: <schema>`, or `true` |
 | Rust | `std::collections::HashMap<String, T>`; `true` gives `HashMap<String, serde_json::Value>`. Values that are an inline enum give `HashMap<String, <Property>>`, with the enum `<Property>` rendered next to the struct |
-| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L130), [`SmallFixesTest#aMapOfAnInlineEnumIsAMapOfTheEnum`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L66) |
+| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L130), [`SmallFixesTest#aMapOfAnInlineEnumIsAMapOfTheEnum`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L67) |
 
 ### `schema.type.free-form-object`
 

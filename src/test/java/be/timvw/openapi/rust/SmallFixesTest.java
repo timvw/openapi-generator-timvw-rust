@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -23,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Renderings that did not compile or did not pass clippy, each on a small spec, and each crate checked with
  * {@code cargo clippy -D warnings}: a map of an inline enum, {@code useSerdePathToError}, and an event stream with
- * {@code contentTypeMethods} but without {@code typedEventStreams}.
+ * {@code contentTypeMethods} but without {@code typedEventStreams}; and the README's doctests.
  */
 class SmallFixesTest {
 
@@ -71,6 +72,24 @@ class SmallFixesTest {
                 "pub fn new(required_labels: std::collections::HashMap<String, RequiredLabels>) -> Holder {");
         assertContains(holder, "pub enum Labels {");
         assertClippyClean(mapEnums);
+    }
+
+    /**
+     * lib.rs includes the README as the crate's documentation, so its code blocks are doctests unless marked as
+     * another language: the Cargo.toml line is {@code toml} and the cargo command {@code sh}, and
+     * {@code cargo test --doc} passes on a crate generated without options.
+     */
+    @Test
+    void theReadmeIsNoFailingDoctest() throws IOException, InterruptedException {
+        String readme = Files.readString(mapEnums.resolve("README.md"));
+        assertContains(readme, "```toml\nsmall_fixes_fixture = { path = \"./small_fixes_fixture\" }\n```");
+        assertContains(readme, "```sh\ncargo doc --open\n```");
+        // Every block is opened with a language: the bare fences are the closing ones.
+        assertEquals(readme.split("```[a-z]+\n", -1).length - 1, readme.split("```\n", -1).length - 1, readme);
+        Assumptions.assumeTrue(cargo(mapEnums, 30, "--version") != null, "no cargo");
+        String doc = cargo(mapEnums, 900, "test", "--doc");
+        assertNotNull(doc, "cargo did not finish");
+        assertTrue(doc.contains("test result: ok.") && !doc.contains("FAILED"), doc);
     }
 
     /** useSerdePathToError: Display formats the path and the error themselves (clippy to_string_in_format_args). */

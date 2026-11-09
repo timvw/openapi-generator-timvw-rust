@@ -99,6 +99,9 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
 - `useSerdePathToError`: `Display` of `Error::SerdePathToError` no longer calls `to_string()` inside `format!`
   (clippy `to_string_in_format_args`). An operation whose only error is a `text/plain` default sets
   `Some(DefaultResponse(content.clone()))` without an `UnknownValue` fallback that could not apply.
+- `cargo test --doc` passes on a generated crate: `lib.rs` includes the README as the crate's documentation, and its
+  `Cargo.toml` line and `cargo doc --open` were bare code blocks, so rustdoc compiled them as Rust. They are marked
+  `toml` and `sh`.
 
 ## What the generator renders differently from `-g rust`
 

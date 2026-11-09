@@ -115,6 +115,18 @@ ignored:
 Exception in thread "main" java.lang.IllegalArgumentException: timvw-rust: option 'supportAsync' is not configurable: timvw-rust always uses 'true'; remove it (it was set to 'true')
 ```
 
+An option that is none of these, nor one of openapi-generator's general options (`sortParamsByRequiredFlag`,
+`gitUserId`, `apiPackage`, ...), nor a key openapi-generator sets itself, fails generation too, so a misspelt option
+does not silently change the output. The error lists every unknown key, each with the closest option when one is near
+(the options above that are not configurable are never suggested):
+
+```
+Exception in thread "main" java.lang.IllegalArgumentException: timvw-rust: unknown options 'bonBuilder' (did you mean 'bonBuilders'?), 'frobnicate'; remove them or correct their names (config-help -g timvw-rust lists the options)
+```
+
+The keys `Cargo.mustache` reads (`publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, as in stock
+`-g rust`) are accepted as well.
+
 ## Templates
 
 Every template the generator renders is its own, in `src/main/resources/timvw-rust/`: the crate files

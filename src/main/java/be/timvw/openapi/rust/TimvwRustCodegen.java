@@ -604,6 +604,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
         }
 
+        // After the options with a message of their own, so those keep it; the removed options get theirs below.
+        UnknownOptions.check(GENERATOR_NAME, additionalProperties.keySet(), cliOptions(),
+                List.of(JSON_VALUE_SCHEMAS, LEGACY_MODEL_REWRITES));
+
         setLibrary(REQWEST_LIBRARY);
         super.processOpts();
 

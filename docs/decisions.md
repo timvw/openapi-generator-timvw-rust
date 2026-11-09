@@ -315,7 +315,7 @@ signatures stay the same, so nothing breaks.
 
 **Recommendation:** adopt: it is a wire bug, and fixing it lets langfuse-ergonomic call the generated `trace_list`.
 
-**Decision:** adopt (2026-11-09): `date-time` parameters are sent with `to_rfc3339()`, `date` parameters as `YYYY-MM-DD`, in path, query and header.
+**Decision:** adopt (2026-11-09): `date-time` parameters are sent with `to_rfc3339()`, `date` parameters as `YYYY-MM-DD`, in path, query and header. Implemented in #63.
 
 ## 12. Option defaults are stock, not the baseline
 

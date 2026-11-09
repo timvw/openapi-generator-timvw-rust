@@ -372,7 +372,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 "Every model implements the generated models::validation::Validate trait: validate() checks minLength, "
                         + "maxLength, pattern (with the regex crate), minimum, maximum, exclusiveMinimum, "
                         + "exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties and "
-                        + "maxProperties, in every nested model, and returns the first violation. Nothing calls it. "
+                        + "maxProperties, in every nested model, and returns every violation. Nothing calls it. "
                         + "Set to false to generate no trait, no impls and no regex dependency", true));
         cliOptions.add(CliOption.newBoolean(TITLE_NAMING,
                 "Let schema titles take part in type naming: titled component schemas of the same shape are merged, "

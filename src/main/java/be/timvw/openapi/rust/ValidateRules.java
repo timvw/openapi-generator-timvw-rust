@@ -19,7 +19,7 @@ import java.util.function.Consumer;
 /**
  * The generated {@code Validate} trait (decisions 9 and 8): every model implements
  * {@code crate::models::validation::Validate} (in {@code src/models/validation.rs}), whose {@code validate()} checks the validation keywords of the model's schema
- * and of every model, list, map and union variant it holds, and returns the first value that breaks one.
+ * and of every model, list, map and union variant it holds, and returns every value that breaks one.
  *
  * <p>Checked: {@code minLength} and {@code maxLength} of a {@code String} (in characters), {@code pattern} (with the
  * {@code regex} crate), {@code minimum}, {@code maximum}, {@code exclusiveMinimum}, {@code exclusiveMaximum} and
@@ -37,7 +37,7 @@ import java.util.function.Consumer;
  */
 final class ValidateRules {
 
-    /** Vendor extension on a {@link CodegenModel}: the statements of its {@code validate()}, before {@code Ok(())}. */
+    /** Vendor extension on a {@link CodegenModel}: the statements of its {@code validate_into()}. */
     static final String BODY = "x-rust-validate";
     /** Vendor extension on a {@link CodegenModel}: the regexes its {@code validate()} uses ({@code name}, {@code literal}). */
     static final String PATTERNS = "x-rust-validate-patterns";
@@ -134,6 +134,7 @@ final class ValidateRules {
             Writer writer = new Writer(checking, cm.classname);
             String body = writer.body(cm);
             cm.vendorExtensions.put(BODY, body);
+            cm.vendorExtensions.put(BODY + "-empty", body.isEmpty());
             List<Map<String, String>> statics = new ArrayList<>();
             writer.patterns.forEach((pattern, name) -> statics.add(Map.of("name", name, "literal", rawString(pattern))));
             cm.vendorExtensions.put(PATTERNS, statics);
@@ -305,7 +306,7 @@ final class ValidateRules {
                 List<String> arms = new ArrayList<>();
                 for (CodegenProperty v : variants) {
                     where = cm.classname + "::" + v.name;
-                    List<String> lines = value(Type.parse(v.dataType), v, Expr.binding("value"), "", 0);
+                    List<String> lines = value(Type.parse(v.dataType), v, Expr.binding("value"), "path", 0);
                     if (!lines.isEmpty()) {
                         arms.add(arm("Self::" + v.name + "(value)", lines));
                     }
@@ -339,7 +340,7 @@ final class ValidateRules {
                     } else {
                         String target = m.getModel() != null ? m.getModel().classname : m.getModelName();
                         if (checking.contains(target)) {
-                            arms.add(arm("Self::" + m.getModelName() + "(value)", List.of(call("value", ""))));
+                            arms.add(arm("Self::" + m.getModelName() + "(value)", List.of(call("value", "path"))));
                         }
                     }
                 }
@@ -408,10 +409,10 @@ final class ValidateRules {
             if (cp.isNullable && !(variant && !cp.required)) {
                 type = Type.of("Option", type);
             }
-            return value(type, cp, expr, ".at(" + quote(cp.baseName) + ")", 0);
+            return value(type, cp, expr, "path.field(" + quote(cp.baseName) + ")", 0);
         }
 
-        /** The checks of a value of {@code type}, constrained by {@code cp}, whose errors map through {@code chain}. */
+        /** The checks of a value of {@code type}, constrained by {@code cp}, at the path {@code chain} builds. */
         private List<String> value(Type type, CodegenProperty cp, Expr expr, String chain, int depth) {
             List<String> lines = new ArrayList<>();
             if (type.option()) {
@@ -446,17 +447,17 @@ final class ValidateRules {
             if (type.list()) {
                 if (cp != null && (cp.getMinItems() != null || cp.getMaxItems() != null)) {
                     lines.add(V + "items(" + expr.recv() + ".len(), " + some(cp.getMinItems()) + ", "
-                            + some(cp.getMaxItems()) + ")" + mapErr(chain) + "?;");
+                            + some(cp.getMaxItems()) + tail(chain));
                 }
                 if (cp != null && Boolean.TRUE.equals(cp.getUniqueItems()) && !type.set()) {
-                    lines.add(V + "unique_items(" + expr.ref() + ")" + mapErr(chain) + "?;");
+                    lines.add(V + "unique_items(" + expr.ref() + tail(chain));
                 }
                 Type item = type.args().get(0);
                 CodegenProperty items = cp == null ? null : inner(cp);
                 if (explicit(item, items)) {
                     String index = "index" + depth;
                     String name = "item" + depth;
-                    List<String> inside = value(item, items, Expr.binding(name), ".at_index(" + index + ")" + chain,
+                    List<String> inside = value(item, items, Expr.binding(name), chain + ".index(" + index + ")",
                             depth + 1);
                     if (!inside.isEmpty()) {
                         lines.add("for (" + index + ", " + name + ") in " + expr.recv() + ".iter().enumerate() {");
@@ -471,19 +472,23 @@ final class ValidateRules {
             if (type.map()) {
                 if (cp != null && (cp.getMinProperties() != null || cp.getMaxProperties() != null)) {
                     lines.add(V + "properties(" + expr.recv() + ".len(), " + some(cp.getMinProperties()) + ", "
-                            + some(cp.getMaxProperties()) + ")" + mapErr(chain) + "?;");
+                            + some(cp.getMaxProperties()) + tail(chain));
                 }
                 Type item = type.args().get(1);
                 CodegenProperty items = cp == null ? null : inner(cp);
                 if (explicit(item, items)) {
                     String key = "key" + depth;
                     String name = "entry" + depth;
-                    List<String> inside = value(item, items, Expr.binding(name), ".at_key(" + key + ")" + chain,
+                    List<String> inside = value(item, items, Expr.binding(name), chain + ".key(" + key + ")",
                             depth + 1);
                     if (!inside.isEmpty()) {
+                        // a map's order is arbitrary: its errors are sorted by key, so the report is stable
+                        String start = "start" + depth;
+                        lines.add("let " + start + " = errors.len();");
                         lines.add("for (" + key + ", " + name + ") in " + expr.ref() + " {");
                         inside.forEach(l -> lines.add("    " + l));
                         lines.add("}");
+                        lines.add(V + "sort_by_key(errors, " + start + ", " + arg(chain) + ");");
                     }
                 } else if (holdsChecking(item)) {
                     lines.add(call(expr.ref(), chain));
@@ -496,14 +501,14 @@ final class ValidateRules {
             if (type.name().equals("String")) {
                 if (cp.getMinLength() != null || cp.getMaxLength() != null) {
                     lines.add(V + "length(" + expr.ref() + ", " + some(cp.getMinLength()) + ", "
-                            + some(cp.getMaxLength()) + ")" + mapErr(chain) + "?;");
+                            + some(cp.getMaxLength()) + tail(chain));
                 }
                 if (cp.getPattern() != null) {
                     String pattern = cp.getPattern();
                     if (RustRegex.unsupported(pattern) == null) {
                         String name = patterns.computeIfAbsent(pattern, p -> "PATTERN_" + patterns.size());
-                        lines.add(V + "pattern(" + expr.ref() + ", &" + name + ", " + rawString(pattern) + ")"
-                                + mapErr(chain) + "?;");
+                        lines.add(V + "pattern(" + expr.ref() + ", &" + name + ", " + rawString(pattern)
+                                + tail(chain));
                     }
                 }
                 return lines;
@@ -558,7 +563,7 @@ final class ValidateRules {
                 // beyond f64: every finite value meets it, or none does
                 return;
             }
-            lines.add(V + function + "(" + value + ", " + literal + ")" + mapErr(chain) + "?;");
+            lines.add(V + function + "(" + value + ", " + literal + tail(chain));
         }
 
         /** Whether every value of an integer type in {@code range} meets the bound. */
@@ -638,11 +643,17 @@ final class ValidateRules {
         }
 
         private static String call(String ref, String chain) {
-            return V + "Validate::validate(" + ref + ")" + mapErr(chain) + "?;";
+            return V + "Validate::validate_into(" + ref + ", " + arg(chain) + ", errors);";
         }
 
-        private static String mapErr(String chain) {
-            return chain.isEmpty() ? "" : ".map_err(|e| e" + chain + ")";
+        /** The path argument and the error list that end every check: the errors are pushed, not returned. */
+        private static String tail(String chain) {
+            return ", " + arg(chain) + ", errors);";
+        }
+
+        /** {@code path} itself, or a reference to the path built from it ({@code &path.field("name").index(i)}). */
+        private static String arg(String chain) {
+            return chain.equals("path") ? "path" : "&" + chain;
         }
     }
 

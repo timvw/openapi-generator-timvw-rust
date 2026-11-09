@@ -311,9 +311,22 @@ impl {{{classname}}} {
 {{#validateMethods}}
 
 impl crate::models::validation::Validate for {{{classname}}} {
-    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {
-{{{vendorExtensions.x-rust-validate}}}        Ok(())
+{{#vendorExtensions.x-rust-validate-empty}}
+    fn validate_into(
+        &self,
+        _path: &crate::models::validation::Path<'_>,
+        _errors: &mut Vec<crate::models::validation::ValidationError>,
+    ) {
     }
+{{/vendorExtensions.x-rust-validate-empty}}
+{{^vendorExtensions.x-rust-validate-empty}}
+    fn validate_into(
+        &self,
+        path: &crate::models::validation::Path<'_>,
+        errors: &mut Vec<crate::models::validation::ValidationError>,
+    ) {
+{{{vendorExtensions.x-rust-validate}}}    }
+{{/vendorExtensions.x-rust-validate-empty}}
 }
 {{#vendorExtensions.x-rust-validate-patterns}}
 {{#-first}}

@@ -62,8 +62,11 @@ impl std::fmt::Display for Tool {
 }
 
 impl crate::models::validation::Validate for Tool {
-    fn validate(&self) -> Result<(), crate::models::validation::ValidationError> {
-        Ok(())
+    fn validate_into(
+        &self,
+        _path: &crate::models::validation::Path<'_>,
+        _errors: &mut Vec<crate::models::validation::ValidationError>,
+    ) {
     }
 }
 

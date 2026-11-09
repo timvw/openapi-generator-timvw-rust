@@ -1,6 +1,7 @@
 # Design: decoding only what is needed, and ownership
 
-Status: proposal, for step 2 of the [roadmap](../roadmap.md). Nothing here is implemented.
+Status: proposal, for step 2 of the [roadmap](../roadmap.md). Option A is implemented as the option `responseFunctions`
+([guide](../guides/response-functions.md)); option C as [decision 2](../decisions.md#2-request-bodies-by-reference).
 
 Consumers often read a few fields of a large response, but the generated function decodes all of it into owned
 values. This page measures what that costs, lists what could change, and recommends what to do.

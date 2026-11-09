@@ -31,6 +31,10 @@ class ErrorStatusTest {
     @TempDir
     static Path output;
 
+    /** The same spec with {@code responseFunctions}: every operation also has its {@code _response} twin. */
+    @TempDir
+    static Path responseFunctions;
+
     /** The same spec with {@code supportMultipleResponses}, whose successes are a {@code ResponseContent} too. */
     @TempDir
     static Path multiple;
@@ -39,14 +43,17 @@ class ErrorStatusTest {
     static void generate() {
         generate(output, false);
         generate(multiple, true);
+        generate(responseFunctions, Map.of(TimvwRustCodegen.RESPONSE_FUNCTIONS, "true"));
     }
 
     private static void generate(Path dir, boolean supportMultipleResponses) {
-        Map<String, Object> props = new LinkedHashMap<>();
+        generate(dir, supportMultipleResponses
+                ? Map.of(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES, "true") : Map.of());
+    }
+
+    private static void generate(Path dir, Map<String, Object> options) {
+        Map<String, Object> props = new LinkedHashMap<>(options);
         props.put("packageName", "error_status_fixture");
-        if (supportMultipleResponses) {
-            props.put(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES, "true");
-        }
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(SPEC).toAbsolutePath().toString())
@@ -115,6 +122,30 @@ class ErrorStatusTest {
                             _ => Some(GetTextError::DefaultResponse(content.clone())),
                         }
                 """);
+    }
+
+    /**
+     * The {@code _response} twin of responseFunctions has the same error branch: the status picks the variant and a
+     * text error holds the body. The crate passes clippy with no lint allowed.
+     */
+    @Test
+    void theResponseFunctionTwinPicksTheVariantTheSameWay() throws IOException, InterruptedException {
+        String api = Files.readString(responseFunctions.resolve("src/apis/default_api.rs"));
+        int twin = api.indexOf("pub async fn get_text_response(");
+        assertTrue(twin >= 0, api);
+        assertContains(api.substring(twin), """
+                        let entity: Option<GetTextError> = match status.as_u16() {
+                            400 => Some(GetTextError::Status400(content.clone())),
+                            _ => Some(GetTextError::DefaultResponse(content.clone())),
+                        }
+                """);
+        assertContains(api.substring(api.indexOf("pub async fn get_thing_response(")),
+                "404 => serde_json::from_str(&content).ok().map(GetThingError::Status404),");
+        Assumptions.assumeTrue(cargo(responseFunctions, 30, "--version") != null, "no cargo");
+        String clippy = cargo(responseFunctions, 900, "clippy", "--all-targets", "--", "-D", "warnings");
+        assertNotNull(clippy, "clippy did not finish");
+        assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("warning:"),
+                clippy);
     }
 
     @Test

@@ -93,7 +93,7 @@ import static org.openapitools.codegen.utils.StringUtils.underscore;
  */
 public abstract class RustCodegenBase extends DefaultCodegen implements CodegenConfig {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(RustCodegenBase.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger("org.openapitools.codegen.timvw.RustCodegenBase");
 
     /** Classpath directory holding every template the generator renders. */
     public static final String TEMPLATES = "timvw-rust";

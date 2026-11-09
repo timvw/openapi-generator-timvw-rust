@@ -182,11 +182,17 @@ class ValidateTest {
         assertFalse(Files.exists(off.resolve("src/models/validation.rs")));
         assertFalse(Files.readString(off.resolve("src/models/mod.rs")).contains("pub mod validation;"));
         assertFalse(Files.readString(off.resolve("Cargo.toml")).contains("regex"));
-        try (Stream<Path> files = Files.list(off.resolve("src/models"))) {
-            for (Path file : (Iterable<Path>) files::iterator) {
-                assertFalse(Files.readString(file).contains("crate::validation"), file.toString());
+        try (Stream<Path> files = Files.walk(off.resolve("src"))) {
+            for (Path file : (Iterable<Path>) files.filter(Files::isRegularFile)::iterator) {
+                String text = Files.readString(file);
+                assertFalse(text.contains("models::validation"), file.toString());
+                assertFalse(text.contains("PATTERN_"), file.toString());
+                assertFalse(text.contains("regex::"), file.toString());
+                assertFalse(text.matches("(?s).*impl [^\\n]*Validate for .*"), file.toString());
             }
         }
+        // the generated code is the same as with the option on, without the trait
+        assertTrue(Files.readString(on.resolve("src/models/request.rs")).contains("impl crate::models::validation::Validate for Request"));
     }
 
     @Test
@@ -202,10 +208,14 @@ class ValidateTest {
 
     @Test
     void literals() {
-        assertEquals("0.0", ValidateRules.floatLiteral(new BigDecimal("0")));
-        assertEquals("2.0", ValidateRules.floatLiteral(new BigDecimal("2.00")));
-        assertEquals("0.1", ValidateRules.floatLiteral(new BigDecimal("0.10")));
-        assertEquals("100.0", ValidateRules.floatLiteral(new BigDecimal("1E+2")));
+        assertEquals("0.0", ValidateRules.floatLiteral(new BigDecimal("0"), false));
+        assertEquals("2.0", ValidateRules.floatLiteral(new BigDecimal("2.00"), false));
+        assertEquals("0.1", ValidateRules.floatLiteral(new BigDecimal("0.10"), true));
+        assertEquals("100.0", ValidateRules.floatLiteral(new BigDecimal("1E+2"), false));
+        assertEquals("1.0e39", ValidateRules.floatLiteral(new BigDecimal("1.0e39"), false));
+        assertEquals(null, ValidateRules.floatLiteral(new BigDecimal("1.0e39"), true));
+        assertEquals(null, ValidateRules.floatLiteral(new BigDecimal("1e400"), false));
+        assertEquals("0.3", ValidateRules.floatLiteral(new BigDecimal("0.30000000000000000001"), false));
         assertEquals("r\"a\"", ValidateRules.rawString("a"));
         assertEquals("r#\"a\"b\"#", ValidateRules.rawString("a\"b"));
         assertEquals("\"a\\\"b\"", ValidateRules.quote("a\"b"));
@@ -240,6 +250,10 @@ class ValidateTest {
         String output = cargo(crate, 600, "test", "--test", "validate");
         assertNotNull(output, "cargo did not finish");
         assertTrue(output.contains("test result: ok.") && !output.contains(" 0 passed"), output);
+        // clippy denies a regex that does not compile (invalid_regex): every pattern the generator kept compiles
+        String clippy = cargo(crate, 600, "clippy", "--all-targets", "--", "-D", "warnings");
+        Assumptions.assumeTrue(clippy != null && !clippy.contains("no such command"), "no clippy");
+        assertTrue(clippy.contains("Finished") && !clippy.contains("error"), clippy);
     }
 
     /** What cargo printed, or {@code null} when it cannot run or does not finish in time. */

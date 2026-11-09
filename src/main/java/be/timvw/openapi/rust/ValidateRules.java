@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 
 /**
  * The generated {@code Validate} trait (decisions 9 and 8): every model implements
@@ -28,7 +27,7 @@ import java.util.regex.Pattern;
  * {@code Vec}, {@code minProperties} and {@code maxProperties} of a map. An optional or nullable field is checked
  * when it holds a value. Enums, {@code serde_json::Value}, byte arrays, files, dates and other typed scalars have
  * nothing to check. A pattern the {@code regex} crate cannot compile (lookaround, backreferences) is skipped with a
- * warning.</p>
+ * warning (see {@link RustRegex}).</p>
  *
  * <p>The body of every {@code validate()} is computed here and stored on the model as {@value #BODY}; the patterns it
  * uses as {@value #PATTERNS}. A model whose {@code validate()} can never fail (an enum, a struct without constraints
@@ -58,9 +57,6 @@ final class ValidateRules {
         }
     }
 
-    /** What the regex crate cannot compile: lookaround, atomic groups, backreferences and control escapes. */
-    private static final Pattern UNSUPPORTED = Pattern.compile(
-            "\\(\\?(?:=|!|<=|<!|>)|(?<!\\\\)(?:\\\\\\\\)*\\\\(?:[1-9]|k<|c[A-Za-z])");
 
     private ValidateRules() {
     }
@@ -149,9 +145,9 @@ final class ValidateRules {
     /** Reports every {@code pattern} of {@code cp} and its items that the regex crate cannot compile. */
     private static void skippedPatterns(CodegenProperty cp, String where, List<String> out) {
         for (int depth = 0; cp != null && depth < 8; depth++, cp = cp.isEnum ? null : cp.items) {
-            if (cp.getPattern() != null && UNSUPPORTED.matcher(cp.getPattern()).find()) {
-                out.add(where + ": pattern " + cp.getPattern() + " is not checked: the regex crate cannot compile it "
-                        + "(lookaround, backreference or control escape)");
+            String why = cp.getPattern() == null ? null : RustRegex.unsupported(cp.getPattern());
+            if (why != null) {
+                out.add(where + ": pattern " + cp.getPattern() + " is not checked: it holds " + why);
             }
         }
     }
@@ -503,7 +499,7 @@ final class ValidateRules {
                 }
                 if (cp.getPattern() != null) {
                     String pattern = cp.getPattern();
-                    if (!UNSUPPORTED.matcher(pattern).find()) {
+                    if (RustRegex.unsupported(pattern) == null) {
                         String name = patterns.computeIfAbsent(pattern, p -> "PATTERN_" + patterns.size());
                         lines.add(V + "pattern(" + expr.ref() + ", &" + name + ", " + rawString(pattern) + ")"
                                 + mapErr(chain) + "?;");
@@ -539,7 +535,12 @@ final class ValidateRules {
             String literal;
             BigInteger[] range = INTEGERS.get(rustType);
             if (range == null) {
-                literal = floatLiteral(bound);
+                literal = floatLiteral(bound, rustType.equals("f32"));
+                if (literal == null) {
+                    // beyond f32: compared as f64
+                    value = value + " as f64";
+                    literal = floatLiteral(bound, false);
+                }
             } else if (isIntegral(bound) && !function.equals("multiple_of")
                     && always(function, bound.toBigInteger(), range)) {
                 // every value of the type meets it (the int64 range itself, say)
@@ -550,7 +551,11 @@ final class ValidateRules {
             } else {
                 // a fractional bound or one outside the type: compared as f64
                 value = value + " as f64";
-                literal = floatLiteral(bound);
+                literal = floatLiteral(bound, false);
+            }
+            if (literal == null) {
+                // beyond f64: every finite value meets it, or none does
+                return;
             }
             lines.add(V + function + "(" + value + ", " + literal + ")" + mapErr(chain) + "?;");
         }
@@ -588,7 +593,7 @@ final class ValidateRules {
             }
             if (type.name().equals("String")) {
                 return cp.getMinLength() != null || cp.getMaxLength() != null
-                        || (cp.getPattern() != null && !UNSUPPORTED.matcher(cp.getPattern()).find());
+                        || (cp.getPattern() != null && RustRegex.unsupported(cp.getPattern()) == null);
             }
             if (FLOATS.contains(type.name()) || INTEGERS.containsKey(type.name())) {
                 return cp.getMinimum() != null || cp.getMaximum() != null || cp.getMultipleOf() != null;
@@ -625,17 +630,26 @@ final class ValidateRules {
         return value.signum() == 0 || value.stripTrailingZeros().scale() <= 0;
     }
 
-    /** A Rust float literal of {@code value}. */
-    static String floatLiteral(BigDecimal value) {
-        BigDecimal v = value.stripTrailingZeros();
-        if (isIntegral(v)) {
-            String digits = v.toBigInteger().toString();
-            return digits.length() <= 20 ? digits + ".0" : v.toString().replace("E+", "e");
+    /**
+     * The shortest Rust float literal of {@code value} as an {@code f32} or an {@code f64}, so clippy sees no excessive
+     * precision; {@code null} when the value is beyond the type's range.
+     */
+    static String floatLiteral(BigDecimal value, boolean f32) {
+        String text;
+        if (f32) {
+            float f = value.floatValue();
+            if (Float.isInfinite(f)) {
+                return null;
+            }
+            text = Float.toString(f);
+        } else {
+            double d = value.doubleValue();
+            if (Double.isInfinite(d)) {
+                return null;
+            }
+            text = Double.toString(d);
         }
-        if (Math.abs(v.scale()) > 20) {
-            return v.toString().replace('E', 'e');
-        }
-        return v.toPlainString();
+        return text.replace("E", "e");
     }
 
     /** A Rust (raw) string literal of {@code text}. */

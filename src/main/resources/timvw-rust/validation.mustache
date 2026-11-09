@@ -8,8 +8,8 @@
 //! What is checked: `minLength` and `maxLength` (in characters), `pattern`, `minimum`, `maximum`, `exclusiveMinimum`,
 //! `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems` (by equality), `minProperties` and
 //! `maxProperties` of maps, in every nested model, list, map and union variant. A `pattern` is matched with the
-//! [`regex`](https://docs.rs/regex) crate, whose classes such as `\d` and `\w` are Unicode-aware; a pattern it cannot
-//! compile is not checked.
+//! [`regex`](https://docs.rs/regex) crate, whose classes such as `\d` and `\w` are Unicode-aware; a pattern that uses a
+//! construct the crate does not support or reads differently from ECMA-262 is not checked (the generator warns).
 
 use std::fmt;
 
@@ -19,7 +19,8 @@ pub trait Validate {
     fn validate(&self) -> Result<(), ValidationError>;
 }
 
-/// A validation keyword of the schema, with the limit it sets.
+/// A validation keyword of the schema, with the limit it sets. A number limit is an `f64`, so an integer limit
+/// beyond 2^53 shows rounded (the check itself compares integers exactly).
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Rule {

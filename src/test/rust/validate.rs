@@ -182,3 +182,46 @@ fn validation_error_is_an_error() {
     let boxed: Box<dyn std::error::Error> = Box::new(e);
     assert_eq!(boxed.to_string(), "count: 0 breaks minimum 1");
 }
+
+fn patterns(json: serde_json::Value) -> Result<(), ValidationError> {
+    serde_json::from_value::<models::Patterns>(json).unwrap().validate()
+}
+
+#[test]
+fn patterns_the_generator_accepts_are_checked() {
+    assert_eq!(patterns(json!({
+        "ok_phone": "+3212345678", "ok_slug": "a.b-c", "ok_letters": "héllo", "ok_path": "/a/bc",
+        "ok_named": "word", "ok_lazy": "aabb"
+    })), Ok(()));
+    for (field, bad) in [("ok_phone", "3212"), ("ok_slug", "a"), ("ok_letters", "a1"), ("ok_path", "a/b"),
+        ("ok_named", "Word"), ("ok_lazy", "ab")] {
+        let e = patterns(json!({ field: bad })).expect_err(field);
+        assert_eq!(e.path, field);
+        assert!(matches!(e.rule, Rule::Pattern(_)), "{e}");
+    }
+}
+
+#[test]
+fn patterns_the_generator_skips_are_not_checked() {
+    let fields = ["skip_empty_negated", "skip_bracket_first", "skip_open_count", "skip_big_z", "skip_escape_e",
+        "skip_backreference", "skip_nested_class", "skip_double_star", "skip_word_start", "skip_dash_after_class",
+        "skip_inline_flag", "skip_control", "skip_lookbehind", "skip_set_operation"];
+    let all: serde_json::Map<String, serde_json::Value> =
+        fields.iter().map(|f| (f.to_string(), json!("anything at all"))).collect();
+    assert_eq!(patterns(serde_json::Value::Object(all)), Ok(()));
+}
+
+/// Checking these would not compile (clippy's invalid_regex denies them), which is why the generator skips them.
+#[test]
+fn the_skipped_patterns_include_ones_regex_rejects() {
+    for pattern in [r"[^]", r"^a{,3}$", r"^a\Z", r"^\e$", r"(a)\1", r"[\w-.]", r"\cJ", r"(?<=a)b"] {
+        assert!(regex::Regex::new(pattern).is_err(), "{pattern}");
+    }
+}
+
+#[test]
+fn an_f32_bound_beyond_f32_is_compared_as_f64() {
+    let mut ok = valid();
+    ok.huge = Some(f32::MAX);
+    assert_eq!(ok.validate(), Ok(()));
+}

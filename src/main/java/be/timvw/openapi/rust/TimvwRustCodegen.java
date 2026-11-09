@@ -83,7 +83,7 @@ import java.util.Set;
  */
 public class TimvwRustCodegen extends RustCodegenBase {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(TimvwRustCodegen.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger("org.openapitools.codegen.timvw.TimvwRustCodegen");
 
     public static final String GENERATOR_NAME = "timvw-rust";
 

@@ -110,10 +110,81 @@ components:
             enum: [red, green]
         holder:
           $ref: '#/components/schemas/Holder'
+        patterns:
+          $ref: '#/components/schemas/Patterns'
+        huge:
+          type: number
+          format: float
+          maximum: 1.0e39
+          minimum: -1.0e39
         clash:
           $ref: '#/components/schemas/Validate'
         error:
           $ref: '#/components/schemas/ValidationError'
+    Patterns:
+      description: patterns the regex crate checks (ok_*) and patterns it skips (skip_*)
+      type: object
+      properties:
+        ok_phone:
+          type: string
+          pattern: '^\+[1-9][0-9]{1,14}$'
+        ok_slug:
+          type: string
+          pattern: '^[\w.-]{2,8}$'
+        ok_letters:
+          type: string
+          pattern: '^\p{L}+$'
+        ok_path:
+          type: string
+          pattern: '^\/[a-z]+(?:\/[a-z]+)*$'
+        ok_named:
+          type: string
+          pattern: '^(?<word>[a-z]+)$'
+        ok_lazy:
+          type: string
+          pattern: '^a+?b{2,}?$'
+        skip_empty_negated:
+          type: string
+          pattern: '[^]'
+        skip_bracket_first:
+          type: string
+          pattern: '^[]a]$'
+        skip_open_count:
+          type: string
+          pattern: '^a{,3}$'
+        skip_big_z:
+          type: string
+          pattern: '^a\Z'
+        skip_escape_e:
+          type: string
+          pattern: '^\e$'
+        skip_backreference:
+          type: string
+          pattern: '(a)\1'
+        skip_nested_class:
+          type: string
+          pattern: '[[a]]'
+        skip_double_star:
+          type: string
+          pattern: 'a**'
+        skip_word_start:
+          type: string
+          pattern: '\<a'
+        skip_dash_after_class:
+          type: string
+          pattern: '[\w-.]'
+        skip_inline_flag:
+          type: string
+          pattern: '^(?i)a$'
+        skip_control:
+          type: string
+          pattern: '\cJ'
+        skip_lookbehind:
+          type: string
+          pattern: '(?<=a)b'
+        skip_set_operation:
+          type: string
+          pattern: '[a&&b]'
     Message:
       type: object
       required: [role, content]

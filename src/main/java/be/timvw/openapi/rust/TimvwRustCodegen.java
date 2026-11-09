@@ -54,8 +54,9 @@ import java.util.Set;
  *       generator mishandles, and the options {@code webhookModule}, {@code webhookModuleReexport},
  *       {@code stringIdSchemas}, {@code stringIdProperties}, {@code stringProperties},
  *       {@code deepObjectQueryParameters} and {@code resetQueryParameterStyle} for decisions a client takes about its spec;</li>
- *   <li>{@code boxResponseError}, {@code apiLintAllows} and {@code userAgentFromPackage} shape the API modules
- *       (Milestone 2.6);</li>
+ *   <li>{@code apiLintAllows} and {@code userAgentFromPackage} shape the API modules (Milestone 2.6);
+ *       {@code Error::ResponseError} always holds {@code Box<ResponseContent<T>>} (the former {@code boxResponseError},
+ *       see {@link #ALWAYS_ON});</li>
  *   <li>{@code multipartHelper} sends multipart bodies through a generated helper module (see {@link MultipartRules}),
  *       and {@code fileProperties} declares properties to be files (Milestone 2.5);</li>
  *   <li>{@code use crate::models;} is written only into a model file that refers to another model, and an API
@@ -113,7 +114,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public static final String RESET_QUERY_PARAMETER_STYLE = "resetQueryParameterStyle";
     /** Output-relative path the spec is written to after the spec rules ran (JSON; for scripts and debugging). */
     public static final String PREPROCESSED_SPEC_FILE = "preprocessedSpecFile";
-    /** {@code Error::ResponseError} holds {@code Box<ResponseContent<T>>} (clippy {@code result_large_err}). */
+    /**
+     * Former option, always on: {@code Error::ResponseError} holds {@code Box<ResponseContent<T>>}, so a
+     * {@code Result} stays small with the response's headers in it (clippy {@code result_large_err}).
+     */
     public static final String BOX_RESPONSE_ERROR = "boxResponseError";
     /** Lints allowed at the top of every API module and {@code configuration.rs}, as {@code #![allow(..)]}. */
     public static final String API_LINT_ALLOWS = "apiLintAllows";
@@ -263,8 +267,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             CodegenConstants.TEMPLATE_DIR);
 
     /**
-     * The options that were the mapping's baseline: their {@code true} rendering is always applied, and setting one,
-     * to any value, fails generation like a {@link #FIXED_VALUES fixed option}.
+     * The options that were the mapping's baseline (decision 12), and {@code boxResponseError} (decision 4): their
+     * {@code true} rendering is always applied, and setting one, to any value, fails generation like a
+     * {@link #FIXED_VALUES fixed option}.
      */
     static final List<String> ALWAYS_ON = List.of(
             BOX_ONLY_CYCLES,
@@ -277,7 +282,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
             UNION_DISPATCH,
             OPEN_ENUMS,
             SCHEMA_DEFAULT_DOCS,
-            NULLABLE_UNION_FIELDS);
+            NULLABLE_UNION_FIELDS,
+            BOX_RESPONSE_ERROR);
 
     /** The openapi-generator version the generator runs in, e.g. {@code 7.27.0}. */
     private final String openApiGeneratorVersion;
@@ -366,9 +372,6 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         + "part, and an encoding contentType of a scalar part is applied", false));
         cliOptions.add(CliOption.newString(FILE_PROPERTIES,
                 "Schema.property entries rendered as a file (type: string, format: binary)"));
-        cliOptions.add(CliOption.newBoolean(BOX_RESPONSE_ERROR,
-                "Error::ResponseError holds Box<ResponseContent<T>>, keeping every Result small (clippy "
-                        + "result_large_err)", false));
         cliOptions.add(CliOption.newString(API_LINT_ALLOWS,
                 "Lints allowed at the top of every API module and configuration.rs, written as "
                         + "#![allow(<value>)], e.g. 'clippy::needless_return, clippy::into_iter_on_ref'"));
@@ -712,7 +715,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
         Object plan = additionalProperties.get(UNION_PLAN_FILE);
         unionPlanFile = plan == null || String.valueOf(plan).isEmpty() ? null : String.valueOf(plan);
-        for (String flag : Arrays.asList(BOX_RESPONSE_ERROR, USER_AGENT_FROM_PACKAGE)) {
+        for (String flag : Arrays.asList(USER_AGENT_FROM_PACKAGE)) {
             additionalProperties.put(flag, additionalProperties.containsKey(flag)
                     && convertPropertyToBooleanAndWriteBack(flag));
         }

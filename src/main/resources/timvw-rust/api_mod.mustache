@@ -6,6 +6,8 @@ pub struct ResponseContent<T> {
     pub status: reqwest::StatusCode,
     pub content: String,
     pub entity: Option<T>,
+    /// The response's headers (`retry-after`, `x-request-id`, rate limits, ...).
+    pub headers: reqwest::header::HeaderMap,
 }
 
 #[derive(Debug)]
@@ -17,7 +19,7 @@ pub enum Error<T> {
     SerdePathToError(serde_path_to_error::Error<serde_json::Error>),
     {{/useSerdePathToError}}
     Io(std::io::Error),
-    ResponseError({{#boxResponseError}}Box<{{/boxResponseError}}ResponseContent<T>{{#boxResponseError}}>{{/boxResponseError}}),
+    ResponseError(Box<ResponseContent<T>>),
 }
 
 impl <T> fmt::Display for Error<T> {

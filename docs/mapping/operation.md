@@ -21,8 +21,8 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | `operationId` |
-| Rust | `pub async fn <snake_case>(configuration: &configuration::Configuration, <parameters...>) -> Result<<success>, Error<<OperationId>Error>>`, also callable as a builder (`create_item().configuration(&c).item(&i).call()`) |
-| Options | `bonBuilders` (default `true`) adds `#[bon::builder]`. `contentTypeMethods` and `typedEventStreams` add functions with a suffix ([`requestBody.content`](request-body.md#requestbodycontent), [`response.content`](response.md#responsecontent)) |
+| Rust | `pub async fn <snake_case>(configuration: &configuration::Configuration, <parameters...>) -> Result<<success>, Error<<OperationId>Error>>` with `#[bon::builder]`, which turns the function into a builder: it is called as `create_item().configuration(&c).item(&i).call()`, an optional argument has a setter for the value and a `maybe_` setter for the `Option` |
+| Options | `bonBuilders` (default `true`) adds `#[bon::builder]`; with `false` the function takes its arguments positionally (`create_item(&c, &i)`). `contentTypeMethods` and `typedEventStreams` add functions with a suffix ([`requestBody.content`](request-body.md#requestbodycontent), [`response.content`](response.md#responsecontent)), and `responseFunctions` an `_response` twin ([`response.content.response-function`](response.md#responsecontentresponse-function)) |
 | Tests | [`OperationMappingTest#anOperationIsAnAsyncFunctionWithABuilder`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L68), [`GenerationTest#apiFunctionsGetBonBuilderAfterDeprecated`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L55) |
 
 ### `operation.description`

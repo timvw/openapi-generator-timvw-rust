@@ -1,11 +1,12 @@
 # From OpenAPI to Rust
 
 How `timvw-rust` renders each OpenAPI construct. The **Rust** column is the rendering without options
-(openai-client-base also sets `multipartHelper`, `typedEventStreams` and `contentTypeMethods`). The **Option** column
+(openai-client-base also sets `multipartHelper`, `typedEventStreams` and `contentTypeMethods`; langfuse-client-base
+`typedEnumParameters` and `deprecatedAttributes`). The **Option** column
 names what changes it, and where stock `-g rust` renders something else, what. The former baseline options
 (`boxOnlyCycles`, `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`,
 `modelUnions`, `unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) are always applied and cannot
-be set. The [README](../README.md) explains each option; the [generator comparison](comparison/README.md) holds the same
+be set, and so is the former `boxResponseError`. The [README](../README.md#options) explains each option; the [generator comparison](comparison/README.md) holds the same
 constructs against stock `-g rust` and progenitor.
 
 The rendering assumes `library=reqwest`, the only HTTP library `timvw-rust` supports. Rows marked *(reqwest)*
@@ -116,7 +117,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
 | `tags` | a module per tag, `src/apis/<tag>_api.rs`; untagged operations in `default_api` | |
-| `operationId` | `pub async fn <snake_case>(configuration: &configuration::Configuration, <parameters...>)`, also callable as a builder (`list_models().configuration(&c).limit(10).call()`) | `bonBuilders` |
+| `operationId` | `pub async fn <snake_case>(configuration: &configuration::Configuration, <parameters...>)` with `#[bon::builder]`, so it is called as a builder: `list_models().configuration(&c).limit(10).call()` | `bonBuilders=false`: called with positional arguments, `list_models(&c, Some(10), None, None)` |
 | parameters | one argument each, in spec order: required as `T`/`&str`, optional as `Option<..>` | |
 | `deprecated` operation | `#[deprecated]` | |
 | `webhooks` | a module of their own, tagged `webhookModule` | `webhookModule`, `webhookModuleReexport` |
@@ -126,7 +127,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
-| path | `&str` or the scalar, URL-encoded into the path | |
+| path | `&str`, the scalar, `uuid::Uuid` or the chrono type, URL-encoded into the path (a `date-time` as RFC 3339) | |
 | query | `Option<..>` added with `.query(..)` | |
 | query array | repeated (`?tag=a&tag=b`) or joined with `,`, as the spec's `style`/`explode` say | `resetQueryParameterStyle` sends all of them repeated |
 | query object | sent as a string | `deepObjectQueryParameters` sends listed ones as `deepObject` |
@@ -138,7 +139,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 
 | Media type | Rust | Option |
 | --- | --- | --- |
-| `application/json` | the schema's type, serialized with `.json(..)` | |
+| `application/json` | a reference to the schema's type (`&models::Item`, `&[T]`, `Option<&T>`; a number or boolean by value), serialized with `.json(..)` | |
 | `multipart/form-data` *(reqwest)* | an argument per property; files as `std::path::PathBuf`, text as `&str` or the type | `multipartHelper`: files through `apis::multipart_helper`, arrays as a part per item, objects as JSON parts, `encoding.contentType` honoured; `fileProperties` turns listed properties into files |
 | `application/x-www-form-urlencoded` | an argument per property, sent with `.form(..)` | |
 | `application/octet-stream` *(reqwest)* | `std::path::PathBuf`, streamed | |
@@ -148,13 +149,13 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 
 | OpenAPI | Rust | Option |
 | --- | --- | --- |
-| success with a JSON schema | `Result<T, Error<<Op>Error>>`, the body decoded as `T` | |
+| success with a JSON schema | `Result<T, Error<<Op>Error>>`, the body decoded as `T` | `responseFunctions`: also `<op>_response`, returning `ApiResponse<T>` with the status, headers and undecoded body ([guide](guides/response-functions.md)) |
 | success without a body | `Result<(), ..>` | |
 | `text/plain` success | `String` | |
 | `application/octet-stream` success *(reqwest)* | `reqwest::Response`, to read as bytes or a stream | |
 | `text/event-stream` success *(reqwest)* | decoded as JSON, which fails | `typedEventStreams`: `apis::sse::EventStream<Event, <Op>Error>`, each `data:` decoded to the event schema, `[DONE]` ends it |
 | several success media types | the first | `contentTypeMethods`: `_json`, `_text`, `_bytes`, `_stream` methods |
-| error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content`, `entity: Option<<Op>Error>` and `headers: reqwest::header::HeaderMap`; the error enum has a variant per response (`Status404(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The status picks the variant (the exact code, then its `4XX` range, then `default`) and the body decodes as that response's type; a body that does not decode is `UnknownValue`. `ResponseContent` is boxed | |
+| error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content`, `entity: Option<<Op>Error>` and `headers: reqwest::header::HeaderMap`; the error enum has a variant per response (`Status404(T)`, `Status5XX(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The status picks the variant (the exact code, then its `4XX` range, then `default`) and the body decodes as that response's type; a body that does not decode is `UnknownValue`, a `text/plain` string response holds the text. `ResponseContent` is boxed ([guide](guides/errors.md)) | |
 | transport and decoding errors *(reqwest)* | `Error::Reqwest`, `Error::ReqwestMiddleware`, `Error::Serde`, `Error::Io` | |
 
 ### Configuration and authentication
@@ -164,7 +165,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | `servers[0].url` | `Configuration::default().base_path` |
 | `http` `bearer` | `configuration.bearer_access_token`, sent as `Authorization: Bearer` |
 | `http` `basic` | `configuration.basic_auth: Option<(String, Option<String>)>` |
-| `apiKey` | `configuration.api_key: Option<ApiKey { prefix, key }>`, in the header the scheme names |
+| `apiKey` | `configuration.api_key: Option<ApiKey { prefix, key }>`, sent in the header, query parameter or cookie the scheme names |
 | `oauth2` | `configuration.oauth_access_token` |
 | which scheme an operation uses | the operation's `security`, or the spec's |
 | user agent | `OpenAPI-Generator/<spec version>/rust`; `userAgentFromPackage` gives `<package>/<crate version>` |
@@ -172,8 +173,8 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 
 ## Known gaps
 
-- Response headers of a JSON or text success cannot be read (an error has them, and so does a success with
-  `supportMultipleResponses` or through the `_response` functions of `responseFunctions`).
+- The headers of a JSON or text success can be read only through `responseFunctions` or `supportMultipleResponses`
+  (an error always has them). Declared response headers get no typed accessor.
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
   ([mapping](mapping/README.md#objects)).
 - Validation keywords (`minLength`, `pattern`, `maximum`, ...) are not checked.

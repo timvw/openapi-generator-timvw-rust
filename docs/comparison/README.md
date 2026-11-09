@@ -16,11 +16,11 @@ file headers and blank lines removed.
 How timvw-rust renders every OpenAPI construct, with the option behind each rule, is in
 [docs/type-mapping.md](../type-mapping.md).
 
-The comparison was made when the mapping's baseline (`boxOnlyCycles`, `defaultOnlyWhereValid`, `enumFromStr`,
-`noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`,
-`schemaDefaultDocs`, `nullableUnionFields`) still consisted of options. These are no longer options: their rendering is
-always applied, so where this page names one of them, it names what timvw-rust now always renders, and
-`nullableUnionFields` and `schemaDefaultDocs`, off in the comparison, are on as well.
+The timvw-rust crate is generated with 0.21, where the former baseline options (`boxOnlyCycles`,
+`defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`,
+`unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) are always applied. Where this page names one
+of them, it names a rendering timvw-rust always has. The stock and progenitor crates are regenerated with the same
+versions as before (openapi-generator 7.27.0, progenitor 0.16.0).
 
 ## Summary
 
@@ -33,15 +33,18 @@ always applied, so where this page names one of them, it names what timvw-rust n
 | A value the spec does not list (`finish_reason: content_filter`) | error, the whole response is lost | `Unknown` (`openEnums`) | error |
 | `integer` without a format | `i32` (overflows at 2^31) | `i64` (`integersAsI64`) | `i64` |
 | Boxing | every model reference | only on a cycle (`boxOnlyCycles`) | only on a cycle |
-| `nullable` field | `Option<Option<T>>`: absent and `null` differ | `Option<Option<T>>`; a nullable union `Option<U>` unless `nullableUnionFields` | `Option<T>`: `null` is sent as absent |
+| `nullable` field | `Option<Option<T>>`: absent and `null` differ | `Option<Option<T>>`, a nullable union too | `Option<T>`: `null` is sent as absent |
 | `Default` | on everything, first enum variant picked arbitrarily | only on structs whose fields are all optional (`defaultOnlyWhereValid`) | the same; a schema `default` becomes a serde default |
 | Enum query parameter (`order`) | `Option<&str>` | `Option<&str>`; `ListModelsOrder` with `typedEnumParameters` | `ListModelsOrder` |
 | Builders | none | `bon::Builder` on structs, `#[bon::builder]` on API functions | generated builders for types and requests |
 | Event streams | the JSON method only | `create_chat_completion_stream` yields typed `ChatCompletionChunk`s | not supported |
 | Multipart | stock rendering | helper module, files, arrays, enum text parts | rejected |
-| Return value | `T` | `T` | `ResponseValue<T>` (body, status, headers) |
-| Call shape | free functions taking `&Configuration` | the same, plus a builder per function | methods on one `Client` |
-| `cargo clippy` warnings | 45 | 13, all `needless_return`, which openai-client-base allows (`apiLintAllows`) | 0 |
+| Return value | `T` | `T`; with `responseFunctions` also `<op>_response` returning `ApiResponse<T>` (status, headers, body decoded on demand) | `ResponseValue<T>` (body, status, headers) |
+| Request body | by value | by reference (`&CreateChatCompletionRequest`) | `TryInto<T>` by value in the builder |
+| Error response | the first variant whose type accepts the body; status and body text, no headers | the variant the status selects, with status, headers and body text; boxed | `ResponseValue<ErrorResponse>` with status and headers |
+| Constraints (`maxLength`, `minimum`, ...) | not checked | `validate()` on every model, called by the caller | a string with `minLength`, `maxLength` or `pattern` is a newtype checked when built and decoded |
+| Call shape | free functions taking `&Configuration` | a builder per function (`bonBuilders`), or free functions with `bonBuilders=false` | methods on one `Client` |
+| `cargo clippy` warnings | 45 | 0 | 0 |
 | Lines of Rust | 1,666 | 2,847 | 3,320 (one file) |
 
 The rest of the page shows each row in code.
@@ -55,10 +58,10 @@ The same ten payloads, decoded with each crate's type and encoded back:
 | `Message` `{"role":"system","content":"Be brief."}` | error: missing field `role` | ok | ok |
 | `Message` user with an array of parts | error: missing field `role` | ok | ok |
 | `Message` assistant, `"content":null` | error: missing field `role` | ok, re-encodes `"content":null` | ok, re-encodes **without** `content` |
-| `Message` user without `content` | error: missing field `role` | error: `Message::User: missing field 'content'` | error: data did not match any variant of untagged enum Message |
-| `Message` with role `developer` | error: unknown variant `developer`, expected one of ... | error: `Message: unknown 'role' value "developer"` | error: data did not match any variant of untagged enum Message |
-| `ContentPart` image without `url` | error: data did not match any variant of untagged enum ContentPart | error: `ContentPart::ImagePart: missing field 'url'` | error: data did not match any variant of untagged enum ContentPart |
-| `ContentPart` with type `audio` | error: data did not match any variant ... | error: `ContentPart: unknown 'type' value "audio"` | error: data did not match any variant ... |
+| `Message` user without `content` | error: missing field `role` | error: ``Message::User: missing field `content` `` | error: data did not match any variant of untagged enum Message |
+| `Message` with role `developer` | error: unknown variant `developer`, expected one of ... | error: ``Message: unknown `role` value "developer"`` | error: data did not match any variant of untagged enum Message |
+| `ContentPart` image without `url` | error: data did not match any variant of untagged enum ContentPart | error: ``ContentPart::ImagePart: missing field `url` `` | error: data did not match any variant of untagged enum ContentPart |
+| `ContentPart` with type `audio` | error: data did not match any variant ... | error: ``ContentPart: unknown `type` value "audio"`` | error: data did not match any variant ... |
 | `ChatCompletion` with `finish_reason: content_filter` | error: unknown variant `content_filter` | ok, `FinishReason::Unknown` | error: unknown variant `content_filter` |
 | `Usage` with `total_tokens: 3000000000` | error: invalid value, expected i32 | ok | ok |
 | `ChatCompletionChunk` with `finish_reason: null` | ok | ok | ok, re-encodes without `finish_reason` |
@@ -199,8 +202,8 @@ progenitor also implements `FromStr` and `TryFrom` on its enums, and has no catc
 | `max_tokens: integer, nullable` (no format) | `Option<Option<i32>>` | `Option<Option<i64>>` | `Option<i64>` |
 | `seed: integer, int64` | `Option<i64>` | `Option<i64>` | `Option<i64>` |
 | `n: integer, int32` | `Option<i32>` | `Option<i32>` | `Option<i32>` |
-| `stream: boolean, default false` | `Option<bool>` | `Option<bool>`; `schemaDefaultDocs` adds ``Defaults to `false`.`` | `bool` with `#[serde(default)]` |
-| `stop: nullable oneOf` | `Option<Option<Box<Stop>>>` | `Option<Stop>`; `Option<Option<Stop>>` with `nullableUnionFields` | `Option<Stop>` |
+| `stream: boolean, default false` | `Option<bool>` | `Option<bool>`, documented ``Defaults to `false`.`` | `bool` with `#[serde(default)]` |
+| `stop: nullable oneOf` | `Option<Option<Box<Stop>>>` | `Option<Option<Stop>>` | `Option<Stop>` |
 | `metadata: map` | `Option<HashMap<String, String>>` | `Option<HashMap<String, String>>` | `HashMap<String, String>`, skipped when empty |
 | `response_format` | `Option<Box<ResponseFormat>>` | `Option<ResponseFormat>` | `Option<ResponseFormat>` |
 | `legacy_user`, `deprecated` | `Option<String>`, no marker | `Option<String>`; `#[deprecated]` with `deprecatedAttributes` | `Option<String>`, no marker |
@@ -210,9 +213,8 @@ Notes:
 - `Option<Option<T>>` (stock and timvw-rust) keeps "not sent" apart from "sent as `null`", which matters for PATCH-like
   APIs and for re-encoding a response unchanged. progenitor collapses the two, so a decoded `"content": null` is
   encoded without the field (see [What decodes](#what-decodes)).
-- A nullable union in timvw-rust is an `Option` of the union, not an `Option<Option<..>>`: with `modelUnions` a
-  `nullable` or `type: null` branch is no variant, and the union is an `Option` where it is nullable. So `stop` cannot
-  be sent as an explicit `null`, unless `nullableUnionFields` is on.
+- A nullable union in timvw-rust has no `null` variant: a `nullable` or `type: null` branch makes the field nullable,
+  so `stop` is `Option<Option<Stop>>` like any other nullable field, and can be sent as an explicit `null`.
 - Only timvw-rust, with `deprecatedAttributes`, marks a deprecated field `#[deprecated]`.
 
 ## Boxing and recursion
@@ -231,9 +233,10 @@ stock boxes every model reference; timvw-rust (`boxOnlyCycles`) and progenitor b
 
 | | stock | timvw-rust | progenitor |
 | --- | --- | --- | --- |
-| Call | `list_models(&config, Some(10), Some("desc"), None)` | the same, or `list_models().configuration(&config).limit(10).order("desc").call()` | `client.list_models().limit(10).order(ListModelsOrder::Desc).send()` |
-| Success | `Result<ModelList, Error<ListModelsError>>` | the same | `Result<ResponseValue<ModelList>, Error<ErrorResponse>>` |
-| Error body | `ListModelsError::DefaultResponse(ErrorResponse)` or `UnknownValue(Value)` | the same, `ResponseContent` boxed | `Error::ErrorResponse(ResponseValue<ErrorResponse>)` |
+| Call | `list_models(&config, Some(10), Some("desc"), None)` | `list_models().configuration(&config).limit(10).order("desc").call()` (`bonBuilders=false`: as stock) | `client.list_models().limit(10).order(ListModelsOrder::Desc).send()` |
+| Success | `Result<ModelList, Error<ListModelsError>>` | the same; `list_models_response` with `responseFunctions` | `Result<ResponseValue<ModelList>, Error<ErrorResponse>>` |
+| Error body | `ListModelsError::DefaultResponse(ErrorResponse)` or `UnknownValue(Value)`, the first that decodes | the same variants, chosen by the status; `ResponseContent` boxed, with the response headers | `Error::ErrorResponse(ResponseValue<ErrorResponse>)` |
+| Request body | `create_chat_completion(&config, request)` | `.create_chat_completion_request(&request)` | `.body(request)` |
 | Enum query parameter | `&str` | `&str` | the enum |
 | Event stream (`text/event-stream`) | ignored: one method decoding JSON | `create_chat_completion_stream(..) -> EventStream<ChatCompletionChunk, _>` | generation panics; without it, JSON only |
 | Multipart upload | `upload_file(&config, PathBuf, purpose: &str)` | the same through `multipart_helper` | generation fails |
@@ -260,10 +263,11 @@ progenitor validates arguments in the builder (`TryInto<ListModelsOrder>`) and r
 | --- | --- | --- | --- |
 | this `impl` can be derived (`Default` of enums) | 16 | 0 | 0 |
 | empty doc comment | 16 | 0 (14 before the fix below) | 0 |
-| unneeded `return` statement | 13 | 13 | 0 |
+| unneeded `return` statement | 13 | 0 (13 before 0.21) | 0 |
 | unused generated helper | 0 | 0 (3 before the fix below) | 0 |
 
-openai-client-base silences `needless_return` through `apiLintAllows`; this comparison leaves that option out.
+openai-client-base used to silence `needless_return` through `apiLintAllows`; since 0.21 the generated code no longer
+has them.
 
 ## Choosing
 
@@ -274,9 +278,10 @@ openai-client-base silences `needless_return` through `apiLintAllows`; this comp
 - **stock `-g rust`** generates everything but does not compile a discriminated union into something that decodes,
   overflows on large integers and fails a whole response on one new enum value, which is what the old
   post-processing scripts fixed.
-- **timvw-rust** keeps stock's coverage and call shape and takes progenitor's type rules where they fit (boxing only
-  on cycles, `i64`, `FromStr`, `Default` only where valid), plus what neither has: tag dispatch with precise errors,
-  open enums, typed event streams and a method per media type.
+- **timvw-rust** keeps stock's coverage and takes progenitor's type rules where they fit (boxing only on cycles,
+  `i64`, `FromStr`, `Default` only where valid, borrowed request bodies, status and headers through
+  `responseFunctions`). It adds what neither has: tag dispatch with precise errors, open enums, error variants by
+  status with headers, `validate()` without changing a type, typed event streams and a method per media type.
 
 ## Open points
 
@@ -288,17 +293,18 @@ The comparison found six things timvw-rust rendered worse than stock or progenit
 | Unused generated helpers (`first_of`, `Attempt`, `add_schema_value_to_form`): 3 `dead_code` warnings | left out when nothing calls them; `pruneAllHelpers` also drops those marked `#[allow(dead_code)]` | on (no API change) |
 | Empty `///` above enums without a description | the line is only written with a description | on (no API change) |
 | Enum query and form parameters are `&str` (`order`, `purpose`) | `typedEnumParameters` | off |
-| A nullable union field cannot send `null` | `nullableUnionFields` | off |
-| Schema defaults (`stream: default false`) are lost | `schemaDefaultDocs` notes them in the docs; the types stay | off |
+| A nullable union field cannot send `null` | `nullableUnionFields` | always on since 0.21 |
+| Schema defaults (`stream: default false`) are lost | `schemaDefaultDocs` notes them in the docs; the types stay | always on since 0.21 |
 | No `#[deprecated]` on deprecated fields | `deprecatedAttributes` | off |
 
-The options are off because each changes the public API or what a `-D warnings` consumer sees, and the comparison
-config ([`timvw-rust-config.json`](timvw-rust-config.json)) keeps the options openai-client-base runs. With all four on,
-the comparison crate renders as in the README's examples and clippy reports the same 13 `needless_return`s.
+The options were off because each changes the public API or what a `-D warnings` consumer sees. In 0.21
+`nullableUnionFields` and `schemaDefaultDocs` became the rendering, and `typedEnumParameters` and
+`deprecatedAttributes` stay options, off in the comparison config ([`timvw-rust-config.json`](timvw-rust-config.json)).
 
 ## Renderings after the comparison
 
-The comparison listed what timvw-rust still rendered
+This section records the fixes as they were made, before 0.21; `nullableUnionFields` and `schemaDefaultDocs` are no
+longer options. The comparison listed what timvw-rust still rendered
 worse than one of them. Two fixes change no public API and are always on; the other four change the API or its
 documentation, so each is an option that is off by default. With the options off, openai-client-base and
 langfuse-client-base regenerate with only the two always-on differences (checked by regenerating both crates before

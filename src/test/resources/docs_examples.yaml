@@ -1,0 +1,276 @@
+openapi: 3.0.3
+info:
+  title: Items
+  description: The API the examples of README.md and docs/guides/ are written against.
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+security:
+  - bearer: []
+paths:
+  /items:
+    get:
+      operationId: listItems
+      tags: [Items]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: after
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: a page of items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemList'
+        default:
+          description: an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      operationId: createItem
+      tags: [Items]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewItem'
+      responses:
+        "201":
+          description: the new item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        "400":
+          description: the request is not valid
+          content:
+            text/plain:
+              schema:
+                type: string
+        "409":
+          description: an item with this name exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        "429":
+          description: too many requests
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /items/{id}:
+    get:
+      operationId: getItem
+      tags: [Items]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: the item
+          headers:
+            x-request-id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        "404":
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        5XX:
+          description: a server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    delete:
+      operationId: deleteItem
+      tags: [Items]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: deleted
+  /owners/{owner_id}/items:
+    get:
+      operationId: listOwnerItems
+      tags: [Items]
+      parameters:
+        - name: owner_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: session
+          in: cookie
+          schema:
+            type: string
+      responses:
+        "200":
+          description: the owner's items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemList'
+  /version:
+    get:
+      operationId: getVersion
+      tags: [Items]
+      responses:
+        "200":
+          description: the version
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  schemas:
+    NewItem:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        sku:
+          type: string
+          pattern: '^[A-Z]{3}-[0-9]{4}$'
+        price:
+          type: number
+          format: double
+          minimum: 0
+        tags:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items:
+            type: string
+        content:
+          $ref: '#/components/schemas/Content'
+        status:
+          $ref: '#/components/schemas/Status'
+    Item:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        owner:
+          $ref: '#/components/schemas/Owner'
+        status:
+          $ref: '#/components/schemas/Status'
+        content:
+          $ref: '#/components/schemas/Content'
+        parent:
+          $ref: '#/components/schemas/Item'
+    ItemList:
+      type: object
+      required: [data, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Item'
+        has_more:
+          type: boolean
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+    Owner:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    Status:
+      type: string
+      enum: [draft, published]
+    Content:
+      oneOf:
+        - type: string
+        - type: array
+          items:
+            $ref: '#/components/schemas/Part'
+    Part:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+    Event:
+      oneOf:
+        - $ref: '#/components/schemas/CreatedEvent'
+        - $ref: '#/components/schemas/DeletedEvent'
+      discriminator:
+        propertyName: type
+        mapping:
+          created: '#/components/schemas/CreatedEvent'
+          deleted: '#/components/schemas/DeletedEvent'
+    CreatedEvent:
+      type: object
+      required: [type, item]
+      properties:
+        type:
+          type: string
+          enum: [created]
+        item:
+          $ref: '#/components/schemas/Item'
+    DeletedEvent:
+      type: object
+      required: [type, id]
+      properties:
+        type:
+          type: string
+          enum: [deleted]
+        id:
+          type: string
+    Problem:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string

@@ -45,7 +45,7 @@ templates (ported from `-g rust`), not something it inherits, so a rule can chan
 
 The **Rust** entry of every rule is what `timvw-rust` renders without options, in the one client configuration it
 generates (async reqwest with reqwest-middleware; the matching stock options are rejected, see the README's
-[configuration](../../README.md#configuration)). What used to be the baseline options (`boxOnlyCycles`,
+[options](../../README.md#options)). What used to be the baseline options (`boxOnlyCycles`,
 `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`,
 `unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) is always applied, and setting one fails
 generation; so is the former `boxResponseError` (`ResponseError` holds a `Box`).

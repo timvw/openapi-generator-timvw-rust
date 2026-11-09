@@ -74,6 +74,7 @@ For an operation
 
 the API module has, next to `get_item`:
 
+<!-- not compiled: a generated signature -->
 ```rust
 #[bon::builder]
 pub async fn get_item_response(configuration: &configuration::Configuration, id: &str)
@@ -110,6 +111,7 @@ naming both. Rename one of them (its `operationId`) or leave the option off. An 
 
 ## `ApiResponse<T>`
 
+<!-- not compiled: the API, without bodies -->
 ```rust
 pub struct ApiResponse<T> {
     pub status: reqwest::StatusCode,
@@ -136,7 +138,9 @@ you can decode it more than once, or in two ways.
 ## Examples
 
 The examples use the operation above, `get_item` returning `models::Item` (`id`, `name`, optional `tags` and
-`owner`), and `configuration` an `apis::configuration::Configuration`.
+`owner`), and `configuration` an `apis::configuration::Configuration`. They come from
+[`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as `my_client` with
+`responseFunctions`, and are compiled by the tests.
 
 ### The whole body, as the generated type
 
@@ -244,7 +248,7 @@ logging, storing or decoding with something else.
 The error is the operation's, and is handled the same way:
 
 ```rust
-use myclient::apis::Error;
+use my_client::apis::Error;
 
 match items_api::get_item_response()
     .configuration(&configuration)

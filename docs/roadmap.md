@@ -60,6 +60,13 @@ Each change is then decided separately: adopt, adopt as an option, or keep.
 
 ## 3. Make the generator conform
 
+**Status: done, released as 0.21.0.** Each adopted decision of [decisions.md](decisions.md) (1 to 6 and 8 to 12) is
+implemented, one pull request each, with its mapping rule and tests: request bodies by reference, cookies sent, error
+headers and status-based error variants, `uuid` and RFC 3339 parameters, `validate()`, `responseFunctions`, unknown
+options failing and the baseline options folded in. Both clients generate, build and pass clippy `-D warnings` on it.
+The [migration guide](guides/migration.md) lists what changed for a client, and the
+[history](history.md#0210-breaking) records each change.
+
 Change the generator so it renders the updated mapping, and update the tests that rules point to.
 
 Changes that alter the public API of the two clients follow the current practice:

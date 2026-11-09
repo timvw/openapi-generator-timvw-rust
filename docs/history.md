@@ -6,12 +6,18 @@
 fix into the generator. This page keeps that history: what each rendering replaced. What the generator renders today
 is the [mapping](mapping/README.md).
 
-**Status: Milestones 2 and 3 are complete.** openai-client-base and langfuse-client-base generate without scripts.
-The generator renders what stock `-g rust` renders plus the conventions below, which langfuse-client-base used to patch in after generation (its public API is
-byte-identical between the scripted pipeline and this generator), and the `titleNaming` option that kept
-openai-client-base's type names stable across the openapi-generator 7.15 to 7.25 upgrade.
+**Status:** openai-client-base and langfuse-client-base generate without scripts (Milestones 2 and 3, up to 0.17),
+the plugin owns its Rust layer (0.20), and 0.21 renders the documented [mapping](mapping/README.md) with the changes
+of [decisions.md](decisions.md). The table [below](#what-the-generator-renders-differently-from--g-rust) records what
+each rendering replaced in the client repositories' scripts.
 
-## Unreleased (breaking)
+## 0.21.0 (breaking)
+
+The release of the [mapping decisions](decisions.md): what roadmap step 2 decided, implemented under
+[step 3](roadmap.md#3-make-the-generator-conform). The [migration guide](guides/migration.md) has every change with
+the code before and after, and the steps for a client repository.
+
+### Configuration
 
 - The 11 baseline options are no longer options ([decision 12](decisions.md#12-option-defaults-are-stock-not-the-baseline)):
   `boxOnlyCycles`, `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`,
@@ -20,11 +26,21 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   Their `false` renderings (the stock unions, boxing every reference, `Default` everywhere, `i32` integers, the stock
   inline names, closed response enums, ...) are gone. A client that set all 11 to `true` removes them from its
   configuration; its output does not change. A client that left any of them off gets the mapping's rendering.
+- The error is always boxed (decision 4, follow-up): `Error::ResponseError` holds `Box<ResponseContent<T>>`, since
+  with the headers an unboxed error is over clippy's `result_large_err` limit in every function. `boxResponseError`
+  is no longer an option: setting it, to any value, fails generation as not configurable. openai-client-base removes
+  `"boxResponseError": true` from its configuration; its output does not change. langfuse-client-base, which did not
+  set it, gets the boxed error: code that builds `Error::ResponseError(content)` wraps it (`Box::new(content)` or
+  `content.into()`); code that matches `Error::ResponseError(response)` and reads its fields is unchanged (the `Box`
+  derefs), but one that moves the `ResponseContent` out gets a `Box` (`*response`).
 - An unknown option fails generation ([decision 10](decisions.md#10-unknown-generator-options-are-ignored)): a key
   of `--additional-properties` or of a `-c` file that is neither a timvw-rust option, nor one of openapi-generator's
   general options, nor a key openapi-generator sets itself, was ignored and now fails with every unknown key and, for
   each, the closest option (`did you mean 'bonBuilders'?`). A client whose configuration only holds options sees no
   change; one with a misspelt or stale key removes or corrects it.
+
+### Function signatures
+
 - A request body the function only serializes is borrowed ([decision 2](decisions.md#2-request-bodies-by-reference)):
   `create_item(configuration, item: models::Item)` becomes `item: &models::Item` (a union body too, an array body
   `&[T]`, a map or `serde_json::Value` body a reference, an optional or nullable one `Option<&T>`), in every method
@@ -32,6 +48,15 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   dates and date-times (`Copy`), strings (`&str`), multipart parts, form fields and files (`PathBuf`) are unchanged.
   A body whose type is `String` (a string enum without `typedEnumParameters`, `format: byte`) is now `&str`. A caller passes `&request` instead of `request`
   (`.create_item(&request)`, `.maybe_create_item(Some(&request))`) and keeps its value; the bytes sent do not change.
+- A `format: uuid` parameter is `uuid::Uuid` ([decision 6](decisions.md#6-uuid-parameters-are-str)): a path, query
+  or header parameter or form field took `&str` (an array already took `Vec<uuid::Uuid>`) and now takes `uuid::Uuid`
+  by value (`Option<uuid::Uuid>` when optional), as a model property does. It is sent hyphenated, as before. A client
+  passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
+  not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
+  makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
+
+### Errors
+
 - The error variant comes from the status, not the body's shape
   ([decision 5](decisions.md#5-error-variant-chosen-by-body-shape-not-status)): `entity` holds the variant of the
   response with the status's exact code, else of its range (`4XX`), else `DefaultResponse`, with the body decoded as
@@ -47,13 +72,14 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   `supportMultipleResponses`, the success `ResponseContent` has the headers too. `{:?}` of an error now prints every
   response header, which can include `set-cookie` or tokens: a client that logs errors with `{:?}` may want to log
   `Display` (only the status) or redact; `Display` is unchanged.
-- The error is always boxed (decision 4, follow-up): `Error::ResponseError` holds `Box<ResponseContent<T>>`, since
-  with the headers an unboxed error is over clippy's `result_large_err` limit in every function. `boxResponseError`
-  is no longer an option: setting it, to any value, fails generation as not configurable. openai-client-base removes
-  `"boxResponseError": true` from its configuration; its output does not change. langfuse-client-base, which did not
-  set it, gets the boxed error: code that builds `Error::ResponseError(content)` wraps it (`Box::new(content)` or
-  `content.into()`); code that matches `Error::ResponseError(response)` and reads its fields is unchanged (the `Box`
-  derefs), but one that moves the `ResponseContent` out gets a `Box` (`*response`).
+- A `text/plain` error response holds its body as it is: a `string` error response (or `default`) whose media types
+  are text and none JSON was decoded as JSON, so a plain-text body (`bad input`) gave no entity; it now gives
+  `Status400("bad input")` (`DefaultResponse(..)` for the default), as decision 5 picks the variant by status (also in
+  the `_response` function of `responseFunctions`). A client that read such an error from `content` can match the
+  variant.
+
+### On the wire
+
 - `date-time` parameters are sent in RFC 3339 ([decision 11](decisions.md#11-date-time-parameters-are-sent-in-display-form)):
   with `useChrono` (the default), a `date-time` path, query or header parameter or form field (urlencoded body,
   multipart text part), or each item of an array of them, was
@@ -61,29 +87,6 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. An array of
   `date` or `date-time` in a path or header, which did not compile, now joins its items. Signatures do not change; a
   client that built such a request by hand to get RFC 3339 can call the generated function instead.
-- `responseFunctions` (new option, off by default; [decision 1](decisions.md#1-response-functions-returning-apiresponset)):
-  every operation whose success is a JSON body, text or nothing also gets `<operation>_response`, which sends the
-  same request and fails with the same typed error but returns `apis::ApiResponse<T>`: the `status`, the `headers`
-  and the undecoded body, with `json()` (the generated type), `json_as::<U>()` (a type of the caller's, owned),
-  `json_borrowed::<U>()` (borrowing from the body) and `text()`. Binary responses, event streams and webhooks get
-  none. A twin whose name another operation of the module has fails generation. Without the option nothing changes;
-  see the [guide](guides/response-functions.md).
-- A `format: uuid` parameter is `uuid::Uuid` ([decision 6](decisions.md#6-uuid-parameters-are-str)): a path, query
-  or header parameter or form field took `&str` (an array already took `Vec<uuid::Uuid>`) and now takes `uuid::Uuid`
-  by value (`Option<uuid::Uuid>` when optional), as a model property does. It is sent hyphenated, as before. A client
-  passes a `uuid::Uuid` (`Uuid::parse_str(s)?`) instead of a string. Arrays of uuids in a path or header, which did
-  not compile, now join their items. A uuid or chrono type only in a response (or only in an array parameter) now
-  makes the crate depend on `uuid` or `chrono`; such a crate did not compile.
-- A `text/plain` error response holds its body as it is: a `string` error response (or `default`) whose media types
-  are text and none JSON was decoded as JSON, so a plain-text body (`bad input`) gave no entity; it now gives
-  `Status400("bad input")` (`DefaultResponse(..)` for the default), as decision 5 picks the variant by status (also in
-  the `_response` function of `responseFunctions`). A client that read such an error from `content` can match the
-  variant.
-- `supportMultipleResponses` with `typedEventStreams`: the stream function returns its `EventStream`, as without the
-  option (it returned the stream where `ResponseContent<..Success>` was declared, which did not compile).
-- A crate generated without options passes `cargo clippy -- -D warnings`: `ContentType::from` (`src/apis/mod.rs`) and
-  the content-type match of each function no longer `return` from their last expression (`needless_return`). A client
-  that allowed `clippy::needless_return` through `apiLintAllows` only for this can drop it.
 - Cookie parameters are sent ([decision 3](decisions.md#3-cookie-parameters-are-not-sent)): the argument was
   accepted and never used. The cookie parameters that are set now go out in one `Cookie` header (`a=1; b=2`), each
   value percent-encoded where it is not an RFC 6265 cookie-octet, an exploded array as a pair per item. An api key
@@ -91,6 +94,24 @@ openai-client-base's type names stable across the openapi-generator 7.15 to 7.25
   (`additionalProperties`), which did not compile, is sent as its JSON. Signatures do not change. The generated header
   replaces a client default `Cookie` header on operations that send cookies; a middleware that adds cookies must merge
   into the existing header rather than append a second one.
+
+### Fixes
+
+- `supportMultipleResponses` with `typedEventStreams`: the stream function returns its `EventStream`, as without the
+  option (it returned the stream where `ResponseContent<..Success>` was declared, which did not compile).
+- A crate generated without options passes `cargo clippy -- -D warnings`: `ContentType::from` (`src/apis/mod.rs`) and
+  the content-type match of each function no longer `return` from their last expression (`needless_return`). A client
+  that allowed `clippy::needless_return` through `apiLintAllows` only for this can drop it.
+
+### New
+
+- `responseFunctions` (new option, off by default; [decision 1](decisions.md#1-response-functions-returning-apiresponset)):
+  every operation whose success is a JSON body, text or nothing also gets `<operation>_response`, which sends the
+  same request and fails with the same typed error but returns `apis::ApiResponse<T>`: the `status`, the `headers`
+  and the undecoded body, with `json()` (the generated type), `json_as::<U>()` (a type of the caller's, owned),
+  `json_borrowed::<U>()` (borrowing from the body) and `text()`. Binary responses, event streams and webhooks get
+  none. A twin whose name another operation of the module has fails generation. Without the option nothing changes;
+  see the [guide](guides/response-functions.md).
 
 ## What the generator renders differently from `-g rust`
 

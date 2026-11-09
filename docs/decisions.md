@@ -193,7 +193,7 @@ wrong one.
 
 **Recommendation:** adopt: it makes models and parameters agree, and costs the two clients nothing.
 
-**Decision:** adopt, with no option (2026-11-09). The mapping records the rule behind it: a format has one Rust type wherever it appears (model, parameter, body); its crate is a dependency only when the API uses the format; a fallback to `String` exists only where a user needs it (`useChrono`). `uri`, `email` and `decimal` stay `String`.
+**Decision:** adopt, with no option (2026-11-09). The mapping records the rule behind it: a format has one Rust type wherever it appears (model, parameter, body); its crate is a dependency only when the API uses the format; a fallback to `String` exists only where a user needs it (`useChrono`). `uri`, `email` and `decimal` stay `String`. Implemented in #66.
 
 ## 7. `readOnly` and `writeOnly` in both directions
 

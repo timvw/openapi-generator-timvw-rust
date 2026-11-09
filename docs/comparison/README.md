@@ -45,7 +45,7 @@ versions as before (openapi-generator 7.27.0, progenitor 0.16.0).
 | Constraints (`maxLength`, `minimum`, ...) | not checked | `validate()` on every model, called by the caller | a string with `minLength`, `maxLength` or `pattern` is a newtype checked when built and decoded |
 | Call shape | free functions taking `&Configuration` | a builder per function (`bonBuilders`), or free functions with `bonBuilders=false` | methods on one `Client` |
 | `cargo clippy` warnings | 45 | 0 | 0 |
-| Lines of Rust | 1,666 | 3,370; 2,864 with `validateMethods=false` | 3,320 (one file) |
+| Lines of Rust | 1,666 | 3,672; 2,864 with `validateMethods=false` | 3,320 (one file) |
 
 The rest of the page shows each row in code.
 

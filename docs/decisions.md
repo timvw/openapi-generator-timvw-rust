@@ -175,7 +175,7 @@ wins. A 404 whose type is the same as the 400's comes back as `Status400`.
 **Recommendation:** adopt: the variant names promise a status, and no caller of the two clients depends on the
 wrong one.
 
-**Decision:** adopt (2026-11-09): the generated code matches the status code first and decodes the body as that status's type; an unlisted status falls back to `DefaultResponse`, a body that does not decode to `UnknownValue`.
+**Decision:** adopt (2026-11-09): the generated code matches the status code first and decodes the body as that status's type; an unlisted status falls back to `DefaultResponse`, a body that does not decode to `UnknownValue`. Implemented in #64.
 
 ## 6. `uuid` parameters are `&str`
 

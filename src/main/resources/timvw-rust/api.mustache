@@ -681,7 +681,7 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
     {{#vendorExtensions.x-rust-event-stream}}
     if status.is_client_error() || status.is_server_error() {
         let content = resp.text().await?;
-        let entity: Option<{{{vendorExtensions.x-rust-error-enum}}}> = serde_json::from_str(&content).ok();
+{{>error_entity}}
         return Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}));
     }
     let content_type = resp
@@ -750,7 +750,7 @@ pub async fn {{{operationId}}}(configuration: &configuration::Configuration, {{#
         {{/supportMultipleResponses}}
     } else {
         let content = resp.text().await?;
-        let entity: Option<{{{vendorExtensions.x-rust-error-enum}}}> = serde_json::from_str(&content).ok();
+{{>error_entity}}
         Err(Error::ResponseError({{#boxResponseError}}Box::new({{/boxResponseError}}ResponseContent { status, content, entity }{{#boxResponseError}}){{/boxResponseError}}))
     }
 }

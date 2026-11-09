@@ -326,10 +326,13 @@ final class ValidateRules {
                     if (inline) {
                         List<String> lines = new ArrayList<>();
                         List<String> bound = new ArrayList<>();
+                        // each field is bound to a generated name (field0, ...), so a field named path, errors
+                        // or like a generated local shadows nothing
                         for (CodegenProperty cp : cm.vars) {
-                            List<String> field = field(cp, Expr.binding(cp.name), true);
+                            String local = "field" + bound.size();
+                            List<String> field = field(cp, Expr.binding(local), true);
                             if (!field.isEmpty()) {
-                                bound.add(cp.name);
+                                bound.add(cp.name + ": " + local);
                                 lines.addAll(field);
                             }
                         }

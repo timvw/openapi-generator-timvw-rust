@@ -294,3 +294,15 @@ fn plain_enums_implement_the_trait() {
     assert_eq!(models::Status::Draft.validate(), Ok(()));
     assert_eq!(models::Level::Variant1.validate(), Ok(()));
 }
+
+/// Inline variants bind their fields to generated names: fields named `path`, `errors` or `value0` shadow nothing.
+#[test]
+fn inline_variant_fields_named_like_generated_locals() {
+    let pet: models::Pet =
+        serde_json::from_value(json!({"kind": "dog", "path": "x", "errors": 5, "value0": "ab"})).unwrap();
+    let errors = pet.validate().expect_err("three rules broken");
+    let found: Vec<(&str, &Rule)> = errors.iter().map(|e| (e.path.as_str(), &e.rule)).collect();
+    assert_eq!(found, [("path", &Rule::MinLength(2)), ("errors", &Rule::Maximum(3.0)), ("value0", &Rule::MaxLength(1))]);
+    let ok: models::Pet = serde_json::from_value(json!({"kind": "cat", "path": "xy", "errors": 3, "value0": "a"})).unwrap();
+    assert_eq!(ok.validate(), Ok(()));
+}

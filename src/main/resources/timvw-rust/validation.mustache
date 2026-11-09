@@ -4,7 +4,8 @@
 //! Every model implements [`Validate`]. Nothing in this crate calls it: validating a request before sending it, or a
 //! response after decoding it, is the caller's choice. `validate()` returns every value that breaks a rule, as
 //! [`ValidationErrors`], each with the path to it in wire names (`messages[2].content`, `metadata["key"]`): in the
-//! order of the fields, nested values depth-first, map entries by key. A valid value allocates nothing.
+//! order of the fields, nested values depth-first, the entries of a map ordered by their rendered (escaped) key. A
+//! valid value allocates nothing.
 //!
 //! What is checked: `minLength` and `maxLength` (in characters), `pattern`, `minimum`, `maximum`, `exclusiveMinimum`,
 //! `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems` (by equality), `minProperties` and
@@ -15,6 +16,33 @@
 use std::fmt;
 
 /// A model that can check itself against the validation keywords of its schema.
+///
+/// The generated models implement it. To implement it by hand, for a type of your own that holds generated models,
+/// implement [`validate_into`](Validate::validate_into): push a [`ValidationError`] for each value that breaks a rule,
+/// with `path` set to where the value is, and call `validate_into` on the values it holds with their [`Path`]:
+///
+/// ```ignore
+/// use my_client::models::validation::{Path, Rule, Validate, ValidationError};
+///
+/// struct Order {
+///     note: String,
+///     items: Vec<my_client::models::Item>,
+/// }
+///
+/// impl Validate for Order {
+///     fn validate_into(&self, path: &Path<'_>, errors: &mut Vec<ValidationError>) {
+///         let length = self.note.chars().count() as u64;
+///         if length > 100 {
+///             let mut error = ValidationError::new(Rule::MaxLength(100), format!("length {length}"));
+///             error.path = path.field("note").to_string();
+///             errors.push(error);
+///         }
+///         self.items.validate_into(&path.field("items"), errors);
+///     }
+/// }
+/// ```
+///
+/// `validate()` then returns what `validate_into` pushed, from [`Path::root`].
 pub trait Validate {
     /// Every value that breaks a validation keyword of the schema; `Ok(())` when none does.
     fn validate(&self) -> Result<(), ValidationErrors> {
@@ -27,9 +55,8 @@ pub trait Validate {
         }
     }
 
-    /// Pushes every value that breaks a keyword onto `errors`, with its path below `path`. What `validate()` and the
-    /// models holding this one call.
-    #[doc(hidden)]
+    /// Pushes every value that breaks a keyword onto `errors`, with its path below `path`, and nothing when the value
+    /// is valid. `validate()` calls it with [`Path::root`]; a model calls it on the models it holds with their path.
     fn validate_into(&self, path: &Path<'_>, errors: &mut Vec<ValidationError>);
 }
 
@@ -92,8 +119,8 @@ impl fmt::Display for ValidationErrors {
 
 impl std::error::Error for ValidationErrors {}
 
-/// Where a value is, built on the stack while `validate()` descends; written out only for an error.
-#[doc(hidden)]
+/// Where a value is, in wire names, built on the stack while `validate()` descends: `path.field("items").index(2)`.
+/// It is written out (`to_string()`, `messages[2].content`) only for an error.
 #[derive(Clone, Copy, Debug)]
 pub struct Path<'a> {
     parent: Option<&'a Path<'a>>,
@@ -163,7 +190,9 @@ fn push(result: Result<(), ValidationError>, path: &Path<'_>, errors: &mut Vec<V
     }
 }
 
-/// Sorts the errors a map's entries pushed from `start` on by their key, as a map iterates in no fixed order.
+/// Sorts the errors a map's entries pushed from `start` on by their rendered (escaped) key, as a map iterates in no
+/// fixed order.
+#[doc(hidden)]
 pub fn sort_by_key(errors: &mut [ValidationError], start: usize, path: &Path<'_>) {
     if errors.len() <= start + 1 {
         return;
@@ -252,36 +281,11 @@ pub struct ValidationError {
 }
 
 impl ValidationError {
-    /// An error about the value itself; the callers add the path.
+    /// An error with an empty path; set `path` to where the value is (`path.to_string()` in `validate_into`).
     pub fn new(rule: Rule, actual: impl Into<String>) -> Self {
         ValidationError { path: String::new(), rule, actual: actual.into() }
     }
 
-    /// The same error, seen from the object that holds the value in `field`.
-    pub fn at(self, field: &str) -> Self {
-        self.prefixed(field.to_string())
-    }
-
-    /// The same error, seen from the list that holds the value at `index`.
-    pub fn at_index(self, index: usize) -> Self {
-        self.prefixed(format!("[{index}]"))
-    }
-
-    /// The same error, seen from the map that holds the value under `key`.
-    pub fn at_key(self, key: &str) -> Self {
-        self.prefixed(format!("[{key:?}]"))
-    }
-
-    fn prefixed(mut self, segment: String) -> Self {
-        self.path = if self.path.is_empty() {
-            segment
-        } else if self.path.starts_with('[') {
-            segment + &self.path
-        } else {
-            segment + "." + &self.path
-        };
-        self
-    }
 }
 
 impl fmt::Display for ValidationError {

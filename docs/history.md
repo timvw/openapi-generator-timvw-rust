@@ -30,6 +30,15 @@ each rendering replaced in the client repositories' scripts.
   `"unknown"`. An open integer enum that lists `9223372036854775807` (`i64::MAX`) itself fails generation with a
   message naming the schema. A client whose spec has such an enum gets the decoding type, with the same variant names.
   A `type: number` enum stays a string enum (a known gap).
+- List items and map values that can be null are `Option`s at any depth. This covers `nullable: true` (3.0),
+  `type: [T, 'null']` and a `oneOf`/`anyOf` with a `null` branch (3.1), and a `$ref` to a nullable schema (also
+  wrapped in a single-entry `allOf`), so the generator renders `HashMap<String, Option<String>>`, `Vec<Option<T>>` and
+  `Vec<Option<<Enum>>>` for an inline enum. Before, the generator ignored the nullability, so `{"a": null}` or `[null]`
+  failed to decode. `None` serializes as `null`, and `validate()` skips it. A free-form value (`serde_json::Value`,
+  which holds `null` itself) and the items of a query, path, header or cookie parameter or of a form field
+  (urlencoded or multipart) stay as they were. A union's array variant of nullable items is named
+  `ArrayOfNullable<Items>`. A client whose spec has such items gets the `Option`: code that builds or reads those
+  lists and maps wraps or unwraps the items.
 - A parameter whose schema is an inline `oneOf` or `anyOf` of one schema and `type: null` (OpenAPI 3.1, such as
   `oneOf: [{$ref: '#/components/schemas/Status'}, {type: 'null'}]`, also with the reference wrapped in one-element
   `oneOf`/`anyOf`/`allOf`s) takes that schema's type and is sent as the plain reference is

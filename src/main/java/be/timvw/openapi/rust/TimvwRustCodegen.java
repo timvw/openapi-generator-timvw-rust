@@ -485,12 +485,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
     /**
      * An integer the base mapping ({@link RustCodegenBase#getSchemaType}) renders as {@code i32} is {@code i64} unless
-     * its format is {@code int32}. Every location (fields, container items,
-     * parameters, responses, union variants) gets its type from here. The schema flags are left alone, so
-     * {@code isInteger}/{@code isLong} still select the integer enum rendering, through
-     * {@link RustCodegenBase#isIntegerEnum} and {@code x-rust-integer-enum}. The base mapping also maps the formats {@code int8},
-     * {@code int16} and {@code uint8} to {@code uint64} to sized and unsigned types, which become {@code i64} as
-     * well.
+     * its format is {@code int32}. Every location (fields, container items, parameters, responses, union variants)
+     * gets its type from here. The schema flags are left alone, so {@code isInteger}/{@code isLong} still select the
+     * integer enum rendering, through {@link RustCodegenBase#isIntegerEnum} and {@code x-rust-integer-enum}. The base
+     * mapping also maps the formats {@code int8}, {@code int16} and {@code uint8} to {@code uint64} to sized and
+     * unsigned types, which become {@code i64} as well.
      */
     @Override
     @SuppressWarnings("rawtypes")

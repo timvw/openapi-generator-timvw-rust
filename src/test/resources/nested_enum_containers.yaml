@@ -1,0 +1,142 @@
+openapi: 3.0.3
+info:
+  title: Nested enum containers
+  version: "1"
+paths:
+  /named:
+    get:
+      operationId: getNamed
+      responses:
+        "200":
+          description: component maps and lists of an inline enum
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grid: {$ref: "#/components/schemas/Grid"}
+                  rows: {$ref: "#/components/schemas/Rows"}
+  /grid:
+    get:
+      operationId: getGrid
+      responses:
+        "200":
+          description: a map of maps of an inline enum
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    enum: [lit, dark]
+    post:
+      operationId: postGrid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                additionalProperties:
+                  type: string
+                  enum: [agree, refuse]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Holder"}
+components:
+  schemas:
+    Grid:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties:
+          type: string
+          enum: [lit, dark]
+    Rows:
+      type: array
+      items:
+        type: object
+        additionalProperties:
+          type: string
+          enum: [lit, dark]
+    Holder:
+      type: object
+      properties:
+        map_of_maps:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+              enum: [foo_bar, baz]
+        list_of_maps:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+              enum: [red, green]
+        map_of_lists:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              enum: [up, down]
+        map_of_lists_of_lists:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: array
+            minItems: 1
+            items:
+              type: array
+              maxItems: 2
+              items:
+                type: string
+                enum: [left, right]
+        list_of_maps_of_maps:
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            additionalProperties:
+              type: object
+              maxProperties: 2
+              additionalProperties:
+                type: string
+                enum: [a, b]
+        required_grid:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+              enum: [high, low]
+        grids:
+          type: object
+          additionalProperties: {$ref: "#/components/schemas/Grid"}
+        unique_sets:
+          type: object
+          additionalProperties:
+            type: array
+            uniqueItems: true
+            items:
+              type: string
+              enum: [one, two]
+        unique_lists:
+          type: array
+          uniqueItems: true
+          items:
+            type: array
+            items:
+              type: string
+              enum: [x, y]
+      required: [required_grid]

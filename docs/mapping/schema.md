@@ -159,9 +159,8 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | `additionalProperties: <schema>`, or `true` |
-| Rust | `std::collections::HashMap<String, T>`; `true` gives `HashMap<String, serde_json::Value>`. Values that are an inline enum give `HashMap<String, <Property>>`, with the enum `<Property>` rendered next to the struct, and values that are a list of one `HashMap<String, Vec<<Property>>>` (a list of such maps is `Vec<HashMap<String, <Property>>>`); `validate()` checks its `minProperties`/`maxProperties` like any map's ([`schema.pattern`](#schemapattern)) |
-| Gap | an inline enum two or more lists or maps deep (a map of lists of lists) is typed one level deep only |
-| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L132), [`SmallFixesTest#aMapOfAnInlineEnumIsAMapOfTheEnum`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L82) |
+| Rust | `std::collections::HashMap<String, T>`; `true` gives `HashMap<String, serde_json::Value>`. Values that are an inline enum give `HashMap<String, <Property>>`, with the enum `<Property>` rendered once next to the struct; at any depth of lists and maps the enum is typed at every level (`HashMap<String, Vec<<Property>>>`, `Vec<HashMap<String, <Property>>>`, `HashMap<String, HashMap<String, <Property>>>`, `HashMap<String, Vec<Vec<<Property>>>>`, ...), a list of the enum itself with `uniqueItems` being a `HashSet` and a list of lists or maps a `Vec`. `validate()` checks the `minProperties`/`maxProperties` and `minItems`/`maxItems`/`uniqueItems` of every map and list that holds the enum, like any map's ([`schema.pattern`](#schemapattern)). An operation's inline enum (a request body or response that is a map or list of one) stays `String`, in containers as alone |
+| Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L132), [`SmallFixesTest#aMapOfAnInlineEnumIsAMapOfTheEnum`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L87), [`#anInlineEnumNestedAtAnyDepthIsTypedAtEveryLevel`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L211) |
 
 ### `schema.type.free-form-object`
 
@@ -240,7 +239,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | `uniqueItems: true` |
-| Rust | `Vec<T>`, as without it (an array of an inline enum is a `std::collections::HashSet`). The model's `validate()` reports two equal items (by `PartialEq`, so any item type works; see [`schema.pattern`](#schemapattern)) |
+| Rust | `Vec<T>`, as without it. An array whose items are an inline enum itself is a `std::collections::HashSet`; an array of lists or maps of one stays a `Vec`. The model's `validate()` reports two equal items of a `Vec` (by `PartialEq`, so any item type works; see [`schema.pattern`](#schemapattern)) |
 | Wire | duplicates are neither rejected when decoding nor removed |
 | Tests | [`SchemaMappingTest#arraysAreVecsAndUniqueItemsChangesNothing`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L160) |
 

@@ -796,6 +796,40 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
 
     private static final String[] EXTERNAL_TYPE_PREFIXES = {"std::", "serde_json::", "uuid::", "chrono::", "url::"};
 
+    /** The vendor extension holding the Rust type of an inline enum property ({@link #inlineEnumType}). */
+    static final String INLINE_ENUM_TYPE = "x-rust-enum-type";
+
+    /**
+     * The Rust type of an inline enum property: its enum, inside every list and map the property nests it in, at any
+     * depth ({@code HashMap<String, Vec<HashMap<String, Color>>>}). A list whose items are the enum itself and that
+     * declares {@code uniqueItems} is a {@code HashSet}; a list of lists or maps stays a {@code Vec} (a map is not
+     * {@code Hash}), and {@code validate()} checks its uniqueness.
+     */
+    static String inlineEnumType(CodegenProperty cp) {
+        return inlineEnumType(cp, cp.enumName, 0);
+    }
+
+    private static String inlineEnumType(CodegenProperty cp, String enumName, int depth) {
+        if (cp == null || depth > 64 || !isContainer(cp)) {
+            return enumName;
+        }
+        String inner = inlineEnumType(cp.items, enumName, depth + 1);
+        if (cp.isMap) {
+            return "std::collections::HashMap<String, " + inner + ">";
+        }
+        return (isEnumSet(cp) ? "std::collections::HashSet<" : "Vec<") + inner + ">";
+    }
+
+    /** Whether {@code cp} is a list or a map with a schema for its items or values. */
+    static boolean isContainer(CodegenProperty cp) {
+        return cp != null && (cp.isArray || cp.isMap) && cp.items != null;
+    }
+
+    /** Whether a list of an inline enum is a {@code HashSet}: {@code uniqueItems} and items that are the enum. */
+    static boolean isEnumSet(CodegenProperty cp) {
+        return cp.isArray && Boolean.TRUE.equals(cp.getUniqueItems()) && !isContainer(cp.items);
+    }
+
     @Override
     public ModelsMap postProcessModels(ModelsMap objs) {
         for (ModelMap model : objs.getModels()) {
@@ -843,8 +877,22 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                 }
             }
 
+            // an inline enum is typed in the lists and maps that hold it, however deep
+            for (List<CodegenProperty> vars : Arrays.asList(cm.vars, cm.allVars, cm.requiredVars, cm.optionalVars,
+                    cm.readOnlyVars, cm.readWriteVars, cm.parentVars, cm.nonNullableVars)) {
+                if (vars != null) {
+                    vars.stream().filter(cp -> cp.isEnum)
+                            .forEach(cp -> cp.vendorExtensions.put(INLINE_ENUM_TYPE, inlineEnumType(cp)));
+                }
+            }
+
             // the documented type of each property is the generated one (HashSet for uniqueItems)
             for (CodegenProperty cp : cm.vars) {
+                if (cp.isEnum) {
+                    cp.vendorExtensions.put("x-doc-type", inlineEnumType(cp).replace("std::collections::HashSet<", "HashSet<"));
+                    cp.vendorExtensions.put("x-should-link", false);
+                    continue;
+                }
                 String docType = cp.datatypeWithEnum != null && !cp.datatypeWithEnum.isEmpty()
                         ? cp.datatypeWithEnum : cp.dataType;
                 if (Boolean.TRUE.equals(cp.getUniqueItems()) && docType.startsWith("Vec<")) {

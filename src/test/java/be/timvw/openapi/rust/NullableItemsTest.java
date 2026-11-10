@@ -22,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * A list item or map value that can be null is an {@code Option} at any depth: {@code nullable: true} (3.0),
  * {@code type: [T, 'null']} and a {@code oneOf}/{@code anyOf} with a {@code null} branch (3.1), and a reference to a
- * nullable schema. A parameter's items stay plain.
+ * nullable schema (directly or through a single-entry {@code allOf}). A parameter's and a form field's items stay
+ * plain, and so does a free-form item ({@code serde_json::Value} holds null).
  */
 class NullableItemsTest {
 
@@ -65,6 +66,12 @@ class NullableItemsTest {
         // serde_json::Value holds null itself
         assertContains(holder, "    pub free: Option<" + MAP + "serde_json::Value>>,\n");
         assertContains(holder, "    pub free_list: Option<Vec<serde_json::Value>>,\n");
+        // a single-entry allOf wrapping a nullable reference
+        assertContains(holder, "    pub wrapped: Option<Vec<Option<models::Thing>>>,\n");
+        // a union's array variants are named after their items, nullable ones too
+        String uni = Files.readString(v30.resolve("src/models/uni.rs"));
+        assertContains(uni, "    ArrayOfStrings(Vec<String>),\n");
+        assertContains(uni, "    ArrayOfNullableStrings(Vec<Option<String>>),\n");
         // validate() looks inside the Some items only
         assertContains(holder, "                if let Some(value2) = item1 {\n"
                 + "                    crate::models::validation::minimum(*value2, 2, ");
@@ -80,11 +87,17 @@ class NullableItemsTest {
         assertContains(holder, "    pub things: Option<Vec<Option<models::Thing>>>,\n");
         assertContains(holder, "    pub grid: Option<" + MAP + "Vec<Option<String>>>>,\n");
         assertContains(holder, "    pub modes: Option<Vec<Option<Modes>>>,\n");
+        // anyOf [{}, null] is a serde_json::Value, which holds null itself
+        assertContains(holder, "    pub free: Option<Vec<serde_json::Value>>,\n");
     }
 
     @Test
-    void responsesAndBodiesFollowTheRuleParametersDoNot() throws IOException {
+    void responsesAndBodiesFollowTheRuleParametersAndFormFieldsDoNot() throws IOException {
         String api = Files.readString(v30.resolve("src/apis/default_api.rs"));
+        // nor in a urlencoded or multipart field, a file part included
+        assertContains(api, "post_form(configuration: &configuration::Configuration, tags: Option<Vec<String>>, "
+                + "files: Option<Vec<std::path::PathBuf>>)");
+        assertContains(api, "put_form(configuration: &configuration::Configuration, tags: Option<Vec<String>>)");
         // null has no spelling in a query string
         assertContains(api, "ids: Option<Vec<String>>) -> Result<" + MAP + "Option<i64>>, Error<GetHolderError>>");
         assertContains(api, "thing: &[Option<models::Thing>]) -> Result<models::Holder, Error<PostHolderError>>");
@@ -99,12 +112,23 @@ class NullableItemsTest {
             assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("error[")
                     && !clippy.contains("warning:"), clippy);
         }
-        Files.createDirectories(v30.resolve("tests"));
-        Files.copy(Path.of("src/test/rust/nullable_items.rs"), v30.resolve("tests/nullable_items.rs"),
-                StandardCopyOption.REPLACE_EXISTING);
-        String test = cargo(v30, 900, "test", "--test", "nullable_items");
-        assertNotNull(test, "cargo did not finish");
-        assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
+        Path manifest = v30.resolve("Cargo.toml");
+        String toml = Files.readString(manifest);
+        if (!toml.contains("[dev-dependencies]")) {
+            Files.writeString(manifest, toml + """
+
+                    [dev-dependencies]
+                    tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+                    """);
+        }
+        for (Map.Entry<Path, String> crate : Map.of(v30, "nullable_items", v31, "nullable_items_31").entrySet()) {
+            Files.createDirectories(crate.getKey().resolve("tests"));
+            Files.copy(Path.of("src/test/rust/" + crate.getValue() + ".rs"),
+                    crate.getKey().resolve("tests/" + crate.getValue() + ".rs"), StandardCopyOption.REPLACE_EXISTING);
+            String test = cargo(crate.getKey(), 900, "test", "--test", crate.getValue());
+            assertNotNull(test, "cargo did not finish");
+            assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
+        }
     }
 
     private static void assertContains(String haystack, String needle) {

@@ -630,39 +630,98 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         return "models::" + toModelName(oasType);
     }
 
-    /** Set while a parameter is typed: a query, path, header or cookie value has no {@code null} to send. */
+    /** Set while a parameter or form field is typed: its items are never {@code Option} ({@link #fromParameter}). */
     private boolean typingParameter;
 
     /**
      * A parameter's items are never {@code Option}: {@code null} has no spelling in a query, path, header or cookie
-     * value, and a body parameter is typed from its request body ({@code fromRequestBody}), not here.
+     * value. A body parameter is typed from its request body ({@code fromRequestBody}), not here.
      */
     @Override
     public CodegenParameter fromParameter(io.swagger.v3.oas.models.parameters.Parameter parameter,
                                           Set<String> imports) {
         typingParameter = true;
         try {
-            return super.fromParameter(parameter, imports);
+            return withoutItemOptions(super.fromParameter(parameter, imports));
         } finally {
             typingParameter = false;
         }
     }
 
     /**
+     * A form field's items are never {@code Option} either: a urlencoded or multipart field has no {@code null} to
+     * send, and a file part is a file.
+     */
+    @Override
+    @SuppressWarnings("rawtypes")
+    public CodegenParameter fromFormProperty(String name, Schema propertySchema, Set<String> imports) {
+        typingParameter = true;
+        try {
+            return withoutItemOptions(super.fromFormProperty(name, propertySchema, imports));
+        } finally {
+            typingParameter = false;
+        }
+    }
+
+    /**
+     * Drops the {@code Option} of the items of {@code p}, which a type computed outside {@link #typingParameter} may
+     * carry (the base generator reuses the property of a schema it typed before, a form body's object say).
+     */
+    private static CodegenParameter withoutItemOptions(CodegenParameter p) {
+        if (p != null && (p.isArray || p.isMap)) {
+            p.dataType = withoutOptions(p.dataType);
+            p.datatypeWithEnum = withoutOptions(p.datatypeWithEnum);
+            for (CodegenProperty items = p.items; items != null; items = items.items) {
+                items.dataType = withoutOptions(items.dataType);
+                items.datatypeWithEnum = withoutOptions(items.datatypeWithEnum);
+            }
+        }
+        return p;
+    }
+
+    /** {@code type} without any {@code Option<..>} wrapper inside it: {@code Vec<Option<T>>} is {@code Vec<T>}. */
+    static String withoutOptions(String type) {
+        if (type == null) {
+            return null;
+        }
+        String result = type;
+        int at;
+        while ((at = result.indexOf("Option<")) >= 0) {
+            int depth = 0;
+            int end = -1;
+            for (int i = at + "Option".length(); i < result.length(); i++) {
+                char c = result.charAt(i);
+                if (c == '<') {
+                    depth++;
+                } else if (c == '>' && --depth == 0) {
+                    end = i;
+                    break;
+                }
+            }
+            if (end < 0) {
+                return result;
+            }
+            result = result.substring(0, at) + result.substring(at + "Option<".length(), end) + result.substring(end + 1);
+        }
+        return result;
+    }
+
+    /**
      * The Rust type of a list item or map value: {@code Option<T>} when it can be null ({@link #isNullable}), except
-     * in a parameter, and except a {@code serde_json::Value}, which holds {@code null} itself.
+     * in a parameter or form field, and except a free-form value ({@code serde_json::Value}, or a composed schema
+     * without a typed branch, which becomes one), which holds {@code null} itself.
      */
     @SuppressWarnings("rawtypes")
     private String itemType(Schema items) {
         String type = getTypeDeclaration(items);
-        return isNullable(items) && !typingParameter && !"serde_json::Value".equals(type)
-                ? "Option<" + type + ">" : type;
+        boolean free = "serde_json::Value".equals(type) || TimvwRustCodegen.UNTYPED_COMPOSED_TYPE.equals(type);
+        return isNullable(items) && !typingParameter && !free ? "Option<" + type + ">" : type;
     }
 
     /**
      * Whether a list item or map value of {@code schema} can be null, as a field of it can: {@code nullable: true}
      * (3.0), {@code null} among its types or a {@code null} branch of its {@code oneOf}/{@code anyOf} (3.1, where the
-     * normalizer has not already turned these into {@code nullable}), or a reference to a schema that is one of these.
+     * normalizer has not already turned these into {@code nullable}), a reference to a schema that is one of these, or a single-entry {@code allOf} wrapping one.
      */
     @SuppressWarnings("rawtypes")
     boolean isNullable(Schema schema) {
@@ -673,6 +732,12 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                     || s.getExtensions() != null && Boolean.TRUE.equals(s.getExtensions().get("x-nullable"))
                     || hasNullBranch(s.getOneOf()) || hasNullBranch(s.getAnyOf())) {
                 return true;
+            }
+            if (s.get$ref() == null && s.getAllOf() != null && s.getAllOf().size() == 1
+                    && s.getOneOf() == null && s.getAnyOf() == null) {
+                // a single-entry allOf wrapper ({allOf: [{$ref: NullableX}]}) is nullable when what it wraps is
+                s = (Schema) s.getAllOf().get(0);
+                continue;
             }
             if (s.get$ref() == null || openAPI == null) {
                 return false;

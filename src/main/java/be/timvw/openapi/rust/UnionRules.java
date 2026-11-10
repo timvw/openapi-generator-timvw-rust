@@ -439,8 +439,8 @@ final class UnionRules {
     private static String itemsName(String vec) {
         String item = vec.substring("Vec<".length(), vec.length() - 1);
         if (item.startsWith("Option<")) {
-            // nullable items name like the items: Vec<Option<String>> is Strings too
-            item = item.substring("Option<".length(), item.length() - 1);
+            // Vec<Option<String>> is NullableStrings
+            return "Nullable" + itemsName("Vec<" + item.substring("Option<".length(), item.length() - 1) + ">");
         }
         if (item.startsWith("Vec<")) {
             return itemsName(item).replaceAll("s$", "") + "Arrays";

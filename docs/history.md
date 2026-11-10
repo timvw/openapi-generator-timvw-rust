@@ -11,6 +11,19 @@ the plugin owns its Rust layer (0.20), and 0.21 renders the documented [mapping]
 of [decisions.md](decisions.md). The table [below](#what-the-generator-renders-differently-from--g-rust) records what
 each rendering replaced in the client repositories' scripts.
 
+## Unreleased
+
+- A parameter whose schema is an inline `oneOf` or `anyOf` of one schema and `type: null` (OpenAPI 3.1, such as
+  `oneOf: [{$ref: '#/components/schemas/Status'}, {type: 'null'}]`) takes that schema's type and is sent as the plain
+  reference is ([`parameter.schema.null-branch`](mapping/parameter.md#parameterschemanull-branch)). It was
+  `Option<&str>` whatever the schema, sent as the caller's text, and a required path parameter was an `Option` that
+  panicked on `None`. Now a query, header or cookie one is `Option<T>` (`Option<models::Status>`,
+  `Option<uuid::Uuid>`, `Option<chrono::DateTime<..>>`, ...), required or not, since it is nullable as a
+  `type: [T, null]` parameter is, and `None` sends nothing; a path one is `T`. A caller passes the value instead of
+  its text (`.status(Status::Active)` instead of `.status("active")`). A form field of that shape (urlencoded or
+  multipart) of a `uuid` or `date-time` was `models::uuid::Uuid` and did not compile; it is `uuid::Uuid` and
+  `chrono::DateTime<..>` now, as a plain reference's field is.
+
 ## 0.21.0 (breaking)
 
 The release of the [mapping decisions](decisions.md): what roadmap step 2 decided, implemented under

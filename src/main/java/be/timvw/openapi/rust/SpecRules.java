@@ -44,6 +44,9 @@ final class SpecRules {
 
     static final String SCHEMA_REF_PREFIX = "#/components/schemas/";
 
+    /** Marks a parameter {@link #unwrapNullableParameters} gave the non-null branch of its union. */
+    static final String NULL_BRANCH = "x-rust-null-branch";
+
     private SpecRules() {
     }
 
@@ -631,6 +634,105 @@ final class SpecRules {
             }
         }
         return changed;
+    }
+
+    /**
+     * A parameter whose schema is a {@code oneOf} or {@code anyOf} of one schema and {@code type: null} (OpenAPI 3.1)
+     * takes that schema, marked {@link #NULL_BRANCH}: the argument is its type and goes out as a parameter of that
+     * schema does. It stays nullable (see {@code TimvwRustCodegen#fromParameter}): a parameter has no {@code null}
+     * on the wire, {@code None} leaves it out. Parameters of paths, webhooks and {@code components.parameters}; the
+     * union was rendered as a string ({@code &str}) instead.
+     */
+    @SuppressWarnings("rawtypes")
+    static List<String> unwrapNullableParameters(OpenAPI openAPI) {
+        List<String> changed = new ArrayList<>();
+        List<Map.Entry<String, Parameter>> params = new ArrayList<>();
+        if (openAPI.getComponents() != null && openAPI.getComponents().getParameters() != null) {
+            for (Map.Entry<String, Parameter> e : openAPI.getComponents().getParameters().entrySet()) {
+                params.add(Map.entry("#/components/parameters/" + e.getKey(), e.getValue()));
+            }
+        }
+        for (Map<String, PathItem> items : Arrays.asList(openAPI.getPaths(), openAPI.getWebhooks())) {
+            if (items == null) {
+                continue;
+            }
+            for (Map.Entry<String, PathItem> item : items.entrySet()) {
+                List<List<Parameter>> containers = new ArrayList<>();
+                containers.add(item.getValue().getParameters());
+                for (Operation op : item.getValue().readOperationsMap().values()) {
+                    containers.add(op.getParameters());
+                }
+                for (List<Parameter> list : containers) {
+                    if (list != null) {
+                        for (Parameter p : list) {
+                            params.add(Map.entry(item.getKey(), p));
+                        }
+                    }
+                }
+            }
+        }
+        for (Map.Entry<String, Parameter> e : params) {
+            Parameter p = e.getValue();
+            Schema branch = p.getSchema() == null ? null : nonNullBranch(p.getSchema());
+            if (branch != null) {
+                p.setSchema(branch);
+                p.addExtension(NULL_BRANCH, true);
+                changed.add(e.getKey() + " " + p.getIn() + " " + p.getName());
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * The one branch that is not {@code type: null} of a {@code oneOf} or {@code anyOf} that also has a
+     * {@code type: null} branch and nothing else (no type, properties or {@code allOf} of its own), or {@code null}.
+     */
+    @SuppressWarnings("rawtypes")
+    static Schema nonNullBranch(Schema<?> schema) {
+        if (schema.get$ref() != null || schema.getAllOf() != null || schema.getProperties() != null
+                || (schema.getOneOf() != null) == (schema.getAnyOf() != null)) {
+            return null;
+        }
+        if (schema.getTypes() != null && !schema.getTypes().isEmpty()
+                && !(schema.getTypes().size() == 1 && schema.getTypes().contains("null"))) {
+            return null;
+        }
+        if (schema.getType() != null && !"null".equals(schema.getType())) {
+            return null;
+        }
+        List<Schema> branches = schema.getOneOf() != null ? schema.getOneOf() : schema.getAnyOf();
+        Schema other = null;
+        boolean nullBranch = false;
+        for (Schema b : branches) {
+            if (b.get$ref() == null && "null".equals(singleType(b))) {
+                nullBranch = true;
+            } else if (other != null) {
+                return null;
+            } else {
+                other = b;
+            }
+        }
+        return nullBranch ? other : null;
+    }
+
+    /**
+     * The {@code $ref} of an {@code allOf} of that one reference and nothing else (the normalizer's form of a
+     * nullable reference), or {@code null}.
+     */
+    @SuppressWarnings("rawtypes")
+    static Schema singleAllOfRef(Schema<?> schema) {
+        if (schema.get$ref() != null || schema.getAllOf() == null || schema.getAllOf().size() != 1
+                || schema.getAllOf().get(0).get$ref() == null || schema.getOneOf() != null
+                || schema.getAnyOf() != null || schema.getProperties() != null) {
+            return null;
+        }
+        String type = singleType(schema);
+        if (type != null && !"object".equals(type) && !"null".equals(type)
+                || schema.getTypes() != null && schema.getTypes().size() > 1
+                && !(schema.getTypes().size() == 2 && schema.getTypes().contains("null"))) {
+            return null;
+        }
+        return schema.getAllOf().get(0);
     }
 
     // ---------------------------------------------------------------- helpers

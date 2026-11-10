@@ -971,6 +971,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
         SpecRules.stringSchemas(openAPI, stringIdSchemas, log);
         SpecRules.stringIdProperties(openAPI, stringIdProperties, SpecRules.names(stringIdSchemas), log);
+        for (String u : SpecRules.unwrapNullableParameters(openAPI)) {
+            LOGGER.info("{}: parameter {} takes the non-null branch of its union", GENERATOR_NAME, u);
+        }
         int inlined = SpecRules.inlineStringRefsInUnions(openAPI);
         int pruned = SpecRules.pruneGeneratorHostileKeywords(openAPI);
         int stripped = SpecRules.stripRefSiblings(openAPI);
@@ -1376,6 +1379,53 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
     private static String firstProduces(CodegenOperation co) {
         return co.produces == null || co.produces.isEmpty() ? "" : String.valueOf(co.produces.get(0).get("mediaType"));
+    }
+
+    /**
+     * A parameter that {@link SpecRules#unwrapNullableParameters} gave the non-null branch of its union stays
+     * nullable, as a {@code type: [T, null]} parameter and a parameter of a nullable union are: when required, the
+     * argument is an {@code Option} and {@code None} sends nothing. Not in the path, which always has a value.
+     */
+    @Override
+    public CodegenParameter fromParameter(io.swagger.v3.oas.models.parameters.Parameter parameter,
+            Set<String> imports) {
+        CodegenParameter p = super.fromParameter(parameter, imports);
+        if (parameter.getExtensions() != null && parameter.getExtensions().containsKey(SpecRules.NULL_BRANCH)) {
+            p.vendorExtensions.remove(SpecRules.NULL_BRANCH);
+            if (!p.isPathParam) {
+                p.isNullable = true;
+            }
+        }
+        return p;
+    }
+
+    /**
+     * A form field (urlencoded or multipart) of a {@code oneOf}/{@code anyOf} of one schema and {@code type: null},
+     * which the normalizer has made a nullable {@code allOf} of that one schema by now, is a field of that schema,
+     * nullable as a {@code type: [T, null]} field is: a required one left {@code None} is sent empty. Here rather
+     * than in the spec, since the body's schema may be a component whose model keeps the field as it is.
+     */
+    @Override
+    @SuppressWarnings("rawtypes")
+    public CodegenParameter fromFormProperty(String name, Schema propertySchema, Set<String> imports) {
+        Schema branch = propertySchema == null ? null : SpecRules.nonNullBranch(propertySchema);
+        boolean nullable = branch != null;
+        if (branch == null && propertySchema != null) {
+            branch = SpecRules.singleAllOfRef(propertySchema);
+            nullable = branch != null && (Boolean.TRUE.equals(propertySchema.getNullable())
+                    || (propertySchema.getTypes() != null && propertySchema.getTypes().contains("null")));
+        }
+        CodegenParameter p = super.fromFormProperty(name, branch != null ? branch : propertySchema, imports);
+        if (nullable) {
+            p.isNullable = true;
+        }
+        // the wrapper's description documents the field, as it did before
+        if (branch != null && propertySchema.getDescription() != null
+                && (p.description == null || p.description.isEmpty())) {
+            p.unescapedDescription = propertySchema.getDescription();
+            p.description = escapeText(propertySchema.getDescription());
+        }
+        return p;
     }
 
     /**

@@ -63,6 +63,16 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Library | `reqwest::header::COOKIE` |
 | Tests | [`OperationMappingTest#aCookieParameterIsSentInTheCookieHeader`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L110), [`CookieParamsTest#theArgumentsKeepTheirTypes`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L63), [`#eachCookieIsAPairOfOneHeader`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L70), [`#aMapIsSentAsItsJson`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L90), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/CookieParamsTest.java#L114) |
 
+### `parameter.schema.null-branch`
+
+| | |
+| --- | --- |
+| OpenAPI | a parameter whose schema is an inline `oneOf` or `anyOf` of one schema and `type: null` (OpenAPI 3.1), such as `oneOf: [{$ref: '#/components/schemas/Status'}, {type: 'null'}]` |
+| Rust | the parameter takes that schema: the referenced type (`models::Status`, `uuid::Uuid`, `chrono::DateTime<..>`, `i64`, a union, `&str` for a string or a query object), as the plain `$ref` would. It is nullable like a `type: [T, null]` parameter: optional, `Option<T>`; required in the query, a header or a cookie, `Option<T>` as well; required in the path, `T`. A form field of that shape (urlencoded or multipart) likewise takes the schema's type and is nullable like a `type: [T, null]` field ([`requestBody.content.form`](request-body.md#requestbodycontentform)); the component it belongs to keeps the field as [`schema.oneOf.null-branch`](schema.md#schemaoneofnull-branch) says |
+| Wire | as the plain reference: the enum's value, a uuid hyphenated, a `date-time` RFC 3339, a union its text, in the path, the query, a header, a cookie and a form. A parameter has no `null`: `None` sends nothing (a required urlencoded or multipart field left `None` is sent empty) |
+| Options | always; before, such a parameter was `Option<&str>` (a path one too) and such a form field of a `uuid` or `date-time` did not compile (`models::uuid::Uuid`) |
+| Tests | [`NullBranchParamsTest#aParameterTakesTheReferencedType`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L64), [`#aRequiredOneIsAnOptionExceptInThePath`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L84), [`#itIsSentAsThePlainReferenceIs`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L95), [`#aFormFieldTakesTheReferencedType`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L106), [`#theModelKeepsItsNullableField`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L120), [`#theNonNullBranch`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L126), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L146) |
+
 ### `parameter.schema.enum`
 
 | | |

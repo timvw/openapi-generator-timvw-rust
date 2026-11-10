@@ -1,10 +1,169 @@
 # Guide: migrating
 
+- [From 0.21 to 0.22](#from-021-to-022): every breaking change, with the code before and after.
 - [From 0.20 to 0.21](#from-020-to-021): every breaking change, with the code before and after.
 - [From stock `-g rust`](#from-stock--g-rust): what is different when you switch generators.
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
-`my_client`, and are compiled by the tests. The "before" examples are 0.20 code and are not.
+`my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From 0.21 to 0.22
+
+0.22 fixes types the JSON did not decode to and parameters that were typed as text. The configuration does not
+change. In short:
+
+| Change | What breaks | What to do |
+| --- | --- | --- |
+| [`oneOf: [schema, null]` parameters](#a-null-branch-parameter-takes-its-schemas-type) | a call that passes text | pass the typed value |
+| [nullable path parameters](#a-path-parameter-is-never-an-option) | `Some(..)` around the value | drop the `Some` |
+| [nullable items and values](#nullable-items-and-map-values-are-options) | code that builds or reads such a list or map | `Some(..)`, handle `None` |
+| [int64 enums](#integer-enums-are-numbers-on-the-wire) | nothing in the code: sent as `1000`, not `"1000"` | check servers that parsed the string |
+| [integer enums in lists and maps](#integer-enums-are-numbers-on-the-wire) | nothing in the code: they decode now | none |
+| [nested inline enums](#smaller-fixes-in-022) | code that used the field as one level deep | use the nested type |
+| [required nullable headers](#smaller-fixes-in-022) | nothing in the code: `None` sends no header | none |
+
+### A null-branch parameter takes its schema's type
+
+A parameter whose schema is `oneOf` or `anyOf` of one schema and `type: null` (OpenAPI 3.1) was `Option<&str>`,
+whatever the schema, and sent the caller's text. It now takes that schema's type and is sent as the plain reference
+is ([rule](../mapping/parameter.md#parameterschemanull-branch)). In the query, a header or a cookie it is
+`Option<T>`, required or not, and `None` sends nothing. In openai-client-base, `bucket_width` of
+`organization_decisionsusage` becomes `Option<models::DecisionsUsageBucketWidth>`.
+
+```yaml
+- name: status
+  in: query
+  schema:
+    oneOf:
+      - $ref: '#/components/schemas/Status'
+      - type: 'null'
+```
+
+Before:
+
+<!-- not compiled: 0.21 -->
+```rust
+items_api::list_items().configuration(&configuration).status("published").call().await?;
+```
+
+After:
+
+```rust
+let published = items_api::list_items()
+    .configuration(&configuration)
+    .status(models::Status::Published)
+    .call()
+    .await?;
+```
+
+A `uuid` or `date-time` one takes `uuid::Uuid` or `chrono::DateTime<..>`, as a plain one does. A form field
+(urlencoded or multipart) of this shape, or a plain `allOf: [$ref]` one, takes the referenced type too; a `uuid` or
+`date-time` one did not compile.
+
+### A path parameter is never an `Option`
+
+A nullable path parameter (`type: [T, null]`, `nullable: true`, a `null` branch) was `Option<T>` and panicked on
+`None`. It is `T` now: drop the `Some(..)`.
+
+Before:
+
+<!-- not compiled: 0.21 -->
+```rust
+items_api::get_item().configuration(&configuration).id(Some("42")).call().await?;
+```
+
+After:
+
+```rust
+items_api::get_item().configuration(&configuration).id("42").call().await?;
+```
+
+### Nullable items and map values are `Option`s
+
+A list item or map value that can be null (`nullable: true`, `type: [T, 'null']`, a `null` branch, a `$ref` to a
+nullable schema) is an `Option` at any depth: `Vec<Option<String>>`, `HashMap<String, Option<T>>`. Before, the
+nullability was ignored and `[null]` or `{"a": null}` failed to decode. `None` serializes as `null`, and `validate()`
+skips it. Free-form values (`serde_json::Value`) and the items of parameters and form fields are unchanged.
+
+```yaml
+notes:
+  type: array
+  items:
+    type: [string, 'null']
+```
+
+Before:
+
+<!-- not compiled: 0.21 -->
+```rust
+let new_item = models::NewItem::builder()
+    .name("Lamp".to_owned())
+    .notes(vec!["fragile".to_owned()])
+    .build();
+```
+
+After:
+
+```rust
+let new_item = models::NewItem::builder()
+    .name("Lamp".to_owned())
+    .notes(vec![Some("fragile".to_owned()), None])
+    .build();
+for note in new_item.notes.iter().flatten().flatten() {
+    println!("{note}");
+}
+```
+
+A union's array variant of nullable items is named `ArrayOfNullable<Items>`.
+
+### Integer enums are numbers on the wire
+
+An integer enum of `format: int64` (a component or inline) was a string enum: it decoded only from `"1000"` and was
+sent as `"1000"`. An integer inline enum in a list or map, at any depth, was one too, so `[1]` or `{"a": 2}` did not
+decode. Both are now `#[repr(i64)]` enums, as an `int32` one standing alone already was. The variant names do not
+change, so the code compiles as before; the JSON changes:
+
+```yaml
+Priority:
+  type: integer
+  format: int64
+  enum: [1000, 2000]
+```
+
+Before:
+
+<!-- not compiled: 0.21 -->
+```rust
+assert_eq!(serde_json::to_string(&models::Priority::Variant1000)?, r#""1000""#);
+```
+
+After:
+
+```rust
+assert_eq!(serde_json::to_string(&models::Priority::Variant1000)?, "1000");
+let priority: models::Priority = serde_json::from_str("2000")?;
+```
+
+A response enum's catch-all `Unknown` is sent as `i64::MAX` instead of `"unknown"`. A server that parsed the quoted
+form needs checking. An open integer enum that lists `9223372036854775807` itself fails generation, naming the schema.
+
+### Smaller fixes in 0.22
+
+- An inline enum two or more lists or maps deep is typed at every level:
+  `HashMap<String, HashMap<String, <Enum>>>` where it was `HashMap<String, <Enum>>`, which the JSON does not decode
+  to. Code that used the field takes the nested type. A list of lists or maps of such an enum with `uniqueItems` is a
+  `Vec` (a `HashSet` of maps did not compile).
+- `lib.rs` allows `clippy::type_complexity`, which such a nested type trips. A hand-kept `lib.rs` adds
+  `#![allow(clippy::type_complexity)]` if clippy reports it.
+- A required nullable header parameter left `None` is not sent. Before, it was sent with an empty value.
+
+### Upgrading a client repository to 0.22
+
+1. Bump the image tag in the generation script to `0.22.0-og7.27.0`.
+2. Regenerate, then fix the hand-written code the compiler lists: typed values for null-branch parameters, no
+   `Some(..)` on path parameters, `Option` items.
+3. Run `cargo clippy --all-targets -- -D warnings` and `cargo test`.
+4. Check a server that read an int64 enum as a string.
 
 ## From 0.20 to 0.21
 

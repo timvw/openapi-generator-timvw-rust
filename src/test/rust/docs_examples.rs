@@ -519,4 +519,38 @@ mod migration {
             println!("rejected: {message}");
         }
     }
+
+    async fn null_branch_and_path() -> Result<(), BoxError> {
+        let configuration = configuration();
+        let published = items_api::list_items()
+            .configuration(&configuration)
+            .status(models::Status::Published)
+            .call()
+            .await?;
+        items_api::get_item().configuration(&configuration).id("42").call().await?;
+        Ok(())
+    }
+
+    #[test]
+    fn nullable_items() {
+        let new_item = models::NewItem::builder()
+            .name("Lamp".to_owned())
+            .notes(vec![Some("fragile".to_owned()), None])
+            .build();
+        for note in new_item.notes.iter().flatten().flatten() {
+            println!("{note}");
+        }
+        assert_eq!(
+            serde_json::to_value(&new_item).unwrap()["notes"],
+            serde_json::json!(["fragile", null])
+        );
+    }
+
+    #[test]
+    fn int64_enums() -> Result<(), BoxError> {
+        assert_eq!(serde_json::to_string(&models::Priority::Variant1000)?, "1000");
+        let priority: models::Priority = serde_json::from_str("2000")?;
+        assert_eq!(priority, models::Priority::Variant2000);
+        Ok(())
+    }
 }

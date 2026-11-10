@@ -8,53 +8,65 @@ is the [mapping](mapping/README.md).
 
 **Status:** openai-client-base and langfuse-client-base generate without scripts (Milestones 2 and 3, up to 0.17),
 the plugin owns its Rust layer (0.20), and 0.21 renders the documented [mapping](mapping/README.md) with the changes
-of [decisions.md](decisions.md). The table [below](#what-the-generator-renders-differently-from--g-rust) records what
-each rendering replaced in the client repositories' scripts.
+of [decisions.md](decisions.md); 0.22 fixes types the JSON did not decode to and parameters typed as text. The
+table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
+client repositories' scripts.
 
-## Unreleased
+## 0.22.0 (breaking)
 
-- An inline enum two or more lists or maps deep (`additionalProperties: {additionalProperties: {enum: [..]}}`, a list of
-  such maps, a map of lists of lists, ...) is typed at every level, e.g. `HashMap<String, HashMap<String, <Enum>>>`; it
-  was typed one level deep only (`HashMap<String, <Enum>>`), which the JSON does not decode to. `validate()` checks the
-  size keywords of every list and map that holds it, and the field documentation lists them. A list of lists or maps of
-  an inline enum with `uniqueItems` is a `Vec` whose uniqueness `validate()` checks (a list of maps was a `HashSet`,
-  which did not compile: a map is not `Hash`). The validation note of a list in a map reads "each item of a value" (it
-  read "of an value"). The model docs show the field's Rust type for every inline enum (they showed `Inner` for nested
-  ones). A client whose spec has such a field gets the decoding type. `lib.rs` allows `clippy::type_complexity`, which
-  such a type three levels deep trips.
-- An integer inline enum in a list or map (`type: array, items: {type: integer, enum: [1, 2, 3]}`, a map of one, at any
-  depth) is a `#[repr(i64)]` enum through `serde_repr` like one standing alone, so `[1]` and `{"a": 2}` decode; it was a
-  string enum (`#[serde(rename = "1")]`), which a JSON number does not decode to. An integer enum of `format: int64`
-  (component or inline) is one too; it was a string enum as well. This changes the wire format of such an int64 enum:
-  it is sent as a number (`1000`, not `"1000"`), and its catch-all `Unknown` is sent as `i64::MAX` instead of
-  `"unknown"`. An open integer enum that lists `9223372036854775807` (`i64::MAX`) itself fails generation with a
-  message naming the schema. A client whose spec has such an enum gets the decoding type, with the same variant names.
-  A `type: number` enum stays a string enum (a known gap).
-- List items and map values that can be null are `Option`s at any depth. This covers `nullable: true` (3.0),
-  `type: [T, 'null']` and a `oneOf`/`anyOf` with a `null` branch (3.1), and a `$ref` to a nullable schema (also
-  wrapped in a single-entry `allOf`), so the generator renders `HashMap<String, Option<String>>`, `Vec<Option<T>>` and
-  `Vec<Option<<Enum>>>` for an inline enum. Before, the generator ignored the nullability, so `{"a": null}` or `[null]`
-  failed to decode. `None` serializes as `null`, and `validate()` skips it. A free-form value (`serde_json::Value`,
-  which holds `null` itself) and the items of a query, path, header or cookie parameter or of a form field
-  (urlencoded or multipart) stay as they were. A union's array variant of nullable items is named
-  `ArrayOfNullable<Items>`. A client whose spec has such items gets the `Option`: code that builds or reads those
-  lists and maps wraps or unwraps the items.
+Fixes to types the JSON does not decode to, and to parameters typed as text. The configuration does not change.
+The [migration guide](guides/migration.md#from-021-to-022) has every breaking change with the code before and after.
+
+### Parameters
+
 - A parameter whose schema is an inline `oneOf` or `anyOf` of one schema and `type: null` (OpenAPI 3.1, such as
   `oneOf: [{$ref: '#/components/schemas/Status'}, {type: 'null'}]`, also with the reference wrapped in one-element
   `oneOf`/`anyOf`/`allOf`s) takes that schema's type and is sent as the plain reference is
   ([`parameter.schema.null-branch`](mapping/parameter.md#parameterschemanull-branch)). It was `Option<&str>` whatever
-  the schema, sent as the caller's text. Now a query, header or cookie one is `Option<T>` (`Option<models::Status>`,
+  the schema, sent as the caller's text. A query, header or cookie one is now `Option<T>` (`Option<models::Status>`,
   `Option<uuid::Uuid>`, `Option<chrono::DateTime<..>>`, ...), required or not, since it is nullable as a
   `type: [T, null]` parameter is, and `None` sends nothing. A caller passes the value instead of its text
-  (`.status(Status::Active)` instead of `.status("active")`). In openai-client-base, `organization_decisionsusage`'s
-  `bucket_width` becomes `Option<models::DecisionsUsageBucketWidth>`.
+  (`.status(models::Status::Published)` instead of `.status("published")`). In openai-client-base,
+  `organization_decisionsusage`'s `bucket_width` becomes `Option<models::DecisionsUsageBucketWidth>`.
 - A path parameter is never an `Option`: a nullable one (`type: [T, null]`, `nullable: true`, a `null` branch) was
   `Option<..>` and panicked on `None`; it is the type now. A caller drops the `Some(..)`.
 - A required nullable header parameter left `None` is not sent, as in the query and a cookie; it was sent with an
-  empty value.
+  empty value. Nothing changes in the code.
 - A form field (urlencoded or multipart) that is a nullable reference (a `null` branch) or a plain `allOf: [$ref]`
   takes the referenced type: a `uuid` or `date-time` one was `models::uuid::Uuid` or `models::chrono::..` and did not
   compile, and a plain `allOf` multipart `date-time` is sent in RFC 3339.
+
+### Models
+
+- List items and map values that can be null are `Option`s at any depth. This covers `nullable: true` (3.0),
+  `type: [T, 'null']` and a `oneOf`/`anyOf` with a `null` branch (3.1), and a `$ref` to a nullable schema (also
+  wrapped in a single-entry `allOf`): `HashMap<String, Option<String>>`, `Vec<Option<T>>`, and `Vec<Option<<Enum>>>`
+  for an inline enum. The nullability was ignored, so `{"a": null}` or `[null]` failed to decode. `None` serializes as
+  `null`, and `validate()` skips it. A free-form value (`serde_json::Value`, which holds `null` itself) and the items
+  of a query, path, header or cookie parameter or of a form field stay as they were. A union's array variant of
+  nullable items is named `ArrayOfNullable<Items>`. Code that builds or reads such lists and maps wraps the items in
+  `Some(..)` and handles `None`.
+- An integer inline enum in a list or map (`type: array, items: {type: integer, enum: [1, 2, 3]}`, a map of one, at
+  any depth) is a `#[repr(i64)]` enum through `serde_repr`, like one standing alone, so `[1]` and `{"a": 2}` decode;
+  it was a string enum (`#[serde(rename = "1")]`), which a JSON number does not decode to. An integer enum of
+  `format: int64` (component or inline) is one too; it was a string enum as well. The variant names do not change.
+- An inline enum two or more lists or maps deep (`additionalProperties: {additionalProperties: {enum: [..]}}`, a list
+  of such maps, a map of lists of lists, ...) is typed at every level, e.g. `HashMap<String, HashMap<String, <Enum>>>`;
+  it was typed one level deep only (`HashMap<String, <Enum>>`), which the JSON does not decode to. `validate()` checks
+  the size keywords of every list and map that holds it, and the field documentation lists them. A list of lists or
+  maps of such an enum with `uniqueItems` is a `Vec` whose uniqueness `validate()` checks (a list of maps was a
+  `HashSet`, which did not compile: a map is not `Hash`). The model docs show the field's Rust type for every inline
+  enum (they showed `Inner` for nested ones), and the validation note of a list in a map reads "each item of a
+  value". Code that used the field takes the nested type.
+- `lib.rs` allows `clippy::type_complexity`, which such a type three levels deep trips. A client that keeps its own
+  `lib.rs` adds `#![allow(clippy::type_complexity)]` if clippy reports it.
+
+### On the wire
+
+- A `format: int64` integer enum is sent as a number (`1000`, not `"1000"`), and its catch-all `Unknown` as
+  `i64::MAX` instead of `"unknown"`. A server that parsed the quoted form needs checking. An open integer enum that
+  lists `9223372036854775807` (`i64::MAX`) itself fails generation with a message naming the schema. A `type: number`
+  enum stays a string enum (a known gap).
 
 ## 0.21.0 (breaking)
 

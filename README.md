@@ -21,7 +21,7 @@ From the directory that holds `openapi.yaml`:
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.21.0-og7.27.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:0.22.0-og7.27.0 generate \
   -g timvw-rust \
   -i /local/openapi.yaml \
   -o /local/my-client \
@@ -35,7 +35,7 @@ adapt a spec; none of them makes the models or the error handling "more correct"
 
 The examples use a small API with an `Items` tag (it is in
 [`src/test/resources/docs_examples.yaml`](src/test/resources/docs_examples.yaml)). Every Rust example on this page and
-in the guides, except those marked as 0.20 code or abridged signatures, is compiled by the tests.
+in the guides, except those marked as code of an older release or abridged signatures, is compiled by the tests.
 
 ```text
 my-client/
@@ -225,7 +225,7 @@ operation with `x-group-parameters` fails too. The [migration guide](docs/guides
 
 | What | Where |
 | --- | --- |
-| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>`, e.g. `0.21.0-og7.27.0`; `<version>` and `latest` point at the newest openapi-generator |
+| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>`, e.g. `0.22.0-og7.27.0`; `<version>` and `latest` point at the newest openapi-generator |
 | Maven | `be.timvw:openapi-generator-timvw-rust` on Maven Central |
 | Generator name | `timvw-rust` (`-g timvw-rust`) |
 | openapi-generator | built and tested against 7.27.0, which the image bundles; another minor version logs a warning |
@@ -246,7 +246,7 @@ add the generator as a dependency of the plugin:
     <dependency>
       <groupId>be.timvw</groupId>
       <artifactId>openapi-generator-timvw-rust</artifactId>
-      <version>0.21.0</version>
+      <version>0.22.0</version>
     </dependency>
   </dependencies>
   <executions>
@@ -292,7 +292,7 @@ compare its `Cargo.toml` with yours.
 | [docs/guides/errors.md](docs/guides/errors.md) | the `Error` type, status variants, headers, text errors |
 | [docs/guides/validation.md](docs/guides/validation.md) | `validate()`: what it checks, what it skips, the off switch |
 | [docs/guides/response-functions.md](docs/guides/response-functions.md) | `responseFunctions`: status, headers and partial decoding of a success |
-| [docs/guides/migration.md](docs/guides/migration.md) | upgrading from 0.20, and coming from stock `-g rust` |
+| [docs/guides/migration.md](docs/guides/migration.md) | upgrading from 0.21 and 0.20, and coming from stock `-g rust` |
 | [docs/mapping](docs/mapping/README.md) | what each OpenAPI construct becomes, as rules per specification object, each with its tests |
 | [docs/type-mapping.md](docs/type-mapping.md) | the same as one overview table, and the known gaps |
 | [docs/comparison](docs/comparison/README.md) | stock `-g rust`, timvw-rust and progenitor side by side on one spec |
@@ -335,7 +335,7 @@ jar.
 ## Releasing
 
 1. Make sure `main` is green.
-2. Tag and push: `git tag v0.21.0 && git push origin v0.21.0`.
+2. Tag and push: `git tag v0.22.0 && git push origin v0.22.0`.
 3. The `Release` workflow (`.github/workflows/release.yml`) does the rest:
    - It sets the pom version from the tag and runs `./mvnw -Prelease deploy`. That signs the jar, sources and javadoc
      with GPG and publishes them through the Sonatype Central Portal.

@@ -1,0 +1,59 @@
+openapi: 3.0.3
+info:
+  title: Integer enum containers
+  version: "1"
+paths:
+  /holder:
+    get:
+      operationId: getHolder
+      responses:
+        "200":
+          description: a response holds the open enums
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Holder"}
+    post:
+      operationId: postRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Request"}
+      responses:
+        "204":
+          description: ok
+components:
+  schemas:
+    Holder:
+      type: object
+      required: [required_map]
+      properties:
+        level: {type: integer, enum: [1, 2, 3]}
+        wide: {type: integer, format: int64, enum: [10, 20]}
+        list: {type: array, minItems: 1, items: {type: integer, enum: [1, 2, 3]}}
+        set: {type: array, uniqueItems: true, items: {type: integer, format: int32, enum: [1, 2]}}
+        map: {type: object, additionalProperties: {type: integer, enum: [1, 2, 3]}}
+        required_map: {type: object, additionalProperties: {type: integer, format: int64, enum: [7, 8]}}
+        map_of_lists:
+          type: object
+          additionalProperties:
+            type: array
+            maxItems: 2
+            items: {type: integer, enum: [4, 5]}
+        list_of_maps_of_lists:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: array
+              items: {type: integer, format: int64, enum: [6, 9]}
+        ratio: {type: array, items: {type: number, enum: [0.5, 1.5]}}
+        named: {$ref: "#/components/schemas/Big"}
+    Request:
+      type: object
+      properties:
+        codes: {type: array, items: {type: integer, enum: [100, 200]}}
+    Big:
+      type: integer
+      format: int64
+      enum: [1000, 2000]

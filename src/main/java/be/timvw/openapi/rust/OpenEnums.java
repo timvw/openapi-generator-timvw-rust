@@ -84,8 +84,8 @@ final class OpenEnums {
     static final String INTEGER_CATCH_ALL = String.valueOf(Long.MAX_VALUE);
 
     /**
-     * The catch-all of the enum {@code where} names; an integer enum's is {@code i64::MAX}, so one that lists that value
-     * fails generation (the two variants would share a discriminant).
+     * The catch-all of the enum {@code where} names; an integer enum's is {@code i64::MAX}, so one that lists that
+     * value fails generation (the two variants would share a discriminant).
      */
     @SuppressWarnings("unchecked")
     private static CatchAll catchAll(Map<String, Object> allowableValues, Map<String, Object> extensions,

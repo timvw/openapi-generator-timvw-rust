@@ -266,8 +266,8 @@ class SmallFixesTest {
     @Test
     void anIntegerInlineEnumIsAnIntegerEnumAtAnyDepth() throws IOException, InterruptedException {
         String holder = Files.readString(integerEnums.resolve("src/models/holder.rs"));
-        String repr = "#[repr(i64)]\n#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize_repr, "
-                + "Deserialize_repr)]\npub enum ";
+        String repr = "#[repr(i64)]\n#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, "
+                + "Serialize_repr, Deserialize_repr)]\npub enum ";
         for (String name : List.of("Level", "Wide", "List", "Set", "Map", "RequiredMap", "MapOfLists",
                 "ListOfMapsOfLists")) {
             assertContains(holder, repr + name + " {");
@@ -302,12 +302,14 @@ class SmallFixesTest {
         for (String schemas : List.of(
                 "    Big: {type: integer, format: int64, enum: [1, 9223372036854775807]}\n",
                 "    Big:\n      type: object\n      properties:\n"
-                        + "        codes: {type: array, items: {type: integer, format: int64, enum: [9223372036854775807]}}\n")) {
+                        + "        codes: {type: array, items: "
+                        + "{type: integer, format: int64, enum: [9223372036854775807]}}\n")) {
             Path spec = dir.resolve("spec.yaml");
             Files.writeString(spec, "openapi: 3.0.3\ninfo: {title: t, version: \"1\"}\npaths:\n  /big:\n    get:\n"
                     + "      operationId: getBig\n      responses:\n        \"200\":\n          description: ok\n"
                     + "          content:\n            application/json:\n"
-                    + "              schema: {$ref: \"#/components/schemas/Big\"}\ncomponents:\n  schemas:\n" + schemas);
+                    + "              schema: {$ref: \"#/components/schemas/Big\"}\n"
+                    + "components:\n  schemas:\n" + schemas);
             Throwable e = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
                     () -> generate(spec.toString(), dir.resolve("out"), Map.of()));
             while (e.getCause() != null && !(e instanceof IllegalStateException)) {

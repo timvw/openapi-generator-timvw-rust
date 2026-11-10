@@ -701,7 +701,8 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             if (end < 0) {
                 return result;
             }
-            result = result.substring(0, at) + result.substring(at + "Option<".length(), end) + result.substring(end + 1);
+            result = result.substring(0, at) + result.substring(at + "Option<".length(), end)
+                    + result.substring(end + 1);
         }
         return result;
     }
@@ -721,7 +722,8 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     /**
      * Whether a list item or map value of {@code schema} can be null, as a field of it can: {@code nullable: true}
      * (3.0), {@code null} among its types or a {@code null} branch of its {@code oneOf}/{@code anyOf} (3.1, where the
-     * normalizer has not already turned these into {@code nullable}), a reference to a schema that is one of these, or a single-entry {@code allOf} wrapping one.
+     * normalizer has not already turned these into {@code nullable}), a reference to a schema that is one of these,
+     * or a single-entry {@code allOf} wrapping one.
      */
     @SuppressWarnings("rawtypes")
     boolean isNullable(Schema schema) {

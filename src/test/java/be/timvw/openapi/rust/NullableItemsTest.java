@@ -72,6 +72,9 @@ class NullableItemsTest {
         String uni = Files.readString(v30.resolve("src/models/uni.rs"));
         assertContains(uni, "    ArrayOfStrings(Vec<String>),\n");
         assertContains(uni, "    ArrayOfNullableStrings(Vec<Option<String>>),\n");
+        // the lone array variant of nullable items too
+        assertContains(Files.readString(v30.resolve("src/models/lone.rs")),
+                "    ArrayOfNullableStrings(Vec<Option<String>>),\n");
         // validate() looks inside the Some items only
         assertContains(holder, "                if let Some(value2) = item1 {\n"
                 + "                    crate::models::validation::minimum(*value2, 2, ");

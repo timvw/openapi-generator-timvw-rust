@@ -369,19 +369,51 @@ final class SpecRules {
     /**
      * Gives an untitled, non-reference branch of a {@code oneOf}/{@code anyOf} the title the variant is named
      * after: {@code Text}, {@code Integer}, {@code Number}, {@code Boolean}, {@code ArrayOf<Item>s} (the item's
-     * schema name or capitalized type) or {@code Object<index>}.
+     * schema name or capitalized type; {@code ArrayOfNullable<Item>s} when the items can be null, as they are then
+     * {@code Option}s) or {@code Object<index>}.
      */
     static int titleUnnamedUnionVariants(OpenAPI openAPI) {
+        Map<String, Schema> schemas = schemas(openAPI);
         int[] n = {0};
         forEachSchema(openAPI, s -> {
-            n[0] += titleVariants(s.getOneOf());
-            n[0] += titleVariants(s.getAnyOf());
+            n[0] += titleVariants(s.getOneOf(), schemas);
+            n[0] += titleVariants(s.getAnyOf(), schemas);
         });
         return n[0];
     }
 
+    /**
+     * Whether array items of {@code schema} can be null, as {@code RustCodegenBase#isNullable} decides it: the flag,
+     * {@code null} among the types or as a branch, through references and single-entry {@code allOf} wrappers.
+     */
     @SuppressWarnings("rawtypes")
-    private static int titleVariants(List<Schema> items) {
+    static boolean nullableItems(Schema schema, Map<String, Schema> schemas) {
+        Schema s = schema;
+        for (int depth = 0; s != null && depth < 16; depth++) {
+            if (Boolean.TRUE.equals(s.getNullable()) || s.getTypes() != null && s.getTypes().contains("null")
+                    || nullBranch(s.getOneOf()) || nullBranch(s.getAnyOf())) {
+                return true;
+            }
+            if (s.get$ref() != null) {
+                s = schemas.get(refName(s.get$ref()));
+            } else if (s.getAllOf() != null && s.getAllOf().size() == 1 && s.getOneOf() == null
+                    && s.getAnyOf() == null) {
+                s = (Schema) s.getAllOf().get(0);
+            } else {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static boolean nullBranch(List<Schema> branches) {
+        return branches != null && branches.stream().anyMatch(b -> b != null && b.get$ref() == null
+                && ("null".equals(b.getType()) || b.getTypes() != null && b.getTypes().equals(Set.of("null"))));
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static int titleVariants(List<Schema> items, Map<String, Schema> schemas) {
         if (items == null) {
             return 0;
         }
@@ -410,7 +442,8 @@ final class SpecRules {
                     String innerType = inner == null ? null : singleType(inner);
                     innerName = capitalize(innerType == null ? "item" : innerType);
                 }
-                title = "ArrayOf" + innerName + "s";
+                boolean nullable = inner != null && nullableItems(inner, schemas);
+                title = "ArrayOf" + (nullable ? "Nullable" : "") + innerName + "s";
             } else if ("object".equals(type)) {
                 title = "Object" + i;
             }

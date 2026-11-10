@@ -6,7 +6,7 @@ use nullable_items_fixture::apis::configuration::Configuration;
 use nullable_items_fixture::apis::default_api;
 use nullable_items_fixture::models::holder::{ModeGrid, Modes};
 use nullable_items_fixture::models::validation::Validate;
-use nullable_items_fixture::models::{Holder, Thing, Uni};
+use nullable_items_fixture::models::{Holder, Lone, Thing, Uni};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -90,6 +90,11 @@ fn a_wrapped_reference_and_a_union_variant_take_null_items() {
             Some("a".to_string()),
             None
         ]))
+    );
+    let lone: Lone = serde_json::from_value(serde_json::json!([null, "b"])).expect("decodes");
+    assert_eq!(
+        lone,
+        Lone::ArrayOfNullableStrings(vec![None, Some("b".to_string())])
     );
     let plain: Uni = serde_json::from_value(serde_json::json!(["a"])).expect("decodes");
     assert_eq!(plain, Uni::ArrayOfStrings(vec!["a".to_string()]));

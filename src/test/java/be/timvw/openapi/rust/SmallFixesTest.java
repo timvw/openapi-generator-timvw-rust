@@ -219,6 +219,9 @@ class SmallFixesTest {
                 "    pub list_of_maps_of_maps: Option<Vec<" + map + map + "ListOfMapsOfMaps>>>>,\n");
         assertContains(holder, "    pub required_grid: " + map + map + "RequiredGrid>>,\n");
         assertContains(holder, "pub fn new(required_grid: " + map + map + "RequiredGrid>>) -> Holder {");
+        // three deep, through a component map of maps: clippy's type_complexity is allowed crate-wide
+        assertContains(holder, "    pub grids: Option<" + map + map + map + "Grids>>>>,\n");
+        assertContains(Files.readString(nestedEnums.resolve("src/lib.rs")), "#![allow(clippy::type_complexity)]\n");
         // uniqueItems: a set of the enum itself, a Vec (checked by validate) of anything that holds it
         assertContains(holder, "    pub unique_sets: Option<" + map + "std::collections::HashSet<UniqueSets>>>,\n");
         assertContains(holder, "    pub unique_lists: Option<Vec<Vec<UniqueLists>>>,\n");

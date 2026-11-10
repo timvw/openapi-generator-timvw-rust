@@ -120,6 +120,9 @@ components:
             additionalProperties:
               type: string
               enum: [high, low]
+        grids:
+          type: object
+          additionalProperties: {$ref: "#/components/schemas/Grid"}
         unique_sets:
           type: object
           additionalProperties:

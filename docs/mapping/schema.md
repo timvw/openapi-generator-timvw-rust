@@ -239,7 +239,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | `uniqueItems: true` |
-| Rust | `Vec<T>`, as without it (an array of an inline enum is a `std::collections::HashSet`). The model's `validate()` reports two equal items (by `PartialEq`, so any item type works; see [`schema.pattern`](#schemapattern)) |
+| Rust | `Vec<T>`, as without it. An array whose items are an inline enum itself is a `std::collections::HashSet`; an array of lists or maps of one stays a `Vec`. The model's `validate()` reports two equal items of a `Vec` (by `PartialEq`, so any item type works; see [`schema.pattern`](#schemapattern)) |
 | Wire | duplicates are neither rejected when decoding nor removed |
 | Tests | [`SchemaMappingTest#arraysAreVecsAndUniqueItemsChangesNothing`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L160) |
 

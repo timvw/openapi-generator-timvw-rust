@@ -889,7 +889,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             // the documented type of each property is the generated one (HashSet for uniqueItems)
             for (CodegenProperty cp : cm.vars) {
                 if (cp.isEnum) {
-                    cp.vendorExtensions.put("x-doc-type", inlineEnumType(cp));
+                    cp.vendorExtensions.put("x-doc-type", inlineEnumType(cp).replace("std::collections::HashSet<", "HashSet<"));
                     cp.vendorExtensions.put("x-should-link", false);
                     continue;
                 }

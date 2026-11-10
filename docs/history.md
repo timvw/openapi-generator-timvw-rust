@@ -22,6 +22,11 @@ each rendering replaced in the client repositories' scripts.
   read "of an value"). The model docs show the field's Rust type for every inline enum (they showed `Inner` for nested
   ones). A client whose spec has such a field gets the decoding type. `lib.rs` allows `clippy::type_complexity`, which
   such a type three levels deep trips.
+- An integer inline enum in a list or map (`type: array, items: {type: integer, enum: [1, 2, 3]}`, a map of one, at any
+  depth) is a `#[repr(i64)]` enum through `serde_repr` like one standing alone, so `[1]` and `{"a": 2}` decode; it was a
+  string enum (`#[serde(rename = "1")]`), which a JSON number does not decode to. An integer enum of `format: int64`
+  (component or inline) is one too; it was a string enum as well. A client whose spec has such an enum gets the decoding
+  type, with the same variant names. A `type: number` enum stays a string enum (a known gap).
 
 ## 0.21.0 (breaking)
 

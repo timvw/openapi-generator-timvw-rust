@@ -11,16 +11,16 @@ use serde_with::serde_as;
 use serde_repr::{Serialize_repr,Deserialize_repr};
 {{/vendorExtensions.x-rust-has-integer-property-enum}}{{/isEnum}}
 {{#isEnum}}
-{{#isInteger}}
+{{#vendorExtensions.x-rust-integer-enum}}
 use serde_repr::{Serialize_repr,Deserialize_repr};
-{{/isInteger}}
+{{/vendorExtensions.x-rust-integer-enum}}
 {{/isEnum}}
 {{#description}}
 /// {{#rustdoc}}{{{classname}}} : {{{description}}}{{/rustdoc}}
 {{/description}}
 {{!-- for repr(int) enum schemas --}}
 {{#isEnum}}
-{{#isInteger}}
+{{#vendorExtensions.x-rust-integer-enum}}
 {{#description}}
 /// {{#rustdoc}}{{{description}}}{{/rustdoc}}
 {{/description}}
@@ -52,11 +52,11 @@ impl std::fmt::Display for {{{classname}}} {
         })
     }
 }
-{{/isInteger}}
+{{/vendorExtensions.x-rust-integer-enum}}
 {{/isEnum}}
 {{!-- for enum schemas --}}
 {{#isEnum}}
-{{^isInteger}}
+{{^vendorExtensions.x-rust-integer-enum}}
 {{#description}}
 /// {{#rustdoc}}{{{description}}}{{/rustdoc}}
 {{/description}}
@@ -89,7 +89,7 @@ impl std::fmt::Display for {{{classname}}} {
     }
 }
 
-{{/isInteger}}
+{{/vendorExtensions.x-rust-integer-enum}}
 {{/isEnum}}
 {{!-- a union, as UnionRules decided it --}}
 {{#vendorExtensions.x-rust-enum}}
@@ -344,7 +344,7 @@ static {{{name}}}: std::sync::LazyLock<Option<regex::Regex>> = std::sync::LazyLo
 {{!-- for properties that are of enum type --}}
 {{#vars}}
 {{#isEnum}}
-{{#isInteger}}
+{{#vendorExtensions.x-rust-integer-enum}}
 {{#description}}
 /// {{#rustdoc}}{{{description}}}{{/rustdoc}}
 {{/description}}
@@ -377,8 +377,8 @@ impl std::fmt::Display for {{{enumName}}} {
         })
     }
 }
-{{/isInteger}}
-{{^isInteger}}
+{{/vendorExtensions.x-rust-integer-enum}}
+{{^vendorExtensions.x-rust-integer-enum}}
 {{#description}}
 /// {{#rustdoc}}{{{description}}}{{/rustdoc}}
 {{/description}}
@@ -396,7 +396,7 @@ pub enum {{{enumName}}} {
     {{{name}}},
 {{/vendorExtensions.x-rust-open-enum}}
 }
-{{/isInteger}}
+{{/vendorExtensions.x-rust-integer-enum}}
 
 {{/isEnum}}
 {{/vars}}

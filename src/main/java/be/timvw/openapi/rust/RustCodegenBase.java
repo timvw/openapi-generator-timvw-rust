@@ -820,6 +820,21 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         return (isEnumSet(cp) ? "std::collections::HashSet<" : "Vec<") + inner + ">";
     }
 
+    /** The vendor extension marking an integer enum (a model or an inline enum property): {@code #[repr(i64)]}. */
+    static final String INTEGER_ENUM = "x-rust-integer-enum";
+
+    /**
+     * Whether the inline enum property {@code cp} is an integer enum ({@code type: integer}, any format), alone or as
+     * the items or values of lists and maps at any depth: the type of its innermost items decides.
+     */
+    static boolean isIntegerEnum(CodegenProperty cp) {
+        CodegenProperty leaf = cp;
+        for (int depth = 0; isContainer(leaf) && depth <= 64; depth++) {
+            leaf = leaf.items;
+        }
+        return leaf.isInteger || leaf.isLong;
+    }
+
     /** Whether {@code cp} is a list or a map with a schema for its items or values. */
     static boolean isContainer(CodegenProperty cp) {
         return cp != null && (cp.isArray || cp.isMap) && cp.items != null;
@@ -867,23 +882,27 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                 }
             }
 
-            // structs with integer enum properties import serde_repr once
-            if (!cm.isEnum) {
-                for (CodegenProperty cp : cm.vars) {
-                    if (cp.isEnum && cp.isInteger) {
-                        cm.vendorExtensions.put("x-rust-has-integer-property-enum", true);
-                        break;
-                    }
-                }
+            // an integer enum (int32 or int64) is #[repr(i64)]; an inline one too in the lists and maps holding it
+            if (cm.isEnum && (cm.isInteger || cm.isLong)) {
+                cm.vendorExtensions.put(INTEGER_ENUM, true);
             }
 
             // an inline enum is typed in the lists and maps that hold it, however deep
             for (List<CodegenProperty> vars : Arrays.asList(cm.vars, cm.allVars, cm.requiredVars, cm.optionalVars,
                     cm.readOnlyVars, cm.readWriteVars, cm.parentVars, cm.nonNullableVars)) {
                 if (vars != null) {
-                    vars.stream().filter(cp -> cp.isEnum)
-                            .forEach(cp -> cp.vendorExtensions.put(INLINE_ENUM_TYPE, inlineEnumType(cp)));
+                    vars.stream().filter(cp -> cp.isEnum).forEach(cp -> {
+                        cp.vendorExtensions.put(INLINE_ENUM_TYPE, inlineEnumType(cp));
+                        if (isIntegerEnum(cp)) {
+                            cp.vendorExtensions.put(INTEGER_ENUM, true);
+                        }
+                    });
                 }
+            }
+
+            // structs with integer enum properties import serde_repr once
+            if (!cm.isEnum && cm.vars.stream().anyMatch(cp -> cp.isEnum && isIntegerEnum(cp))) {
+                cm.vendorExtensions.put("x-rust-has-integer-property-enum", true);
             }
 
             // the documented type of each property is the generated one (HashSet for uniqueItems)

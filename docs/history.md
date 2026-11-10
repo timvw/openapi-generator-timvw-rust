@@ -26,8 +26,9 @@ each rendering replaced in the client repositories' scripts.
   `type: [T, 'null']` and a `oneOf`/`anyOf` with a `null` branch (3.1), and a `$ref` to a nullable schema, so the
   generator renders `HashMap<String, Option<String>>`, `Vec<Option<T>>` and `Vec<Option<<Enum>>>` for an inline enum.
   Before, the generator ignored the nullability, so `{"a": null}` or `[null]` failed to decode. `None` serializes as
-  `null`, and `validate()` skips it. A query, path, header or cookie parameter keeps plain items. A client whose spec
-  has such items gets the `Option`: code that builds or reads those lists and maps wraps or unwraps the items.
+  `null`, and `validate()` skips it. A free-form value (`serde_json::Value`, which holds `null` itself) and the items
+  of a query, path, header or cookie parameter stay as they were. A client whose spec has such items gets the
+  `Option`: code that builds or reads those lists and maps wraps or unwraps the items.
 
 ## 0.21.0 (breaking)
 

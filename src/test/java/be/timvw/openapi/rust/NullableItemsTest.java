@@ -62,6 +62,9 @@ class NullableItemsTest {
         assertContains(holder, "    pub modes: Option<Vec<Option<Modes>>>,\n");
         assertContains(holder, "    pub mode_grid: Option<" + MAP + "Vec<Option<ModeGrid>>>>,\n");
         assertContains(holder, "    pub plain: Option<Vec<String>>,\n");
+        // serde_json::Value holds null itself
+        assertContains(holder, "    pub free: Option<" + MAP + "serde_json::Value>>,\n");
+        assertContains(holder, "    pub free_list: Option<Vec<serde_json::Value>>,\n");
         // validate() looks inside the Some items only
         assertContains(holder, "                if let Some(value2) = item1 {\n"
                 + "                    crate::models::validation::minimum(*value2, 2, ");

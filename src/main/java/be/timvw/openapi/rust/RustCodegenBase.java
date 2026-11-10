@@ -650,12 +650,13 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
 
     /**
      * The Rust type of a list item or map value: {@code Option<T>} when it can be null ({@link #isNullable}), except
-     * in a parameter.
+     * in a parameter, and except a {@code serde_json::Value}, which holds {@code null} itself.
      */
     @SuppressWarnings("rawtypes")
     private String itemType(Schema items) {
         String type = getTypeDeclaration(items);
-        return isNullable(items) && !typingParameter ? "Option<" + type + ">" : type;
+        return isNullable(items) && !typingParameter && !"serde_json::Value".equals(type)
+                ? "Option<" + type + ">" : type;
     }
 
     /**

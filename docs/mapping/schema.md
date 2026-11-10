@@ -150,9 +150,9 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | the `items` of an array or the `additionalProperties` of a map that can be null: `nullable: true` (3.0); `type: [T, "null"]` or a `oneOf`/`anyOf` with a `null` branch (3.1); or a `$ref` to a schema that is one of these. At any depth, and for an inline enum too |
-| Rust | `Option<T>` as the item or value: `Vec<Option<T>>`, `HashMap<String, Option<T>>`, `HashMap<String, Option<Vec<Option<T>>>>`, `Vec<Option<<Property>>>` for an inline enum. A query, path, header or cookie parameter's items stay `T`, because `null` cannot be written in those values. `validate()` checks the items that are `Some` and skips the ones that are `None` |
+| Rust | `Option<T>` as the item or value: `Vec<Option<T>>`, `HashMap<String, Option<T>>`, `HashMap<String, Option<Vec<Option<T>>>>`, `Vec<Option<<Property>>>` for an inline enum. Free-form values stay `serde_json::Value`, which holds `null` itself. A query, path, header or cookie parameter's items stay `T`, because `null` cannot be written in those values. `validate()` checks the items that are `Some` and skips the ones that are `None` |
 | Wire | `null` decodes to `None`. `None` serializes as `null` and is never skipped |
-| Tests | [`NullableItemsTest#nullableItemsAndValuesAreOptionsAtAnyDepth`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L53), [`#theNullableFormsOf31AreOptionsToo`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L73), [`#responsesAndBodiesFollowTheRuleParametersDoNot`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L83), [`#nullItemsDecodeSerializeAndValidate`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L91) |
+| Tests | [`NullableItemsTest#nullableItemsAndValuesAreOptionsAtAnyDepth`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L53), [`#theNullableFormsOf31AreOptionsToo`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L76), [`#responsesAndBodiesFollowTheRuleParametersDoNot`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L86), [`#nullItemsDecodeSerializeAndValidate`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L94) |
 
 ### `schema.properties.reference`
 

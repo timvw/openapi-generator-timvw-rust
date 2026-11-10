@@ -640,8 +640,10 @@ final class SpecRules {
      * A parameter whose schema is a {@code oneOf} or {@code anyOf} of one schema and {@code type: null} (OpenAPI 3.1)
      * takes that schema, marked {@link #NULL_BRANCH}: the argument is its type and goes out as a parameter of that
      * schema does. It stays nullable (see {@code TimvwRustCodegen#fromParameter}): a parameter has no {@code null}
-     * on the wire, {@code None} leaves it out. Parameters of paths, webhooks and {@code components.parameters}; the
-     * union was rendered as a string ({@code &str}) instead.
+     * on the wire, {@code None} leaves it out. Parameters of paths, webhooks, callbacks and
+     * {@code components.parameters}; the union was rendered as a string ({@code &str}) instead. A branch that only
+     * wraps a reference ({@link #peel}) gives that reference, and the description of the union or the branch
+     * documents the parameter when it has none of its own.
      */
     @SuppressWarnings("rawtypes")
     static List<String> unwrapNullableParameters(OpenAPI openAPI) {
@@ -652,7 +654,10 @@ final class SpecRules {
                 params.add(Map.entry("#/components/parameters/" + e.getKey(), e.getValue()));
             }
         }
-        for (Map<String, PathItem> items : Arrays.asList(openAPI.getPaths(), openAPI.getWebhooks())) {
+        List<Map<String, PathItem>> pathItems = new ArrayList<>(Arrays.asList(openAPI.getPaths(),
+                openAPI.getWebhooks()));
+        for (int i = 0; i < pathItems.size(); i++) {
+            Map<String, PathItem> items = pathItems.get(i);
             if (items == null) {
                 continue;
             }
@@ -661,6 +666,9 @@ final class SpecRules {
                 containers.add(item.getValue().getParameters());
                 for (Operation op : item.getValue().readOperationsMap().values()) {
                     containers.add(op.getParameters());
+                    if (op.getCallbacks() != null) {
+                        pathItems.addAll(op.getCallbacks().values());
+                    }
                 }
                 for (List<Parameter> list : containers) {
                     if (list != null) {
@@ -675,6 +683,14 @@ final class SpecRules {
             Parameter p = e.getValue();
             Schema branch = p.getSchema() == null ? null : nonNullBranch(p.getSchema());
             if (branch != null) {
+                String description = p.getSchema().getDescription();
+                if (description == null) {
+                    description = branch.getDescription();
+                }
+                branch = peel(branch);
+                if (p.getDescription() == null && description != null) {
+                    p.setDescription(description);
+                }
                 p.setSchema(branch);
                 p.addExtension(NULL_BRANCH, true);
                 changed.add(e.getKey() + " " + p.getIn() + " " + p.getName());
@@ -713,6 +729,44 @@ final class SpecRules {
             }
         }
         return nullBranch ? other : null;
+    }
+
+    /**
+     * The reference a schema wraps: while it is a {@code oneOf}, {@code anyOf} or {@code allOf} of one element and
+     * has no type or properties of its own, that element, as long as it leads to a {@code $ref}
+     * ({@code {description, oneOf: [$ref]}}, {@code {allOf: [{oneOf: [$ref]}]}}). Anything else is returned as it is.
+     */
+    @SuppressWarnings("rawtypes")
+    static Schema peel(Schema<?> schema) {
+        Schema current = schema;
+        while (true) {
+            Schema inner = singleElement(current);
+            if (inner == null) {
+                return current.get$ref() != null ? current : schema;
+            }
+            current = inner;
+        }
+    }
+
+    /** The one element of a wrapper (see {@link #peel}), or {@code null}. */
+    @SuppressWarnings("rawtypes")
+    private static Schema singleElement(Schema<?> schema) {
+        if (schema.get$ref() != null || schema.getProperties() != null || schema.getItems() != null
+                || schema.getType() != null || (schema.getTypes() != null && !schema.getTypes().isEmpty())
+                || schema.getEnum() != null) {
+            return null;
+        }
+        List<Schema> only = null;
+        for (List<Schema> list : Arrays.asList(schema.getOneOf(), schema.getAnyOf(), schema.getAllOf())) {
+            if (list == null || list.isEmpty()) {
+                continue;
+            }
+            if (only != null || list.size() != 1) {
+                return null;
+            }
+            only = list;
+        }
+        return only == null ? null : only.get(0);
     }
 
     /**

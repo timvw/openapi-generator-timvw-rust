@@ -79,6 +79,28 @@ paths:
               - type: string
               - type: 'null'
         - $ref: '#/components/parameters/Owner'
+        - name: wrapped_all
+          in: query
+          schema:
+            oneOf:
+              - allOf:
+                  - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: wrapped_one
+          in: query
+          schema:
+            anyOf:
+              - description: The status, wrapped in a one-branch oneOf.
+                oneOf:
+                  - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: X-Required
+          in: header
+          required: true
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Status'
+              - type: 'null'
         - name: X-Status
           in: header
           schema:
@@ -91,6 +113,34 @@ paths:
             oneOf:
               - $ref: '#/components/schemas/Status'
               - type: 'null'
+      responses:
+        '204':
+          description: Nothing
+  /wrapped/{a}/{b}/{c}:
+    get:
+      operationId: getWrapped
+      parameters:
+        - name: a
+          in: path
+          required: true
+          schema:
+            oneOf:
+              - allOf:
+                  - $ref: '#/components/schemas/ThingId'
+              - type: 'null'
+        - name: b
+          in: path
+          required: true
+          schema:
+            anyOf:
+              - oneOf:
+                  - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: c
+          in: path
+          required: true
+          schema:
+            type: [string, 'null']
       responses:
         '204':
           description: Nothing
@@ -157,6 +207,9 @@ paths:
                   oneOf:
                     - $ref: '#/components/schemas/ThingId'
                     - type: 'null'
+                plain_id:
+                  allOf:
+                    - $ref: '#/components/schemas/ThingId'
       responses:
         '204':
           description: Nothing
@@ -182,6 +235,9 @@ paths:
                   oneOf:
                     - $ref: '#/components/schemas/ThingId'
                     - type: 'null'
+                plain_since:
+                  allOf:
+                    - $ref: '#/components/schemas/When'
       responses:
         '204':
           description: Nothing

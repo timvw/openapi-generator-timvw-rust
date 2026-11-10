@@ -107,12 +107,55 @@ class NullBranchParamsTest {
         for (String function : List.of("post_form", "post_multipart")) {
             String form = signature(function);
             assertTrue(form.contains("since: Option<chrono::DateTime<chrono::FixedOffset>>, status: "
-                    + "Option<models::Status>, id: Option<uuid::Uuid>)"), form);
+                    + "Option<models::Status>, id: Option<uuid::Uuid>, "), form);
         }
         assertTrue(signature("post_thing_form").contains("owner: Option<uuid::Uuid>)"), api());
         assertFalse(api().contains("models::uuid") || api().contains("models::chrono"), api());
         String docs = Files.readString(out.resolve("docs/DefaultApi.md"));
         assertTrue(docs.contains("| The status to set, if any. |"), docs);
+    }
+
+    /**
+     * A plain {@code allOf: [$ref]} form field takes the referenced type as well: a uuid did not compile
+     * ({@code models::uuid::Uuid}), and a multipart date-time is sent in RFC 3339.
+     */
+    @Test
+    void aPlainAllOfFormFieldTakesTheReferencedType() throws IOException {
+        assertTrue(signature("post_form").contains("plain_id: Option<uuid::Uuid>)"), signature("post_form"));
+        String multipart = signature("post_multipart");
+        assertTrue(multipart.contains("plain_since: Option<chrono::DateTime<chrono::FixedOffset>>)"), multipart);
+        assertTrue(api().contains("multipart_form.text(\"plain_since\", param_value.to_rfc3339());"), api());
+    }
+
+    /**
+     * A branch that only wraps a reference in a one-element {@code allOf}, {@code oneOf} or {@code anyOf} gives that
+     * reference, in the query and the path; the wrapper's description documents the parameter.
+     */
+    @Test
+    void aWrappedReferenceIsUnwrapped() throws IOException {
+        String thing = signature("get_thing");
+        assertTrue(thing.contains("wrapped_all: Option<models::Status>, wrapped_one: Option<models::Status>,"), thing);
+        assertTrue(signature("get_wrapped").contains("a: uuid::Uuid, b: models::Status, c: &str)"),
+                signature("get_wrapped"));
+        String docs = Files.readString(out.resolve("docs/DefaultApi.md"));
+        assertTrue(docs.contains("**wrapped_one** | Option<[**Status**](Status.md)> | The status, wrapped in a "
+                + "one-branch oneOf. |"), docs);
+    }
+
+    /** A path parameter is never an {@code Option}, a {@code type: [string, null]} one included: no unwrap. */
+    @Test
+    void aNullablePathParameterIsItsType() throws IOException {
+        String api = api();
+        assertTrue(api.contains("c=crate::apis::urlencode(p_path_c));"), api);
+        assertFalse(api.contains("p_path_c.unwrap()"), api);
+    }
+
+    /** A required nullable header left {@code None} is not sent, as in the query and a cookie (it was sent empty). */
+    @Test
+    void aRequiredNullableHeaderLeftNoneIsNotSent() throws IOException {
+        String api = api();
+        assertTrue(api.contains("if let Some(param_value) = p_header_x_required {"), api);
+        assertFalse(api.contains("req_builder.header(\"X-Required\", \"\")"), api);
     }
 
     /** The component the form uses keeps its nullable field: only the form field is unwrapped. */
@@ -139,6 +182,15 @@ class NullBranchParamsTest {
                 .oneOf(List.of(ref, text, nul))));
         assertEquals(null, SpecRules.nonNullBranch(new io.swagger.v3.oas.models.media.Schema<>()
                 .oneOf(List.of(ref))));
+        // a one-element wrapper gives its reference, however deep; anything else stays as it is
+        assertEquals(ref, SpecRules.peel(new io.swagger.v3.oas.models.media.Schema<>().allOf(List.of(
+                new io.swagger.v3.oas.models.media.Schema<>().description("wrapped").oneOf(List.of(ref))))));
+        io.swagger.v3.oas.models.media.Schema<?> two = new io.swagger.v3.oas.models.media.Schema<>()
+                .oneOf(List.of(ref, text));
+        assertEquals(two, SpecRules.peel(two));
+        io.swagger.v3.oas.models.media.Schema<?> inline = new io.swagger.v3.oas.models.media.Schema<>()
+                .allOf(List.of(text));
+        assertEquals(inline, SpecRules.peel(inline));
     }
 
     /** Runs src/test/rust/null_branch_params.rs on the generated crate. Needs cargo; without it there is nothing to run. */

@@ -78,6 +78,9 @@ async fn each_parameter_goes_out_as_the_plain_reference_does() {
         .count(7)
         .mixed(Mixed::Boolean(true))
         .owner(id())
+        .wrapped_all(Status::Archived)
+        .wrapped_one(Status::Active)
+        .x_required(Status::Archived)
         .x_status(Status::Active)
         .session(Status::Archived)
         .x_trace(id())
@@ -105,7 +108,7 @@ async fn each_parameter_goes_out_as_the_plain_reference_does() {
         thing.lines().next().unwrap(),
         "GET /things/67e55044-10b1-426f-9247-bb680e5fe0c8?status=active&required_status=archived\
          &any_status=archived&since=2026-01-02T03%3A04%3A05%2B01%3A00&count=7&mixed=true&limit=10&text=hi\
-         &owner=67e55044-10b1-426f-9247-bb680e5fe0c8 HTTP/1.1"
+         &owner=67e55044-10b1-426f-9247-bb680e5fe0c8&wrapped_all=archived&wrapped_one=active HTTP/1.1"
     );
     assert_eq!(
         plain.lines().next().unwrap(),
@@ -117,9 +120,29 @@ async fn each_parameter_goes_out_as_the_plain_reference_does() {
     assert_eq!(header(&thing, "cookie"), Some("session=archived"));
     assert_eq!(header(&thing, "cookie"), header(&plain, "cookie"));
     assert_eq!(header(&thing, "x-trace"), Some("67e55044-10b1-426f-9247-bb680e5fe0c8"));
+    assert_eq!(header(&thing, "x-required"), Some("archived"));
 }
 
-/// `None` sends nothing, a required parameter's too: a parameter has no `null` on the wire.
+/// A path parameter is the type, never an `Option`: a wrapped reference and a `type: [string, null]` one too.
+#[tokio::test]
+async fn a_path_parameter_is_its_type() {
+    let (configuration, request) = serve().await;
+    default_api::get_wrapped()
+        .configuration(&configuration)
+        .a(id())
+        .b(Status::Active)
+        .c("a b")
+        .call()
+        .await
+        .unwrap();
+    assert_eq!(
+        request.await.unwrap().lines().next().unwrap(),
+        "GET /wrapped/67e55044-10b1-426f-9247-bb680e5fe0c8/active/a%20b HTTP/1.1"
+    );
+}
+
+/// `None` sends nothing, a required parameter's too (in the query and a header): a parameter has no `null` on the
+/// wire.
 #[tokio::test]
 async fn none_sends_nothing() {
     let (configuration, request) = serve().await;
@@ -129,6 +152,7 @@ async fn none_sends_nothing() {
         .maybe_required_status(None)
         .maybe_limit(None)
         .maybe_text(None)
+        .maybe_x_required(None)
         .call()
         .await
         .unwrap();
@@ -137,12 +161,13 @@ async fn none_sends_nothing() {
         request.lines().next().unwrap(),
         "GET /things/67e55044-10b1-426f-9247-bb680e5fe0c8 HTTP/1.1"
     );
+    assert_eq!(header(&request, "x-required"), None);
     assert_eq!(header(&request, "x-status"), None);
     assert_eq!(header(&request, "cookie"), None);
 }
 
 /// An urlencoded form field goes out as a field of the referenced schema; a required one left `None` is sent empty,
-/// as a required `type: [T, null]` field is.
+/// as a required `type: [T, null]` field is. A plain `allOf: [$ref]` field of a uuid is a `uuid::Uuid` too.
 #[tokio::test]
 async fn urlencoded_form_fields() {
     let (configuration, request) = serve().await;
@@ -151,13 +176,15 @@ async fn urlencoded_form_fields() {
         .since(at())
         .status(Status::Archived)
         .id(id())
+        .plain_id(id())
         .call()
         .await
         .unwrap();
     let request = request.await.unwrap();
     assert!(
         request.ends_with(
-            "since=2026-01-02T03%3A04%3A05%2B01%3A00&status=archived&id=67e55044-10b1-426f-9247-bb680e5fe0c8"
+            "since=2026-01-02T03%3A04%3A05%2B01%3A00&status=archived&id=67e55044-10b1-426f-9247-bb680e5fe0c8\
+             &plain_id=67e55044-10b1-426f-9247-bb680e5fe0c8"
         ),
         "{request}"
     );
@@ -181,7 +208,8 @@ async fn urlencoded_form_fields() {
     assert!(request.await.unwrap().ends_with("\r\n\r\nowner=67e55044-10b1-426f-9247-bb680e5fe0c8"));
 }
 
-/// A multipart field is a text part of the referenced schema's text.
+/// A multipart field is a text part of the referenced schema's text; a plain `allOf: [$ref]` date-time one is sent
+/// in RFC 3339 as well.
 #[tokio::test]
 async fn multipart_fields() {
     let (configuration, request) = serve().await;
@@ -190,6 +218,7 @@ async fn multipart_fields() {
         .since(at())
         .status(Status::Active)
         .id(id())
+        .plain_since(at())
         .call()
         .await
         .unwrap();
@@ -198,6 +227,7 @@ async fn multipart_fields() {
         ("since", "2026-01-02T03:04:05+01:00"),
         ("status", "active"),
         ("id", "67e55044-10b1-426f-9247-bb680e5fe0c8"),
+        ("plain_since", "2026-01-02T03:04:05+01:00"),
     ] {
         assert!(
             request.contains(&format!("name=\"{name}\"\r\n\r\n{value}\r\n")),

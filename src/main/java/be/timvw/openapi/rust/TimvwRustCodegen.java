@@ -1384,7 +1384,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /**
      * A parameter that {@link SpecRules#unwrapNullableParameters} gave the non-null branch of its union stays
      * nullable, as a {@code type: [T, null]} parameter and a parameter of a nullable union are: when required, the
-     * argument is an {@code Option} and {@code None} sends nothing. Not in the path, which always has a value.
+     * argument is an {@code Option} and {@code None} sends nothing. A path parameter is never nullable, this one or
+     * any other ({@code type: [T, null]}, {@code nullable: true}): a path always has a value, so it is the type.
      */
     @Override
     public CodegenParameter fromParameter(io.swagger.v3.oas.models.parameters.Parameter parameter,
@@ -1392,9 +1393,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
         CodegenParameter p = super.fromParameter(parameter, imports);
         if (parameter.getExtensions() != null && parameter.getExtensions().containsKey(SpecRules.NULL_BRANCH)) {
             p.vendorExtensions.remove(SpecRules.NULL_BRANCH);
-            if (!p.isPathParam) {
-                p.isNullable = true;
-            }
+            p.isNullable = true;
+        }
+        if (p.isPathParam) {
+            // a path always has a value: a nullable one (type: [T, null], nullable: true) is the type, not an Option
+            p.isNullable = false;
         }
         return p;
     }
@@ -1402,8 +1405,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /**
      * A form field (urlencoded or multipart) of a {@code oneOf}/{@code anyOf} of one schema and {@code type: null},
      * which the normalizer has made a nullable {@code allOf} of that one schema by now, is a field of that schema,
-     * nullable as a {@code type: [T, null]} field is: a required one left {@code None} is sent empty. Here rather
-     * than in the spec, since the body's schema may be a component whose model keeps the field as it is.
+     * nullable as a {@code type: [T, null]} field is: a required one left {@code None} is sent empty. A plain
+     * {@code allOf: [$ref]} field, and a reference wrapped in one-element unions ({@link SpecRules#peel}), takes the
+     * referenced type as well. Here rather than in the spec, since the body's schema may be a component whose model keeps the field as it is.
      */
     @Override
     @SuppressWarnings("rawtypes")
@@ -1414,6 +1418,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             branch = SpecRules.singleAllOfRef(propertySchema);
             nullable = branch != null && (Boolean.TRUE.equals(propertySchema.getNullable())
                     || (propertySchema.getTypes() != null && propertySchema.getTypes().contains("null")));
+        }
+        if (branch != null) {
+            branch = SpecRules.peel(branch);
         }
         CodegenParameter p = super.fromFormProperty(name, branch != null ? branch : propertySchema, imports);
         if (nullable) {

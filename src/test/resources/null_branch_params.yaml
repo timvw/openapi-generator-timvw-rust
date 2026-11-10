@@ -1,0 +1,301 @@
+openapi: 3.1.0
+info:
+  title: Null-branch parameters
+  version: 1.0.0
+# Parameters and form fields whose schema is an inline oneOf/anyOf of one schema and type: null. Each takes that
+# schema and goes out as the plain one does: getThing mirrors getPlain, whose parameters are the plain references.
+paths:
+  /things/{id}:
+    parameters:
+      - name: X-Trace
+        in: header
+        schema:
+          oneOf:
+            - $ref: '#/components/schemas/ThingId'
+            - type: 'null'
+    get:
+      operationId: getThing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/ThingId'
+              - type: 'null'
+        - name: status
+          in: query
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: required_status
+          in: query
+          required: true
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: any_status
+          in: query
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: since
+          in: query
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/When'
+              - type: 'null'
+        - name: count
+          in: query
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Count'
+              - type: 'null'
+        - name: mixed
+          in: query
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Mixed'
+              - type: 'null'
+        - name: filter
+          in: query
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Filter'
+              - type: 'null'
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: [integer, 'null']
+        - name: text
+          in: query
+          required: true
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+        - $ref: '#/components/parameters/Owner'
+        - name: wrapped_all
+          in: query
+          schema:
+            oneOf:
+              - allOf:
+                  - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: wrapped_one
+          in: query
+          schema:
+            anyOf:
+              - description: The status, wrapped in a one-branch oneOf.
+                oneOf:
+                  - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: X-Required
+          in: header
+          required: true
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: X-Status
+          in: header
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: session
+          in: cookie
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Status'
+              - type: 'null'
+      responses:
+        '204':
+          description: Nothing
+  /wrapped/{a}/{b}/{c}:
+    get:
+      operationId: getWrapped
+      parameters:
+        - name: a
+          in: path
+          required: true
+          schema:
+            oneOf:
+              - allOf:
+                  - $ref: '#/components/schemas/ThingId'
+              - type: 'null'
+        - name: b
+          in: path
+          required: true
+          schema:
+            anyOf:
+              - oneOf:
+                  - $ref: '#/components/schemas/Status'
+              - type: 'null'
+        - name: c
+          in: path
+          required: true
+          schema:
+            type: [string, 'null']
+      responses:
+        '204':
+          description: Nothing
+  /plain/{id}:
+    get:
+      operationId: getPlain
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/ThingId'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/Status'
+        - name: since
+          in: query
+          schema:
+            $ref: '#/components/schemas/When'
+        - name: count
+          in: query
+          schema:
+            $ref: '#/components/schemas/Count'
+        - name: mixed
+          in: query
+          schema:
+            $ref: '#/components/schemas/Mixed'
+        - name: filter
+          in: query
+          schema:
+            $ref: '#/components/schemas/Filter'
+        - name: X-Status
+          in: header
+          schema:
+            $ref: '#/components/schemas/Status'
+        - name: session
+          in: cookie
+          schema:
+            $ref: '#/components/schemas/Status'
+      responses:
+        '204':
+          description: Nothing
+  /forms:
+    post:
+      operationId: postForm
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [since]
+              properties:
+                since:
+                  oneOf:
+                    - $ref: '#/components/schemas/When'
+                    - type: 'null'
+                status:
+                  description: The status to set, if any.
+                  anyOf:
+                    - $ref: '#/components/schemas/Status'
+                    - type: 'null'
+                id:
+                  oneOf:
+                    - $ref: '#/components/schemas/ThingId'
+                    - type: 'null'
+                plain_id:
+                  allOf:
+                    - $ref: '#/components/schemas/ThingId'
+      responses:
+        '204':
+          description: Nothing
+  /multipart:
+    post:
+      operationId: postMultipart
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [since]
+              properties:
+                since:
+                  oneOf:
+                    - $ref: '#/components/schemas/When'
+                    - type: 'null'
+                status:
+                  oneOf:
+                    - $ref: '#/components/schemas/Status'
+                    - type: 'null'
+                id:
+                  oneOf:
+                    - $ref: '#/components/schemas/ThingId'
+                    - type: 'null'
+                plain_since:
+                  allOf:
+                    - $ref: '#/components/schemas/When'
+      responses:
+        '204':
+          description: Nothing
+  /thing-form:
+    post:
+      operationId: postThingForm
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Thing'
+      responses:
+        '204':
+          description: Nothing
+    get:
+      operationId: getThingForm
+      responses:
+        '200':
+          description: The thing, whose owner stays a nullable field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thing'
+components:
+  parameters:
+    Owner:
+      name: owner
+      in: query
+      schema:
+        oneOf:
+          - $ref: '#/components/schemas/ThingId'
+          - type: 'null'
+  schemas:
+    Status:
+      type: string
+      enum: [active, archived]
+    ThingId:
+      type: string
+      format: uuid
+    When:
+      type: string
+      format: date-time
+    Count:
+      type: integer
+      format: int64
+    Mixed:
+      oneOf:
+        - type: integer
+        - type: boolean
+    Filter:
+      type: object
+      properties:
+        name:
+          type: string
+    Thing:
+      type: object
+      properties:
+        owner:
+          oneOf:
+            - $ref: '#/components/schemas/ThingId'
+            - type: 'null'

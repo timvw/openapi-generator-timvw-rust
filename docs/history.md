@@ -22,6 +22,22 @@ each rendering replaced in the client repositories' scripts.
   read "of an value"). The model docs show the field's Rust type for every inline enum (they showed `Inner` for nested
   ones). A client whose spec has such a field gets the decoding type. `lib.rs` allows `clippy::type_complexity`, which
   such a type three levels deep trips.
+- A parameter whose schema is an inline `oneOf` or `anyOf` of one schema and `type: null` (OpenAPI 3.1, such as
+  `oneOf: [{$ref: '#/components/schemas/Status'}, {type: 'null'}]`, also with the reference wrapped in one-element
+  `oneOf`/`anyOf`/`allOf`s) takes that schema's type and is sent as the plain reference is
+  ([`parameter.schema.null-branch`](mapping/parameter.md#parameterschemanull-branch)). It was `Option<&str>` whatever
+  the schema, sent as the caller's text. Now a query, header or cookie one is `Option<T>` (`Option<models::Status>`,
+  `Option<uuid::Uuid>`, `Option<chrono::DateTime<..>>`, ...), required or not, since it is nullable as a
+  `type: [T, null]` parameter is, and `None` sends nothing. A caller passes the value instead of its text
+  (`.status(Status::Active)` instead of `.status("active")`). In openai-client-base, `organization_decisionsusage`'s
+  `bucket_width` becomes `Option<models::DecisionsUsageBucketWidth>`.
+- A path parameter is never an `Option`: a nullable one (`type: [T, null]`, `nullable: true`, a `null` branch) was
+  `Option<..>` and panicked on `None`; it is the type now. A caller drops the `Some(..)`.
+- A required nullable header parameter left `None` is not sent, as in the query and a cookie; it was sent with an
+  empty value.
+- A form field (urlencoded or multipart) that is a nullable reference (a `null` branch) or a plain `allOf: [$ref]`
+  takes the referenced type: a `uuid` or `date-time` one was `models::uuid::Uuid` or `models::chrono::..` and did not
+  compile, and a plain `allOf` multipart `date-time` is sent in RFC 3339.
 
 ## 0.21.0 (breaking)
 

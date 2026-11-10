@@ -135,6 +135,8 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | header | `.header(name, value)`; an array joined with `,` | |
 | cookie | one `Cookie` header of the set ones (`a=1; b=2`), percent-encoded where a value is not a cookie-octet | |
 | an inline `enum` | `&str` | `typedEnumParameters`: a component enum (`models::ListModelsOrder`), sent as its value |
+| `oneOf`/`anyOf` of one schema and `type: null` (3.1) | that schema's type (`models::Status`, `uuid::Uuid`, ...; a reference wrapped in one-element `oneOf`/`anyOf`/`allOf`s too), sent as it is; nullable, so a required query, header or cookie one is an `Option` too, and `None` sends nothing (no header either). A form field likewise, and a plain `allOf: [$ref]` form field takes the referenced type | |
+| a nullable path parameter (`type: [T, null]`, a `null` branch) | the type, never an `Option`: a path always has a value | |
 
 ### Request bodies
 

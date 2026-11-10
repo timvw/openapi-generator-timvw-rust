@@ -11,6 +11,18 @@ the plugin owns its Rust layer (0.20), and 0.21 renders the documented [mapping]
 of [decisions.md](decisions.md). The table [below](#what-the-generator-renders-differently-from--g-rust) records what
 each rendering replaced in the client repositories' scripts.
 
+## Unreleased
+
+- An inline enum two or more lists or maps deep (`additionalProperties: {additionalProperties: {enum: [..]}}`, a list
+  of such maps, a map of lists of lists, ...) is typed at every level, e.g. `HashMap<String, HashMap<String, <Enum>>>`;
+  it was typed one level deep only (`HashMap<String, <Enum>>`), which the JSON does not decode to. `validate()` checks
+  the size keywords of every list and map that holds it, and the field documentation lists them. A list of lists or
+  maps of an inline enum with `uniqueItems` is a `Vec` whose uniqueness `validate()` checks (a list of maps was a
+  `HashSet`, which did not compile: a map is not `Hash`). The validation note of a list in a map reads "each item of
+  a value" (it read "of an value"). The
+  model docs show the field's Rust type for every inline enum (they showed `Inner` for nested ones). A client whose
+  spec has such a field gets the decoding type; nothing else changes.
+
 ## 0.21.0 (breaking)
 
 The release of the [mapping decisions](decisions.md): what roadmap step 2 decided, implemented under

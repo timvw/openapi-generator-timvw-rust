@@ -186,15 +186,24 @@ final class ValidateRules {
             }
         }
         String text = own.isEmpty() ? null : String.join(", ", own);
-        if ((cp.isArray || cp.isMap) && !cp.isEnum) {
+        if ((cp.isArray || cp.isMap) && !enumLeaf(cp)) {
             String inner = (cp.isMap ? "each value" : "each item") + (of.isEmpty() ? "" : " of " + of);
-            String items = constraints(cp.items, inner.replace("each ", "an "));
+            String items = constraints(cp.items, inner.replace("each item", "an item").replace("each value", "a value"));
             if (items != null) {
                 String own2 = items.startsWith("each ") ? items : inner + ": " + items;
                 text = text == null ? own2 : text + "; " + own2;
             }
         }
         return text;
+    }
+
+    /**
+     * Whether the items or values of the list or map {@code cp} are an inline enum itself, which has nothing to check
+     * or document; a list or map holding the enum (at any depth) is checked like any other.
+     */
+    private static boolean enumLeaf(CodegenProperty cp) {
+        return cp.isEnum && !RustCodegenBase.isContainer(cp.items)
+                || cp.items != null && cp.items.isEnum && !RustCodegenBase.isContainer(cp.items);
     }
 
     private static void add(List<String> out, String keyword, Object value) {
@@ -398,8 +407,8 @@ final class ValidateRules {
         private List<String> field(CodegenProperty cp, Expr expr, boolean variant) {
             Type type;
             if (cp.isEnum) {
-                // An inline enum, alone or in lists and maps (as the model template types it, one level each way):
-                // the enum itself has nothing to check.
+                // An inline enum, alone or in lists and maps at any depth (as the model template types it): the enum
+                // itself has nothing to check, the lists and maps holding it their size keywords.
                 type = enumType(cp, 0);
             } else if (cp.isByteArray) {
                 type = Type.of("Vec<u8>");
@@ -585,22 +594,19 @@ final class ValidateRules {
          * list or map holding it otherwise, so its own size keywords are checked.
          */
         private static CodegenProperty inner(CodegenProperty cp) {
-            if (cp.isEnum && (cp.items == null || !(cp.items.isArray || cp.items.isMap))) {
-                return null;
-            }
-            return cp.items;
+            return enumLeaf(cp) ? null : cp.items;
         }
 
-        /** The type of an inline enum property: the enum, in the list or map the property is, two levels deep. */
+        /** The type of an inline enum property: the enum, in the lists and maps the property nests it in. */
         private static Type enumType(CodegenProperty cp, int depth) {
-            if (cp == null || depth > 1 || !(cp.isArray || cp.isMap)) {
+            if (cp == null || depth > 64 || !RustCodegenBase.isContainer(cp)) {
                 return Type.of("enum");
             }
             Type inner = enumType(cp.items, depth + 1);
             if (cp.isMap) {
                 return Type.of("std::collections::HashMap", Type.of("String"), inner);
             }
-            return Type.of(Boolean.TRUE.equals(cp.getUniqueItems()) ? "std::collections::HashSet" : "Vec", inner);
+            return Type.of(RustCodegenBase.isEnumSet(cp) ? "std::collections::HashSet" : "Vec", inner);
         }
 
         /** Whether checking a value of {@code type} needs more than calling {@code validate()} on it. */

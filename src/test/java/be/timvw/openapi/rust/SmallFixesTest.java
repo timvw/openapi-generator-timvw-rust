@@ -29,12 +29,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SmallFixesTest {
 
     private static final String MAP_SPEC = "src/test/resources/map_enum_values.yaml";
+    private static final String NESTED_SPEC = "src/test/resources/nested_enum_containers.yaml";
     private static final String STREAM_SPEC = "src/test/resources/stream_without_typed_streams.yaml";
     private static final String UNION_SPEC = "src/test/resources/union_shared_tag_enum.yaml";
     private static final String UNION_MAPPING_SPEC = "src/test/resources/union_mapping_and_tag_values.yaml";
 
     @TempDir
     static Path mapEnums;
+
+    @TempDir
+    static Path nestedEnums;
 
     @TempDir
     static Path serdePath;
@@ -54,6 +58,7 @@ class SmallFixesTest {
     @BeforeAll
     static void generate() {
         generate(MAP_SPEC, mapEnums, Map.of());
+        generate(NESTED_SPEC, nestedEnums, Map.of());
         generate(MAP_SPEC, serdePath, Map.of(RustCodegenBase.USE_SERDE_PATH_TO_ERROR, "true"));
         generate(STREAM_SPEC, streamWithoutTyped, Map.of(TimvwRustCodegen.CONTENT_TYPE_METHODS, "true"));
         generate(STREAM_SPEC, streamTyped, Map.of(TimvwRustCodegen.CONTENT_TYPE_METHODS, "true",
@@ -194,6 +199,53 @@ class SmallFixesTest {
         Files.copy(Path.of("src/test/rust/union_mapping.rs"), unionMapping.resolve("tests/union_mapping.rs"),
                 java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         String test = cargo(unionMapping, 900, "test", "--test", "union_mapping");
+        assertNotNull(test, "cargo did not finish");
+        assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
+    }
+
+    /**
+     * An inline enum two or more lists or maps deep is typed at every level, generated once and named after the
+     * property; {@code validate()} checks the size keywords of every list and map that holds it.
+     */
+    @Test
+    void anInlineEnumNestedAtAnyDepthIsTypedAtEveryLevel() throws IOException, InterruptedException {
+        String holder = Files.readString(nestedEnums.resolve("src/models/holder.rs"));
+        String map = "std::collections::HashMap<String, ";
+        assertContains(holder, "    pub map_of_maps: Option<" + map + map + "MapOfMaps>>>,\n");
+        assertContains(holder, "    pub list_of_maps: Option<Vec<" + map + "ListOfMaps>>>,\n");
+        assertContains(holder, "    pub map_of_lists: Option<" + map + "Vec<MapOfLists>>>,\n");
+        assertContains(holder, "    pub map_of_lists_of_lists: Option<" + map + "Vec<Vec<MapOfListsOfLists>>>>,\n");
+        assertContains(holder,
+                "    pub list_of_maps_of_maps: Option<Vec<" + map + map + "ListOfMapsOfMaps>>>>,\n");
+        assertContains(holder, "    pub required_grid: " + map + map + "RequiredGrid>>,\n");
+        assertContains(holder, "pub fn new(required_grid: " + map + map + "RequiredGrid>>) -> Holder {");
+        // uniqueItems: a set of the enum itself, a Vec (checked by validate) of anything that holds it
+        assertContains(holder, "    pub unique_sets: Option<" + map + "std::collections::HashSet<UniqueSets>>>,\n");
+        assertContains(holder, "    pub unique_lists: Option<Vec<Vec<UniqueLists>>>,\n");
+        assertContains(holder, "crate::models::validation::unique_items(value0, &path.field(\"unique_lists\"), errors);");
+        // each enum once, named after its property
+        for (String name : List.of("MapOfMaps", "ListOfMaps", "MapOfLists", "MapOfListsOfLists", "ListOfMapsOfMaps",
+                "RequiredGrid", "UniqueSets", "UniqueLists")) {
+            assertEquals(1, holder.split("pub enum " + name + " \\{", -1).length - 1, name);
+        }
+        // the size keywords of every level are checked and documented
+        assertContains(holder, "items(item2.len(), None, Some(2), "
+                + "&path.field(\"map_of_lists_of_lists\").key(key1).index(index2), errors);");
+        assertContains(holder, "properties(entry2.len(), None, Some(2), "
+                + "&path.field(\"list_of_maps_of_maps\").index(index1).key(key2), errors);");
+        assertContains(holder, "/// Validation: `minProperties: 1`; each value: `minItems: 1`; "
+                + "each item of a value: `maxItems: 2`.");
+        String doc = Files.readString(nestedEnums.resolve("docs/Holder.md"));
+        assertContains(doc, "**map_of_maps** | Option<**" + map + map + "MapOfMaps>>**>");
+        // an operation's inline enum stays a String, in containers as alone
+        String api = Files.readString(nestedEnums.resolve("src/apis/default_api.rs"));
+        assertContains(api, "Result<" + map + map + "String>>, Error<GetGridError>>");
+        assertContains(api, "request_body: &[" + map + "String>]");
+        assertClippyClean(nestedEnums);
+        Files.createDirectories(nestedEnums.resolve("tests"));
+        Files.copy(Path.of("src/test/rust/nested_enum_containers.rs"),
+                nestedEnums.resolve("tests/nested_enum_containers.rs"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        String test = cargo(nestedEnums, 900, "test", "--test", "nested_enum_containers");
         assertNotNull(test, "cargo did not finish");
         assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
     }

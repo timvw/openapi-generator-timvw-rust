@@ -80,6 +80,25 @@ final class OpenEnums {
         return name;
     }
 
+    /** The value an open integer enum's catch-all serializes as ({@code i64::MAX}). */
+    static final String INTEGER_CATCH_ALL = String.valueOf(Long.MAX_VALUE);
+
+    /**
+     * The catch-all of the enum {@code where} names; an integer enum's is {@code i64::MAX}, so one that lists that value
+     * fails generation (the two variants would share a discriminant).
+     */
+    @SuppressWarnings("unchecked")
+    private static CatchAll catchAll(Map<String, Object> allowableValues, Map<String, Object> extensions,
+                                     String where) {
+        if (Boolean.TRUE.equals(extensions.get(RustCodegenBase.INTEGER_ENUM)) && allowableValues != null
+                && allowableValues.get("values") instanceof List<?> values
+                && values.stream().anyMatch(v -> INTEGER_CATCH_ALL.equals(String.valueOf(v)))) {
+            throw new IllegalStateException(where + ": an integer enum a response can hold lists " + INTEGER_CATCH_ALL
+                    + " (i64::MAX), which its catch-all Unknown serializes as; remove that value from the enum");
+        }
+        return catchAll(allowableValues);
+    }
+
     /** The catch-all of an enum: not called, and not serializing as, anything the spec lists. */
     @SuppressWarnings("unchecked")
     private static CatchAll catchAll(Map<String, Object> allowableValues) {
@@ -235,7 +254,7 @@ final class OpenEnums {
                 sort(cm.classname, reached, !guards.closedModels.contains(cm.classname), enums, reachableEnums, openEnums,
                         guardedEnums);
                 if (reached && !guards.closedModels.contains(cm.classname)) {
-                    cm.vendorExtensions.put(CATCH_ALL, catchAll(cm.allowableValues));
+                    cm.vendorExtensions.put(CATCH_ALL, catchAll(cm.allowableValues, cm.vendorExtensions, cm.name));
                 }
             } else if (unions.containsKey(cm.classname)) {
                 UnionRules.Dispatch dispatch = (UnionRules.Dispatch) cm.vendorExtensions.get(UnionRules.DISPATCH);
@@ -265,7 +284,8 @@ final class OpenEnums {
                     for (List<CodegenProperty> list : BoxRules.propertyLists(cm)) {
                         for (CodegenProperty field : list) {
                             if (field.isEnum && !guards.closedFields.contains(guards.field(cm, field))) {
-                                field.vendorExtensions.put(CATCH_ALL, catchAll(field.allowableValues));
+                                field.vendorExtensions.put(CATCH_ALL, catchAll(field.allowableValues,
+                                        field.vendorExtensions, cm.name + "." + field.baseName));
                             }
                         }
                     }

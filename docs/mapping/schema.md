@@ -268,7 +268,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | --- | --- |
 | OpenAPI | `type: integer` (any `format`) with `enum`: a component, an inline enum property, or the items or values of lists and maps holding an inline enum at any depth |
 | Rust | `#[repr(i64)]` enum through `serde_repr`, variants `Variant1 = 1`, ... The innermost items decide: `type: array, items: {type: integer, enum: [1, 2]}` is `Vec<<Property>>` of such an enum, typed in its containers as [`schema.additionalProperties`](#schemaadditionalproperties) describes |
-| Wire | a JSON number: `[1]` and `{"a": 2}` decode, and serialize back as numbers |
+| Wire | a JSON number: `[1]` and `{"a": 2}` decode, and serialize back as numbers. An open integer enum's `Unknown` is `i64::MAX`, so one that lists `9223372036854775807` fails generation, naming the schema |
 | Tests | [`SchemaMappingTest#anIntegerEnumIsReprI64`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L186), [`IntegersAsI64Test#integerEnumsKeepTheirRendering`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L106), [`SmallFixesTest#anIntegerInlineEnumIsAnIntegerEnumAtAnyDepth`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L267) |
 | Gap | `type: number` with `enum` is a string enum (`#[serde(rename = "1.5")]`), which a JSON number does not decode to: `serde_repr` takes integers only |
 

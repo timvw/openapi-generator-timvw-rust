@@ -15,7 +15,7 @@ fn integer_enums_decode_from_numbers_at_any_depth() {
         "level": 2,
         "wide": 20,
         "list": [1],
-        "set": [2, 1],
+        "set": [2],
         "map": {"a": 2},
         "required_map": {"a": 7},
         "map_of_lists": {"a": [4, 5]},

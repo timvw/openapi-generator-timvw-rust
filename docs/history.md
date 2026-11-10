@@ -25,8 +25,11 @@ each rendering replaced in the client repositories' scripts.
 - An integer inline enum in a list or map (`type: array, items: {type: integer, enum: [1, 2, 3]}`, a map of one, at any
   depth) is a `#[repr(i64)]` enum through `serde_repr` like one standing alone, so `[1]` and `{"a": 2}` decode; it was a
   string enum (`#[serde(rename = "1")]`), which a JSON number does not decode to. An integer enum of `format: int64`
-  (component or inline) is one too; it was a string enum as well. A client whose spec has such an enum gets the decoding
-  type, with the same variant names. A `type: number` enum stays a string enum (a known gap).
+  (component or inline) is one too; it was a string enum as well. This changes the wire format of such an int64 enum:
+  it is sent as a number (`1000`, not `"1000"`), and its catch-all `Unknown` is sent as `i64::MAX` instead of
+  `"unknown"`. An open integer enum that lists `9223372036854775807` (`i64::MAX`) itself fails generation with a
+  message naming the schema. A client whose spec has such an enum gets the decoding type, with the same variant names.
+  A `type: number` enum stays a string enum (a known gap).
 
 ## 0.21.0 (breaking)
 

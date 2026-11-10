@@ -293,6 +293,31 @@ class SmallFixesTest {
         assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
     }
 
+    /**
+     * An open integer enum's catch-all is {@code Unknown = i64::MAX}: an enum a response can hold that lists that value
+     * itself fails generation, naming the schema (the two variants would share a discriminant, E0081).
+     */
+    @Test
+    void anOpenIntegerEnumListingI64MaxFails(@TempDir Path dir) throws IOException {
+        for (String schemas : List.of(
+                "    Big: {type: integer, format: int64, enum: [1, 9223372036854775807]}\n",
+                "    Big:\n      type: object\n      properties:\n"
+                        + "        codes: {type: array, items: {type: integer, format: int64, enum: [9223372036854775807]}}\n")) {
+            Path spec = dir.resolve("spec.yaml");
+            Files.writeString(spec, "openapi: 3.0.3\ninfo: {title: t, version: \"1\"}\npaths:\n  /big:\n    get:\n"
+                    + "      operationId: getBig\n      responses:\n        \"200\":\n          description: ok\n"
+                    + "          content:\n            application/json:\n"
+                    + "              schema: {$ref: \"#/components/schemas/Big\"}\ncomponents:\n  schemas:\n" + schemas);
+            Throwable e = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
+                    () -> generate(spec.toString(), dir.resolve("out"), Map.of()));
+            while (e.getCause() != null && !(e instanceof IllegalStateException)) {
+                e = e.getCause();
+            }
+            assertTrue(e.getMessage().contains("Big") && e.getMessage().contains("9223372036854775807 (i64::MAX)"),
+                    e.getMessage());
+        }
+    }
+
     private static void assertClippyClean(Path crate) throws IOException, InterruptedException {
         Assumptions.assumeTrue(cargo(crate, 30, "--version") != null, "no cargo");
         String clippy = cargo(crate, 900, "clippy", "--all-targets", "--", "-D", "warnings");

@@ -72,7 +72,8 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | --- | --- | --- |
 | `type: string, enum: [...]` (component) | `pub enum` with a unit variant per value (`#[serde(rename = "<value>")]`), `Copy`, `Eq`, `Hash`, `Ord` and a `Display` printing the value | |
 | an inline string enum of a property | an enum of the same shape in the model's file, named after the property (`Role`, `Object`) | |
-| `type: integer, enum: [...]` | `#[repr(i64)]` enum with `serde_repr`, variants `Variant1 = 1`, ... | |
+| `type: integer, enum: [...]` | `#[repr(i64)]` enum with `serde_repr`, variants `Variant1 = 1`, ...; also `format: int64`, and an inline one in lists and maps at any depth (`Vec<<Property>>`) | |
+| `type: number, enum: [...]` | a string enum (`#[serde(rename = "1.5")]`), which a JSON number does not decode to | |
 | parsing | `FromStr` and `TryFrom<&str>`, `TryFrom<&String>`, `TryFrom<String>` accept exactly what `Display` prints; `models::ParseEnumError` otherwise | |
 | a value the spec does not list, in a response | the variant `Unknown` (`#[serde(rename = "unknown", other)]`; an integer enum `Unknown = i64::MAX`) | always. Enums only requests use stay closed |
 | `Default` | none | always (stock: the first variant) |
@@ -182,3 +183,4 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
   ([mapping](mapping/README.md#objects)).
 - `readOnly`/`writeOnly` properties are in both directions.
+- A `type: number` enum is a string enum, which a JSON number does not decode to.

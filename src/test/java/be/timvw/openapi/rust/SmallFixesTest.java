@@ -30,6 +30,7 @@ class SmallFixesTest {
 
     private static final String MAP_SPEC = "src/test/resources/map_enum_values.yaml";
     private static final String NESTED_SPEC = "src/test/resources/nested_enum_containers.yaml";
+    private static final String INTEGER_SPEC = "src/test/resources/integer_enum_containers.yaml";
     private static final String STREAM_SPEC = "src/test/resources/stream_without_typed_streams.yaml";
     private static final String UNION_SPEC = "src/test/resources/union_shared_tag_enum.yaml";
     private static final String UNION_MAPPING_SPEC = "src/test/resources/union_mapping_and_tag_values.yaml";
@@ -39,6 +40,9 @@ class SmallFixesTest {
 
     @TempDir
     static Path nestedEnums;
+
+    @TempDir
+    static Path integerEnums;
 
     @TempDir
     static Path serdePath;
@@ -59,6 +63,7 @@ class SmallFixesTest {
     static void generate() {
         generate(MAP_SPEC, mapEnums, Map.of());
         generate(NESTED_SPEC, nestedEnums, Map.of());
+        generate(INTEGER_SPEC, integerEnums, Map.of());
         generate(MAP_SPEC, serdePath, Map.of(RustCodegenBase.USE_SERDE_PATH_TO_ERROR, "true"));
         generate(STREAM_SPEC, streamWithoutTyped, Map.of(TimvwRustCodegen.CONTENT_TYPE_METHODS, "true"));
         generate(STREAM_SPEC, streamTyped, Map.of(TimvwRustCodegen.CONTENT_TYPE_METHODS, "true",
@@ -251,6 +256,68 @@ class SmallFixesTest {
         String test = cargo(nestedEnums, 900, "test", "--test", "nested_enum_containers");
         assertNotNull(test, "cargo did not finish");
         assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
+    }
+
+    /**
+     * An integer inline enum (int32 or int64) is {@code #[repr(i64)]} through {@code serde_repr} alone and as the
+     * items or values of lists and maps at any depth, so {@code [1]} and {@code {"a": 2}} decode; it was a string
+     * enum ({@code #[serde(rename = "1")]}) in a container, and for {@code format: int64} everywhere.
+     */
+    @Test
+    void anIntegerInlineEnumIsAnIntegerEnumAtAnyDepth() throws IOException, InterruptedException {
+        String holder = Files.readString(integerEnums.resolve("src/models/holder.rs"));
+        String repr = "#[repr(i64)]\n#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, "
+                + "Serialize_repr, Deserialize_repr)]\npub enum ";
+        for (String name : List.of("Level", "Wide", "List", "Set", "Map", "RequiredMap", "MapOfLists",
+                "ListOfMapsOfLists")) {
+            assertContains(holder, repr + name + " {");
+        }
+        assertEquals(1, holder.split("use serde_repr::", -1).length - 1, holder);
+        assertFalse(holder.contains("#[serde(rename = \"1\")]"), holder);
+        // the types and validate() are those of any inline enum in containers
+        assertContains(holder, "    pub set: Option<std::collections::HashSet<Set>>,\n");
+        assertContains(holder, "    pub list_of_maps_of_lists: Option<Vec<std::collections::HashMap<String, "
+                + "Vec<ListOfMapsOfLists>>>>,\n");
+        assertContains(holder, "/// Validation: each value: `maxItems: 2`.");
+        // a number enum stays a string enum; an int64 component enum is an integer enum
+        assertContains(holder, "    #[serde(rename = \"1.5\")]\n    Variant15,\n");
+        assertContains(Files.readString(integerEnums.resolve("src/models/big.rs")), repr + "Big {");
+        assertContains(Files.readString(integerEnums.resolve("src/models/request.rs")), repr + "Codes {");
+        assertClippyClean(integerEnums);
+        Files.createDirectories(integerEnums.resolve("tests"));
+        Files.copy(Path.of("src/test/rust/integer_enum_containers.rs"),
+                integerEnums.resolve("tests/integer_enum_containers.rs"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        String test = cargo(integerEnums, 900, "test", "--test", "integer_enum_containers");
+        assertNotNull(test, "cargo did not finish");
+        assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
+    }
+
+    /**
+     * An open integer enum's catch-all is {@code Unknown = i64::MAX}: an enum a response can hold that lists that value
+     * itself fails generation, naming the schema (the two variants would share a discriminant, E0081).
+     */
+    @Test
+    void anOpenIntegerEnumListingI64MaxFails(@TempDir Path dir) throws IOException {
+        for (String schemas : List.of(
+                "    Big: {type: integer, format: int64, enum: [1, 9223372036854775807]}\n",
+                "    Big:\n      type: object\n      properties:\n"
+                        + "        codes: {type: array, items: "
+                        + "{type: integer, format: int64, enum: [9223372036854775807]}}\n")) {
+            Path spec = dir.resolve("spec.yaml");
+            Files.writeString(spec, "openapi: 3.0.3\ninfo: {title: t, version: \"1\"}\npaths:\n  /big:\n    get:\n"
+                    + "      operationId: getBig\n      responses:\n        \"200\":\n          description: ok\n"
+                    + "          content:\n            application/json:\n"
+                    + "              schema: {$ref: \"#/components/schemas/Big\"}\n"
+                    + "components:\n  schemas:\n" + schemas);
+            Throwable e = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
+                    () -> generate(spec.toString(), dir.resolve("out"), Map.of()));
+            while (e.getCause() != null && !(e instanceof IllegalStateException)) {
+                e = e.getCause();
+            }
+            assertTrue(e.getMessage().contains("Big") && e.getMessage().contains("9223372036854775807 (i64::MAX)"),
+                    e.getMessage());
+        }
     }
 
     private static void assertClippyClean(Path crate) throws IOException, InterruptedException {

@@ -22,6 +22,14 @@ each rendering replaced in the client repositories' scripts.
   read "of an value"). The model docs show the field's Rust type for every inline enum (they showed `Inner` for nested
   ones). A client whose spec has such a field gets the decoding type. `lib.rs` allows `clippy::type_complexity`, which
   such a type three levels deep trips.
+- An integer inline enum in a list or map (`type: array, items: {type: integer, enum: [1, 2, 3]}`, a map of one, at any
+  depth) is a `#[repr(i64)]` enum through `serde_repr` like one standing alone, so `[1]` and `{"a": 2}` decode; it was a
+  string enum (`#[serde(rename = "1")]`), which a JSON number does not decode to. An integer enum of `format: int64`
+  (component or inline) is one too; it was a string enum as well. This changes the wire format of such an int64 enum:
+  it is sent as a number (`1000`, not `"1000"`), and its catch-all `Unknown` is sent as `i64::MAX` instead of
+  `"unknown"`. An open integer enum that lists `9223372036854775807` (`i64::MAX`) itself fails generation with a
+  message naming the schema. A client whose spec has such an enum gets the decoding type, with the same variant names.
+  A `type: number` enum stays a string enum (a known gap).
 - List items and map values that can be null are `Option`s at any depth. This covers `nullable: true` (3.0),
   `type: [T, 'null']` and a `oneOf`/`anyOf` with a `null` branch (3.1), and a `$ref` to a nullable schema (also
   wrapped in a single-entry `allOf`), so the generator renders `HashMap<String, Option<String>>`, `Vec<Option<T>>` and

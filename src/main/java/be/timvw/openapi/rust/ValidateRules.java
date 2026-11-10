@@ -603,6 +603,9 @@ final class ValidateRules {
                 return Type.of("enum");
             }
             Type inner = enumType(cp.items, depth + 1);
+            if (cp.items.isNullable) {
+                inner = Type.of("Option", inner);
+            }
             if (cp.isMap) {
                 return Type.of("std::collections::HashMap", Type.of("String"), inner);
             }

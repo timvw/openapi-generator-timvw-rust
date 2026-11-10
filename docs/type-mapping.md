@@ -45,6 +45,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | optional property | `Option<T>`, `skip_serializing_if = "Option::is_none"` | |
 | `nullable: true` (or `type: [T, null]`), optional | `Option<Option<T>>` through `serde_with::rust::double_option`: `None` leaves the field out, `Some(None)` sends `null` | |
 | `nullable: true`, required | `Option<T>` that must be present | |
+| list items or map values that can be null (`nullable: true`, `type: [T, null]`, a `null` branch, or a `$ref` to a nullable schema) | `Vec<Option<T>>`, `HashMap<String, Option<T>>`, at any depth. `None` is sent as `null`. A parameter's items stay `T` | |
 | nullable property that is a union | `Option<Option<U>>` (optional) or `Option<U>` (required), like any nullable field, so a request can send `null` | |
 | a property referencing a model | the model, by value | always: `Box<T>` only on a reference that closes a cycle (`parent: Option<Box<ThreadNode>>`); stock boxes every model reference |
 | `additionalProperties: <schema>` | `std::collections::HashMap<String, T>` | |

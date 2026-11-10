@@ -22,6 +22,12 @@ each rendering replaced in the client repositories' scripts.
   read "of an value"). The model docs show the field's Rust type for every inline enum (they showed `Inner` for nested
   ones). A client whose spec has such a field gets the decoding type. `lib.rs` allows `clippy::type_complexity`, which
   such a type three levels deep trips.
+- List items and map values that can be null are `Option`s at any depth. This covers `nullable: true` (3.0),
+  `type: [T, 'null']` and a `oneOf`/`anyOf` with a `null` branch (3.1), and a `$ref` to a nullable schema, so the
+  generator renders `HashMap<String, Option<String>>`, `Vec<Option<T>>` and `Vec<Option<<Enum>>>` for an inline enum.
+  Before, the generator ignored the nullability, so `{"a": null}` or `[null]` failed to decode. `None` serializes as
+  `null`, and `validate()` skips it. A query, path, header or cookie parameter keeps plain items. A client whose spec
+  has such items gets the `Option`: code that builds or reads those lists and maps wraps or unwraps the items.
 
 ## 0.21.0 (breaking)
 

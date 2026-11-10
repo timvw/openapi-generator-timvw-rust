@@ -604,10 +604,10 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     public String getTypeDeclaration(Schema schema) {
         Schema p = unaliasSchema(schema);
         if (ModelUtils.isArraySchema(p)) {
-            return typeMapping.get("array") + "<" + getTypeDeclaration(ModelUtils.getSchemaItems(p)) + ">";
+            return typeMapping.get("array") + "<" + itemType(ModelUtils.getSchemaItems(p)) + ">";
         } else if (ModelUtils.isMapSchema(p)) {
             return typeMapping.get("map") + "<" + typeMapping.get("string") + ", "
-                    + getTypeDeclaration(ModelUtils.getAdditionalProperties(p)) + ">";
+                    + itemType(ModelUtils.getAdditionalProperties(p)) + ">";
         } else if (!org.apache.commons.lang3.StringUtils.isEmpty(p.get$ref())) {
             try {
                 return "models::" + toModelName(ModelUtils.getSimpleRef(p.get$ref()));
@@ -628,6 +628,67 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             return oasType;
         }
         return "models::" + toModelName(oasType);
+    }
+
+    /** Set while a parameter is typed: a query, path, header or cookie value has no {@code null} to send. */
+    private boolean typingParameter;
+
+    /**
+     * A parameter's items are never {@code Option}: {@code null} has no spelling in a query, path, header or cookie
+     * value, and a body parameter is typed from its request body ({@code fromRequestBody}), not here.
+     */
+    @Override
+    public CodegenParameter fromParameter(io.swagger.v3.oas.models.parameters.Parameter parameter,
+                                          Set<String> imports) {
+        typingParameter = true;
+        try {
+            return super.fromParameter(parameter, imports);
+        } finally {
+            typingParameter = false;
+        }
+    }
+
+    /**
+     * The Rust type of a list item or map value: {@code Option<T>} when it can be null ({@link #isNullable}), except
+     * in a parameter.
+     */
+    @SuppressWarnings("rawtypes")
+    private String itemType(Schema items) {
+        String type = getTypeDeclaration(items);
+        return isNullable(items) && !typingParameter ? "Option<" + type + ">" : type;
+    }
+
+    /**
+     * Whether a list item or map value of {@code schema} can be null, as a field of it can: {@code nullable: true}
+     * (3.0), {@code null} among its types or a {@code null} branch of its {@code oneOf}/{@code anyOf} (3.1, where the
+     * normalizer has not already turned these into {@code nullable}), or a reference to a schema that is one of these.
+     */
+    @SuppressWarnings("rawtypes")
+    boolean isNullable(Schema schema) {
+        Schema s = schema;
+        for (int depth = 0; s != null && depth < 16; depth++) {
+            if (Boolean.TRUE.equals(s.getNullable()) || s.getTypes() != null && s.getTypes().contains("null")
+                    || "null".equals(s.getType()) && s.getTypes() == null
+                    || s.getExtensions() != null && Boolean.TRUE.equals(s.getExtensions().get("x-nullable"))
+                    || hasNullBranch(s.getOneOf()) || hasNullBranch(s.getAnyOf())) {
+                return true;
+            }
+            if (s.get$ref() == null || openAPI == null) {
+                return false;
+            }
+            Schema referenced = ModelUtils.getReferencedSchema(openAPI, s);
+            if (referenced == s) {
+                return false;
+            }
+            s = referenced;
+        }
+        return false;
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static boolean hasNullBranch(List<Schema> branches) {
+        return branches != null && branches.stream().anyMatch(b -> b != null && b.get$ref() == null
+                && ("null".equals(b.getType()) || b.getTypes() != null && b.getTypes().equals(Set.of("null"))));
     }
 
     /**
@@ -814,6 +875,9 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             return enumName;
         }
         String inner = inlineEnumType(cp.items, enumName, depth + 1);
+        if (cp.items.isNullable) {
+            inner = "Option<" + inner + ">";
+        }
         if (cp.isMap) {
             return "std::collections::HashMap<String, " + inner + ">";
         }

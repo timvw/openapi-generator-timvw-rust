@@ -438,6 +438,10 @@ final class UnionRules {
     /** {@code Vec<String>} is {@code Strings}, {@code Vec<Vec<i32>>} is {@code IntegerArrays}, {@code Vec<models::X>} is {@code Xs}. */
     private static String itemsName(String vec) {
         String item = vec.substring("Vec<".length(), vec.length() - 1);
+        if (item.startsWith("Option<")) {
+            // nullable items name like the items: Vec<Option<String>> is Strings too
+            item = item.substring("Option<".length(), item.length() - 1);
+        }
         if (item.startsWith("Vec<")) {
             return itemsName(item).replaceAll("s$", "") + "Arrays";
         }
@@ -696,6 +700,10 @@ final class UnionRules {
                     result.put(kind, Accepts.of(Accepts.ANY));
                 }
                 return result;
+            }
+            if (type.startsWith("Option<")) {
+                // a nullable item accepts what its type does (and null, which no variant tells apart)
+                return accepts(type.substring("Option<".length(), type.length() - 1));
             }
             if (type.startsWith("Vec<") || type.startsWith("std::collections::HashSet<")) {
                 String item = type.substring(type.indexOf('<') + 1, type.length() - 1);

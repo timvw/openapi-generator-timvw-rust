@@ -13,6 +13,24 @@ null-only schemas and doc links. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## Unreleased
+
+Additions that change no type of openai-client-base or langfuse-client-base: neither sets `responseFunctions`, so
+neither gets typed error headers.
+
+### Response headers
+
+- With `responseFunctions`, an operation whose error responses (`4xx`, `5xx`, `default`) declare `headers` gets a
+  struct `<Operation>ErrorHeaders`, made as 0.23.0's `<Operation>ResponseHeaders` is: one per operation, the union of the headers of every error
+  status, each an `Option`, a header declared with different types read as `String`. `ResponseContent` gets
+  `typed_headers::<H>()`, so `Err(Error::ResponseError(content))` reads them with
+  `content.typed_headers::<<Operation>ErrorHeaders>()`; `from_headers`/`From<&HeaderMap>` read any header map. The
+  documentation of `<Operation>Error` names the struct. A binary or event-stream operation gets one as well, as its
+  errors are a `ResponseContent` too
+  ([`header.schema.typed-error`](mapping/header.md#headerschematyped-error)). Without the option, or without declared
+  error headers, `ResponseContent` and the API modules render as before; neither client sets the option, so neither
+  changes.
+
 ## 0.23.0
 
 Additions and fixes that change no type of openai-client-base or langfuse-client-base: their Rust is the same
@@ -34,16 +52,6 @@ One rare shape changes type: a union with a branch of any value or `null` next t
   ([`header.schema.typed`](mapping/header.md#headerschematyped)). This only adds code: `ApiResponse<T>` and the
   `_response` functions do not change, and a spec without declared success headers renders as before. Neither
   openai-client-base nor langfuse-client-base sets `responseFunctions`, so neither changes.
-- With `responseFunctions`, an operation whose error responses (`4xx`, `5xx`, `default`) declare `headers` gets a
-  struct `<Operation>ErrorHeaders` too, made the same way: one per operation, the union of the headers of every error
-  status, each an `Option`, a header declared with different types read as `String`. `ResponseContent` gets
-  `typed_headers::<H>()`, so `Err(Error::ResponseError(content))` reads them with
-  `content.typed_headers::<<Operation>ErrorHeaders>()`; `from_headers`/`From<&HeaderMap>` read any header map. The
-  documentation of `<Operation>Error` names the struct. A binary or event-stream operation gets one as well, as its
-  errors are a `ResponseContent` too
-  ([`header.schema.typed-error`](mapping/header.md#headerschematyped-error)). Without the option, or without declared
-  error headers, `ResponseContent` and the API modules render as before; neither client sets the option, so neither
-  changes.
 
 ### Generated docs
 

@@ -150,7 +150,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | the `items` of an array or the `additionalProperties` of a map that can be null: `nullable: true` (3.0); `type: [T, "null"]` or a `oneOf`/`anyOf` with a `null` branch (3.1); or a `$ref` to a schema that is one of these (directly or as the single entry of an `allOf`). At any depth, and for an inline enum too |
-| Rust | `Option<T>` as the item or value: `Vec<Option<T>>`, `HashMap<String, Option<T>>`, `HashMap<String, Option<Vec<Option<T>>>>`, `Vec<Option<<Property>>>` for an inline enum. Free-form values stay `serde_json::Value`, which holds `null` itself (also a 3.1 `anyOf: [{}, {type: "null"}]`). The items of a query, path, header or cookie parameter and of a form field (urlencoded or multipart, a file part included) stay `T`, because `null` cannot be written in those values. A union's array variant of nullable items is named `ArrayOfNullable<Items>` (`ArrayOfNullableStrings`). `validate()` checks the items that are `Some` and skips the ones that are `None` |
+| Rust | `Option<T>` as the item or value: `Vec<Option<T>>`, `HashMap<String, Option<T>>`, `HashMap<String, Option<Vec<Option<T>>>>`, `Vec<Option<<Property>>>` for an inline enum. Free-form values stay `serde_json::Value`, which holds `null` itself (also a 3.1 `anyOf`/`oneOf: [{}, {type: "null"}]` and `type: "null"` items, [`schema.type.null`](#schematypenull)). The items of a query, path, header or cookie parameter and of a form field (urlencoded or multipart, a file part included) stay `T`, because `null` cannot be written in those values. A union's array variant of nullable items is named `ArrayOfNullable<Items>` (`ArrayOfNullableStrings`). `validate()` checks the items that are `Some` and skips the ones that are `None` |
 | Wire | `null` decodes to `None`. `None` serializes as `null` and is never skipped |
 | Tests | [`NullableItemsTest#nullableItemsAndValuesAreOptionsAtAnyDepth`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L54), [`#theNullableFormsOf31AreOptionsToo`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L86), [`#responsesAndBodiesFollowTheRuleParametersAndFormFieldsDoNot`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L98), [`#nullItemsDecodeSerializeAndValidate`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L110) |
 
@@ -178,6 +178,16 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | `type: object` without `properties`, or `{}` |
 | Rust | `serde_json::Value`. `{}` is nullable as well: an optional property is `Option<Option<serde_json::Value>>` |
 | Tests | [`SchemaMappingTest#mapsAndFreeFormObjects`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L132) |
+
+### `schema.type.null`
+
+| | |
+| --- | --- |
+| OpenAPI | a schema of only `null` (OpenAPI 3.1 `type: "null"`, `type: ["null"]`, `enum: [null]`, a single-entry `allOf` of one, a union of only `null` branches), or of any value or `null` (`oneOf` or `anyOf: [{}, {type: "null"}]`: every branch `{}` or `type: "null"`, nothing else next to them; a 3.0 spec written so too). As a property, list item, map value, component, union variant, request body or response. A `type: "null"` branch of a union with other branches, or a `$ref` branch to a component of only `null`, makes that union nullable instead ([`schema.oneOf.null-branch`](#schemaoneofnull-branch)). A union with a branch of any value or `null` next to other branches (`oneOf: [{$ref: Obj}, {anyOf: [{}, {type: "null"}]}]`, with nothing else next to the union) holds any value: it is `{}` too |
+| Rust | `serde_json::Value`, as [`{}`](#schematypefree-form-object): nullable, so an optional property is `Option<Option<serde_json::Value>>` and a required one `Option<serde_json::Value>`; a list item or map value is `serde_json::Value` without an `Option` (it holds `null`, `Value::Null`); a component is no model of its own, its references are `serde_json::Value`. A `type: "null"` schema is not restricted to `null` in Rust: the type holds any value. A query, path, header or cookie parameter or a form field of only `null` (or a list of it) fails generation, naming it: it has no `null` to send. A form field of any value or `null` is `serde_json::Value`, sent as its JSON text ([`requestBody.content.form`](request-body.md#requestbodycontentform)) |
+| Wire | `null` decodes to `Value::Null` (a property to `Some(None)`, or `None` when required) and is written back as `null`; any other value decodes to that value |
+| Options | always; before, these referenced models that were never written (`models::Null`, `models::OneOfLessThanGreaterThan`), which did not compile, and a component of `oneOf: [{}, {type: "null"}]` was an empty struct, which `null` did not decode to. A union of an object and a branch of any value or `null` (`anyOf`) was an untagged enum of the object and `serde_json::Value`; it is `serde_json::Value`, which decodes the same values |
+| Tests | [`NullShapesTest#nullAndAnyOrNullAreJsonValuesEverywhere`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L64), [`#nullAndValuesRoundTrip`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L216), [`#aParameterOfOnlyNullFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L120), [`#everyParameterOfOnlyNullFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L146), [`#aFormFieldOfOnlyNullFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L126), [`#aFormFieldOfOnlyNullBehindAllOfFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L171) |
 
 ### `schema.readOnly`
 
@@ -460,7 +470,7 @@ object kind decides. Two variants that accept the same values decode to whicheve
 
 | | |
 | --- | --- |
-| OpenAPI | an `anyOf` with no typed branch (`anyOf: [{}, {type: null}]`) |
+| OpenAPI | an `anyOf` with no typed branch (`anyOf: [{}, {}]`; `anyOf: [{}, {type: null}]` is [`schema.type.null`](#schematypenull)) |
 | Rust | `serde_json::Value` |
 | Options | always |
 | Tests | [`ModelUnionsTest#aVariantHoldingAnUntypedAnyOfHoldsJsonValues`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L266) |

@@ -25,12 +25,12 @@ Method | HTTP request | Description
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------{{/-last}}{{/allParams}}
 {{#allParams}}
-**{{{paramName}}}** | {{^required}}Option<{{/required}}{{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{#isPrimitiveType}}**{{{dataType}}}**{{/isPrimitiveType}}{{^isPrimitiveType}}{{#complexType}}[**{{{dataType}}}**]({{#lambda.pascalcase}}{{{complexType}}}{{/lambda.pascalcase}}.md){{/complexType}}{{^complexType}}[**{{{dataType}}}**]({{#lambda.pascalcase}}{{{dataType}}}{{/lambda.pascalcase}}.md){{/complexType}}{{/isPrimitiveType}}{{^required}}>{{/required}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}} | {{{description}}}{{#isInnerEnum}} (enum: {{#allowableValues}}{{#values}}{{{.}}}{{^-last}}, {{/-last}}{{/values}}{{/allowableValues}}){{/isInnerEnum}} | {{#required}}[required]{{/required}} |{{#defaultValue}}[default to {{{.}}}]{{/defaultValue}}
+**{{{paramName}}}** | {{^required}}Option<{{/required}}{{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{#vendorExtensions.x-doc-link}}[**{{{dataType}}}**]({{{vendorExtensions.x-doc-link}}}){{/vendorExtensions.x-doc-link}}{{^vendorExtensions.x-doc-link}}**{{{dataType}}}**{{/vendorExtensions.x-doc-link}}{{^required}}>{{/required}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}} | {{{description}}}{{#isInnerEnum}} (enum: {{#allowableValues}}{{#values}}{{{.}}}{{^-last}}, {{/-last}}{{/values}}{{/allowableValues}}){{/isInnerEnum}} | {{#required}}[required]{{/required}} |{{#defaultValue}}[default to {{{.}}}]{{/defaultValue}}
 {{/allParams}}
 
 ### Return type
 
-{{#returnType}}{{#returnTypeIsPrimitive}}**{{{returnType}}}**{{/returnTypeIsPrimitive}}{{^returnTypeIsPrimitive}}[**{{{returnType}}}**]({{{returnBaseType}}}.md){{/returnTypeIsPrimitive}}{{/returnType}}{{^returnType}} (empty response body){{/returnType}}
+{{#returnType}}{{#vendorExtensions.x-doc-return-link}}[**{{{returnType}}}**]({{{vendorExtensions.x-doc-return-link}}}){{/vendorExtensions.x-doc-return-link}}{{^vendorExtensions.x-doc-return-link}}**{{{returnType}}}**{{/vendorExtensions.x-doc-return-link}}{{/returnType}}{{^returnType}} (empty response body){{/returnType}}
 
 ### Authorization
 

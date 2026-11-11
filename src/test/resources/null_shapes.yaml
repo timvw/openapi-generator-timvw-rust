@@ -1,0 +1,213 @@
+openapi: 3.1.0
+info:
+  title: null shapes
+  version: '1'
+paths:
+  /things:
+    get:
+      operationId: getThings
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            oneOf:
+              - {}
+              - type: 'null'
+        - name: filters
+          in: query
+          schema:
+            type: array
+            items:
+              anyOf:
+                - {}
+                - type: 'null'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Holder'
+    post:
+      operationId: postThings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - {}
+                - type: 'null'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: 'null'
+  /form:
+    post:
+      operationId: postForm
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                anything:
+                  oneOf:
+                    - {}
+                    - type: 'null'
+                count:
+                  type: integer
+      responses:
+        '204':
+          description: ok
+  /upload:
+    post:
+      operationId: upload
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                meta:
+                  anyOf:
+                    - {}
+                    - type: 'null'
+      responses:
+        '204':
+          description: ok
+components:
+  parameters:
+    UnusedNullParam:
+      name: unused
+      in: query
+      schema:
+        $ref: '#/components/schemas/OnlyNull'
+  schemas:
+    Holder:
+      type: object
+      required: [any_req, null_req, nulls_req]
+      properties:
+        any_opt:
+          oneOf:
+            - {}
+            - type: 'null'
+        any_req:
+          oneOf:
+            - {}
+            - type: 'null'
+        any_items:
+          type: array
+          items:
+            oneOf:
+              - {}
+              - type: 'null'
+        any_values:
+          type: object
+          additionalProperties:
+            oneOf:
+              - {}
+              - type: 'null'
+        nulls:
+          type: array
+          items:
+            type: 'null'
+        nulls_req:
+          type: array
+          items:
+            type: 'null'
+        null_values:
+          type: object
+          additionalProperties:
+            type: 'null'
+        null_opt:
+          type: 'null'
+        null_req:
+          type: 'null'
+    AnyOrNull:
+      oneOf:
+        - {}
+        - type: 'null'
+    OnlyNull:
+      type: 'null'
+    AnyOrNullRef:
+      anyOf:
+        - {}
+        - type: 'null'
+    Refs:
+      type: object
+      properties:
+        any:
+          $ref: '#/components/schemas/AnyOrNull'
+        null_only:
+          $ref: '#/components/schemas/OnlyNull'
+        nullable_any:
+          type: [object, 'null']
+        list_of_any_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnyOrNullRef'
+    Obj:
+      type: object
+      properties:
+        a:
+          type: string
+    NestedAny:
+      oneOf:
+        - $ref: '#/components/schemas/Obj'
+        - anyOf:
+            - {}
+            - type: 'null'
+    TextOrNullRef:
+      type: object
+      properties:
+        value:
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/OnlyNull'
+    EnumNull:
+      enum: [null]
+    Wrapped:
+      type: object
+      required: [all_null]
+      properties:
+        all_null:
+          allOf:
+            - type: 'null'
+        enum_null:
+          enum: [null]
+        nested_any:
+          oneOf:
+            - type: object
+              properties:
+                a:
+                  type: string
+            - anyOf:
+                - {}
+                - type: 'null'
+        enum_ref:
+          $ref: '#/components/schemas/EnumNull'
+        nested_ref:
+          oneOf:
+            - $ref: '#/components/schemas/Obj'
+            - anyOf:
+                - {}
+                - type: 'null'
+        nested_component:
+          $ref: '#/components/schemas/NestedAny'
+    Uni:
+      oneOf:
+        - type: string
+        - type: array
+          items:
+            type: 'null'
+        - type: array
+          items:
+            oneOf:
+              - {}
+              - type: 'null'

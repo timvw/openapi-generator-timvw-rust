@@ -14,6 +14,10 @@ client repositories' scripts.
 
 ## Unreleased
 
+Additions and fixes that change no type of openai-client-base or langfuse-client-base: their Rust is the same
+(neither sets `responseFunctions`, so neither gets typed response headers), and only the generated Markdown under
+`docs/` changes.
+
 ### Response headers
 
 - With `responseFunctions`, an operation whose success responses declare `headers` gets a struct
@@ -27,6 +31,36 @@ client repositories' scripts.
   ([`header.schema.typed`](mapping/header.md#headerschematyped)). This only adds code: `ApiResponse<T>` and the
   `_response` functions do not change, and a spec without declared success headers renders as before. Neither
   openai-client-base nor langfuse-client-base sets `responseFunctions`, so neither changes.
+
+### Generated docs
+
+- A type in the generated Markdown (`docs/<Model>.md`, `docs/<Tag>Api.md`) links only to the doc of the one model it
+  names ([`components.schemas.docs`](mapping/components.md#componentsschemasdocs)): `Vec<models::Pet>` and
+  `HashMap<String, Vec<models::Kind>>` to `Pet.md` and `Kind.md`, and a webhook's types too. A type that names no
+  model (`String`, `Vec<String>`, `std::path::PathBuf`, `serde_json::Value`, an inline enum) has no link. The docs
+  linked files that do not exist: `Vec.md`, `String.md`, `std::path::PathBuf.md`, `Models__IncludeEnum.md`,
+  `AnyOf.md`, the schema name of an inline response (`deleteEval_200_response.md`) or a name in another case
+  (`LiveWebRTCTransport.md` for `LiveWebRtcTransport.md`, which only a case-insensitive file system finds). In
+  openai-client-base 188 of 13509 links were broken, in langfuse-client-base 32 of 2677; none are now. The docs
+  show a property's type once every rule has applied: `McpCallItemResource`'s `output` and `error` read
+  `serde_json::Value`, as in the Rust, where they read `models::AnyOfLessThanGreaterThan`.
+
+### Models and parameters
+
+- A schema of only `null` (`type: 'null'`) or of any value or `null` (`oneOf`/`anyOf: [{}, {type: 'null'}]`) is
+  `serde_json::Value`, as `{}` is, as a property, list item, map value, component, union variant, request body,
+  response and form field ([`schema.type.null`](mapping/schema.md#schematypenull)). They referenced models that
+  were never written (`models::Null`, `models::OneOfLessThanGreaterThan`) and did not compile, and a component of
+  `oneOf: [{}, {type: 'null'}]` was an empty struct, which `null` did not decode to.
+  `enum: [null]` and a single-entry `allOf` of `type: 'null'` are only `null` too, and a `$ref` branch to a
+  component of only `null` makes its union nullable. A union with a branch of any value or `null` next to other
+  branches (`oneOf: [{$ref: Obj}, {anyOf: [{}, {type: 'null'}]}]`) is `serde_json::Value`: it was an untagged enum of
+  `Obj` and `serde_json::Value`, which decoded the same values. Neither client has such a union.
+- A query, path, header or cookie parameter or a form field of only `null` fails generation, naming it: it has no
+  `null` to send ([`parameter.schema.null`](mapping/parameter.md#parameterschemanull)), also through a `$ref`, a
+  single-entry `allOf`, a list or a map; only what an operation uses is checked. It did not compile before.
+- A urlencoded or multipart field of any value (`{}`) is `serde_json::Value`, sent as its JSON text; it was
+  `models::serde_json::Value`, which did not compile.
 
 ## 0.22.0 (breaking)
 

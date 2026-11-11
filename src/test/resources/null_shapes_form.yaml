@@ -1,0 +1,25 @@
+openapi: 3.1.0
+info:
+  title: a form field of only null
+  version: '1'
+paths:
+  /form:
+    post:
+      operationId: postForm
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Form'
+      responses:
+        '204':
+          description: ok
+components:
+  schemas:
+    Form:
+      type: object
+      properties:
+        name:
+          type: string
+        none:
+          type: 'null'

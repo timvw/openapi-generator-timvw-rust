@@ -11,6 +11,7 @@ import org.openapitools.codegen.SupportingFile;
 import org.openapitools.codegen.model.ModelMap;
 import org.openapitools.codegen.model.ModelsMap;
 import org.openapitools.codegen.model.OperationsMap;
+import org.openapitools.codegen.model.WebhooksMap;
 import org.openapitools.codegen.InlineModelResolverAccess;
 import org.openapitools.codegen.CliOption;
 import org.openapitools.codegen.CodegenConstants;
@@ -521,13 +522,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
         return mdl;
     }
 
-    /**
-     * Types a property whose schema is a composed schema without typed branches ({@code anyOf: [{}, null]}) as
-     * {@code serde_json::Value}. The base generator derives the model name {@code AnyOfLessThanGreaterThan} from
-     * {@code anyOf<>} and references it, but never writes it. The property keeps its other flags, so a required
-     * nullable field stays {@code Option<Box<serde_json::Value>>} as before. Every property list of the model holds
-     * its own copies, so all of them are visited.
-     */
+    /** The models that get a doc ({@code docs/<Model>.md}), known once the models are processed. */
+    private final Set<String> documentedModels = new HashSet<>();
+
     /** Marks every model property with {@link BoxRules#BOX} and every model with {@link DefaultRules#DERIVE_DEFAULT}. */
     @Override
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
@@ -578,6 +575,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
         DefaultRules.mark(objs);
         Imports.markModels(objs);
+        documentedModels.addAll(DocLinks.markModels(objs));
         return objs;
     }
 
@@ -634,6 +632,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
     }
 
+    /**
+     * Types a property whose schema is a composed schema without typed branches ({@code anyOf: [{}, {}]}; a
+     * {@code [{}, null]} one is already {@code {}}, see {@link NullSchemas}) as {@code serde_json::Value}. The base generator derives the model name {@code AnyOfLessThanGreaterThan} from
+     * {@code anyOf<>} and references it, but never writes it. The property keeps its other flags, so a required
+     * nullable field stays {@code Option<Box<serde_json::Value>>} as before. Every property list of the model holds
+     * its own copies, so all of them are visited.
+     */
     private static boolean retypeUntypedComposed(CodegenProperty property) {
         if (property.dataType == null || !property.dataType.contains(UNTYPED_COMPOSED_TYPE)) {
             return false;
@@ -840,6 +845,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
         // properties of the same object (names inherited through allOf). The result is then parsed again as the
         // CLI parses its input and takes the place of the document the generator holds.
         OpenAPI working = getInputSpec() != null ? parseFile(getInputSpec(), false) : reparse(openAPI, false);
+        for (String where : NullSchemas.rewrite(working)) {
+            LOGGER.info("{}: read a schema of only null, or of any value or null, as any value at {}",
+                    GENERATOR_NAME, where);
+        }
         applySpecRules(working);
         String json = serialize(working);
         preprocessedSpecJson = json;
@@ -1542,6 +1551,18 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
     }
 
+    /** A webhook's parameter and return types link to the models' docs as an operation's do. */
+    @Override
+    public WebhooksMap postProcessWebhooksWithModels(WebhooksMap objs, List<ModelMap> allModels) {
+        objs = super.postProcessWebhooksWithModels(objs, allModels);
+        if (objs.getWebhooks() != null && objs.getWebhooks().getOperation() != null) {
+            Set<String> documented = new HashSet<>(documentedModels);
+            documented.addAll(DocLinks.documented(allModels));
+            DocLinks.markOperations(objs.getWebhooks().getOperation(), documented);
+        }
+        return objs;
+    }
+
     /** {@code default_api} re-exports the webhook module when {@code webhookModuleReexport} is set. */
     @Override
     public OperationsMap postProcessOperationsWithModels(OperationsMap objs, List<ModelMap> allModels) {
@@ -1615,6 +1636,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
             addResponseFunctions(objs.getOperations().getOperation());
         }
         Imports.markApi(objs, multipartHelper, isSupportMultipleResponses());
+        if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
+            // the webhooks' operations are not given the models: the ones documented with the models count too
+            Set<String> documented = new HashSet<>(documentedModels);
+            documented.addAll(DocLinks.documented(allModels));
+            DocLinks.markOperations(objs.getOperations().getOperation(), documented);
+        }
         if (webhookModuleReexport && objs.getOperations() != null
                 && toApiName("default").equals(objs.getOperations().getClassname())) {
             objs.put(WEBHOOK_REEXPORT_KEY, toApiFilename(webhookModule));

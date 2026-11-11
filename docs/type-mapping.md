@@ -51,6 +51,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | `additionalProperties: <schema>` | `std::collections::HashMap<String, T>` | |
 | `additionalProperties: true` | `HashMap<String, serde_json::Value>` | |
 | `type: object` without properties, or `{}` | `serde_json::Value` (`{}` is nullable: `Option<Option<serde_json::Value>>`) | |
+| only `null` (`type: null`), or any value or `null` (`oneOf`/`anyOf: [{}, {type: null}]`) | `serde_json::Value`, as `{}`; a parameter or form field of only `null` fails generation | |
 | `readOnly`, `writeOnly` | ignored: the field is there in both directions | |
 | `default` | not applied; noted in the field's docs (``Defaults to `false`.``) | |
 | `deprecated: true` | no marker | `deprecatedAttributes` adds `#[deprecated]` |
@@ -95,7 +96,7 @@ These are rules of the mapping now: [mapping/schema.md](mapping/schema.md) and
 | helpers on a union | `Display` (a string or enum variant prints itself, others their JSON); with a string variant `From<String>`, `From<&str>`, `new_text` | |
 | `allOf` of one union | that union's variants | |
 | an inline union of a property whose branches are inline and at least one is an object or array | moved to a component `<Schema><Property>` | always |
-| `anyOf` with no typed branch (`anyOf: [{}, {type: null}]`) | `serde_json::Value` | always |
+| `anyOf` with no typed branch (`anyOf: [{}, {}]`) | `serde_json::Value` | always |
 
 ### Composition and names
 

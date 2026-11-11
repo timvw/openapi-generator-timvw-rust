@@ -269,7 +269,8 @@ if let Some(request_id) = &headers.x_request_id {
   `useChrono`), an enum component (`models::Status`), or a `Vec` of those for an array, sent as a comma-separated
   list. An inline enum, and a schema without a text form (an object, a map), is the header's text.
 - **Lenient.** A header that is missing, or whose value does not parse as the field's type, is `None`; reading the
-  headers never fails. Names are matched ignoring case.
+  headers never fails. Names are matched ignoring case. A value an enum does not list is `None`, except for an
+  enum a response body can hold too, which is open: `Some(Status::Unknown)`. A `String` is the value trimmed.
 - **Every success.** The struct has the headers of all success statuses (`200`, `201`, `2XX`, ...): one that only
   `201` declares is `None` in a `200`. A header two statuses declare with different types is a `String`.
 - **Not typed:** the hop-by-hop headers (`Connection`, `Keep-Alive`, `Proxy-Connection`, `TE`, `Trailer`,

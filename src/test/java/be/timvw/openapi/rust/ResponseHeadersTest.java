@@ -20,7 +20,6 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -74,7 +73,7 @@ class ResponseHeadersTest {
     void eachDeclaredHeaderIsAnOptionOfItsParameterType() throws IOException {
         String s = struct(api(on), "CreateImageResponseHeaders");
         for (String field : new String[] {
-                "/// `x-ratelimit-remaining-images`: The number of images remaining in the rate-limit window.\n"
+                "/// `X-RateLimit-Remaining-Images`: The number of images remaining in the rate-limit window.\n"
                         + "    pub x_ratelimit_remaining_images: Option<i32>,",
                 "pub x_ratelimit_reset_images: Option<String>,",
                 "pub x_cost: Option<f64>,",
@@ -85,13 +84,13 @@ class ResponseHeadersTest {
                 "pub x_status: Option<models::Status>,",
                 "pub x_level: Option<models::Level>,",
                 "pub x_mode: Option<String>,",
-                "/// `x-ids`, a comma-separated list\n    pub x_ids: Option<Vec<i64>>,",
+                "/// `X-Ids`, a comma-separated list\n    pub x_ids: Option<Vec<i64>>,",
                 "pub x_tags: Option<Vec<String>>,",
                 "pub x_statuses: Option<Vec<models::Status>>,",
                 "pub x_object: Option<String>,",
                 "pub x_content: Option<i64>,",
                 "pub r#type: Option<String>,",
-                "/// `x-shared`: A header from the components.\n    pub x_shared: Option<i64>,"}) {
+                "/// `X-Shared`: A header from the components.\n    pub x_shared: Option<i64>,"}) {
             assertContains(s, field);
         }
         assertContains(api(on), "#[derive(Clone, Debug, Default, PartialEq)]\npub struct CreateImageResponseHeaders {");
@@ -136,7 +135,7 @@ class ResponseHeadersTest {
 
     @Test
     void referencedResponsesAndHeadersAreResolved() throws IOException {
-        assertContains(struct(api(on), "GetImageResponseHeaders"), "pub etag: Option<String>,");
+        assertContains(struct(api(on), "GetImageResponseHeaders"), "/// `ETag`\n    pub etag: Option<String>,");
         assertContains(struct(api(on), "DeleteImageResponseHeaders"), "pub x_deleted_count: Option<i64>,");
     }
 
@@ -216,10 +215,23 @@ class ResponseHeadersTest {
         assertTrue(text.contains("pub async fn transcribe_text_response("), text);
     }
 
+    /** Generates {@code spec} with {@code responseFunctions} (and {@code options}) and returns default_api.rs. */
+    private static String generated(Path dir, String spec, String... options) throws IOException {
+        Files.createDirectories(dir);
+        Path file = dir.resolve("spec.yaml");
+        Files.writeString(file, spec);
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put(TimvwRustCodegen.RESPONSE_FUNCTIONS, "true");
+        for (String option : options) {
+            props.put(option.substring(0, option.indexOf('=')), option.substring(option.indexOf('=') + 1));
+        }
+        generate(file.toString(), dir.resolve("out"), props);
+        return Files.readString(dir.resolve("out/src/apis/default_api.rs"));
+    }
+
     @Test
-    void twoHeadersWithTheSameFieldFailGeneration(@TempDir Path dir) throws IOException {
-        Path spec = dir.resolve("clash.yaml");
-        Files.writeString(spec, """
+    void twoHeadersWithTheSameFieldAreNumbered(@TempDir Path dir) throws IOException {
+        String text = generated(dir, """
                 openapi: 3.0.3
                 info: {title: clash, version: 1.0.0}
                 paths:
@@ -231,18 +243,126 @@ class ResponseHeadersTest {
                           description: ok
                           headers:
                             x-foo: {schema: {type: string}}
+                            x_foo: {schema: {type: integer}}
+                  /b:
+                    get:
+                      operationId: getB
+                      responses:
+                        "200":
+                          description: a file, no struct
+                          headers:
+                            x-foo: {schema: {type: string}}
                             x_foo: {schema: {type: string}}
+                          content:
+                            application/octet-stream: {schema: {type: string, format: binary}}
                 """);
-        Map<String, Object> props = new LinkedHashMap<>();
-        props.put(TimvwRustCodegen.RESPONSE_FUNCTIONS, "true");
-        RuntimeException e = assertThrows(RuntimeException.class,
-                () -> generate(spec.toString(), dir.resolve("out"), props));
-        String messages = "";
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            messages += t.getMessage() + "\n";
-        }
-        assertTrue(messages.contains("responseFunctions: get_a: the response headers 'x-foo' and 'x_foo' both become "
-                + "the field x_foo"), messages);
+        String s = struct(text, "GetAResponseHeaders");
+        assertContains(s, "/// `x-foo`\n    pub x_foo: Option<String>,");
+        assertContains(s, "/// `x_foo`\n    pub x_foo_2: Option<i64>,");
+        assertContains(text, "x_foo_2: super::api_response::header_value(headers, \"x_foo\",");
+        assertFalse(text.contains("GetBResponseHeaders"), text);
+    }
+
+    @Test
+    void aNameThatIsNotAnHttpTokenGetsNoField(@TempDir Path dir) throws IOException {
+        String text = generated(dir, """
+                openapi: 3.0.3
+                info: {title: names, version: 1.0.0}
+                paths:
+                  /a:
+                    get:
+                      operationId: getA
+                      responses:
+                        "204":
+                          description: ok
+                          headers:
+                            "x bad": {schema: {type: string}}
+                            "x-caf\u00e9": {schema: {type: string}}
+                            "x-good": {schema: {type: string}}
+                """);
+        String s = struct(text, "GetAResponseHeaders");
+        assertContains(s, "pub x_good: Option<String>,");
+        assertFalse(s.contains("x_bad"), s);
+        assertFalse(s.contains("caf"), s);
+    }
+
+    @Test
+    void withoutChronoDatesAreText(@TempDir Path dir) throws IOException {
+        String text = generated(dir, """
+                openapi: 3.0.3
+                info: {title: dates, version: 1.0.0}
+                paths:
+                  /a:
+                    get:
+                      operationId: getA
+                      responses:
+                        "204":
+                          description: ok
+                          headers:
+                            X-At: {schema: {type: string, format: date-time}}
+                            X-Day: {schema: {type: string, format: date}}
+                """, "useChrono=false");
+        String s = struct(text, "GetAResponseHeaders");
+        assertContains(s, "pub x_at: Option<String>,");
+        assertContains(s, "pub x_day: Option<String>,");
+        assertFalse(Files.readString(dir.resolve("out/Cargo.toml")).contains("chrono"));
+    }
+
+    @Test
+    void openApi31TypeArraysTakeTheirNonNullType(@TempDir Path dir) throws IOException {
+        String text = generated(dir, """
+                openapi: 3.1.0
+                info: {title: types, version: 1.0.0}
+                paths:
+                  /a:
+                    get:
+                      operationId: getA
+                      responses:
+                        "204":
+                          description: ok
+                          headers:
+                            X-Count: {schema: {type: [integer, "null"]}}
+                            X-Ids: {schema: {type: [array, "null"], items: {type: integer}}}
+                """);
+        String s = struct(text, "GetAResponseHeaders");
+        assertContains(s, "pub x_count: Option<i64>,");
+        assertContains(s, "pub x_ids: Option<Vec<i64>>,");
+    }
+
+    @Test
+    void onlyTheHelpersInUseAreWritten(@TempDir Path dir) throws IOException {
+        generated(dir.resolve("list"), """
+                openapi: 3.0.3
+                info: {title: lists, version: 1.0.0}
+                paths:
+                  /a:
+                    get:
+                      operationId: getA
+                      responses:
+                        "204":
+                          description: ok
+                          headers:
+                            X-Ids: {schema: {type: array, items: {type: integer}}}
+                """);
+        String lists = Files.readString(dir.resolve("list/out/src/apis/api_response.rs"));
+        assertContains(lists, "pub(crate) fn header_list<T>(");
+        assertFalse(lists.contains("fn header_value"), lists);
+        generated(dir.resolve("value"), """
+                openapi: 3.0.3
+                info: {title: values, version: 1.0.0}
+                paths:
+                  /a:
+                    get:
+                      operationId: getA
+                      responses:
+                        "204":
+                          description: ok
+                          headers:
+                            X-Id: {schema: {type: integer}}
+                """);
+        String values = Files.readString(dir.resolve("value/out/src/apis/api_response.rs"));
+        assertContains(values, "pub(crate) fn header_value<T>(");
+        assertFalse(values.contains("fn header_list"), values);
     }
 
     /**

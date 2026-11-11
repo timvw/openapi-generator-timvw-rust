@@ -22,7 +22,8 @@ client repositories' scripts.
   comma-separated arrays of those). `response.typed_headers::<<Operation>ResponseHeaders>()` reads it from the
   `ApiResponse` of a `_response` function, and `from_headers`/`From<&HeaderMap>` from any header map. A header that is
   missing or does not parse is `None`; names are matched ignoring case. The struct holds the headers of every success
-  status; hop-by-hop headers (`Transfer-Encoding`, ...) and `Content-Type` get no field
+  status; hop-by-hop headers (`Transfer-Encoding`, ...), `Content-Type` and names that are not HTTP tokens get no
+  field
   ([`header.schema.typed`](mapping/header.md#headerschematyped)). This only adds code: `ApiResponse<T>` and the
   `_response` functions do not change, and a spec without declared success headers renders as before. Neither
   openai-client-base nor langfuse-client-base sets `responseFunctions`, so neither changes.

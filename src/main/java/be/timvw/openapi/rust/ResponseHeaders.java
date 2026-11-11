@@ -14,12 +14,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 /**
  * The typed headers of an operation's successes ({@code responseFunctions}): the headers its success responses
  * declare, as a struct {@code <Operation>ResponseHeaders} in the API module with an {@code Option} field per header
- * ({@code response.headers.typed}).
+ * ({@code header.schema.typed}).
  *
  * <p>The successes are the {@code 2xx} and {@code 3xx} responses (exact codes and ranges); an operation without any
  * takes its {@code default} response, as openapi-generator does for the return type. The struct holds the union of
@@ -31,7 +33,8 @@ import java.util.function.Function;
  * {@code uuid}, {@code date}/{@code date-time} (chrono, with {@code useChrono}), enum components and arrays of those
  * (the simple style, comma-separated). What has no text form (an object, a map, a union, a free-form value, a nested
  * array) is the header's text. Hop-by-hop headers ({@link #SKIPPED}) and {@code Content-Type}, which the
- * specification says to ignore, get no field.</p>
+ * specification says to ignore, get no field, and neither does a name that is not an HTTP token (warned). Two headers
+ * whose field names are the same get {@code _2}, {@code _3}, ... (warned) rather than failing generation.</p>
  */
 final class ResponseHeaders {
 
@@ -51,26 +54,29 @@ final class ResponseHeaders {
 
     private static final Set<String> PARSED = Set.of("i32", "i64", "f32", "f64", "bool", "uuid::Uuid",
             "chrono::NaiveDate");
+    /** An HTTP field name (RFC 9110 {@code token}); any other name cannot be looked up in a header map. */
+    private static final Pattern TOKEN = Pattern.compile("[!#$%&'*+.^_`|~0-9A-Za-z-]+");
     private static final String DATE_TIME = "chrono::DateTime<chrono::FixedOffset>";
 
     private ResponseHeaders() {
     }
 
     /** One field of the struct. */
-    record Field(String header, String type, String parse, boolean list, List<String> doc) {
+    record Field(String header, String spelling, String type, String parse, boolean list, List<String> doc) {
     }
 
     /**
      * The struct of {@code operation}'s success headers, or {@code null} when its successes declare none (or only
      * skipped ones).
      *
-     * @param method    the operation's method name, for errors
+     * @param method    the operation's method name, for warnings
      * @param typeOf    the Rust type of a schema, as a parameter of it is typed
      * @param toVarName the Rust field name of a header name
+     * @param warn      where a skipped header or a renamed field is reported
      */
     @SuppressWarnings("rawtypes")
     static Map<String, Object> plan(OpenAPI openAPI, Operation operation, String method,
-            Function<Schema, String> typeOf, Function<String, String> toVarName) {
+            Function<Schema, String> typeOf, Function<String, String> toVarName, Consumer<String> warn) {
         if (operation.getResponses() == null) {
             return null;
         }
@@ -96,13 +102,19 @@ final class ResponseHeaders {
                 if (SKIPPED.contains(name)) {
                     continue;
                 }
+                if (!TOKEN.matcher(name).matches()) {
+                    warn.accept(String.format("%s: the %s response header '%s' is not a valid HTTP header name; it "
+                            + "gets no typed field", method, code, e.getKey()));
+                    continue;
+                }
                 any = true;
-                Field field = field(openAPI, name, header(openAPI, e.getValue()), typeOf);
+                Field field = field(openAPI, name, e.getKey(), header(openAPI, e.getValue()), typeOf);
                 Field before = fields.get(name);
                 if (before == null) {
                     fields.put(name, field);
                 } else if (!before.type().equals(field.type()) || before.list() != field.list()) {
-                    fields.put(name, new Field(name, "String", "Some(v.to_owned())", false, before.doc()));
+                    fields.put(name, new Field(name, before.spelling(), "String", "Some(v.to_owned())", false,
+                            before.doc()));
                 }
             }
             if (any) {
@@ -115,17 +127,19 @@ final class ResponseHeaders {
         List<Map<String, Object>> rendered = new ArrayList<>();
         Map<String, String> names = new LinkedHashMap<>();
         for (Field f : fields.values()) {
-            String ident = toVarName.apply(f.header());
-            String other = names.putIfAbsent(ident, f.header());
-            if (other != null) {
-                throw new IllegalArgumentException(String.format("%s: %s: %s: the response headers '%s' and '%s' "
-                                + "both become the field %s of its typed headers; rename one in the spec or map one "
-                                + "with --name-mappings", TimvwRustCodegen.GENERATOR_NAME,
-                        TimvwRustCodegen.RESPONSE_FUNCTIONS, method, other, f.header(), ident));
+            String base = toVarName.apply(f.header());
+            String ident = base;
+            for (int n = 2; names.containsKey(ident); n++) {
+                ident = base.startsWith("r#") ? base.substring(2) + "_" + n : base + "_" + n;
             }
+            if (!ident.equals(base)) {
+                warn.accept(String.format("%s: the response headers '%s' and '%s' both become the field %s; '%s' is "
+                        + "the field %s", method, names.get(base), f.spelling(), base, f.spelling(), ident));
+            }
+            names.put(ident, f.spelling());
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("field", ident);
-            m.put("header", f.header());
+            m.put("header", f.spelling());
             m.put("literal", f.header().replace("\\", "\\\\").replace("\"", "\\\""));
             m.put("type", f.list() ? "Vec<" + f.type() + ">" : f.type());
             m.put("parse", f.parse());
@@ -160,7 +174,8 @@ final class ResponseHeaders {
     }
 
     @SuppressWarnings("rawtypes")
-    private static Field field(OpenAPI openAPI, String name, Header header, Function<Schema, String> typeOf) {
+    private static Field field(OpenAPI openAPI, String name, String spelling, Header header,
+            Function<Schema, String> typeOf) {
         List<String> doc = new ArrayList<>();
         Schema schema = null;
         if (header != null) {
@@ -174,7 +189,7 @@ final class ResponseHeaders {
             }
         }
         if (schema == null) {
-            return new Field(name, "String", "Some(v.to_owned())", false, doc);
+            return new Field(name, spelling, "String", "Some(v.to_owned())", false, doc);
         }
         String type = typeOf.apply(schema);
         if (type.startsWith("Vec<") && type.endsWith(">")) {
@@ -182,15 +197,15 @@ final class ResponseHeaders {
             String itemType = type.substring(4, type.length() - 1);
             String parse = items == null ? null : scalar(openAPI, itemType, items);
             if (parse != null) {
-                return new Field(name, itemType, parse, true, doc);
+                return new Field(name, spelling, itemType, parse, true, doc);
             }
-            return new Field(name, "String", "Some(v.to_owned())", false, doc);
+            return new Field(name, spelling, "String", "Some(v.to_owned())", false, doc);
         }
         String parse = scalar(openAPI, type, schema);
         if (parse == null) {
-            return new Field(name, "String", "Some(v.to_owned())", false, doc);
+            return new Field(name, spelling, "String", "Some(v.to_owned())", false, doc);
         }
-        return new Field(name, type, parse, false, doc);
+        return new Field(name, spelling, type, parse, false, doc);
     }
 
     /**

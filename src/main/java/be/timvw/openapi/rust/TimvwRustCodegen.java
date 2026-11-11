@@ -181,8 +181,6 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public static final String RESPONSE_FUNCTIONS = "responseFunctions";
     /** Set on an operation with {@link #RESPONSE_FUNCTIONS}: the context its {@code _response} twin renders with. */
     static final String RESPONSE_FUNCTION = "x-rust-response-function";
-    /** Set on an operation with {@link #RESPONSE_FUNCTIONS}: its success headers ({@link ResponseHeaders#plan}). */
-    static final String HEADERS_PLAN = "x-rust-response-headers-plan";
     /** Set when an API module has a {@code <Operation>ResponseHeaders} struct: {@code api_response.rs} has its helpers. */
     static final String TYPED_HEADERS = "x-rust-typed-headers";
     /**
@@ -346,6 +344,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private boolean responseFunctions;
     /** The methods added for an operation, by its own method, which gets its auth methods only after it was grouped. */
     private final Map<CodegenOperation, List<CodegenOperation>> contentVariants = new java.util.IdentityHashMap<>();
+    /** With {@link #RESPONSE_FUNCTIONS}: the spec operation of each method, for its typed headers. */
+    private final Map<CodegenOperation, io.swagger.v3.oas.models.Operation> specOperations =
+            new java.util.IdentityHashMap<>();
     /** The methods per API module ({@code tag#operationId}), to fail on a suffixed name another operation has. */
     private final Map<String, String> methodNames = new HashMap<>();
 
@@ -1325,11 +1326,17 @@ public class TimvwRustCodegen extends RustCodegenBase {
             if (op.vendorExtensions.containsKey(CONTENT_VARIANT)) {
                 continue;
             }
-            @SuppressWarnings("unchecked")
-            Map<String, Object> headers = (Map<String, Object>) op.vendorExtensions.get(HEADERS_PLAN);
             List<CodegenOperation> methods = new ArrayList<>(List.of(op));
             methods.addAll(contentVariants.getOrDefault(op, List.of()));
-            if (headers == null || methods.stream().noneMatch(m -> m.vendorExtensions.containsKey(RESPONSE_FUNCTION))) {
+            io.swagger.v3.oas.models.Operation spec = specOperations.get(op);
+            if (spec == null || methods.stream().noneMatch(m -> m.vendorExtensions.containsKey(RESPONSE_FUNCTION))) {
+                continue;
+            }
+            // Planned only for an operation that gets the struct: nothing else depends on its headers.
+            Map<String, Object> headers = ResponseHeaders.plan(openAPI, spec, op.operationId,
+                    this::getTypeDeclaration, this::toVarName,
+                    msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, RESPONSE_FUNCTIONS, msg));
+            if (headers == null) {
                 continue;
             }
             // One struct per operation, named after it, which its methods' twins share.
@@ -1485,11 +1492,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
         markFormExplode(co, operation);
         if (responseFunctions) {
-            Map<String, Object> headers = ResponseHeaders.plan(openAPI, operation, co.operationId,
-                    this::getTypeDeclaration, this::toVarName);
-            if (headers != null) {
-                co.vendorExtensions.put(HEADERS_PLAN, headers);
-            }
+            specOperations.put(co, operation);
         }
         return co;
     }

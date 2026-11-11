@@ -110,8 +110,7 @@ impl<T> ApiResponse<T> {
 {{#x-rust-typed-headers}}
 
     /// The headers the spec declares for the operation's successes, typed: `H` is the operation's
-    /// `<Operation>ResponseHeaders` struct in its API module (`items_api::GetItemResponseHeaders`), named because
-    /// `T` does not tell the operation. Every field is an `Option`: `None` when the header is missing or does not
+    /// `<Operation>ResponseHeaders` struct in its API module, named because `T` does not tell the operation. Every field is an `Option`: `None` when the header is missing or does not
     /// parse. The same as `H::from(&response.headers)`.
     pub fn typed_headers<H>(&self) -> H
     where

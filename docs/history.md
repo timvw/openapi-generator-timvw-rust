@@ -12,6 +12,21 @@ of [decisions.md](decisions.md); 0.22 fixes types the JSON did not decode to and
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## Unreleased
+
+### Response headers
+
+- With `responseFunctions`, an operation whose success responses declare `headers` gets a struct
+  `<Operation>ResponseHeaders` in its API module, with an `Option` field per declared header, typed as a parameter of
+  its schema is (integers, numbers, booleans, strings, `uuid`, RFC 3339 `date-time`, `date`, enum components, and
+  comma-separated arrays of those). `response.typed_headers::<<Operation>ResponseHeaders>()` reads it from the
+  `ApiResponse` of a `_response` function, and `from_headers`/`From<&HeaderMap>` from any header map. A header that is
+  missing or does not parse is `None`; names are matched ignoring case. The struct holds the headers of every success
+  status; hop-by-hop headers (`Transfer-Encoding`, ...) and `Content-Type` get no field
+  ([`header.schema.typed`](mapping/header.md#headerschematyped)). This only adds code: `ApiResponse<T>` and the
+  `_response` functions do not change, and a spec without declared success headers renders as before. Neither
+  openai-client-base nor langfuse-client-base sets `responseFunctions`, so neither changes.
+
 ## 0.22.0 (breaking)
 
 Fixes to types the JSON does not decode to, and to parameters typed as text. The configuration does not change.

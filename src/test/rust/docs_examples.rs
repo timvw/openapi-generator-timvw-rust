@@ -358,6 +358,22 @@ mod response_functions {
         Ok(())
     }
 
+    async fn typed_headers(configuration: Configuration) -> Result<(), BoxError> {
+        let response = items_api::get_item_response()
+            .configuration(&configuration)
+            .id("42")
+            .call()
+            .await?;
+        let headers = response.typed_headers::<items_api::GetItemResponseHeaders>();
+        if let Some(request_id) = &headers.x_request_id {
+            println!("request {request_id}");
+        }
+        let annotated: items_api::GetItemResponseHeaders = response.typed_headers();
+        let map = reqwest::header::HeaderMap::new();
+        assert_eq!(items_api::GetItemResponseHeaders::from_headers(&map), Default::default());
+        Ok(())
+    }
+
     async fn errors(configuration: Configuration) -> Result<(), Error<items_api::GetItemError>> {
         use my_client::apis::Error;
 

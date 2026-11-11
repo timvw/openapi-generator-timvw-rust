@@ -1,0 +1,240 @@
+openapi: 3.0.3
+info:
+  title: Response headers
+  version: 1.0.0
+paths:
+  /images:
+    post:
+      operationId: createImage
+      tags: [Images]
+      responses:
+        "200":
+          description: the image
+          headers:
+            X-RateLimit-Remaining-Images:
+              description: The number of images remaining in the rate-limit window.
+              schema:
+                type: integer
+                format: int32
+            X-RateLimit-Reset-Images:
+              schema:
+                type: string
+            Retry-After:
+              schema:
+                type: integer
+            X-Cost:
+              schema:
+                type: number
+            X-Cached:
+              schema:
+                type: boolean
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+            Last-Modified-At:
+              schema:
+                type: string
+                format: date-time
+            X-Day:
+              schema:
+                type: string
+                format: date
+            X-Status:
+              schema:
+                $ref: '#/components/schemas/Status'
+            X-Level:
+              schema:
+                $ref: '#/components/schemas/Level'
+            X-Mode:
+              schema:
+                type: string
+                enum: [fast, slow]
+            X-Ids:
+              schema:
+                type: array
+                items:
+                  type: integer
+            X-Tags:
+              schema:
+                type: array
+                items:
+                  type: string
+            X-Statuses:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Status'
+            X-Object:
+              schema:
+                type: object
+                properties:
+                  a:
+                    type: string
+            X-Content:
+              content:
+                text/plain:
+                  schema:
+                    type: integer
+            type:
+              schema:
+                type: string
+            X-Shared:
+              $ref: '#/components/headers/Shared'
+            Transfer-Encoding:
+              schema:
+                type: string
+            Content-Type:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Image'
+        "201":
+          description: created
+          headers:
+            Location:
+              schema:
+                type: string
+            Retry-After:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Image'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+  /images/{id}:
+    get:
+      operationId: getImage
+      tags: [Images]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/ImageWithEtag'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      operationId: deleteImage
+      tags: [Images]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: deleted
+          headers:
+            X-Deleted-Count:
+              schema:
+                type: integer
+  /images/{id}/file:
+    get:
+      operationId: downloadImage
+      tags: [Images]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: the bytes
+          headers:
+            X-Checksum:
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /plain:
+    get:
+      operationId: listImages
+      tags: [Images]
+      responses:
+        "200":
+          description: no declared headers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Image'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+  /hop:
+    get:
+      operationId: hopOnly
+      tags: [Images]
+      responses:
+        "200":
+          description: only skipped headers
+          headers:
+            Transfer-Encoding:
+              schema:
+                type: string
+            Connection:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Image'
+components:
+  headers:
+    Shared:
+      description: A header from the components.
+      schema:
+        type: integer
+  responses:
+    TooManyRequests:
+      description: too many requests
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ImageWithEtag:
+      description: the image
+      headers:
+        ETag:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Image'
+  schemas:
+    Image:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+    Problem:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+    Status:
+      type: string
+      enum: [queued, done]
+    Level:
+      type: integer
+      enum: [1, 2, 3]

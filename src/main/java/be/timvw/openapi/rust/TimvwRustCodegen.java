@@ -181,6 +181,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public static final String RESPONSE_FUNCTIONS = "responseFunctions";
     /** Set on an operation with {@link #RESPONSE_FUNCTIONS}: the context its {@code _response} twin renders with. */
     static final String RESPONSE_FUNCTION = "x-rust-response-function";
+    /** Set on an operation with {@link #RESPONSE_FUNCTIONS}: its success headers ({@link ResponseHeaders#plan}). */
+    static final String HEADERS_PLAN = "x-rust-response-headers-plan";
+    /** Set when an API module has a {@code <Operation>ResponseHeaders} struct: {@code api_response.rs} has its helpers. */
+    static final String TYPED_HEADERS = "x-rust-typed-headers";
     /**
      * Inline enums of parameters and of form or multipart body properties become component enums, so the API function
      * takes the enum instead of {@code &str} (see {@link ExtraRules#typedEnumParameters}).
@@ -1317,6 +1321,34 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     || op.vendorExtensions.containsKey(VARIANT_DOC));
             op.vendorExtensions.put(RESPONSE_FUNCTION, context);
         }
+        for (CodegenOperation op : operations) {
+            if (op.vendorExtensions.containsKey(CONTENT_VARIANT)) {
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> headers = (Map<String, Object>) op.vendorExtensions.get(HEADERS_PLAN);
+            List<CodegenOperation> methods = new ArrayList<>(List.of(op));
+            methods.addAll(contentVariants.getOrDefault(op, List.of()));
+            if (headers == null || methods.stream().noneMatch(m -> m.vendorExtensions.containsKey(RESPONSE_FUNCTION))) {
+                continue;
+            }
+            // One struct per operation, named after it, which its methods' twins share.
+            headers.put("name", op.operationIdCamelCase + "ResponseHeaders");
+            op.vendorExtensions.put(ResponseHeaders.STRUCT, headers);
+            for (CodegenOperation m : methods) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> context = (Map<String, Object>) m.vendorExtensions.get(RESPONSE_FUNCTION);
+                if (context != null) {
+                    context.put("x-rust-response-headers-name", headers.get("name"));
+                }
+            }
+            additionalProperties.put(TYPED_HEADERS, true);
+            for (Object f : (List<?>) headers.get("fields")) {
+                additionalProperties.put(Boolean.TRUE.equals(((Map<?, ?>) f).get("list")) ? TYPED_HEADERS + "-list"
+                        : TYPED_HEADERS + "-value", true);
+            }
+            noteTypes(ResponseHeaders.types(headers));
+        }
     }
 
     /** Fails when a suffixed method takes the name of another method of the same API module. */
@@ -1452,6 +1484,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
         }
         markFormExplode(co, operation);
+        if (responseFunctions) {
+            Map<String, Object> headers = ResponseHeaders.plan(openAPI, operation, co.operationId,
+                    this::getTypeDeclaration, this::toVarName);
+            if (headers != null) {
+                co.vendorExtensions.put(HEADERS_PLAN, headers);
+            }
+        }
         return co;
     }
 

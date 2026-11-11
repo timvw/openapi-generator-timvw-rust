@@ -26,7 +26,7 @@ decision is [decision 1](../decisions.md#1-response-functions-returning-apirespo
 ## When to use it
 
 - **You need a header or the exact status of a success**: a request id (`x-request-id`), rate-limit headers, a
-  `Location`, an `ETag`, or telling `200` from `201`.
+  `Location`, an `ETag`, or telling `200` from `201`. The headers the spec declares are typed.
 - **You read a few fields of a large response**: decode a subset of your own (`json_as`) instead of the generated
   type. On the measured bodies that halves the decode time or better and removes almost every allocation (see
   [performance](#performance)).
@@ -48,7 +48,8 @@ file:
 }
 ```
 
-It adds functions and `src/apis/api_response.rs`; nothing that exists changes, so turning it on is not a breaking
+It adds functions, `src/apis/api_response.rs` and, for the operations whose successes declare headers, their
+[typed headers](#declared-headers-typed); nothing that exists changes, so turning it on is not a breaking
 change. Turning it off again removes the functions and the `mod` line, but `src/apis/api_response.rs` stays on disk
 until it is deleted (openapi-generator does not remove files it no longer writes), unless the client's generation
 script cleans the output directory first.
@@ -220,7 +221,7 @@ let item: models::Item = response.json()?;
 ```
 
 `headers` is a `reqwest::header::HeaderMap`: lookups ignore case, and a header can occur more than once
-(`get_all`). The headers a spec declares for a response are not typed; read them by name.
+(`get_all`). The headers the spec declares for a success are also [typed](#declared-headers-typed).
 
 For a success without content, the twin is how you get its headers at all:
 
@@ -233,6 +234,55 @@ let deleted = items_api::delete_item_response()
 assert_eq!(deleted.status, reqwest::StatusCode::NO_CONTENT);
 let location = deleted.headers.get(reqwest::header::LOCATION);
 ```
+
+### Declared headers, typed
+
+When the success responses of an operation declare `headers`, its API module has a struct
+`<Operation>ResponseHeaders` with an `Option` field per header. `get_item`'s `200` declares `x-request-id`, so
+`items_api` has
+
+<!-- not compiled: a generated struct -->
+```rust
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GetItemResponseHeaders {
+    /// `x-request-id`
+    pub x_request_id: Option<String>,
+}
+```
+
+and the response reads it:
+
+```rust
+let response = items_api::get_item_response()
+    .configuration(&configuration)
+    .id("42")
+    .call()
+    .await?;
+let headers = response.typed_headers::<items_api::GetItemResponseHeaders>();
+if let Some(request_id) = &headers.x_request_id {
+    println!("request {request_id}");
+}
+```
+
+- **Types.** A header is typed as a parameter of its schema is: `i64` (`i32` for `int32`), `f64`, `bool`,
+  `String`, `uuid::Uuid`, `chrono::DateTime<chrono::FixedOffset>` (RFC 3339) and `chrono::NaiveDate` (with
+  `useChrono`), an enum component (`models::Status`), or a `Vec` of those for an array, sent as a comma-separated
+  list. An inline enum, and a schema without a text form (an object, a map), is the header's text.
+- **Lenient.** A header that is missing, or whose value does not parse as the field's type, is `None`; reading the
+  headers never fails. Names are matched ignoring case.
+- **Every success.** The struct has the headers of all success statuses (`200`, `201`, `2XX`, ...): one that only
+  `201` declares is `None` in a `200`. A header two statuses declare with different types is a `String`.
+- **Not typed:** the hop-by-hop headers (`Connection`, `Keep-Alive`, `Proxy-Connection`, `TE`, `Trailer`,
+  `Transfer-Encoding`, `Upgrade`) and `Content-Type`, which describe the connection or the body, not the response.
+- **No struct** for an operation whose successes declare no headers, or that has no `_response` function (a binary or
+  event-stream response).
+
+`typed_headers` takes the struct as a type argument because `ApiResponse<models::Item>` does not say which operation
+it came from: two operations can return the same `T`, with other headers. Annotating the variable works as well
+(`let headers: items_api::GetItemResponseHeaders = response.typed_headers();`). The struct also reads any
+`reqwest::header::HeaderMap`, with `from_headers` or `From`: `items_api::GetItemResponseHeaders::from_headers(&map)`.
+
+The rule is [`header.schema.typed`](../mapping/header.md#headerschematyped).
 
 ### The raw body
 

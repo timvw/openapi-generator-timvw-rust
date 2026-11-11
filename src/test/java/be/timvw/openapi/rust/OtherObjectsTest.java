@@ -73,7 +73,7 @@ class OtherObjectsTest {
     }
 
     @Test
-    void declaredResponseHeadersGetNoTypedAccessor() {
+    void declaredResponseHeadersGetNoTypedAccessorWithoutResponseFunctions() {
         nowhere("X-Rate-Limit");
         nowhere("HEADERDESC");
     }

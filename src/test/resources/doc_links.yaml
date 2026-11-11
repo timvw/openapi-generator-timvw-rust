@@ -1,0 +1,174 @@
+openapi: 3.1.0
+info:
+  title: doc links
+  version: '1'
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      parameters:
+        - name: ids
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: kinds
+          in: query
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Kind'
+        - name: kind
+          in: query
+          schema:
+            $ref: '#/components/schemas/Kind'
+        - name: name
+          in: query
+          schema:
+            $ref: '#/components/schemas/Name'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pet'
+    post:
+      operationId: createPet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pet'
+      responses:
+        '200':
+          description: an inline response object
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+  /pets/{id}/photo:
+    get:
+      operationId: getPhoto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ok
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /free:
+    get:
+      operationId: getFree
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: {}
+  /map:
+    get:
+      operationId: getMap
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Kind'
+webhooks:
+  petAdopted:
+    post:
+      operationId: petAdopted
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pet'
+      responses:
+        '200':
+          description: ok
+components:
+  schemas:
+    Name:
+      type: string
+    Kind:
+      type: string
+      enum: [cat, dog]
+    Pet:
+      type: object
+      required: [name]
+      properties:
+        name:
+          $ref: '#/components/schemas/Name'
+        kind:
+          $ref: '#/components/schemas/Kind'
+        mode:
+          type: string
+          enum: [fast, slow]
+        tags:
+          type: array
+          items:
+            type: string
+        kinds:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Kind'
+        by_kind:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/Kind'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pet'
+        parent:
+          $ref: '#/components/schemas/Pet'
+        output:
+          anyOf:
+            - {}
+            - type: 'null'
+        error:
+          oneOf:
+            - {}
+            - type: 'null'
+        extra: {}
+        free:
+          type: object
+        shape:
+          $ref: '#/components/schemas/Shape'
+        id:
+          type: string
+          format: uuid
+        nested:
+          type: object
+          properties:
+            depth:
+              type: integer
+    Shape:
+      oneOf:
+        - $ref: '#/components/schemas/Pet'
+        - type: string
+        - type: array
+          items:
+            $ref: '#/components/schemas/Kind'

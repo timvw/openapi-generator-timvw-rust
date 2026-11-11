@@ -12,6 +12,36 @@ of [decisions.md](decisions.md); 0.22 fixes types the JSON did not decode to and
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## Unreleased
+
+Fixes that change no type of openai-client-base or langfuse-client-base: their Rust is the same, and only the
+generated Markdown under `docs/` changes.
+
+### Generated docs
+
+- A type in the generated Markdown (`docs/<Model>.md`, `docs/<Tag>Api.md`) links only to the doc of the one model it
+  names ([`components.schemas.docs`](mapping/components.md#componentsschemasdocs)): `Vec<models::Pet>` and
+  `HashMap<String, Vec<models::Kind>>` to `Pet.md` and `Kind.md`, and a webhook's types too. A type that names no
+  model (`String`, `Vec<String>`, `std::path::PathBuf`, `serde_json::Value`, an inline enum) has no link. The docs
+  linked files that do not exist: `Vec.md`, `String.md`, `std::path::PathBuf.md`, `Models__IncludeEnum.md`,
+  `AnyOf.md`, the schema name of an inline response (`deleteEval_200_response.md`) or a name in another case
+  (`LiveWebRTCTransport.md` for `LiveWebRtcTransport.md`, which only a case-insensitive file system finds). In
+  openai-client-base 188 of 13509 links were broken, in langfuse-client-base 32 of 2677; none are now. The docs
+  show a property's type once every rule has applied: `McpCallItemResource`'s `output` and `error` read
+  `serde_json::Value`, as in the Rust, where they read `models::AnyOfLessThanGreaterThan`.
+
+### Models and parameters
+
+- A schema of only `null` (`type: 'null'`) or of any value or `null` (`oneOf`/`anyOf: [{}, {type: 'null'}]`) is
+  `serde_json::Value`, as `{}` is, as a property, list item, map value, component, union variant, request body,
+  response and form field ([`schema.type.null`](mapping/schema.md#schematypenull)). They referenced models that
+  were never written (`models::Null`, `models::OneOfLessThanGreaterThan`) and did not compile, and a component of
+  `oneOf: [{}, {type: 'null'}]` was an empty struct, which `null` did not decode to.
+- A query, path, header or cookie parameter or a form field of only `null` fails generation, naming it: it has no
+  `null` to send ([`parameter.schema.null`](mapping/parameter.md#parameterschemanull)). It did not compile before.
+- A urlencoded or multipart field of any value (`{}`) is `serde_json::Value`, sent as its JSON text; it was
+  `models::serde_json::Value`, which did not compile.
+
 ## 0.22.0 (breaking)
 
 Fixes to types the JSON does not decode to, and to parameters typed as text. The configuration does not change.

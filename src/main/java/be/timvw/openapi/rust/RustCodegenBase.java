@@ -923,8 +923,6 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         return objs;
     }
 
-    private static final String[] EXTERNAL_TYPE_PREFIXES = {"std::", "serde_json::", "uuid::", "chrono::", "url::"};
-
     /** The vendor extension holding the Rust type of an inline enum property ({@link #inlineEnumType}). */
     static final String INLINE_ENUM_TYPE = "x-rust-enum-type";
 
@@ -1037,27 +1035,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                 cm.vendorExtensions.put("x-rust-has-integer-property-enum", true);
             }
 
-            // the documented type of each property is the generated one (HashSet for uniqueItems)
-            for (CodegenProperty cp : cm.vars) {
-                if (cp.isEnum) {
-                    cp.vendorExtensions.put("x-doc-type", inlineEnumType(cp).replace("std::collections::HashSet<", "HashSet<"));
-                    cp.vendorExtensions.put("x-should-link", false);
-                    continue;
-                }
-                String docType = cp.datatypeWithEnum != null && !cp.datatypeWithEnum.isEmpty()
-                        ? cp.datatypeWithEnum : cp.dataType;
-                if (Boolean.TRUE.equals(cp.getUniqueItems()) && docType.startsWith("Vec<")) {
-                    docType = docType.replace("Vec<", "HashSet<");
-                }
-                cp.vendorExtensions.put("x-doc-type", docType);
-
-                // only models of this crate are linked
-                boolean shouldLink = false;
-                if (cp.complexType != null && !cp.complexType.isEmpty()) {
-                    shouldLink = Arrays.stream(EXTERNAL_TYPE_PREFIXES).noneMatch(cp.complexType::startsWith);
-                }
-                cp.vendorExtensions.put("x-should-link", shouldLink);
-            }
+            // the documented type and link of each property: DocLinks, once every type is final
         }
         return postProcessModelsEnum(objs);
     }

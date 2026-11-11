@@ -23,7 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The typed success headers of {@code responseFunctions} ({@code header.schema.typed}) on
+ * The typed success and error headers of {@code responseFunctions} ({@code header.schema.typed},
+ * {@code header.schema.typed-error}) on
  * src/test/resources/response_headers.yaml. src/test/rust/response_headers.rs reads them from header maps and from a
  * call against a local server; {@link #whatItDoesAtRunTime} runs it and clippy with cargo.
  */
@@ -177,10 +178,101 @@ class ResponseHeadersTest {
         props.put(TimvwRustCodegen.RESPONSE_FUNCTIONS, "true");
         generate(spec.toString(), dir.resolve("out"), props);
         String apiResponse = Files.readString(dir.resolve("out/src/apis/api_response.rs"));
+        assertFalse(apiResponse.contains("pub fn typed_headers"), apiResponse);
+        String text = Files.readString(dir.resolve("out/src/apis/default_api.rs"));
+        assertFalse(text.contains("ResponseHeaders"), text);
+        // the 429's header is an error header, which the helper reads
+        assertContains(text, "pub struct GetAErrorHeaders {");
+        assertContains(apiResponse, "pub(crate) fn header_value<T>(");
+    }
+
+    @Test
+    void withoutDeclaredHeadersApiResponseAndResponseContentAreUnchanged(@TempDir Path dir) throws IOException {
+        String text = generated(dir, """
+                openapi: 3.0.3
+                info: {title: plain, version: 1.0.0}
+                paths:
+                  /a:
+                    get:
+                      operationId: getA
+                      responses:
+                        "200": {description: ok, content: {application/json: {schema: {type: string}}}}
+                        "429": {description: slow down}
+                """);
+        String apiResponse = Files.readString(dir.resolve("out/src/apis/api_response.rs"));
         assertFalse(apiResponse.contains("typed_headers"), apiResponse);
         assertFalse(apiResponse.contains("header_value"), apiResponse);
         assertTrue(apiResponse.endsWith("            .finish()\n    }\n}\n"), apiResponse);
-        assertFalse(Files.readString(dir.resolve("out/src/apis/default_api.rs")).contains("ResponseHeaders"));
+        String mod = Files.readString(dir.resolve("out/src/apis/mod.rs"));
+        assertFalse(mod.contains("typed_headers"), mod);
+        assertFalse(text.contains("Headers"), text);
+    }
+
+    @Test
+    void errorHeadersAreTheUnionOfTheErrorStatuses() throws IOException {
+        String text = api(on);
+        String s = struct(text, "CreateImageErrorHeaders");
+        assertContains(s, "/// `Retry-After`\n    pub retry_after: Option<i64>,");
+        assertContains(s, "/// `X-Maintenance-Until`: When the service is back.\n"
+                + "    pub x_maintenance_until: Option<chrono::DateTime<chrono::FixedOffset>>,");
+        // declared by the 503 and the default, one field
+        assertContains(s, "pub x_request_id: Option<uuid::Uuid>,");
+        assertEquals(1, s.split("x_request_id", -1).length - 1, s);
+        assertContains(s, "pub x_trace_id: Option<String>,");
+        assertContains(text, "/// The headers the error responses of [`create_image`] declare (`429`, `503`, "
+                + "`default`), typed.");
+        assertContains(text, "#[derive(Clone, Debug, Default, PartialEq)]\npub struct CreateImageErrorHeaders {");
+        assertContains(text, "x_request_id: super::api_response::header_value(headers, \"x-request-id\", "
+                + "|v| v.parse::<uuid::Uuid>().ok()),");
+        assertContains(text, "impl From<&reqwest::header::HeaderMap> for CreateImageErrorHeaders {");
+        // the success headers are a struct of their own
+        assertFalse(struct(text, "CreateImageResponseHeaders").contains("x_trace_id"));
+    }
+
+    @Test
+    void errorHeadersDeclaredWithDifferentTypesAreText() throws IOException {
+        // an integer in the 429, a string in the 404
+        assertContains(struct(api(on), "GetImageErrorHeaders"), "pub retry_after: Option<String>,");
+    }
+
+    @Test
+    void errorHeadersSkipHopByHopContentTypeAndInvalidNames() throws IOException {
+        String s = struct(api(on), "CreateImageErrorHeaders");
+        assertFalse(s.contains("connection"), s);
+        assertFalse(s.contains("content_type"), s);
+        assertFalse(s.contains("bad"), s);
+    }
+
+    @Test
+    void aFileOperationsErrorHeadersAreTyped() throws IOException {
+        String text = api(on);
+        String s = struct(text, "DownloadImageErrorHeaders");
+        assertContains(s, "/// `X-Missing-Ids`, a comma-separated list\n    pub x_missing_ids: Option<Vec<i64>>,");
+        assertContains(s, "pub x_status: Option<models::Status>,");
+        assertFalse(text.contains("DownloadImageResponseHeaders"), text);
+    }
+
+    @Test
+    void theErrorEnumNamesItsStructAndResponseContentReadsIt() throws IOException {
+        assertContains(api(on), "/// struct for typed errors of method [`create_image`]\n///\n"
+                + "/// The headers its error responses declare are typed: [`CreateImageErrorHeaders`], read from the\n"
+                + "/// [`ResponseContent`] with `content.typed_headers::<CreateImageErrorHeaders>()`.\n"
+                + "#[derive(Debug, Clone, Serialize, Deserialize)]\n#[serde(untagged)]\npub enum CreateImageError {");
+        // no declared error headers, no line
+        assertContains(api(on), "/// struct for typed errors of method [`delete_image`]\n#[derive(");
+        String mod = Files.readString(on.resolve("src/apis/mod.rs"));
+        assertContains(mod, "impl<T> ResponseContent<T> {");
+        assertContains(mod, "    pub fn typed_headers<H>(&self) -> H\n    where\n"
+                + "        H: for<'h> From<&'h reqwest::header::HeaderMap>,\n    {\n        H::from(&self.headers)\n");
+    }
+
+    @Test
+    void noErrorHeadersWithoutTheOption() throws IOException {
+        assertFalse(api(off).contains("ErrorHeaders"));
+        assertFalse(api(off).contains("typed_headers"));
+        String mod = Files.readString(off.resolve("src/apis/mod.rs"));
+        assertFalse(mod.contains("impl<T> ResponseContent<T>"), mod);
+        assertFalse(mod.contains("typed_headers"), mod);
     }
 
     @Test
@@ -201,6 +293,10 @@ class ResponseHeadersTest {
                           content:
                             application/json: {schema: {$ref: '#/components/schemas/T'}}
                             text/plain: {schema: {type: string}}
+                        "429":
+                          description: slow down
+                          headers:
+                            Retry-After: {schema: {type: integer}}
                 components:
                   schemas:
                     T: {type: object, properties: {text: {type: string}}}
@@ -213,6 +309,7 @@ class ResponseHeadersTest {
         assertEquals(1, text.split("pub struct TranscribeResponseHeaders \\{", -1).length - 1, text);
         assertEquals(2, text.split("`typed_headers::<TranscribeResponseHeaders>\\(\\)`", -1).length - 1, text);
         assertTrue(text.contains("pub async fn transcribe_text_response("), text);
+        assertEquals(1, text.split("pub struct TranscribeErrorHeaders \\{", -1).length - 1, text);
     }
 
     /** Generates {@code spec} with {@code responseFunctions} (and {@code options}) and returns default_api.rs. */
@@ -244,6 +341,11 @@ class ResponseHeadersTest {
                           headers:
                             x-foo: {schema: {type: string}}
                             x_foo: {schema: {type: integer}}
+                        "429":
+                          description: slow down
+                          headers:
+                            x-foo: {schema: {type: string}}
+                            x_foo: {schema: {type: integer}}
                   /b:
                     get:
                       operationId: getB
@@ -260,6 +362,9 @@ class ResponseHeadersTest {
         assertContains(s, "/// `x-foo`\n    pub x_foo: Option<String>,");
         assertContains(s, "/// `x_foo`\n    pub x_foo_2: Option<i64>,");
         assertContains(text, "x_foo_2: super::api_response::header_value(headers, \"x_foo\",");
+        String errors = struct(text, "GetAErrorHeaders");
+        assertContains(errors, "/// `x-foo`\n    pub x_foo: Option<String>,");
+        assertContains(errors, "/// `x_foo`\n    pub x_foo_2: Option<i64>,");
         assertFalse(text.contains("GetBResponseHeaders"), text);
     }
 

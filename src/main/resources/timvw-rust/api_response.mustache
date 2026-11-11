@@ -151,7 +151,7 @@ impl<T> fmt::Debug for ApiResponse<T> {
 {{#x-rust-typed-headers-value}}
 
 /// The first value of the header `name`, trimmed, read by `parse`: `None` when it is missing, not UTF-8 or does
-/// not parse. Used by the `<Operation>ResponseHeaders` structs.
+/// not parse. Used by the `<Operation>ResponseHeaders` and `<Operation>ErrorHeaders` structs.
 pub(crate) fn header_value<T>(
     headers: &reqwest::header::HeaderMap,
     name: &str,

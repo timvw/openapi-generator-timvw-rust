@@ -48,8 +48,9 @@ file:
 }
 ```
 
-It adds functions, `src/apis/api_response.rs` and, for the operations whose successes declare headers, their
-[typed headers](#declared-headers-typed); nothing that exists changes, so turning it on is not a breaking
+It adds functions, `src/apis/api_response.rs` and, for the operations whose successes or errors declare headers,
+their typed headers ([successes](#declared-headers-typed), [errors](#declared-error-headers-typed)), with
+`typed_headers` on `ResponseContent` for the latter; nothing that exists changes, so turning it on is not a breaking
 change. Turning it off again removes the functions and the `mod` line, but `src/apis/api_response.rs` stays on disk
 until it is deleted (openapi-generator does not remove files it no longer writes), unless the client's generation
 script cleans the output directory first.
@@ -276,7 +277,8 @@ if let Some(request_id) = &headers.x_request_id {
 - **Not typed:** the hop-by-hop headers (`Connection`, `Keep-Alive`, `Proxy-Connection`, `TE`, `Trailer`,
   `Transfer-Encoding`, `Upgrade`) and `Content-Type`, which describe the connection or the body, not the response.
 - **No struct** for an operation whose successes declare no headers, or that has no `_response` function (a binary or
-  event-stream response).
+  event-stream response). The headers of its error responses are a struct of their own:
+  [`<Operation>ErrorHeaders`](#declared-error-headers-typed).
 
 `typed_headers` takes the struct as a type argument because `ApiResponse<models::Item>` does not say which operation
 it came from: two operations can return the same `T`, with other headers. Annotating the variable works as well
@@ -325,6 +327,55 @@ converts into the crate's `Error` (`Error::Serde`) with `?` in a function return
 `ApiResponse` covers successes. An error status is the operation's `Error::ResponseError`, which holds a
 `Box<ResponseContent<GetItemError>>` with the `status`, the body text (`content`), the decoded `entity` and the error
 response's `headers` (a `Retry-After` of a `429`, say), as described in [`responses`](../mapping/responses.md).
+
+### Declared error headers, typed
+
+When the error responses of an operation (`4xx`, `5xx`, `default`) declare `headers`, its API module also has a
+struct `<Operation>ErrorHeaders`, made as [`<Operation>ResponseHeaders`](#declared-headers-typed) is, and
+`ResponseContent` gets `typed_headers`. `create_item`'s `429` declares `Retry-After`, so `items_api` has
+
+<!-- not compiled: a generated struct -->
+```rust
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CreateItemErrorHeaders {
+    /// `Retry-After`
+    pub retry_after: Option<i64>,
+}
+```
+
+and an error reads it, from the operation's function or from its twin alike:
+
+```rust
+match items_api::create_item()
+    .configuration(&configuration)
+    .new_item(&new_item)
+    .call()
+    .await
+{
+    Err(Error::ResponseError(content)) => {
+        let headers = content.typed_headers::<items_api::CreateItemErrorHeaders>();
+        if let Some(seconds) = headers.retry_after {
+            println!("retry in {seconds} s");
+        }
+    }
+    other => {
+        let item = other?;
+    }
+}
+```
+
+- **One struct for every error status.** It holds the headers of all of them, each an `Option`: a header only the
+  `429` declares is `None` in a `409`. Check `content.status` to know which response it was. A header two error
+  statuses declare with different types is a `String`.
+- **The same rules** as for successes: the types, reading leniently, the skipped headers, field names.
+- **Every operation with an error enum**, a binary or event-stream response's too: their errors are a
+  `ResponseContent` as well. The documentation of `<Operation>Error` names the struct.
+- **Only with `responseFunctions`.** Without the option, `ResponseContent` and the API modules are as before; its
+  `headers` field is there either way.
+
+`typed_headers` takes the struct as a type argument, as `ApiResponse::typed_headers` does; `from_headers` and `From`
+read any `reqwest::header::HeaderMap`. The rule is
+[`header.schema.typed-error`](../mapping/header.md#headerschematyped-error).
 
 ### In tests
 

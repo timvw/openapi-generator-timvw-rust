@@ -102,8 +102,11 @@ fn retry_after(response: &ResponseContent<items_api::CreateItemError>) -> Option
 ```
 
 Header names are matched without regard to case. A header can occur more than once (`get_all`). The headers a spec
-declares are not typed; read them by name. The headers of a success are in the `_response` functions of
-[`responseFunctions`](response-functions.md).
+declares are not typed; read them by name. With [`responseFunctions`](response-functions.md) they are: the error
+headers of each operation are a struct `<Operation>ErrorHeaders`, read with
+`response.typed_headers::<items_api::CreateItemErrorHeaders>()`
+([declared error headers, typed](response-functions.md#declared-error-headers-typed)). The headers of a success are
+in the `_response` functions of that option.
 
 ## Boxing
 

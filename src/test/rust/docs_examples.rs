@@ -374,6 +374,34 @@ mod response_functions {
         Ok(())
     }
 
+    async fn error_headers(configuration: Configuration) -> Result<(), Error<items_api::CreateItemError>> {
+        let new_item = new_item();
+        match items_api::create_item()
+            .configuration(&configuration)
+            .new_item(&new_item)
+            .call()
+            .await
+        {
+            Err(Error::ResponseError(content)) => {
+                let headers = content.typed_headers::<items_api::CreateItemErrorHeaders>();
+                if let Some(seconds) = headers.retry_after {
+                    println!("retry in {seconds} s");
+                }
+            }
+            other => {
+                let item = other?;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn error_headers_of_a_response_content() {
+        let mut content = rejected();
+        content.headers.insert(reqwest::header::RETRY_AFTER, "30".parse().unwrap());
+        assert_eq!(content.typed_headers::<items_api::CreateItemErrorHeaders>().retry_after, Some(30));
+    }
+
     async fn errors(configuration: Configuration) -> Result<(), Error<items_api::GetItemError>> {
         use my_client::apis::Error;
 

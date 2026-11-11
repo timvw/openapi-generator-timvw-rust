@@ -29,6 +29,10 @@ import java.util.regex.Pattern;
  * anyway, so a header only one status declares is an {@code Option} like the others. A header two successes declare
  * with different types is read as text ({@code String}).</p>
  *
+ * <p>The error responses get the same with {@code errors}: {@code <Operation>ErrorHeaders}, the union of the headers
+ * of the {@code 4xx}, {@code 5xx} and {@code default} responses (the statuses of {@code <Operation>Error}), read from
+ * a {@code ResponseContent} ({@code header.schema.typed-error}).</p>
+ *
  * <p>A header is typed as a parameter of its schema is: {@code getTypeDeclaration}, so integers, numbers, booleans,
  * {@code uuid}, {@code date}/{@code date-time} (chrono, with {@code useChrono}), enum components and arrays of those
  * (the simple style, comma-separated). What has no text form (an object, a map, a union, a free-form value, a nested
@@ -43,6 +47,11 @@ final class ResponseHeaders {
      * ({@code name}, {@code fields}, {@code statuses}).
      */
     static final String STRUCT = "x-rust-response-headers";
+    /**
+     * Set on an operation whose error responses declare headers ({@code responseFunctions}): the struct to render, as
+     * {@link #STRUCT}.
+     */
+    static final String ERROR_STRUCT = "x-rust-error-headers";
 
     /**
      * Headers that get no field: the hop-by-hop headers of RFC 9110 section 7.6.1 (and {@code Keep-Alive} and
@@ -66,27 +75,30 @@ final class ResponseHeaders {
     }
 
     /**
-     * The struct of {@code operation}'s success headers, or {@code null} when its successes declare none (or only
-     * skipped ones).
+     * The struct of {@code operation}'s success headers, or of its error headers, or {@code null} when those responses
+     * declare none (or only skipped ones).
      *
+     * @param errors    the error responses ({@code 4xx}, {@code 5xx} and {@code default}, the statuses of the
+     *                  operation's error enum) rather than the successes
      * @param method    the operation's method name, for warnings
      * @param typeOf    the Rust type of a schema, as a parameter of it is typed
      * @param toVarName the Rust field name of a header name
      * @param warn      where a skipped header or a renamed field is reported
      */
     @SuppressWarnings("rawtypes")
-    static Map<String, Object> plan(OpenAPI openAPI, Operation operation, String method,
+    static Map<String, Object> plan(OpenAPI openAPI, Operation operation, boolean errors, String method,
             Function<Schema, String> typeOf, Function<String, String> toVarName, Consumer<String> warn) {
         if (operation.getResponses() == null) {
             return null;
         }
         List<String> statuses = new ArrayList<>();
         for (String code : operation.getResponses().keySet()) {
-            if (code.startsWith("2") || code.startsWith("3")) {
+            if (errors ? code.startsWith("4") || code.startsWith("5") || "default".equals(code)
+                    : code.startsWith("2") || code.startsWith("3")) {
                 statuses.add(code);
             }
         }
-        if (statuses.isEmpty() && operation.getResponses().containsKey("default")) {
+        if (!errors && statuses.isEmpty() && operation.getResponses().containsKey("default")) {
             statuses.add("default");
         }
         Map<String, Field> fields = new LinkedHashMap<>();

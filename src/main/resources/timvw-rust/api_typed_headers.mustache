@@ -1,0 +1,38 @@
+{{^error}}
+/// The headers the success responses of [`{{operationId}}`] declare ({{{statuses}}}), typed. Read them from the
+/// [`ApiResponse`](super::ApiResponse) of a `_response` function with
+/// `response.typed_headers::<{{{name}}}>()`, or from any header map with [`from_headers`](Self::from_headers).
+{{/error}}
+{{#error}}
+/// The headers the error responses of [`{{operationId}}`] declare ({{{statuses}}}), typed. Read them from the
+/// [`ResponseContent`] of an [`Error::ResponseError`] with `content.typed_headers::<{{{name}}}>()`,
+/// or from any header map with [`from_headers`](Self::from_headers).
+{{/error}}
+///
+/// Every field is `None` when the response does not have the header or its value does not parse as the field's type.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct {{{name}}} {
+    {{#fields}}
+    /// `{{{header}}}`{{#list}}, a comma-separated list{{/list}}{{#doc}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/doc}}
+    pub {{{field}}}: Option<{{{type}}}>,
+    {{/fields}}
+}
+
+impl {{{name}}} {
+    /// Reads the declared headers from `headers`. Header names are matched ignoring case; a header that is missing or
+    /// does not parse is `None`, never an error.
+    pub fn from_headers(headers: &reqwest::header::HeaderMap) -> Self {
+        {{{name}}} {
+            {{#fields}}
+            {{{field}}}: super::api_response::{{#list}}header_list{{/list}}{{^list}}header_value{{/list}}(headers, "{{{literal}}}", |v| {{{parse}}}),
+            {{/fields}}
+        }
+    }
+}
+
+impl From<&reqwest::header::HeaderMap> for {{{name}}} {
+    fn from(headers: &reqwest::header::HeaderMap) -> Self {
+        Self::from_headers(headers)
+    }
+}
+

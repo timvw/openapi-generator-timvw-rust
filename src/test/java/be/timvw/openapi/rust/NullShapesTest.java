@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.openapitools.codegen.DefaultGenerator;
 import org.openapitools.codegen.config.CodegenConfigurator;
 
@@ -38,11 +40,15 @@ class NullShapesTest {
     @TempDir
     static Path helper;
 
+    @TempDir
+    static Path v30;
+
     @BeforeAll
     static void generate() {
         generate("src/test/resources/null_shapes.yaml", out, Map.of("packageName", "null_shapes_fixture"));
         generate("src/test/resources/null_shapes.yaml", helper,
                 Map.of("packageName", "null_shapes_fixture", "multipartHelper", "true"));
+        generate("src/test/resources/null_shapes_30.yaml", v30, Map.of("packageName", "null_shapes_30_fixture"));
     }
 
     private static void generate(String spec, Path output, Map<String, Object> props) {
@@ -75,6 +81,24 @@ class NullShapesTest {
         // the components themselves are no models: no empty struct, no models::Null
         assertFalse(Files.exists(out.resolve("src/models/any_or_null.rs")));
         assertFalse(Files.exists(out.resolve("src/models/only_null.rs")));
+        // a union holding a branch of any value or null holds any value; a reference to a component of only null is a
+        // null branch; enum [null] and a single-entry allOf of null are only null
+        assertFalse(Files.exists(out.resolve("src/models/nested_any.rs")));
+        assertFalse(Files.exists(out.resolve("src/models/enum_null.rs")));
+        assertContains(Files.readString(out.resolve("src/models/text_or_null_ref.rs")),
+                "    pub value: Option<Option<String>>,\n");
+        String wrapped = Files.readString(out.resolve("src/models/wrapped.rs"));
+        assertContains(wrapped, "    pub all_null: Option<serde_json::Value>,\n");
+        assertContains(wrapped, "    pub enum_null: Option<Option<serde_json::Value>>,\n");
+        assertContains(wrapped, "    pub nested_any: Option<Option<serde_json::Value>>,\n");
+        assertContains(wrapped, "    pub enum_ref: Option<Option<serde_json::Value>>,\n");
+        assertContains(wrapped, "    pub nested_ref: Option<Option<serde_json::Value>>,\n");
+        assertContains(wrapped, "    pub nested_component: Option<Option<serde_json::Value>>,\n");
+        String holder30 = Files.readString(v30.resolve("src/models/holder.rs"));
+        assertContains(holder30, "    pub any_opt: Option<Option<serde_json::Value>>,\n");
+        assertContains(holder30, "    pub any_req: Option<serde_json::Value>,\n");
+        assertContains(holder30, "    pub any_items: Option<Vec<serde_json::Value>>,\n");
+        assertContains(holder30, "    pub nested: Option<Option<serde_json::Value>>,\n");
         assertContains(Files.readString(out.resolve("src/models/uni.rs")),
                 "    Text(String),\n    ArrayOfItems(Vec<serde_json::Value>),\n}");
         for (Path crate : List.of(out, helper)) {
@@ -104,6 +128,79 @@ class NullShapesTest {
                 "#/paths//form/post/requestBody/content/multipart/form-data: form field 'none' can only be null");
     }
 
+    /**
+     * A parameter of only null fails wherever it is (header, cookie, path, a {@code $ref} to a component parameter),
+     * and through a single-entry {@code allOf}, as a map of null values ({@code deepObject}), and as a form field of
+     * a form reached through {@code allOf: [$ref]}. The message names the operation.
+     */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', textBlock = """
+            header    | {name: h, in: header, schema: {type: 'null'}}                          | /parameters/h: parameter 'h'
+            cookie    | {name: c, in: cookie, schema: {type: 'null'}}                          | /parameters/c: parameter 'c'
+            path      | {name: id, in: path, required: true, schema: {type: 'null'}}           | /parameters/id: parameter 'id'
+            ref       | {$ref: '#/components/parameters/NullP'}                                | /parameters/#/components/parameters/NullP: parameter 'n'
+            allOf     | {name: q, in: query, schema: {allOf: [{type: 'null'}]}}                 | /parameters/q: parameter 'q'
+            deepObject | {name: f, in: query, style: deepObject, schema: {type: object, additionalProperties: {type: 'null'}}} | /parameters/f: parameter 'f'
+            enum      | {name: e, in: query, schema: {enum: [null]}}                            | /parameters/e: parameter 'e'
+            """)
+    void everyParameterOfOnlyNullFailsGeneration(String name, String parameter, String message, @TempDir Path dir)
+            throws IOException {
+        String path = name.equals("path") ? "/things/{id}" : "/things";
+        Path spec = dir.resolve("spec.yaml");
+        Files.writeString(spec, """
+                openapi: 3.1.0
+                info: {title: t, version: '1'}
+                paths:
+                  '%s':
+                    get:
+                      operationId: getThings
+                      parameters:
+                        - %s
+                      responses:
+                        '204': {description: ok}
+                components:
+                  parameters:
+                    NullP: {name: n, in: query, schema: {$ref: '#/components/schemas/OnlyNull'}}
+                  schemas:
+                    OnlyNull: {type: 'null'}
+                """.formatted(path, parameter));
+        assertFails(spec.toString(), dir.resolve("out"), "/get" + message + " can only be null");
+    }
+
+    @Test
+    void aFormFieldOfOnlyNullBehindAllOfFailsGeneration(@TempDir Path dir) throws IOException {
+        Path spec = dir.resolve("spec.yaml");
+        Files.writeString(spec, """
+                openapi: 3.1.0
+                info: {title: t, version: '1'}
+                paths:
+                  /form:
+                    post:
+                      operationId: postForm
+                      requestBody:
+                        content:
+                          application/x-www-form-urlencoded:
+                            schema:
+                              allOf: [{$ref: '#/components/schemas/Form'}]
+                      responses:
+                        '204': {description: ok}
+                components:
+                  schemas:
+                    Form:
+                      type: object
+                      properties:
+                        none: {allOf: [{type: 'null'}]}
+                """);
+        assertFails(spec.toString(), dir.resolve("out"), "form field 'none' can only be null");
+    }
+
+    /** An unused component parameter of only null is not checked: only what an operation uses is. */
+    @Test
+    void anUnusedComponentParameterOfOnlyNullDoesNotFail() throws IOException {
+        assertTrue(Files.exists(out.resolve("src/apis/default_api.rs")));
+        assertFalse(Files.readString(out.resolve("src/apis/default_api.rs")).contains("unused"));
+    }
+
     private static void assertFails(String spec, Path dir, String message) {
         Throwable e = assertThrows(RuntimeException.class,
                 () -> generate(spec, dir, Map.of("packageName", "fixture")));
@@ -118,7 +215,7 @@ class NullShapesTest {
     @Test
     void nullAndValuesRoundTrip() throws IOException, InterruptedException {
         Assumptions.assumeTrue(cargo(out, 30, "--version") != null, "no cargo");
-        for (Path crate : List.of(out, helper)) {
+        for (Path crate : List.of(out, helper, v30)) {
             String clippy = cargo(crate, 900, "clippy", "--all-targets", "--", "-D", "warnings");
             assertNotNull(clippy, "clippy did not finish");
             assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("error[")

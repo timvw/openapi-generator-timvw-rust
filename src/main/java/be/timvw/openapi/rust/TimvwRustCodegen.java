@@ -517,13 +517,6 @@ public class TimvwRustCodegen extends RustCodegenBase {
         return mdl;
     }
 
-    /**
-     * Types a property whose schema is a composed schema without typed branches ({@code anyOf: [{}, null]}) as
-     * {@code serde_json::Value}. The base generator derives the model name {@code AnyOfLessThanGreaterThan} from
-     * {@code anyOf<>} and references it, but never writes it. The property keeps its other flags, so a required
-     * nullable field stays {@code Option<Box<serde_json::Value>>} as before. Every property list of the model holds
-     * its own copies, so all of them are visited.
-     */
     /** The models that get a doc ({@code docs/<Model>.md}), known once the models are processed. */
     private final Set<String> documentedModels = new HashSet<>();
 
@@ -634,6 +627,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
     }
 
+    /**
+     * Types a property whose schema is a composed schema without typed branches ({@code anyOf: [{}, {}]}; a
+     * {@code [{}, null]} one is already {@code {}}, see {@link NullSchemas}) as {@code serde_json::Value}. The base generator derives the model name {@code AnyOfLessThanGreaterThan} from
+     * {@code anyOf<>} and references it, but never writes it. The property keeps its other flags, so a required
+     * nullable field stays {@code Option<Box<serde_json::Value>>} as before. Every property list of the model holds
+     * its own copies, so all of them are visited.
+     */
     private static boolean retypeUntypedComposed(CodegenProperty property) {
         if (property.dataType == null || !property.dataType.contains(UNTYPED_COMPOSED_TYPE)) {
             return false;

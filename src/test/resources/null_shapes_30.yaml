@@ -1,0 +1,46 @@
+openapi: 3.0.3
+info:
+  title: null shapes in 3.0
+  version: '1'
+paths:
+  /things:
+    get:
+      operationId: getThings
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Holder'
+components:
+  schemas:
+    Holder:
+      type: object
+      required: [any_req]
+      properties:
+        any_opt:
+          anyOf:
+            - {}
+            - nullable: true
+        any_req:
+          oneOf:
+            - {}
+            - type: 'null'
+        any_items:
+          type: array
+          items:
+            anyOf:
+              - {}
+              - type: 'null'
+        nested:
+          oneOf:
+            - $ref: '#/components/schemas/Obj'
+            - anyOf:
+                - {}
+                - type: 'null'
+    Obj:
+      type: object
+      properties:
+        a:
+          type: string

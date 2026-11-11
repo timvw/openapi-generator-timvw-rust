@@ -37,8 +37,13 @@ generated Markdown under `docs/` changes.
   response and form field ([`schema.type.null`](mapping/schema.md#schematypenull)). They referenced models that
   were never written (`models::Null`, `models::OneOfLessThanGreaterThan`) and did not compile, and a component of
   `oneOf: [{}, {type: 'null'}]` was an empty struct, which `null` did not decode to.
+  `enum: [null]` and a single-entry `allOf` of `type: 'null'` are only `null` too, and a `$ref` branch to a
+  component of only `null` makes its union nullable. A union with a branch of any value or `null` next to other
+  branches (`oneOf: [{$ref: Obj}, {anyOf: [{}, {type: 'null'}]}]`) is `serde_json::Value`: it was an untagged enum of
+  `Obj` and `serde_json::Value`, which decoded the same values. Neither client has such a union.
 - A query, path, header or cookie parameter or a form field of only `null` fails generation, naming it: it has no
-  `null` to send ([`parameter.schema.null`](mapping/parameter.md#parameterschemanull)). It did not compile before.
+  `null` to send ([`parameter.schema.null`](mapping/parameter.md#parameterschemanull)), also through a `$ref`, a
+  single-entry `allOf`, a list or a map; only what an operation uses is checked. It did not compile before.
 - A urlencoded or multipart field of any value (`{}`) is `serde_json::Value`, sent as its JSON text; it was
   `models::serde_json::Value`, which did not compile.
 

@@ -4,7 +4,7 @@
 
 use null_shapes_fixture::apis::configuration::Configuration;
 use null_shapes_fixture::apis::default_api;
-use null_shapes_fixture::models::{Holder, Refs, Uni};
+use null_shapes_fixture::models::{Holder, Refs, TextOrNullRef, Uni, Wrapped};
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -144,4 +144,42 @@ async fn an_any_form_field_is_sent_as_its_json() {
         .await
         .unwrap();
     assert!(server.await.unwrap().ends_with("anything=%7B%22a%22%3A1%7D&count=2"));
+}
+
+/// A union of an object and a branch of any value or null holds any value: an object, a number, a string, null.
+#[test]
+fn a_union_holding_any_or_null_holds_any_value() {
+    // inline, with {$ref: Obj}, and through the component NestedAny ({$ref: Obj} or any value or null)
+    for json in [json!({"a": "x"}), json!(5), json!("x"), Value::Null] {
+        let wrapped: Wrapped = serde_json::from_value(json!({
+            "all_null": null,
+            "nested_any": json.clone(),
+            "nested_ref": json.clone(),
+            "nested_component": json.clone()
+        }))
+        .expect("decodes");
+        // null is the property's Some(None), as for any nullable property
+        let expected = if json.is_null() { Some(None) } else { Some(Some(json.clone())) };
+        assert_eq!(wrapped.nested_any, expected);
+        assert_eq!(wrapped.nested_ref, expected);
+        assert_eq!(wrapped.nested_component, expected);
+        let encoded = serde_json::to_value(&wrapped).unwrap();
+        for field in ["nested_any", "nested_ref", "nested_component"] {
+            assert_eq!(encoded[field], json);
+        }
+    }
+}
+
+/// A reference to a component of only null makes the union nullable; enum [null] and allOf [null] hold null.
+#[test]
+fn null_references_enums_and_all_ofs() {
+    let t: TextOrNullRef = serde_json::from_value(json!({"value": null})).expect("decodes");
+    assert_eq!(t.value, Some(None));
+    let t: TextOrNullRef = serde_json::from_value(json!({"value": "s"})).expect("decodes");
+    assert_eq!(t.value, Some(Some("s".to_string())));
+    let json = json!({"all_null": null, "enum_null": null, "enum_ref": null});
+    let wrapped: Wrapped = serde_json::from_value(json.clone()).expect("decodes");
+    assert_eq!(wrapped.all_null, None);
+    assert_eq!(wrapped.enum_null, Some(None));
+    assert_eq!(serde_json::to_value(&wrapped).unwrap(), json);
 }

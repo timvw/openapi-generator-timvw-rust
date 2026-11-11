@@ -35,6 +35,28 @@ class GeneratedDocLinksTest {
             "operation_mapping.yaml"})
     void everyRelativeLinkResolves(String spec, @TempDir Path out) throws IOException {
         generate(spec, out);
+        assertNoBrokenLinks(out);
+    }
+
+    /** With model name mappings, the doc files and the links take the mapped names. */
+    @org.junit.jupiter.api.Test
+    void linksFollowModelNameMappings(@TempDir Path out) throws IOException {
+        new DefaultGenerator().opts(new CodegenConfigurator()
+                .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
+                .setInputSpec(Path.of("src/test/resources/doc_links.yaml").toAbsolutePath().toString())
+                .setOutputDir(out.toString())
+                .setAdditionalProperties(Map.of("packageName", "doc_links_fixture", "webhookModule", "Webhooks"))
+                .addModelNameMapping("Kind", "PetKind")
+                .addModelNameMapping("Shape", "Form")
+                .toClientOptInput()).generate();
+        assertNoBrokenLinks(out);
+        String pet = Files.readString(out.resolve("docs/Pet.md"));
+        assertContains(pet, "**kind** | Option<[**models::PetKind**](PetKind.md)>");
+        assertContains(pet, "**shape** | Option<[**models::Form**](Form.md)>");
+        assertContains(Files.readString(out.resolve("docs/DefaultApi.md")), "**kind** | Option<[**PetKind**](PetKind.md)>");
+    }
+
+    private static void assertNoBrokenLinks(Path out) throws IOException {
         List<String> broken = new ArrayList<>();
         int links = 0;
         try (Stream<Path> files = Files.walk(out)) {

@@ -82,6 +82,12 @@ paths:
         '204':
           description: ok
 components:
+  parameters:
+    UnusedNullParam:
+      name: unused
+      in: query
+      schema:
+        $ref: '#/components/schemas/OnlyNull'
   schemas:
     Holder:
       type: object
@@ -146,6 +152,54 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AnyOrNullRef'
+    Obj:
+      type: object
+      properties:
+        a:
+          type: string
+    NestedAny:
+      oneOf:
+        - $ref: '#/components/schemas/Obj'
+        - anyOf:
+            - {}
+            - type: 'null'
+    TextOrNullRef:
+      type: object
+      properties:
+        value:
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/OnlyNull'
+    EnumNull:
+      enum: [null]
+    Wrapped:
+      type: object
+      required: [all_null]
+      properties:
+        all_null:
+          allOf:
+            - type: 'null'
+        enum_null:
+          enum: [null]
+        nested_any:
+          oneOf:
+            - type: object
+              properties:
+                a:
+                  type: string
+            - anyOf:
+                - {}
+                - type: 'null'
+        enum_ref:
+          $ref: '#/components/schemas/EnumNull'
+        nested_ref:
+          oneOf:
+            - $ref: '#/components/schemas/Obj'
+            - anyOf:
+                - {}
+                - type: 'null'
+        nested_component:
+          $ref: '#/components/schemas/NestedAny'
     Uni:
       oneOf:
         - type: string

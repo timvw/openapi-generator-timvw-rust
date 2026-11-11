@@ -77,10 +77,10 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 
 | | |
 | --- | --- |
-| OpenAPI | a query, path, header or cookie parameter whose schema can only be `null` (`type: "null"`, a union of only `null` branches, a list of these, or a `$ref` to one) |
-| Rust | none: generation fails, naming the parameter, since a parameter has no `null` to send and could never be sent. A form field of only `null` fails the same way ([`schema.type.null`](schema.md#schematypenull)). A parameter of any value or `null` (`oneOf: [{}, {type: "null"}]`) is any value, as `{}` is: a string in the query, path or a header |
+| OpenAPI | a query, path, header or cookie parameter whose schema can only be `null` (`type: "null"`, `enum: [null]`, a union of only `null` branches, a list or map (`deepObject`) of these, through `$ref`s and single-entry `allOf`s), in an operation or a `$ref` to a component parameter an operation uses |
+| Rust | none: generation fails, naming the parameter and the operation, since a parameter has no `null` to send and could never be sent. A component parameter no operation uses is not checked. A form field of only `null` (also in a form reached through `allOf: [$ref]`) fails the same way ([`schema.type.null`](schema.md#schematypenull)). A parameter of any value or `null` (`oneOf: [{}, {type: "null"}]`) is any value, as `{}` is: a string in the query, path or a header |
 | Options | always; before, it was `models::Null`, which did not compile |
-| Tests | [`NullShapesTest#aParameterOfOnlyNullFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L96), [`#nullAndAnyOrNullAreJsonValuesEverywhere`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L58) |
+| Tests | [`NullShapesTest#aParameterOfOnlyNullFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L120), [`#everyParameterOfOnlyNullFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L146), [`#anUnusedComponentParameterOfOnlyNullDoesNotFail`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L199), [`#nullAndAnyOrNullAreJsonValuesEverywhere`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L64) |
 
 ### `parameter.schema.enum`
 

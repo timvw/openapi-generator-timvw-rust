@@ -1,11 +1,30 @@
 # Guide: migrating
 
+- [From 0.22 to 0.23](#from-022-to-023): one rare type change.
 - [From 0.21 to 0.22](#from-021-to-022): every breaking change, with the code before and after.
 - [From 0.20 to 0.21](#from-020-to-021): every breaking change, with the code before and after.
 - [From stock `-g rust`](#from-stock--g-rust): what is different when you switch generators.
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From 0.22 to 0.23
+
+0.23 adds typed accessors for declared success-response headers (with `responseFunctions`) and fixes schemas that did
+not compile; the configuration does not change, and neither openai-client-base nor langfuse-client-base changes type.
+One shape changes type:
+
+- A union with a branch of any value or `null` next to other branches, such as
+  `oneOf: [{$ref: Obj}, {anyOf: [{}, {type: 'null'}]}]`, is `serde_json::Value`
+  ([rule](../mapping/schema.md#schematypenull)). It was an untagged enum of `Obj` and `serde_json::Value`, which
+  decoded the same values. Code that matched on that enum reads the `serde_json::Value` instead, and can decode it
+  as `Obj` with `serde_json::from_value`.
+
+Schemas of only `null`, `oneOf: [{}, null]`, and form fields of any value did not compile before and now do. A
+parameter or form field that can only be `null` fails generation with a message naming it.
+
+To upgrade a client repository, bump the image tag to `0.23.0-og7.27.0`, regenerate, and run
+`cargo clippy --all-targets -- -D warnings` and `cargo test`.
 
 ## From 0.21 to 0.22
 

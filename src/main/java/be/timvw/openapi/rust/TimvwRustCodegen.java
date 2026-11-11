@@ -10,6 +10,7 @@ import org.openapitools.codegen.CodegenProperty;
 import org.openapitools.codegen.SupportingFile;
 import org.openapitools.codegen.model.ModelMap;
 import org.openapitools.codegen.model.ModelsMap;
+import org.openapitools.codegen.model.OperationMap;
 import org.openapitools.codegen.model.OperationsMap;
 import org.openapitools.codegen.model.WebhooksMap;
 import org.openapitools.codegen.InlineModelResolverAccess;
@@ -336,6 +337,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private boolean deprecatedAttributes;
     private boolean pruneAllHelpers;
     private final Set<String> deprecatedModels = new java.util.TreeSet<>();
+    /**
+     * The file (without {@code .rs}) each model is written to, by its Rust type name. The file is named after the
+     * schema ({@code toModelFilename} of the schema name), the type is {@code toModelName} of it: with a model name
+     * prefix, suffix or mapping, {@code toModelFilename} of the type name is not the file.
+     */
+    private final Map<String, String> modelFiles = new HashMap<>();
     private OpenEnums.Census openEnumsCensus;
     private String unionPlanFile;
     private boolean validateMethods = true;
@@ -347,6 +354,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private boolean responseFunctions;
     /** The methods added for an operation, by its own method, which gets its auth methods only after it was grouped. */
     private final Map<CodegenOperation, List<CodegenOperation>> contentVariants = new java.util.IdentityHashMap<>();
+    /**
+     * The path APIs by class name, as rendered: openapi-generator writes the webhooks after them into the file of
+     * their tag, so a webhook module that shares its name with one is rendered with the path operations too.
+     */
+    private final Map<String, OperationsMap> pathApis = new HashMap<>();
     /** With {@link #RESPONSE_FUNCTIONS}: the spec operation of each method, for its typed headers. */
     private final Map<CodegenOperation, io.swagger.v3.oas.models.Operation> specOperations =
             new java.util.IdentityHashMap<>();
@@ -391,7 +403,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 true));
         cliOptions.add(CliOption.newString(WEBHOOK_MODULE,
                 "Tag given to every webhook operation, so that webhooks are generated into their own API module "
-                        + "instead of default_api (where a webhook replaces the untagged path operations). "
+                        + "instead of the API module of their tag (default_api when untagged), where they follow the path operations. "
                         + "A path operation that already carries the tag fails generation"));
         cliOptions.add(CliOption.newBoolean(WEBHOOK_MODULE_REEXPORT,
                 "With webhookModule: default_api re-exports the webhook module, keeping the paths of clients that "
@@ -520,7 +532,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public CodegenModel fromModel(String name, Schema model) {
         CodegenModel mdl = super.fromModel(name, model);
         retypeUntypedVariants(mdl);
-        UnionRules.nameVariants(mdl, name, model, this::toModelName);
+        UnionRules.nameVariants(mdl, name, model, this::toVariantName);
         return mdl;
     }
 
@@ -578,6 +590,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         DefaultRules.mark(objs);
         Imports.markModels(objs);
         documentedModels.addAll(DocLinks.markModels(objs));
+        modelFiles.putAll(modelFiles(objs));
         return objs;
     }
 
@@ -887,7 +900,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
             flattenWithQualifiedNames(openAPI);
         }
         LOGGER.info("{}: {} string enum branches of unions became models", GENERATOR_NAME,
-                UnionRules.hoistEnumBranches(openAPI, this::toModelName));
+                UnionRules.hoistEnumBranches(openAPI, this::toVariantName));
         super.preprocessOpenAPI(openAPI);
         for (String where : SpecNormalizer.integerWithFloatFormatToNumber(openAPI)) {
             LOGGER.warn("{}: read 'type: integer' with a float format as 'type: number' at {}", GENERATOR_NAME, where);
@@ -1056,7 +1069,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public void postProcess() {
         java.nio.file.Path models = java.nio.file.Paths.get(outputFolder, "src", "models");
         try {
-            checkStructJsonModels(models, structJsonModels);
+            checkStructJsonModels(models, structJsonModels, modelFiles);
             if (anyDispatch) {
                 UnionRules.writeDispatchModule(models);
                 logPruned(UnionRules.DISPATCH_MODULE, HelperPruning.prune(
@@ -1069,8 +1082,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
             if (deprecatedAttributes) {
                 for (String model : deprecatedModels) {
-                    java.nio.file.Path file = models.resolve(toModelFilename(model) + ".rs");
-                    if (java.nio.file.Files.exists(file)) {
+                    String filename = modelFiles.get(model);
+                    java.nio.file.Path file = filename == null ? null : models.resolve(filename + ".rs");
+                    if (file != null && java.nio.file.Files.exists(file)) {
                         java.nio.file.Files.writeString(file,
                                 ExtraRules.deprecateItem(java.nio.file.Files.readString(file), model));
                     }
@@ -1087,6 +1101,15 @@ public class TimvwRustCodegen extends RustCodegenBase {
         super.postProcess();
     }
 
+    /** The file of every model by its Rust type name: {@code classname} to {@code classFilename}. */
+    static Map<String, String> modelFiles(Map<String, ModelsMap> objs) {
+        Map<String, String> files = new HashMap<>();
+        for (CodegenModel cm : ExtraRules.models(objs)) {
+            files.put(cm.classname, cm.classFilename);
+        }
+        return files;
+    }
+
     private static void logPruned(String module, List<String> dropped) {
         if (!dropped.isEmpty()) {
             LOGGER.info("{}: {}.rs: nothing calls {}, left out", GENERATOR_NAME, module, dropped);
@@ -1097,12 +1120,17 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * A parameter marked {@link #STRUCT_JSON} was a struct when the API module was rendered. If the written model is
      * something else (a union, whose {@code Display} is not its JSON), the explicit serialization would change the bytes
      * on the wire: fail instead. A safety net: nothing rewrites models after rendering any more.
+     *
+     * @param names the Rust type names of the parameters' models
+     * @param files the file of each model (without {@code .rs}) by its Rust type name; a model without one fails
      */
-    void checkStructJsonModels(java.nio.file.Path models, Set<String> names) throws java.io.IOException {
+    static void checkStructJsonModels(java.nio.file.Path models, Set<String> names, Map<String, String> files)
+            throws java.io.IOException {
         List<String> notStructs = new ArrayList<>();
         for (String model : names) {
-            java.nio.file.Path file = models.resolve(toModelFilename(model) + ".rs");
-            if (!java.nio.file.Files.exists(file) || !java.util.regex.Pattern.compile(
+            String filename = files.get(model);
+            java.nio.file.Path file = filename == null ? null : models.resolve(filename + ".rs");
+            if (file == null || !java.nio.file.Files.exists(file) || !java.util.regex.Pattern.compile(
                     "\\bpub struct " + java.util.regex.Pattern.quote(model) + "\\b")
                     .matcher(java.nio.file.Files.readString(file)).find()) {
                 notStructs.add(model);
@@ -1582,7 +1610,65 @@ public class TimvwRustCodegen extends RustCodegenBase {
             documented.addAll(DocLinks.documented(allModels));
             DocLinks.markOperations(objs.getWebhooks().getOperation(), documented);
         }
+        mergePathOperations(objs);
         return objs;
+    }
+
+    /**
+     * openapi-generator writes the webhooks of a tag into the API file of that tag, after the path operations of the
+     * tag were written there: untagged webhooks into {@code default_api.rs}, next to the untagged path operations. It
+     * renders that file again from the webhooks alone, so the path operations would be lost. Here the webhooks join
+     * the path operations of their API module instead, so the file holds both. A webhook whose method name a path
+     * method of the module already has fails generation. {@code webhookModule} keeps the webhooks apart.
+     */
+    private void mergePathOperations(WebhooksMap objs) {
+        OperationMap hooks = objs.getWebhooks();
+        OperationsMap paths = hooks == null ? null : pathApis.get(hooks.getClassname());
+        if (paths == null || paths.getOperations() == null || paths.getOperations().getOperation() == null
+                || hooks.getOperation() == null) {
+            return;
+        }
+        List<CodegenOperation> merged = new ArrayList<>(paths.getOperations().getOperation());
+        Set<String> taken = new HashSet<>();
+        for (CodegenOperation op : merged) {
+            taken.add(op.nickname);
+            taken.add(op.operationId);
+            if (op.vendorExtensions.containsKey(RESPONSE_FUNCTION)) {
+                taken.add(op.operationId + "_response");
+            }
+        }
+        for (CodegenOperation hook : hooks.getOperation()) {
+            if (taken.contains(hook.nickname) || taken.contains(hook.operationId)) {
+                throw new IllegalArgumentException(String.format("%s: webhook %s goes into the API module %s with "
+                                + "the path operations of its tag, where a path method is already named %s; rename "
+                                + "one of them (operationId) or set %s to generate the webhooks into a module of their "
+                                + "own", GENERATOR_NAME, hook.operationId, hooks.getClassname(), hook.operationId,
+                        WEBHOOK_MODULE));
+            }
+            merged.add(hook);
+        }
+        OperationMap operations = new OperationMap();
+        operations.putAll(paths.getOperations());
+        operations.setOperation(merged);
+        OperationsMap combined = new OperationsMap();
+        combined.putAll(paths);
+        combined.setOperation(operations);
+        Set<Map<String, String>> imports = new java.util.LinkedHashSet<>();
+        for (List<Map<String, String>> list : Arrays.asList(paths.getImports(), objs.getImports())) {
+            if (list != null) {
+                imports.addAll(list);
+            }
+        }
+        combined.setImports(new ArrayList<>(imports));
+        if (!imports.isEmpty()) {
+            combined.put("hasImport", true);
+        }
+        Imports.markApi(combined, multipartHelper, isSupportMultipleResponses());
+        objs.clear();
+        objs.putAll(combined);
+        LOGGER.info("{}: {} webhook operations written into {} next to its {} path operations (set {} to generate "
+                        + "the webhooks into a module of their own)", GENERATOR_NAME, hooks.getOperation().size(),
+                hooks.getClassname(), paths.getOperations().getOperation().size(), WEBHOOK_MODULE);
     }
 
     /** {@code default_api} re-exports the webhook module when {@code webhookModuleReexport} is set. */
@@ -1667,6 +1753,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (webhookModuleReexport && objs.getOperations() != null
                 && toApiName("default").equals(objs.getOperations().getClassname())) {
             objs.put(WEBHOOK_REEXPORT_KEY, toApiFilename(webhookModule));
+        }
+        if (objs.getOperations() != null && objs.getOperations().getClassname() != null) {
+            pathApis.put(objs.getOperations().getClassname(), objs);
         }
         return objs;
     }

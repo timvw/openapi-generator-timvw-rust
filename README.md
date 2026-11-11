@@ -204,7 +204,7 @@ Pass options with `--additional-properties=<name>=<value>,...` or in a `-c` conf
 | `fileProperties` | empty | `Schema.property` entries rendered as files ([rule](docs/mapping/schema.md#schemaformatbinary)) |
 | `deepObjectQueryParameters` | empty | `<path>?<name>` object query parameters sent in deepObject style (`name[field]=value`), like those the spec declares `style: deepObject`; other object query parameters go as JSON strings |
 | `resetQueryParameterStyle` | `false` | the query parameters not sent in deepObject style get the default style (`form`, exploded) |
-| `webhookModule` | unset | the tag for webhook operations, generated into their own API module |
+| `webhookModule` | unset | the tag for webhook operations, generated into their own API module; unset, webhooks go into the module of their tag, after its path operations ([rule](docs/mapping/openapi.md#openapiwebhooks)) |
 | `webhookModuleReexport` | `false` | `default_api` re-exports the webhook module |
 | `unionPlanFile`, `preprocessedSpecFile` | unset | write the union plan, or the spec after the spec rules, to this output-relative path as JSON (for tools and debugging) |
 

@@ -1,0 +1,115 @@
+openapi: 3.0.3
+info: {title: Model names, version: 1.0.0}
+paths:
+  /pets:
+    post:
+      operationId: createPet
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Filter'}
+        - name: X-Filter
+          in: header
+          schema: {$ref: '#/components/schemas/Filter'}
+        - name: kind
+          in: query
+          schema: {$ref: '#/components/schemas/Kind'}
+        - name: filters
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/Filter'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Pet'}
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Shape'}
+  /shapes:
+    put:
+      operationId: putShape
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Shape'}
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nothing: {$ref: '#/components/schemas/Nothing'}
+                  maybe: {$ref: '#/components/schemas/Maybe'}
+                  size:
+                    type: string
+                    enum: [small, large]
+components:
+  schemas:
+    Filter:
+      type: object
+      properties:
+        name: {type: string}
+    Pet:
+      type: object
+      deprecated: true
+      required: [name]
+      properties:
+        name: {type: string}
+        kind: {$ref: '#/components/schemas/Kind'}
+        shape: {$ref: '#/components/schemas/Shape'}
+        mood:
+          type: string
+          enum: [happy, sad]
+    Old:
+      type: object
+      deprecated: true
+      properties:
+        name: {type: string}
+    Kind:
+      type: string
+      enum: [cat, dog]
+    Circle:
+      type: object
+      required: [type, radius]
+      properties:
+        type: {type: string, enum: [circle]}
+        radius: {type: number}
+    Square:
+      type: object
+      required: [type, side]
+      properties:
+        type: {type: string, enum: [square]}
+        side: {type: number}
+    Shape:
+      oneOf:
+        - {$ref: '#/components/schemas/Circle'}
+        - {$ref: '#/components/schemas/Square'}
+      discriminator:
+        propertyName: type
+        mapping:
+          circle: '#/components/schemas/Circle'
+          square: '#/components/schemas/Square'
+    Loose:
+      anyOf:
+        - {type: string, enum: [auto, none]}
+        - {type: string}
+        - {$ref: '#/components/schemas/Filter'}
+    Nothing:
+      nullable: true
+      enum: [null]
+    Maybe:
+      oneOf:
+        - {}
+        - {type: 'null'}

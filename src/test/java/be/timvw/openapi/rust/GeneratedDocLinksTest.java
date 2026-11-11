@@ -32,7 +32,7 @@ class GeneratedDocLinksTest {
     @ParameterizedTest
     @ValueSource(strings = {"doc_links.yaml", "null_shapes.yaml", "nullable_items_31.yaml", "schema_mapping.yaml",
             "request_bodies.yaml", "union_params.yaml", "multipart.yaml", "nested_enum_containers.yaml",
-            "operation_mapping.yaml"})
+            "operation_mapping.yaml", "webhooks.yaml"})
     void everyRelativeLinkResolves(String spec, @TempDir Path out) throws IOException {
         generate(spec, out);
         assertNoBrokenLinks(out);

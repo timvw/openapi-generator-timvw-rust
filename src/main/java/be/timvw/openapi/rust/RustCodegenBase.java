@@ -1175,6 +1175,21 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         return objs;
     }
 
+    /**
+     * Rust types the generated code uses outside of models, parameters and responses (the typed response headers):
+     * a uuid or chrono one makes the crate depend on uuid or chrono.
+     */
+    protected void noteTypes(java.util.Collection<String> types) {
+        if (types.stream().anyMatch(t -> t.contains("uuid::Uuid")) && !hasUUIDs) {
+            hasUUIDs = true;
+            additionalProperties.put("hasUUIDs", true);
+        }
+        if (useChrono && types.stream().anyMatch(t -> t.contains("chrono::")) && !usesChronoTypes) {
+            usesChronoTypes = true;
+            additionalProperties.put("usesChronoTypes", true);
+        }
+    }
+
     /** Whether a parameter, the return type or a response of the operation names the Rust type {@code type}. */
     private static boolean usesType(CodegenOperation operation, String type) {
         List<String> types = new ArrayList<>();

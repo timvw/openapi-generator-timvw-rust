@@ -147,7 +147,7 @@ the same as an option; keep (success headers through 1 only).
 **Recommendation:** adopt the field, in a breaking generator release: one test line to fix, and it removes a reason
 for langfuse-ergonomic to bypass the generated client.
 
-**Decision:** adopt (2026-11-09): success headers through 1; `ResponseContent` gets `headers: reqwest::header::HeaderMap` for errors. Typed accessors for declared response headers are out of scope. Implemented in #68.
+**Decision:** adopt (2026-11-09): success headers through 1; `ResponseContent` gets `headers: reqwest::header::HeaderMap` for errors. Typed accessors for declared response headers are out of scope. Implemented in #68. Typed accessors for the headers a success declares were added later, with `responseFunctions` ([`header.schema.typed`](mapping/header.md#headerschematyped)).
 
 **Decision (2026-11-09, follow-up):** errors are always boxed; `boxResponseError` removed. With `headers` an unboxed
 `ResponseContent` puts every function over clippy's `result_large_err` limit, so `Error::ResponseError` always holds

@@ -141,7 +141,6 @@ class NoStructDisplayTest {
     @Test
     void aModelRewrittenIntoAUnionAfterRenderingFailsInsteadOfChangingBytes(@TempDir Path root) throws IOException {
         // Rendered as a struct, then turned into a union by a rewrite: its Display would not be its JSON.
-        TimvwRustCodegen codegen = new TimvwRustCodegen();
         Path models = Files.createDirectories(root.resolve("src/models"));
         Files.writeString(models.resolve("filter.rs"), "#[serde(untagged)]\npub enum Filter {\n    Text(String),\n}\n");
         org.openapitools.codegen.CodegenParameter parameter = new org.openapitools.codegen.CodegenParameter();
@@ -149,9 +148,10 @@ class NoStructDisplayTest {
         TimvwRustCodegen.markStructJson(parameter, java.util.Set.of("Filter"));
         assertTrue(parameter.vendorExtensions.containsKey(TimvwRustCodegen.STRUCT_JSON));
         IllegalStateException e = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
-                () -> codegen.checkStructJsonModels(models, java.util.Set.of("Filter")));
+                () -> TimvwRustCodegen.checkStructJsonModels(models, java.util.Set.of("Filter"),
+                        Map.of("Filter", "filter")));
         assertTrue(e.getMessage().contains("Filter"), e.getMessage());
         Files.writeString(models.resolve("filter.rs"), "pub struct Filter {\n}\n");
-        codegen.checkStructJsonModels(models, java.util.Set.of("Filter"));
+        TimvwRustCodegen.checkStructJsonModels(models, java.util.Set.of("Filter"), Map.of("Filter", "filter"));
     }
 }

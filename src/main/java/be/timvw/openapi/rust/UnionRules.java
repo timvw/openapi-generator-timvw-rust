@@ -126,6 +126,8 @@ final class UnionRules {
      * Moves every inline string enum branch of a union into a component {@code <Union><Variant>Enum} and references it.
      * Runs after the inline-model resolver, when every union is a component.
      *
+     * @param modelName {@code toVariantName}: {@code toModelName} without the model name prefix and suffix, which
+     *                  {@code toModelName} adds to the new component once
      * @throws IllegalArgumentException when the name is taken by a different schema; the generator does not pick one
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -189,7 +191,11 @@ final class UnionRules {
                 && (SpecRules.singleType(s) == null || "string".equals(SpecRules.singleType(s)));
     }
 
-    /** Names the variants of a union from its schema. Called for every model, while the schema is at hand. */
+    /**
+     * Names the variants of a union from its schema. Called for every model, while the schema is at hand.
+     *
+     * @param modelName {@code toVariantName}: a variant does not get the model name prefix and suffix
+     */
     @SuppressWarnings("rawtypes")
     static void nameVariants(CodegenModel cm, String schemaName, Schema<?> schema, Function<String, String> modelName) {
         if (cm.getComposedSchemas() == null) {

@@ -107,6 +107,18 @@ impl<T> ApiResponse<T> {
     pub fn json_borrowed<'a, U: Deserialize<'a>>(&'a self) -> Result<U, serde_json::Error> {
         serde_json::from_str(&self.body)
     }
+{{#x-rust-typed-headers}}
+
+    /// The headers the spec declares for the operation's successes, typed: `H` is the operation's
+    /// `<Operation>ResponseHeaders` struct in its API module, named because `T` does not tell the operation. Every field is an `Option`: `None` when the header is missing or does not
+    /// parse. The same as `H::from(&response.headers)`.
+    pub fn typed_headers<H>(&self) -> H
+    where
+        H: for<'h> From<&'h reqwest::header::HeaderMap>,
+    {
+        H::from(&self.headers)
+    }
+{{/x-rust-typed-headers}}
 }
 
 impl<T: DeserializeOwned> ApiResponse<T> {
@@ -136,3 +148,40 @@ impl<T> fmt::Debug for ApiResponse<T> {
             .finish()
     }
 }
+{{#x-rust-typed-headers-value}}
+
+/// The first value of the header `name`, trimmed, read by `parse`: `None` when it is missing, not UTF-8 or does
+/// not parse. Used by the `<Operation>ResponseHeaders` structs.
+pub(crate) fn header_value<T>(
+    headers: &reqwest::header::HeaderMap,
+    name: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> Option<T> {
+    let value = headers.get(name)?;
+    parse(std::str::from_utf8(value.as_bytes()).ok()?.trim())
+}
+{{/x-rust-typed-headers-value}}
+{{#x-rust-typed-headers-list}}
+
+/// The items of the header `name`, a comma-separated list (the simple style), over every occurrence of the header,
+/// each trimmed and read by `parse`; empty items are skipped. `None` when the header is missing, or when a value is
+/// not UTF-8 or an item does not parse.
+pub(crate) fn header_list<T>(
+    headers: &reqwest::header::HeaderMap,
+    name: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> Option<Vec<T>> {
+    let mut values = headers.get_all(name).iter().peekable();
+    values.peek()?;
+    let mut items = Vec::new();
+    for value in values {
+        for item in std::str::from_utf8(value.as_bytes()).ok()?.split(',') {
+            let item = item.trim();
+            if !item.is_empty() {
+                items.push(parse(item)?);
+            }
+        }
+    }
+    Some(items)
+}
+{{/x-rust-typed-headers-list}}

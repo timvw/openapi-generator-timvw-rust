@@ -16,6 +16,9 @@
 /// success undecoded, with its status and headers: an [`ApiResponse`](super::ApiResponse) that decodes the body as
 /// `{{{x-rust-response-type}}}` (`json()`), as a type of the caller's (`json_as()`, `json_borrowed()`), or hands it out
 /// as text (`text()`).
+{{#x-rust-response-headers-name}}
+/// The headers the spec declares are typed: `typed_headers::<{{{.}}}>()` ([`{{{.}}}`]).
+{{/x-rust-response-headers-name}}
 {{/x-rust-as-response}}
 {{#isDeprecated}}
 #[deprecated]

@@ -186,7 +186,7 @@ Pass options with `--additional-properties=<name>=<value>,...` or in a `-c` conf
 
 | Option | Default | What it adds |
 | --- | --- | --- |
-| `responseFunctions` | `false` | `<operation>_response`, returning `ApiResponse<T>`: status, headers and the undecoded body, to decode as the generated type, as a subset of your own (owned or borrowed) or as text ([guide](docs/guides/response-functions.md), [rule](docs/mapping/response.md#responsecontentresponse-function)) |
+| `responseFunctions` | `false` | `<operation>_response`, returning `ApiResponse<T>`: status, headers and the undecoded body, to decode as the generated type, as a subset of your own (owned or borrowed) or as text; the headers a success declares are typed in `<Operation>ResponseHeaders` (`response.typed_headers::<..>()`) ([guide](docs/guides/response-functions.md), [rules](docs/mapping/response.md#responsecontentresponse-function), [`header.schema.typed`](docs/mapping/header.md#headerschematyped)) |
 | `contentTypeMethods` | `false` | a function per other request media type and response shape: `_json`, `_multipart`, `_form`, `_text`, `_bytes` ([rule](docs/mapping/request-body.md#requestbodycontent)) |
 | `typedEventStreams` | `false` | a `text/event-stream` response is a function returning `apis::sse::EventStream<Event, _>`, a stream of typed events ([rule](docs/mapping/response.md#responsecontentevent-stream)) |
 | `multipartHelper` | `false` | multipart bodies through a generated `multipart_helper.rs`: files, arrays, JSON parts, `encoding` content types, unions with file variants ([rule](docs/mapping/request-body.md#requestbodycontentmultipart)) |
@@ -291,7 +291,7 @@ compare its `Cargo.toml` with yours.
 | --- | --- |
 | [docs/guides/errors.md](docs/guides/errors.md) | the `Error` type, status variants, headers, text errors |
 | [docs/guides/validation.md](docs/guides/validation.md) | `validate()`: what it checks, what it skips, the off switch |
-| [docs/guides/response-functions.md](docs/guides/response-functions.md) | `responseFunctions`: status, headers and partial decoding of a success |
+| [docs/guides/response-functions.md](docs/guides/response-functions.md) | `responseFunctions`: status, (typed) headers and partial decoding of a success |
 | [docs/guides/migration.md](docs/guides/migration.md) | upgrading from 0.21 and 0.20, and coming from stock `-g rust` |
 | [docs/mapping](docs/mapping/README.md) | what each OpenAPI construct becomes, as rules per specification object, each with its tests |
 | [docs/type-mapping.md](docs/type-mapping.md) | the same as one overview table, and the known gaps |

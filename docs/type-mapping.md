@@ -160,6 +160,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | `text/plain` success | `String` | |
 | `application/octet-stream` success *(reqwest)* | `reqwest::Response`, to read as bytes or a stream | |
 | `headers` of a success | not typed; read from `ApiResponse.headers` | `responseFunctions`: `<Op>ResponseHeaders` with an `Option` per declared header, typed as a parameter is, read leniently (`response.typed_headers::<<Op>ResponseHeaders>()`, [`header.schema.typed`](mapping/header.md#headerschematyped)) |
+| `headers` of an error response | not typed; read from `ResponseContent.headers` | `responseFunctions`: `<Op>ErrorHeaders`, the same for the headers of every error status (`content.typed_headers::<<Op>ErrorHeaders>()`, [`header.schema.typed-error`](mapping/header.md#headerschematyped-error)) |
 | `text/event-stream` success *(reqwest)* | decoded as JSON, which fails | `typedEventStreams`: `apis::sse::EventStream<Event, <Op>Error>`, each `data:` decoded to the event schema, `[DONE]` ends it |
 | several success media types | the first | `contentTypeMethods`: `_json`, `_text`, `_bytes`, `_stream` methods |
 | error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content`, `entity: Option<<Op>Error>` and `headers: reqwest::header::HeaderMap`; the error enum has a variant per response (`Status404(T)`, `Status5XX(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The status picks the variant (the exact code, then its `4XX` range, then `default`) and the body decodes as that response's type; a body that does not decode is `UnknownValue`, a `text/plain` string response holds the text. `ResponseContent` is boxed ([guide](guides/errors.md)) | |
@@ -181,8 +182,8 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 ## Known gaps
 
 - The headers of a JSON or text success can be read only through `responseFunctions` or `supportMultipleResponses`
-  (an error always has them). With `responseFunctions`, the headers a success declares are also typed
-  (`<Operation>ResponseHeaders`); those an error status declares are not.
+  (an error always has them). The headers a response declares are typed only with `responseFunctions`
+  (`<Operation>ResponseHeaders`, `<Operation>ErrorHeaders`).
 - Callbacks, links, examples, tag descriptions, external documentation, XML and OAuth flows are not rendered
   ([mapping](mapping/README.md#objects)).
 - `readOnly`/`writeOnly` properties are in both directions.

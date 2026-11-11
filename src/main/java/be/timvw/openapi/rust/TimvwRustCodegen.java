@@ -185,6 +185,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String RESPONSE_FUNCTION = "x-rust-response-function";
     /** Set when an API module has a {@code <Operation>ResponseHeaders} struct: {@code api_response.rs} has its helpers. */
     static final String TYPED_HEADERS = "x-rust-typed-headers";
+    /** Set when an API module has a {@code <Operation>ErrorHeaders} struct: {@code ResponseContent} reads them. */
+    static final String TYPED_ERROR_HEADERS = "x-rust-typed-error-headers";
     /**
      * Inline enums of parameters and of form or multipart body properties become component enums, so the API function
      * takes the enum instead of {@code &str} (see {@link ExtraRules#typedEnumParameters}).
@@ -1366,11 +1368,25 @@ public class TimvwRustCodegen extends RustCodegenBase {
             List<CodegenOperation> methods = new ArrayList<>(List.of(op));
             methods.addAll(contentVariants.getOrDefault(op, List.of()));
             io.swagger.v3.oas.models.Operation spec = specOperations.get(op);
-            if (spec == null || methods.stream().noneMatch(m -> m.vendorExtensions.containsKey(RESPONSE_FUNCTION))) {
+            if (spec == null) {
+                continue;
+            }
+            // Every operation's error is a ResponseContent, a file or an event stream's too; its methods share it.
+            Map<String, Object> errorHeaders = ResponseHeaders.plan(openAPI, spec, true, op.operationId,
+                    this::getTypeDeclaration, this::toVarName,
+                    msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, RESPONSE_FUNCTIONS, msg));
+            if (errorHeaders != null) {
+                errorHeaders.put("name", op.operationIdCamelCase + "ErrorHeaders");
+                errorHeaders.put("error", true);
+                op.vendorExtensions.put(ResponseHeaders.ERROR_STRUCT, errorHeaders);
+                additionalProperties.put(TYPED_ERROR_HEADERS, true);
+                noteHeaderHelpers(errorHeaders);
+            }
+            if (methods.stream().noneMatch(m -> m.vendorExtensions.containsKey(RESPONSE_FUNCTION))) {
                 continue;
             }
             // Planned only for an operation that gets the struct: nothing else depends on its headers.
-            Map<String, Object> headers = ResponseHeaders.plan(openAPI, spec, op.operationId,
+            Map<String, Object> headers = ResponseHeaders.plan(openAPI, spec, false, op.operationId,
                     this::getTypeDeclaration, this::toVarName,
                     msg -> LOGGER.warn("{}: {}: {}", GENERATOR_NAME, RESPONSE_FUNCTIONS, msg));
             if (headers == null) {
@@ -1378,6 +1394,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
             // One struct per operation, named after it, which its methods' twins share.
             headers.put("name", op.operationIdCamelCase + "ResponseHeaders");
+            headers.put("error", false);
             op.vendorExtensions.put(ResponseHeaders.STRUCT, headers);
             for (CodegenOperation m : methods) {
                 @SuppressWarnings("unchecked")
@@ -1387,12 +1404,17 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 }
             }
             additionalProperties.put(TYPED_HEADERS, true);
-            for (Object f : (List<?>) headers.get("fields")) {
-                additionalProperties.put(Boolean.TRUE.equals(((Map<?, ?>) f).get("list")) ? TYPED_HEADERS + "-list"
-                        : TYPED_HEADERS + "-value", true);
-            }
-            noteTypes(ResponseHeaders.types(headers));
+            noteHeaderHelpers(headers);
         }
+    }
+
+    /** Marks the helpers of {@code api_response.rs} a typed headers struct reads with, and notes its types. */
+    private void noteHeaderHelpers(Map<String, Object> struct) {
+        for (Object f : (List<?>) struct.get("fields")) {
+            additionalProperties.put(Boolean.TRUE.equals(((Map<?, ?>) f).get("list")) ? TYPED_HEADERS + "-list"
+                    : TYPED_HEADERS + "-value", true);
+        }
+        noteTypes(ResponseHeaders.types(struct));
     }
 
     /** Fails when a suffixed method takes the name of another method of the same API module. */

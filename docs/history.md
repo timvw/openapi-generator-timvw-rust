@@ -15,7 +15,22 @@ client repositories' scripts.
 
 ## Unreleased
 
-Fixes that change nothing for openai-client-base or langfuse-client-base.
+Additions and fixes that change nothing for openai-client-base or langfuse-client-base.
+
+### Response headers
+
+Neither client sets `responseFunctions`, so neither gets typed error headers.
+
+- With `responseFunctions`, an operation whose error responses (`4xx`, `5xx`, `default`) declare `headers` gets a
+  struct `<Operation>ErrorHeaders`, made as 0.23.0's `<Operation>ResponseHeaders` is: one per operation, the union of the headers of every error
+  status, each an `Option`, a header declared with different types read as `String`. `ResponseContent` gets
+  `typed_headers::<H>()`, so `Err(Error::ResponseError(content))` reads them with
+  `content.typed_headers::<<Operation>ErrorHeaders>()`; `from_headers`/`From<&HeaderMap>` read any header map. The
+  documentation of `<Operation>Error` names the struct. A binary or event-stream operation gets one as well, as its
+  errors are a `ResponseContent` too
+  ([`header.schema.typed-error`](mapping/header.md#headerschematyped-error)). Without the option, or without declared
+  error headers, `ResponseContent` and the API modules render as before; neither client sets the option, so neither
+  changes.
 
 ### Model names
 

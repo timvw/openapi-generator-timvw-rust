@@ -106,6 +106,37 @@ paths:
                 $ref: '#/components/schemas/Image'
         "429":
           $ref: '#/components/responses/TooManyRequests'
+        "503":
+          description: down for maintenance
+          headers:
+            X-Maintenance-Until:
+              description: When the service is back.
+              schema:
+                type: string
+                format: date-time
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+        default:
+          description: any other error
+          headers:
+            X-Trace-Id:
+              schema:
+                type: string
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+            Connection:
+              schema:
+                type: string
+            Content-Type:
+              schema:
+                type: string
+            "x bad":
+              schema:
+                type: string
   /images/{id}:
     get:
       operationId: getImage
@@ -121,6 +152,13 @@ paths:
           $ref: '#/components/responses/ImageWithEtag'
         "429":
           $ref: '#/components/responses/TooManyRequests'
+        "404":
+          description: not found
+          headers:
+            Retry-After:
+              description: When to look again, as text.
+              schema:
+                type: string
     delete:
       operationId: deleteImage
       tags: [Images]
@@ -159,6 +197,17 @@ paths:
               schema:
                 type: string
                 format: binary
+        "404":
+          description: some images are gone
+          headers:
+            X-Missing-Ids:
+              schema:
+                type: array
+                items:
+                  type: integer
+            X-Status:
+              schema:
+                $ref: '#/components/schemas/Status'
   /plain:
     get:
       operationId: listImages

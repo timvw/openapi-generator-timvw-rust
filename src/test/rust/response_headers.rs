@@ -1,10 +1,13 @@
-//! The typed response headers of `responseFunctions` at run time, on the crate generated from
+//! The typed response headers of `responseFunctions` at run time, successes and errors, on the crate generated from
 //! src/test/resources/response_headers.yaml. `ResponseHeadersTest` copies this file into that crate's tests/ and runs
-//! cargo. A one-shot HTTP server on a local port answers the end-to-end call.
+//! cargo. A one-shot HTTP server on a local port answers the end-to-end calls.
 
 use response_headers::apis::configuration::Configuration;
-use response_headers::apis::images_api::{self, CreateImageResponseHeaders, DeleteImageResponseHeaders};
-use response_headers::apis::ApiResponse;
+use response_headers::apis::images_api::{
+    self, CreateImageError, CreateImageErrorHeaders, CreateImageResponseHeaders, DeleteImageResponseHeaders,
+    DownloadImageErrorHeaders, GetImageErrorHeaders,
+};
+use response_headers::apis::{ApiResponse, Error, ResponseContent};
 use response_headers::models::{Image, Level, Status};
 use reqwest::header::{HeaderMap, HeaderValue};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -188,4 +191,89 @@ async fn from_a_response_function() {
     assert_eq!(h.retry_after.as_deref(), Some("2"));
     assert_eq!(h.location, None);
     assert_eq!(response.json().unwrap().url, "https://example.com/1.png");
+}
+
+/// The error headers: the union of what the error statuses declare (`429`, `503`, `default`), each an `Option`.
+#[test]
+fn error_headers_are_the_union_of_the_error_statuses() {
+    let h = CreateImageErrorHeaders::from_headers(&headers(&[
+        ("Retry-After", "30"),
+        ("x-maintenance-until", "2026-11-11T12:00:00Z"),
+        ("x-request-id", "6f1c2a7e-3b4d-4c8e-9f00-1a2b3c4d5e6f"),
+        ("x-trace-id", " abc "),
+        ("connection", "close"),
+    ]));
+    assert_eq!(h.retry_after, Some(30));
+    assert_eq!(h.x_maintenance_until.unwrap().to_rfc3339(), "2026-11-11T12:00:00+00:00");
+    assert_eq!(
+        h.x_request_id,
+        Some("6f1c2a7e-3b4d-4c8e-9f00-1a2b3c4d5e6f".parse::<uuid::Uuid>().unwrap())
+    );
+    assert_eq!(h.x_trace_id.as_deref(), Some("abc"));
+    // A 429 has only its own header; the others are None, and nothing that does not parse fails.
+    let only = CreateImageErrorHeaders::from_headers(&headers(&[("retry-after", "soon"), ("x-request-id", "nope")]));
+    assert_eq!(only, CreateImageErrorHeaders::default());
+    // Retry-After is an integer in the 429 and a string in the 404: text.
+    let get = GetImageErrorHeaders::from_headers(&headers(&[("retry-after", "Wed, 11 Nov 2026 10:20:30 GMT")]));
+    assert_eq!(get.retry_after.as_deref(), Some("Wed, 11 Nov 2026 10:20:30 GMT"));
+    // Lists and enums, as for a success.
+    let download = DownloadImageErrorHeaders::from_headers(&headers(&[("x-missing-ids", "4, 5"), ("x-status", "done")]));
+    assert_eq!(download.x_missing_ids, Some(vec![4, 5]));
+    assert_eq!(download.x_status, Some(Status::Done));
+}
+
+/// `ResponseContent::typed_headers` reads them from an error; `From<&HeaderMap>` does the same.
+#[test]
+fn typed_headers_of_a_response_content() {
+    let content: ResponseContent<CreateImageError> = ResponseContent {
+        status: reqwest::StatusCode::SERVICE_UNAVAILABLE,
+        content: String::new(),
+        entity: None,
+        headers: headers(&[("x-trace-id", "t-1")]),
+    };
+    let h: CreateImageErrorHeaders = content.typed_headers();
+    assert_eq!(h.x_trace_id.as_deref(), Some("t-1"));
+    assert_eq!(CreateImageErrorHeaders::from(&content.headers), h);
+}
+
+/// End to end: an error status of the operation's function, its declared headers typed.
+#[tokio::test]
+async fn from_an_error_response() {
+    let configuration = serve(
+        "429 Too Many Requests",
+        "content-type: application/json\r\nRetry-After: 7\r\nX-Trace-Id: t-9\r\n",
+        r#"{"detail":"slow down"}"#,
+    )
+    .await;
+    let error = images_api::create_image()
+        .configuration(&configuration)
+        .call()
+        .await
+        .unwrap_err();
+    let Error::ResponseError(content) = error else {
+        panic!("not a response error: {error:?}");
+    };
+    assert_eq!(content.status, reqwest::StatusCode::TOO_MANY_REQUESTS);
+    let h = content.typed_headers::<CreateImageErrorHeaders>();
+    assert_eq!(h.retry_after, Some(7));
+    assert_eq!(h.x_trace_id.as_deref(), Some("t-9"));
+    assert_eq!(h.x_maintenance_until, None);
+}
+
+/// A file operation's error is a `ResponseContent` too, so its declared error headers are typed as well.
+#[tokio::test]
+async fn from_a_file_operation_error() {
+    let configuration = serve("404 Not Found", "X-Missing-Ids: 1,2\r\nX-Status: queued\r\n", "").await;
+    let error = images_api::download_image()
+        .configuration(&configuration)
+        .id("1")
+        .call()
+        .await
+        .unwrap_err();
+    let Error::ResponseError(content) = error else {
+        panic!("not a response error: {error:?}");
+    };
+    let h = content.typed_headers::<DownloadImageErrorHeaders>();
+    assert_eq!(h.x_missing_ids, Some(vec![1, 2]));
+    assert_eq!(h.x_status, Some(Status::Queued));
 }

@@ -381,8 +381,8 @@ A tagged union opens too: [`discriminator.propertyName.unknown-value`](discrimin
 | --- | --- |
 | OpenAPI | the branches of a `oneOf` or `anyOf` |
 | Rust | each variant is named, in order of preference, after the discriminator `mapping` key, the referenced schema, the branch's `title`, then its type (`Text`, `Integer`, `Number`, `ArrayOfStrings`, `ArrayOfIntegerArrays`). Arrays that share a title are named after their items |
-| Options | always; an inline branch's model carries the union's name (`models::FormatPcm`), which the variant does not repeat (`Pcm`) |
-| Tests | [`ModelUnionsTest#thePlanNamesEveryVariantWithItsBranch`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L251), [`#arraysSharingATitleAreNamedAfterTheirItems`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L169), [`#anInlineBranchKeepsItsOwnModel`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L125) |
+| Options | always; an inline branch's model carries the union's name (`models::FormatPcm`), which the variant does not repeat (`Pcm`). A variant never carries `--model-name-prefix` or `--model-name-suffix` (`Circle(models::ApiCircle)`, `Text(String)`) |
+| Tests | [`ModelUnionsTest#thePlanNamesEveryVariantWithItsBranch`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L251), [`#arraysSharingATitleAreNamedAfterTheirItems`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L169), [`#anInlineBranchKeepsItsOwnModel`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L125), [`ModelNamesTest#unionVariantsAndHoistedEnumsGetThePrefixAndSuffixOnce`](../../src/test/java/be/timvw/openapi/rust/ModelNamesTest.java#L120) |
 
 ### `schema.oneOf.variant-order`
 

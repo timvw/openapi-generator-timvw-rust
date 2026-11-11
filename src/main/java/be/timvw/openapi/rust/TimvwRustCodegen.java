@@ -335,6 +335,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private boolean deprecatedAttributes;
     private boolean pruneAllHelpers;
     private final Set<String> deprecatedModels = new java.util.TreeSet<>();
+    /**
+     * The file (without {@code .rs}) each model is written to, by its Rust type name. The file is named after the
+     * schema ({@code toModelFilename} of the schema name), the type is {@code toModelName} of it: with a model name
+     * prefix, suffix or mapping, {@code toModelFilename} of the type name is not the file.
+     */
+    private final Map<String, String> modelFiles = new HashMap<>();
     private OpenEnums.Census openEnumsCensus;
     private String unionPlanFile;
     private boolean validateMethods = true;
@@ -524,7 +530,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public CodegenModel fromModel(String name, Schema model) {
         CodegenModel mdl = super.fromModel(name, model);
         retypeUntypedVariants(mdl);
-        UnionRules.nameVariants(mdl, name, model, this::toModelName);
+        UnionRules.nameVariants(mdl, name, model, this::toVariantName);
         return mdl;
     }
 
@@ -582,6 +588,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         DefaultRules.mark(objs);
         Imports.markModels(objs);
         documentedModels.addAll(DocLinks.markModels(objs));
+        modelFiles.putAll(modelFiles(objs));
         return objs;
     }
 
@@ -891,7 +898,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
             flattenWithQualifiedNames(openAPI);
         }
         LOGGER.info("{}: {} string enum branches of unions became models", GENERATOR_NAME,
-                UnionRules.hoistEnumBranches(openAPI, this::toModelName));
+                UnionRules.hoistEnumBranches(openAPI, this::toVariantName));
         super.preprocessOpenAPI(openAPI);
         for (String where : SpecNormalizer.integerWithFloatFormatToNumber(openAPI)) {
             LOGGER.warn("{}: read 'type: integer' with a float format as 'type: number' at {}", GENERATOR_NAME, where);
@@ -1060,7 +1067,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public void postProcess() {
         java.nio.file.Path models = java.nio.file.Paths.get(outputFolder, "src", "models");
         try {
-            checkStructJsonModels(models, structJsonModels);
+            checkStructJsonModels(models, structJsonModels, modelFiles);
             if (anyDispatch) {
                 UnionRules.writeDispatchModule(models);
                 logPruned(UnionRules.DISPATCH_MODULE, HelperPruning.prune(
@@ -1073,8 +1080,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
             if (deprecatedAttributes) {
                 for (String model : deprecatedModels) {
-                    java.nio.file.Path file = models.resolve(toModelFilename(model) + ".rs");
-                    if (java.nio.file.Files.exists(file)) {
+                    String filename = modelFiles.get(model);
+                    java.nio.file.Path file = filename == null ? null : models.resolve(filename + ".rs");
+                    if (file != null && java.nio.file.Files.exists(file)) {
                         java.nio.file.Files.writeString(file,
                                 ExtraRules.deprecateItem(java.nio.file.Files.readString(file), model));
                     }
@@ -1091,6 +1099,15 @@ public class TimvwRustCodegen extends RustCodegenBase {
         super.postProcess();
     }
 
+    /** The file of every model by its Rust type name: {@code classname} to {@code classFilename}. */
+    static Map<String, String> modelFiles(Map<String, ModelsMap> objs) {
+        Map<String, String> files = new HashMap<>();
+        for (CodegenModel cm : ExtraRules.models(objs)) {
+            files.put(cm.classname, cm.classFilename);
+        }
+        return files;
+    }
+
     private static void logPruned(String module, List<String> dropped) {
         if (!dropped.isEmpty()) {
             LOGGER.info("{}: {}.rs: nothing calls {}, left out", GENERATOR_NAME, module, dropped);
@@ -1101,12 +1118,17 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * A parameter marked {@link #STRUCT_JSON} was a struct when the API module was rendered. If the written model is
      * something else (a union, whose {@code Display} is not its JSON), the explicit serialization would change the bytes
      * on the wire: fail instead. A safety net: nothing rewrites models after rendering any more.
+     *
+     * @param names the Rust type names of the parameters' models
+     * @param files the file of each model (without {@code .rs}) by its Rust type name; a model without one fails
      */
-    void checkStructJsonModels(java.nio.file.Path models, Set<String> names) throws java.io.IOException {
+    static void checkStructJsonModels(java.nio.file.Path models, Set<String> names, Map<String, String> files)
+            throws java.io.IOException {
         List<String> notStructs = new ArrayList<>();
         for (String model : names) {
-            java.nio.file.Path file = models.resolve(toModelFilename(model) + ".rs");
-            if (!java.nio.file.Files.exists(file) || !java.util.regex.Pattern.compile(
+            String filename = files.get(model);
+            java.nio.file.Path file = filename == null ? null : models.resolve(filename + ".rs");
+            if (file == null || !java.nio.file.Files.exists(file) || !java.util.regex.Pattern.compile(
                     "\\bpub struct " + java.util.regex.Pattern.quote(model) + "\\b")
                     .matcher(java.nio.file.Files.readString(file)).find()) {
                 notStructs.add(model);

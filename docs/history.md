@@ -15,6 +15,27 @@ client repositories' scripts.
 
 ## Unreleased
 
+Fixes that change nothing for openai-client-base or langfuse-client-base.
+
+### Model names
+
+Neither client sets a model name prefix, suffix or mapping.
+
+- With `--model-name-prefix`, `--model-name-suffix` or `--model-name-mappings`, generation no longer fails with
+  "parameters of these types are serialized as JSON, but they are no longer structs" when a struct is a JSON
+  parameter or request body ([`components.schemas`](mapping/components.md#componentsschemas)). The check, and
+  `deprecatedAttributes`, looked for a model's file with `toModelFilename` of its Rust type name, which adds the
+  prefix and suffix a second time (`api_api_pet.rs` for `ApiPet` in `api_pet.rs`) and misses a mapped name
+  (`search_filter.rs` for `SearchFilter` in `filter.rs`). Both now take the file the model was written to, so
+  `deprecatedAttributes` also marks such a model `#[deprecated]`, which it skipped silently. A union in place of the
+  struct still fails generation.
+- With a prefix or suffix, a union variant no longer carries it, and a string enum branch a union hoists into a
+  model gets it once ([`schema.oneOf.variant-names`](mapping/schema.md#schemaoneofvariant-names)): with prefix
+  `Api`, `Filter(models::ApiFilter)`, `Text(String)` and `TextVariant(models::ApiLooseTextVariantEnum)`, where
+  0.23.0 rendered `ApiFilter(models::ApiFilter)`, `ApiText(String)` and
+  `ApiApiTextVariant(models::ApiApiLooseApiTextVariantEnum)`. Code that names such a variant or hoisted enum under a
+  prefix or suffix changes; without one nothing does.
+
 ### Webhooks
 
 - Without `webhookModule`, the webhooks of a tag go into the API module of that tag after its path operations: an

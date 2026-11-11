@@ -531,6 +531,18 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         return sanitizeIdentifier(addModelNamePrefixAndSuffix(name), CasingType.CAMEL_CASE, "model", "model", false);
     }
 
+    /**
+     * {@link #toModelName} without the model name prefix and suffix: the name of a union variant, or the part of a
+     * schema name that {@link #toModelName} completes later. The prefix and suffix belong to the type, once: a variant
+     * {@code Text} or a hoisted schema {@code LooseTextVariantEnum} with them would get them again.
+     */
+    public String toVariantName(String name) {
+        if (modelNameMapping.containsKey(name)) {
+            return modelNameMapping.get(name);
+        }
+        return sanitizeIdentifier(name, CasingType.CAMEL_CASE, "model", "model", false);
+    }
+
     @Override
     public String toModelFilename(String name) {
         return sanitizeIdentifier(addModelNamePrefixAndSuffix(name), CasingType.SNAKE_CASE, "model", "model file",

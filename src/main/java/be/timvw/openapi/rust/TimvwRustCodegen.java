@@ -835,6 +835,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
         // properties of the same object (names inherited through allOf). The result is then parsed again as the
         // CLI parses its input and takes the place of the document the generator holds.
         OpenAPI working = getInputSpec() != null ? parseFile(getInputSpec(), false) : reparse(openAPI, false);
+        for (String where : NullSchemas.rewrite(working)) {
+            LOGGER.info("{}: read a schema of only null, or of any value or null, as any value at {}",
+                    GENERATOR_NAME, where);
+        }
         applySpecRules(working);
         String json = serialize(working);
         preprocessedSpecJson = json;

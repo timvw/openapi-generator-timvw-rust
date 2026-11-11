@@ -1,0 +1,168 @@
+package be.timvw.openapi.rust;
+
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.openapitools.codegen.DefaultGenerator;
+import org.openapitools.codegen.config.CodegenConfigurator;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * A schema of only {@code null} ({@code type: 'null'}) and one of any value or {@code null}
+ * ({@code oneOf}/{@code anyOf: [{}, {type: 'null'}]}) are {@code serde_json::Value}, which holds {@code null}, as a
+ * property, list item, map value, component, union variant, request body, response, query parameter and form field.
+ * They referenced models that were never written ({@code models::Null}, {@code models::OneOfLessThanGreaterThan}),
+ * or were an empty struct. A parameter or form field of only {@code null} fails generation: it could never be sent.
+ */
+class NullShapesTest {
+
+    private static final String MAP = "std::collections::HashMap<String, ";
+
+    @TempDir
+    static Path out;
+
+    @TempDir
+    static Path helper;
+
+    @BeforeAll
+    static void generate() {
+        generate("src/test/resources/null_shapes.yaml", out, Map.of("packageName", "null_shapes_fixture"));
+        generate("src/test/resources/null_shapes.yaml", helper,
+                Map.of("packageName", "null_shapes_fixture", "multipartHelper", "true"));
+    }
+
+    private static void generate(String spec, Path output, Map<String, Object> props) {
+        new DefaultGenerator().opts(new CodegenConfigurator()
+                .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
+                .setInputSpec(Path.of(spec).toAbsolutePath().toString())
+                .setOutputDir(output.toString())
+                .setAdditionalProperties(props)
+                .toClientOptInput()).generate();
+    }
+
+    @Test
+    void nullAndAnyOrNullAreJsonValuesEverywhere() throws IOException {
+        String holder = Files.readString(out.resolve("src/models/holder.rs"));
+        // as {} is: nullable, so an optional field is a double Option and a required one an Option
+        assertContains(holder, "    pub any_opt: Option<Option<serde_json::Value>>,\n");
+        assertContains(holder, "    pub any_req: Option<serde_json::Value>,\n");
+        // serde_json::Value holds null itself: no Option around an item or a value
+        assertContains(holder, "    pub any_items: Option<Vec<serde_json::Value>>,\n");
+        assertContains(holder, "    pub any_values: Option<" + MAP + "serde_json::Value>>,\n");
+        assertContains(holder, "    pub nulls: Option<Vec<serde_json::Value>>,\n");
+        assertContains(holder, "    pub nulls_req: Vec<serde_json::Value>,\n");
+        assertContains(holder, "    pub null_values: Option<" + MAP + "serde_json::Value>>,\n");
+        assertContains(holder, "    pub null_opt: Option<Option<serde_json::Value>>,\n");
+        assertContains(holder, "    pub null_req: Option<serde_json::Value>,\n");
+        String refs = Files.readString(out.resolve("src/models/refs.rs"));
+        assertContains(refs, "    pub any: Option<Option<serde_json::Value>>,\n");
+        assertContains(refs, "    pub null_only: Option<Option<serde_json::Value>>,\n");
+        assertContains(refs, "    pub list_of_any_refs: Option<Vec<serde_json::Value>>,\n");
+        // the components themselves are no models: no empty struct, no models::Null
+        assertFalse(Files.exists(out.resolve("src/models/any_or_null.rs")));
+        assertFalse(Files.exists(out.resolve("src/models/only_null.rs")));
+        assertContains(Files.readString(out.resolve("src/models/uni.rs")),
+                "    Text(String),\n    ArrayOfItems(Vec<serde_json::Value>),\n}");
+        for (Path crate : List.of(out, helper)) {
+            String api = Files.readString(crate.resolve("src/apis/default_api.rs"));
+            assertContains(api, "get_things(configuration: &configuration::Configuration, filter: Option<&str>, "
+                    + "filters: Option<Vec<serde_json::Value>>) -> Result<models::Holder, ");
+            assertContains(api, "post_things(configuration: &configuration::Configuration, body: "
+                    + "Option<&serde_json::Value>) -> Result<serde_json::Value, ");
+            assertContains(api, "post_form(configuration: &configuration::Configuration, anything: "
+                    + "Option<serde_json::Value>, count: Option<i64>)");
+            assertContains(api, "upload(configuration: &configuration::Configuration, file: "
+                    + "Option<std::path::PathBuf>, meta: Option<serde_json::Value>)");
+            assertFalse(api.contains("models::Null") || api.contains("LessThanGreaterThan")
+                    || api.contains("models::serde_json"), api);
+        }
+    }
+
+    @Test
+    void aParameterOfOnlyNullFailsGeneration(@TempDir Path dir) {
+        assertFails("src/test/resources/null_shapes_param.yaml", dir,
+                "#/paths//things/get/parameters/nothing: parameter 'nothing' can only be null");
+    }
+
+    @Test
+    void aFormFieldOfOnlyNullFailsGeneration(@TempDir Path dir) {
+        assertFails("src/test/resources/null_shapes_form.yaml", dir,
+                "#/paths//form/post/requestBody/content/multipart/form-data: form field 'none' can only be null");
+    }
+
+    private static void assertFails(String spec, Path dir, String message) {
+        Throwable e = assertThrows(RuntimeException.class,
+                () -> generate(spec, dir, Map.of("packageName", "fixture")));
+        StringBuilder messages = new StringBuilder();
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            messages.append(t.getMessage()).append('\n');
+        }
+        assertTrue(messages.toString().contains(message), messages.toString());
+    }
+
+    /** Runs src/test/rust/null_shapes.rs on the generated crate, after clippy on both. Needs cargo. */
+    @Test
+    void nullAndValuesRoundTrip() throws IOException, InterruptedException {
+        Assumptions.assumeTrue(cargo(out, 30, "--version") != null, "no cargo");
+        for (Path crate : List.of(out, helper)) {
+            String clippy = cargo(crate, 900, "clippy", "--all-targets", "--", "-D", "warnings");
+            assertNotNull(clippy, "clippy did not finish");
+            assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("error[")
+                    && !clippy.contains("warning:"), clippy);
+        }
+        Path manifest = out.resolve("Cargo.toml");
+        String toml = Files.readString(manifest);
+        if (!toml.contains("[dev-dependencies]")) {
+            Files.writeString(manifest, toml + """
+
+                    [dev-dependencies]
+                    tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+                    """);
+        }
+        Files.createDirectories(out.resolve("tests"));
+        Files.copy(Path.of("src/test/rust/null_shapes.rs"), out.resolve("tests/null_shapes.rs"),
+                StandardCopyOption.REPLACE_EXISTING);
+        String test = cargo(out, 900, "test", "--test", "null_shapes");
+        assertNotNull(test, "cargo did not finish");
+        assertTrue(test.contains("test result: ok.") && !test.contains(" 0 passed"), test);
+    }
+
+    private static void assertContains(String haystack, String needle) {
+        assertTrue(haystack.contains(needle), () -> "expected\n" + needle + "\nin\n" + haystack);
+    }
+
+    /** What cargo printed, or {@code null} when it cannot run or does not finish in time. */
+    private static String cargo(Path dir, long seconds, String... arguments) throws IOException, InterruptedException {
+        List<String> command = new ArrayList<>(List.of("cargo"));
+        command.addAll(List.of(arguments));
+        Path log = Files.createTempFile("cargo", ".log");
+        Process process;
+        try {
+            process = new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true)
+                    .redirectOutput(log.toFile()).start();
+        } catch (IOException e) {
+            return null;
+        }
+        if (!process.waitFor(seconds, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            return null;
+        }
+        String output = Files.readString(log);
+        Files.deleteIfExists(log);
+        return output;
+    }
+}

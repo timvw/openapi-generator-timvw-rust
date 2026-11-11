@@ -73,6 +73,15 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Options | always; before, such a parameter was `Option<&str>` (a path one too) and such a form field of a `uuid` or `date-time` did not compile (`models::uuid::Uuid`) |
 | Tests | [`NullBranchParamsTest#aParameterTakesTheReferencedType`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L64), [`#aRequiredOneIsAnOptionExceptInThePath`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L84), [`#itIsSentAsThePlainReferenceIs`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L95), [`#aFormFieldTakesTheReferencedType`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L106), [`#theModelKeepsItsNullableField`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L163), [`#theNonNullBranch`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L169), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L198), [`#aWrappedReferenceIsUnwrapped`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L135), [`#aNullablePathParameterIsItsType`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L147), [`#aRequiredNullableHeaderLeftNoneIsNotSent`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L155), [`#aPlainAllOfFormFieldTakesTheReferencedType`](../../src/test/java/be/timvw/openapi/rust/NullBranchParamsTest.java#L123) |
 
+### `parameter.schema.null`
+
+| | |
+| --- | --- |
+| OpenAPI | a query, path, header or cookie parameter whose schema can only be `null` (`type: "null"`, a union of only `null` branches, a list of these, or a `$ref` to one) |
+| Rust | none: generation fails, naming the parameter, since a parameter has no `null` to send and could never be sent. A form field of only `null` fails the same way ([`schema.type.null`](schema.md#schematypenull)). A parameter of any value or `null` (`oneOf: [{}, {type: "null"}]`) is any value, as `{}` is: a string in the query, path or a header |
+| Options | always; before, it was `models::Null`, which did not compile |
+| Tests | [`NullShapesTest#aParameterOfOnlyNullFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L96), [`#nullAndAnyOrNullAreJsonValuesEverywhere`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L58) |
+
 ### `parameter.schema.enum`
 
 | | |

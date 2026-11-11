@@ -1,0 +1,16 @@
+openapi: 3.1.0
+info:
+  title: a parameter of only null
+  version: '1'
+paths:
+  /things:
+    get:
+      operationId: getThings
+      parameters:
+        - name: nothing
+          in: query
+          schema:
+            type: 'null'
+      responses:
+        '204':
+          description: ok

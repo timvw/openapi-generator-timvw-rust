@@ -1127,7 +1127,8 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                     param.isString = true;
                 }
                 // A free-form object is serde_json::Value, not a model: primitive, so no models:: prefix is added.
-                if (param.isFreeFormObject && !param.isContainer) {
+                // So is an any-type form field, sent as its JSON text.
+                if ((param.isFreeFormObject || (param.isAnyType && param.isFormParam)) && !param.isContainer) {
                     param.isPrimitiveType = true;
                 }
             }

@@ -15,10 +15,11 @@ client repositories' scripts.
 
 ## Unreleased
 
-Fixes that change nothing for openai-client-base or langfuse-client-base: neither sets a model name prefix, suffix or
-mapping.
+Fixes that change nothing for openai-client-base or langfuse-client-base.
 
 ### Model names
+
+Neither client sets a model name prefix, suffix or mapping.
 
 - With `--model-name-prefix`, `--model-name-suffix` or `--model-name-mappings`, generation no longer fails with
   "parameters of these types are serialized as JSON, but they are no longer structs" when a struct is a JSON
@@ -34,6 +35,16 @@ mapping.
   0.23.0 rendered `ApiFilter(models::ApiFilter)`, `ApiText(String)` and
   `ApiApiTextVariant(models::ApiApiLooseApiTextVariantEnum)`. Code that names such a variant or hoisted enum under a
   prefix or suffix changes; without one nothing does.
+
+### Webhooks
+
+- Without `webhookModule`, the webhooks of a tag go into the API module of that tag after its path operations: an
+  untagged webhook into `default_api` next to the untagged path operations
+  ([`openapi.webhooks`](mapping/openapi.md#openapiwebhooks)). Up to 0.23.0 (and in stock `-g rust`) the webhooks were
+  written over that file, so a spec with untagged path operations and webhooks lost those path operations from
+  `default_api.rs` and `docs/DefaultApi.md`. A webhook whose function would take the name of a path method of its
+  module fails generation and names `webhookModule`. openai-client-base sets `webhookModule` and langfuse-client-base
+  has no webhooks, so neither changes.
 
 ## 0.23.0
 
@@ -325,7 +336,7 @@ decodes, clippy, operations), see [docs/comparison](comparison/README.md).
 | An `anyOf` with no typed branch (`anyOf: [{}, {type: null}]`) is `serde_json::Value`; the stock generator references a model named `AnyOfLessThanGreaterThan` that it never writes. | `fix_generator_artifacts.py` (openai-client-base) |
 | A required nullable model field is built with `name.map(Box::new)` in `new()`; stock renders `if let Some(x) = name {Some(Box::new(x))} else {None}` (clippy `manual_map`). | `fix_generated_code.py` (openai-client-base) |
 | Spec rules, applied before inline schemas are named: `default` and `propertyNames` are removed from component schemas; a `$ref` keeps only the `$ref`; a `oneOf`/`anyOf` whose branches only state `required` is dropped; an untitled, non-reference branch gets the title its variant is named after (`Text`, `Integer`, `Number`, `Boolean`, `ArrayOf<Item>s`, `Object<i>`); an inline `oneOf`/`anyOf` of a property whose branches are all inline, none null and at least one array or object is hoisted into a component `<Schema><Property>` (the stock generator fails on the flattened composed model); a top-level union branch referencing a plain string component is inlined; schema names with hyphens are normalized (`Thing-2` → `Thing2`); an inline object title that would name an existing component's model is renamed `<Schema><Property>` (stock writes both to one file). | `patch_spec_rust_compat.py`, `fix_model_fields.py`, `prompt_cache_title_disambiguation.py` (openai-client-base) |
-| `webhookModule=<Tag>`: webhook operations are tagged `<Tag>` and generated into their own API module, declared in `src/apis/mod.rs`; a path operation already carrying the tag fails generation. `webhookModuleReexport=true`: `default_api` re-exports that module (stock writes webhooks into `default_api`, where a webhook replaces the untagged path operations). | `route_webhook_apis.py`, `preserve_webhook_api.py` (openai-client-base) |
+| `webhookModule=<Tag>`: webhook operations are tagged `<Tag>` and generated into their own API module, declared in `src/apis/mod.rs`; a path operation already carrying the tag fails generation. `webhookModuleReexport=true`: `default_api` re-exports that module (stock writes webhooks into `default_api`, where a webhook replaces the untagged path operations; without the option `timvw-rust` now writes them there next to the path operations). | `route_webhook_apis.py`, `preserve_webhook_api.py` (openai-client-base) |
 | `stringIdSchemas`: component schemas rendered as `String`. `stringIdProperties`: property names (`name` or `name=fallback_description`) rendered as `String` wherever they reference one of those schemas or are a union, directly or inherited through `allOf`. `stringProperties`: `Schema.property` entries rendered as a bare `String`. `jsonValueSchemas` (component schemas rendered as `serde_json::Value`) was removed: unions render as typed enums (`modelUnions`, `unionDispatch`), and a config that still sets it fails. | `fix_model_fields.py`, `simplified_schemas.py`, `patch_spec_rust_compat.py` (openai-client-base) |
 | Object-typed query parameters (inline or a reference to an object schema) are sent as strings, except those listed in `deepObjectQueryParameters` (`<path>?<name>`), which are sent in deepObject style. `resetQueryParameterStyle=true` gives the other query parameters the default style (`form`, exploded), so arrays go as repeated parameters whatever the spec says (openai-client-base's current wire format). | `patch_spec_rust_compat.py` (openai-client-base) |
 | Imports only where used: a model file has `use crate::models;` only when it refers to another model (`x-rust-uses-models`, with `modelUnions`; without it every model keeps the import), and an API module imports `ContentType` and `serde::de::Error as _` only when an operation decodes a response or streams events, and `TokioFile`/`FramedRead` only when an operation streams a file body (or a multipart file without `multipartHelper`). Decided in Java (`Imports`), printed by the templates. `legacyModelRewrites` was removed in 0.17.0: the text rewrites it ran were no-ops under the Milestone 3 options except this import pruning and a `serde_json::Value` retype of two `content` fields; a config that still sets it fails. | `fix_unused_imports.py` and the rest of `legacyModelRewrites` (openai-client-base) |

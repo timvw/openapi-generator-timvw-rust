@@ -82,7 +82,7 @@ final class SpecRules {
 
     /**
      * Tags every webhook operation with {@code tag}, so that webhooks are generated into their own API module
-     * instead of {@code default_api}, where a webhook written second replaces the untagged path operations.
+     * instead of the module of their own tag ({@code default_api} when untagged), next to its path operations.
      *
      * @throws IllegalStateException when a path operation already carries the tag
      */

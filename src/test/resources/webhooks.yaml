@@ -1,0 +1,72 @@
+openapi: 3.1.0
+info:
+  title: Webhooks next to path operations
+  version: 1.0.0
+# WebhooksTest: the untagged webhook goes into default_api with the untagged path operation, the Pets webhook into
+# pets_api with the Pets path operation; with webhookModule both go into a module of their own.
+paths:
+  /items:
+    get:
+      operationId: listItems
+      responses:
+        '200':
+          description: the items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+  /pets/{id}:
+    get:
+      operationId: getPet
+      tags: [Pets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the pet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+webhooks:
+  itemCreated:
+    post:
+      operationId: itemCreated
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+      responses:
+        '200':
+          description: received
+  petAdopted:
+    post:
+      operationId: petAdopted
+      tags: [Pets]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pet'
+      responses:
+        '200':
+          description: received
+components:
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+    Pet:
+      type: object
+      properties:
+        name:
+          type: string

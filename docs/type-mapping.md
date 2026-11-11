@@ -124,7 +124,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | `operationId` | `pub async fn <snake_case>(configuration: &configuration::Configuration, <parameters...>)` with `#[bon::builder]`, so it is called as a builder: `list_models().configuration(&c).limit(10).call()` | `bonBuilders=false`: called with positional arguments, `list_models(&c, Some(10), None, None)` |
 | parameters | one argument each, in spec order: required as `T`/`&str`, optional as `Option<..>` | |
 | `deprecated` operation | `#[deprecated]` | |
-| `webhooks` | a module of their own, tagged `webhookModule` | `webhookModule`, `webhookModuleReexport` |
+| `webhooks` | in the module of their tag, after its path operations (untagged: `default_api`) | `webhookModule`: a module of their own; `webhookModuleReexport` |
 | request body | the last argument, named after the schema; a JSON body is borrowed (`create_chat_completion_request: &models::CreateChatCompletionRequest`, an array as a slice `&[T]`) | |
 
 ### Parameters

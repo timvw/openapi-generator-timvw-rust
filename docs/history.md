@@ -13,6 +13,28 @@ null-only schemas and doc links. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## Unreleased
+
+Fixes that change nothing for openai-client-base or langfuse-client-base: neither sets a model name prefix, suffix or
+mapping.
+
+### Model names
+
+- With `--model-name-prefix`, `--model-name-suffix` or `--model-name-mappings`, generation no longer fails with
+  "parameters of these types are serialized as JSON, but they are no longer structs" when a struct is a JSON
+  parameter or request body ([`components.schemas`](mapping/components.md#componentsschemas)). The check, and
+  `deprecatedAttributes`, looked for a model's file with `toModelFilename` of its Rust type name, which adds the
+  prefix and suffix a second time (`api_api_pet.rs` for `ApiPet` in `api_pet.rs`) and misses a mapped name
+  (`search_filter.rs` for `SearchFilter` in `filter.rs`). Both now take the file the model was written to, so
+  `deprecatedAttributes` also marks such a model `#[deprecated]`, which it skipped silently. A union in place of the
+  struct still fails generation.
+- With a prefix or suffix, a union variant no longer carries it, and a string enum branch a union hoists into a
+  model gets it once ([`schema.oneOf.variant-names`](mapping/schema.md#schemaoneofvariant-names)): with prefix
+  `Api`, `Filter(models::ApiFilter)`, `Text(String)` and `TextVariant(models::ApiLooseTextVariantEnum)`, where
+  0.23.0 rendered `ApiFilter(models::ApiFilter)`, `ApiText(String)` and
+  `ApiApiTextVariant(models::ApiApiLooseApiTextVariantEnum)`. Code that names such a variant or hoisted enum under a
+  prefix or suffix changes; without one nothing does.
+
 ## 0.23.0
 
 Additions and fixes that change no type of openai-client-base or langfuse-client-base: their Rust is the same

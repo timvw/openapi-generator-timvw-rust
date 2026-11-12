@@ -37,6 +37,9 @@ async fn serve_as(status: &str, content_type: &str, body: &'static str) -> Confi
     });
     let mut configuration = Configuration::new();
     configuration.base_path = format!("http://127.0.0.1:{port}");
+    // The server answers once; without retries a 5xx is the response, not a second connection.
+    configuration.client =
+        timvw_rust_runtime::Client::from_service(timvw_rust_runtime::ReqwestService::default());
     configuration
 }
 

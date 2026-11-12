@@ -18,26 +18,30 @@ are compiled by the tests.
 With `httpStack=tower` the crate depends on [`timvw-rust-runtime`](../../runtime/README.md), released from this
 repository next to the generator. Its `Client` is a tower service from `http::Request<Body>` to `http::Response<Body>`:
 
-- `Client::default()` sends with reqwest (the crate's default features `native-tls` or `rustls` choose its TLS).
+- `Client::default()` sends with reqwest (the crate's default features `native-tls` or `rustls` choose its TLS) and
+  retries transient failures.
 - `client.layer(layer)` wraps it in a tower layer: `tower::retry`, `tower::timeout`, rate limits, `tower-http`'s
   tracing, or a layer of your own. Layers apply from the inside out: the last one added sees a request first.
 - `Client::from_service(service)` sends with any other service: a hyper client, a service that records requests, or a
   mock in tests.
 - `Client::from_reqwest(client)` sends with a `reqwest::Client` you configured (proxy, TLS, timeouts).
 
-Retries come with the runtime (feature `retry`, on by default): `RetryPolicy` retries `429`, `408` and `5xx` responses
+Retries are on by default (feature `retry`): `Client::default()`, and so `Configuration::new()`, retries with
+`RetryPolicy::default()`. `RetryPolicy` retries `429`, `408` and `5xx` responses
 and failed connections, waits as long as `Retry-After` asks or backs off exponentially, and does not retry a request
 with a streamed body (it cannot be sent twice). A body held in memory, which is every JSON, form and text body and every
-multipart body without a streamed file, is sent again.
+multipart body without a streamed file, is sent again. Layers added to `Client::default()` wrap its retries; for
+another policy, or none, start from `Client::from_service(ReqwestService::default())`:
 
 ```rust
 use std::time::Duration;
 use timvw_rust_runtime::retry::RetryPolicy;
 use timvw_rust_runtime::tower::retry::RetryLayer;
+use timvw_rust_runtime::{Client, ReqwestService};
 
-let mut configuration = Configuration::new();
-let policy = RetryPolicy::new(3).max_delay(Duration::from_secs(10));
-configuration.client = configuration.client.clone().layer(RetryLayer::new(policy));
+let mut configuration = Configuration::new(); // retries with RetryPolicy::default()
+let policy = RetryPolicy::new(5).max_delay(Duration::from_secs(30));
+configuration.client = Client::from_service(ReqwestService::default()).layer(RetryLayer::new(policy));
 ```
 
 Logging (feature `tracing`), headers, authentication, timeouts and rate limits are layers too. The
@@ -62,6 +66,11 @@ configuration.client = Client::from_service(service);
 let page = items_api::list_items().configuration(&configuration).call().await?;
 assert_eq!(page.data[0].name, "Lamp");
 ```
+
+To send or decode types of your own, call `configuration.client` directly, with the same layers; for a
+`text/event-stream` response, `response.events().json::<T>()` decodes each event. The runtime's guide shows
+[how](../../runtime/README.md#your-own-types-and-server-sent-events). A generated `apis::sse` re-exports the runtime's
+parser (`Decoder`, `Event`, `Events`).
 
 A failure to send is `Error::Http(timvw_rust_runtime::Error)`: `is_builder()` (the request could not be built),
 `is_request()` (the service failed; `is_timeout()` and `is_connect()` narrow it down) or `is_body()` (reading the
@@ -102,7 +111,7 @@ tower layers.
 | With `reqwest-middleware` | With `tower` |
 | --- | --- |
 | `reqwest_middleware::ClientBuilder::new(reqwest_client).build()` | `timvw_rust_runtime::Client::from_reqwest(reqwest_client)` |
-| `.with(RetryTransientMiddleware::new_with_policy(..))` | `.layer(RetryLayer::new(RetryPolicy::default()))` |
+| `.with(RetryTransientMiddleware::new_with_policy(..))` | nothing: `Client::default()` retries; for another policy `Client::from_service(ReqwestService::default()).layer(RetryLayer::new(policy))` |
 | `.with(TracingMiddleware::default())` | `.layer(tower_http::trace::TraceLayer::new_for_http())` |
 | a `reqwest_middleware::Middleware` of your own | a `tower::Layer` of your own (or `tower::ServiceBuilder::map_request`) |
 | `Error::Reqwest(e)`, `Error::ReqwestMiddleware(e)` | `Error::Http(e)` |

@@ -5,6 +5,21 @@
 //! of the body ends the stream. [`Events`] is the same stream undecoded, and [`Decoder`] the parser underneath, for
 //! callers that read a body themselves.
 
+{{#httpStackTower}}
+use std::fmt;
+use std::marker::PhantomData;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use futures_core::Stream;
+use serde::de::DeserializeOwned;
+
+use super::Error;
+
+pub use timvw_rust_runtime::sse::{Decoder, Event, Events, DONE};
+
+{{/httpStackTower}}
+{{^httpStackTower}}
 use std::collections::VecDeque;
 use std::fmt;
 use std::marker::PhantomData;
@@ -247,6 +262,7 @@ where
     }
 }
 
+{{/httpStackTower}}
 /// The events of a `text/event-stream` response, each `data:` payload decoded to `T`.
 ///
 /// A payload that does not decode to `T` yields `Err(Error::Serde(_))`, and the stream goes on with the next event; an

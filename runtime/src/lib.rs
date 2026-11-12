@@ -18,6 +18,7 @@ mod reqwest_service;
 mod response;
 #[cfg(feature = "retry")]
 pub mod retry;
+pub mod sse;
 #[cfg(feature = "tracing")]
 pub mod trace;
 

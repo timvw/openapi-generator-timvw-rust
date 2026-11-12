@@ -1,11 +1,14 @@
 //! A retry policy for HTTP APIs, for tower's `RetryLayer`.
 //!
+//! `Client::default()` already retries with `RetryPolicy::default()`. For another policy, start from the bare service:
+//!
 //! ```no_run
 //! # #[cfg(feature = "reqwest")]
 //! # fn demo() {
-//! use timvw_rust_runtime::{retry::RetryPolicy, Client};
+//! use timvw_rust_runtime::{retry::RetryPolicy, Client, ReqwestService};
 //!
-//! let client = Client::default().layer(tower::retry::RetryLayer::new(RetryPolicy::new(3)));
+//! let client = Client::from_service(ReqwestService::default())
+//!     .layer(tower::retry::RetryLayer::new(RetryPolicy::new(5)));
 //! # }
 //! ```
 

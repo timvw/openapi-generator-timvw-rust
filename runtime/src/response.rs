@@ -58,6 +58,12 @@ impl Response {
         BodyDataStream::new(self.inner.into_body()).map_err(Error::body)
     }
 
+    /// The body as server-sent events (`text/event-stream`), as they arrive. [`Events::json`](crate::sse::Events::json)
+    /// decodes their `data:` as JSON. The status and the content type are not checked.
+    pub fn events(self) -> crate::sse::Events {
+        crate::sse::Events::from_response(self)
+    }
+
     /// The underlying `http::Response`.
     pub fn into_http(self) -> http::Response<Body> {
         self.inner

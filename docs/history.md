@@ -31,12 +31,15 @@ langfuse-client-base change in their dependencies, `Configuration.client` and th
   that the generated code calls (`query`, `header`, `bearer_auth`, `basic_auth`, `json`, `form`, `body`, `multipart`;
   `status`, `headers`, `text`, `bytes_stream`), and its `multipart::{Form, Part}` those of reqwest's `multipart`. The
   paths that named reqwest name the runtime instead.
-- The runtime has a retry policy for `tower::retry` (`429`, `408`, `5xx`, failed connections; `Retry-After`;
-  exponential backoff). A request body held in memory, multipart included, is sent again on a retry; a streamed body is
+- Clients retry by default: `Client::default()` retries `429`, `408`, `5xx` and failed connections (`Retry-After`,
+  exponential backoff, 3 retries), as async-openai does. A request body held in memory, multipart included, is sent again on a retry; a streamed body is
   not retried.
 - The runtime logs with `tracing` (feature `tracing`, forwarded by the generated crate): `trace::TraceLayer` opens a
   span per request and logs each response and retry. Its README is a guide to retries, timeouts, logging, middleware
   and limits.
+- The server-sent-events parser moved into the runtime (`timvw_rust_runtime::sse`); a generated `apis/sse.rs`
+  re-exports `Decoder`, `Event`, `Events` and `DONE` and keeps `EventStream`. With the runtime, a caller streams into
+  types of its own: `response.events().json::<T>()`.
 - `httpStack=reqwest-middleware` renders 0.24's output.
 
 ## 0.24.0

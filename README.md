@@ -96,13 +96,15 @@ a mock in tests):
 use std::time::Duration;
 use timvw_rust_runtime::retry::RetryPolicy;
 use timvw_rust_runtime::tower::retry::RetryLayer;
+use timvw_rust_runtime::{Client, ReqwestService};
 
-let mut configuration = Configuration::new();
-let policy = RetryPolicy::new(3).max_delay(Duration::from_secs(10));
-configuration.client = configuration.client.clone().layer(RetryLayer::new(policy));
+let mut configuration = Configuration::new(); // retries with RetryPolicy::default()
+let policy = RetryPolicy::new(5).max_delay(Duration::from_secs(30));
+configuration.client = Client::from_service(ReqwestService::default()).layer(RetryLayer::new(policy));
 ```
 
-`RetryPolicy` retries `429`, `408` and `5xx` responses and failed connections, honouring `Retry-After`. The
+`Configuration::new()` retries `429`, `408` and `5xx` responses and failed connections, honouring `Retry-After`
+(`RetryPolicy::default()`: 3 retries); the example retries more. The
 [runtime's guide](runtime/README.md) covers retries, timeouts, logging (`trace::TraceLayer`, feature `tracing`),
 headers and authentication layers, and rate limits. With
 `httpStack=reqwest-middleware` the client is a `reqwest_middleware::ClientWithMiddleware` instead, as before 0.25.

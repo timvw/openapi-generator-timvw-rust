@@ -14,8 +14,9 @@ pub type HttpService = BoxCloneSyncService<http::Request<Body>, http::Response<B
 
 /// Sends the requests of a generated client through a tower service.
 ///
-/// [`Client::default`] sends with reqwest (feature `reqwest`). [`Client::from_service`] takes any other service, and
-/// [`Client::layer`] wraps the current one in a tower layer:
+/// [`Client::default`] sends with reqwest (feature `reqwest`) and retries transient failures (feature `retry`).
+/// [`Client::from_service`] takes any other service, as is, and [`Client::layer`] wraps the current one in a tower
+/// layer:
 ///
 /// ```no_run
 /// # #[cfg(feature = "reqwest")]
@@ -32,16 +33,27 @@ pub struct Client {
 }
 
 impl Client {
-    /// A client that sends with a new `reqwest::Client`.
+    /// A client that sends with a new `reqwest::Client`, retrying with [`RetryPolicy::default`] (feature `retry`).
+    ///
+    /// [`RetryPolicy::default`]: crate::retry::RetryPolicy
     #[cfg(feature = "reqwest")]
     pub fn new() -> Self {
         Self::from_reqwest(reqwest::Client::new())
     }
 
-    /// A client that sends with the given `reqwest::Client`, for example one with a proxy or a custom TLS setup.
+    /// A client that sends with the given `reqwest::Client`, for example one with a proxy or a custom TLS setup, and
+    /// retries like [`Client::new`].
+    ///
+    /// For other retries, or none, start from the bare service instead:
+    /// `Client::from_service(ReqwestService::new(client))`, then add the layers you want.
     #[cfg(feature = "reqwest")]
     pub fn from_reqwest(client: reqwest::Client) -> Self {
-        Self::from_service(crate::ReqwestService::new(client))
+        let client = Self::from_service(crate::ReqwestService::new(client));
+        #[cfg(feature = "retry")]
+        let client = client.layer(tower::retry::RetryLayer::new(
+            crate::retry::RetryPolicy::default(),
+        ));
+        client
     }
 
     /// A client that sends with any tower service from `http::Request<Body>` to `http::Response<B>`.
@@ -104,7 +116,7 @@ impl Client {
     }
 }
 
-/// With feature `reqwest` a client that sends with reqwest; without it a client whose every request fails, to be
+/// With feature `reqwest` [`Client::new`]: reqwest, with retries when feature `retry` is on; without it a client whose every request fails, to be
 /// replaced with [`Client::from_service`].
 impl Default for Client {
     fn default() -> Self {

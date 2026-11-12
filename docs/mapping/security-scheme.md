@@ -13,7 +13,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: http, scheme: bearer` |
 | Rust | `configuration.bearer_access_token: Option<String>`, sent as `Authorization: Bearer <token>` |
-| Library | `reqwest::RequestBuilder::bearer_auth` |
+| Library | `timvw_rust_runtime::RequestBuilder::bearer_auth` |
 | Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L178) |
 
 ### `securityScheme.type.http-basic`
@@ -22,7 +22,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | `type: http, scheme: basic` |
 | Rust | `configuration.basic_auth: Option<BasicAuth>`, `BasicAuth = (String, Option<String>)` (user, password) |
-| Library | `reqwest::RequestBuilder::basic_auth` |
+| Library | `timvw_rust_runtime::RequestBuilder::basic_auth` |
 | Tests | [`OperationMappingTest#eachOperationSendsTheCredentialsOfItsSecurity`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L178) |
 
 ### `securityScheme.type.api-key`

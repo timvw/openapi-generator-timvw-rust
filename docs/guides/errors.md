@@ -14,20 +14,24 @@ are compiled by the tests.
 <!-- not compiled: the generated types, abridged -->
 ```rust
 pub enum Error<T> {
-    Reqwest(reqwest::Error),                       // sending the request or reading the response failed
-    ReqwestMiddleware(reqwest_middleware::Error),  // a middleware failed
+    Http(timvw_rust_runtime::Error),               // building or sending the request, or reading the response, failed
     Serde(serde_json::Error),                      // a success body did not decode, or a parameter did not serialize
     Io(std::io::Error),                            // a file to upload could not be read
     ResponseError(Box<ResponseContent<T>>),        // the server answered with a 4xx or 5xx status
 }
 
 pub struct ResponseContent<T> {
-    pub status: reqwest::StatusCode,
+    pub status: timvw_rust_runtime::StatusCode,
     pub content: String,                           // the body, as text
     pub entity: Option<T>,                         // the body, decoded as the variant the status selects
-    pub headers: reqwest::header::HeaderMap,       // every header of the response
+    pub headers: timvw_rust_runtime::header::HeaderMap,       // every header of the response
 }
 ```
+
+With `httpStack=reqwest-middleware`, `Http` is two variants instead: `Reqwest(reqwest::Error)` and
+`ReqwestMiddleware(reqwest_middleware::Error)`. `timvw_rust_runtime::Error` tells what failed with `is_builder()`,
+`is_request()` (the service failed: no connection, a timeout layer gave up; `is_timeout()` and `is_connect()` say
+which) and `is_body()`; its `source()` is the service's own error.
 
 With `useSerdePathToError` there is also `SerdePathToError(serde_path_to_error::Error<serde_json::Error>)`, the
 decoding error with the path of the value.
@@ -96,7 +100,7 @@ request id or rate limits:
 
 ```rust
 fn retry_after(response: &ResponseContent<items_api::CreateItemError>) -> Option<std::time::Duration> {
-    let seconds = response.headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
+    let seconds = response.headers.get(timvw_rust_runtime::header::RETRY_AFTER)?.to_str().ok()?;
     seconds.parse().ok().map(std::time::Duration::from_secs)
 }
 ```
@@ -125,10 +129,10 @@ To build one, in a test or a mock, box it (`Box::new` or `.into()`):
 
 ```rust
 let error: Error<items_api::GetItemError> = Error::ResponseError(Box::new(ResponseContent {
-    status: reqwest::StatusCode::NOT_FOUND,
+    status: timvw_rust_runtime::StatusCode::NOT_FOUND,
     content: r#"{"detail":"no such item"}"#.to_owned(),
     entity: Some(items_api::GetItemError::Status404(models::Problem::new("no such item".to_owned()))),
-    headers: reqwest::header::HeaderMap::new(),
+    headers: timvw_rust_runtime::header::HeaderMap::new(),
 }));
 assert_eq!(error.to_string(), "error in response: status code 404 Not Found");
 ```

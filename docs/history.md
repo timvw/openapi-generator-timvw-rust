@@ -10,9 +10,34 @@ is the [mapping](mapping/README.md).
 the plugin owns its Rust layer (0.20), and 0.21 renders the documented [mapping](mapping/README.md) with the changes
 of [decisions.md](decisions.md); 0.22 fixes types the JSON did not decode to and parameters typed as text; 0.23 adds typed response headers and fixes
 null-only schemas and doc links; 0.24 adds typed error headers and fixes webhooks, model name options and schema
-mappings. The
+mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` crate (`httpStack`). The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.25.0
+
+The client's HTTP stack becomes an option, `httpStack`, whose default changes: openai-client-base and
+langfuse-client-base change in their dependencies, `Configuration.client` and the transport variants of `apis::Error`
+(see [migration](guides/migration.md#from-024-to-025)).
+
+### `httpStack` and `timvw-rust-runtime`
+
+- `httpStack=tower` (the default) sends every request through `timvw_rust_runtime::Client`: a tower service from
+  `http::Request<Body>` to `http::Response<Body>`, reqwest unless replaced with `Client::from_service`, wrapped in tower
+  layers with `Client::layer`. The runtime is a crate of its own in [`runtime/`](../runtime/README.md), released with
+  its own version (`timvw-rust-runtime-v*` tags) through release-plz; the generated `Cargo.toml` asks for
+  `^<runtimeVersion>` (default `0.1`), and `runtimePath` adds a path dependency for an unreleased runtime.
+- The templates did not change shape: the runtime's `RequestBuilder` and `Response` have the methods of reqwest's
+  that the generated code calls (`query`, `header`, `bearer_auth`, `basic_auth`, `json`, `form`, `body`, `multipart`;
+  `status`, `headers`, `text`, `bytes_stream`), and its `multipart::{Form, Part}` those of reqwest's `multipart`. The
+  paths that named reqwest name the runtime instead.
+- The runtime has a retry policy for `tower::retry` (`429`, `408`, `5xx`, failed connections; `Retry-After`;
+  exponential backoff). A request body held in memory, multipart included, is sent again on a retry; a streamed body is
+  not retried.
+- The runtime logs with `tracing` (feature `tracing`, forwarded by the generated crate): `trace::TraceLayer` opens a
+  span per request and logs each response and retry. Its README is a guide to retries, timeouts, logging, middleware
+  and limits.
+- `httpStack=reqwest-middleware` renders 0.24's output.
 
 ## 0.24.0
 

@@ -9,7 +9,7 @@ use response_headers::apis::images_api::{
 };
 use response_headers::apis::{ApiResponse, Error, ResponseContent};
 use response_headers::models::{Image, Level, Status};
-use reqwest::header::{HeaderMap, HeaderValue};
+use timvw_rust_runtime::header::{HeaderMap, HeaderValue};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -161,7 +161,7 @@ fn names_ignore_case_and_lists_span_occurrences() {
 #[test]
 fn typed_headers_of_an_api_response() {
     let response: ApiResponse<Image> = ApiResponse::new(
-        reqwest::StatusCode::NO_CONTENT,
+        timvw_rust_runtime::StatusCode::NO_CONTENT,
         headers(&[("X-Deleted-Count", "3")]),
         String::new(),
     );
@@ -226,7 +226,7 @@ fn error_headers_are_the_union_of_the_error_statuses() {
 #[test]
 fn typed_headers_of_a_response_content() {
     let content: ResponseContent<CreateImageError> = ResponseContent {
-        status: reqwest::StatusCode::SERVICE_UNAVAILABLE,
+        status: timvw_rust_runtime::StatusCode::SERVICE_UNAVAILABLE,
         content: String::new(),
         entity: None,
         headers: headers(&[("x-trace-id", "t-1")]),
@@ -253,7 +253,7 @@ async fn from_an_error_response() {
     let Error::ResponseError(content) = error else {
         panic!("not a response error: {error:?}");
     };
-    assert_eq!(content.status, reqwest::StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(content.status, timvw_rust_runtime::StatusCode::TOO_MANY_REQUESTS);
     let h = content.typed_headers::<CreateImageErrorHeaders>();
     assert_eq!(h.retry_after, Some(7));
     assert_eq!(h.x_trace_id.as_deref(), Some("t-9"));

@@ -1,0 +1,29 @@
+# release-plz for the timvw-rust-runtime crate (https://release-plz.dev/docs/config).
+# The generator (Maven, Docker image) releases from `v*` tags; the runtime from `timvw-rust-runtime-v*` tags, so the
+# two release lines never trigger each other.
+
+[workspace]
+changelog_update = true
+git_release_enable = true
+git_tag_enable = true
+publish = true
+pr_branch_prefix = "automated/release-plz/"
+pr_labels = ["release", "automated"]
+pr_draft = false
+pr_name = "chore(runtime): release timvw-rust-runtime {{version}}"
+
+git_release_body = """
+## What's Changed
+
+{%- if changelog %}
+{{ changelog }}
+{%- else %}
+_No changelog available_
+{%- endif %}
+"""
+
+[[package]]
+name = "timvw-rust-runtime"
+git_tag_name = "timvw-rust-runtime-v{{ version }}"
+git_release_name = "timvw-rust-runtime v{{ version }}"
+changelog_path = "CHANGELOG.md"

@@ -181,6 +181,25 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * returning {@code apis::ApiResponse<T>}: status, headers and the undecoded body (decision 1).
      */
     public static final String RESPONSE_FUNCTIONS = "responseFunctions";
+    /**
+     * How the generated client sends requests: {@code tower} (the default) through {@code timvw_rust_runtime::Client},
+     * a tower service that is reqwest unless replaced; {@code reqwest-middleware} through reqwest and
+     * reqwest-middleware, as before 0.25.
+     */
+    public static final String HTTP_STACK = "httpStack";
+    /** {@link #HTTP_STACK} value: the client sends through the timvw-rust-runtime crate (tower). */
+    public static final String HTTP_STACK_TOWER = "tower";
+    /** {@link #HTTP_STACK} value: the client sends through reqwest and reqwest-middleware. */
+    public static final String HTTP_STACK_REQWEST_MIDDLEWARE = "reqwest-middleware";
+    /** The version requirement of {@code timvw-rust-runtime} in the generated Cargo.toml (with {@code httpStack=tower}). */
+    public static final String RUNTIME_VERSION = "runtimeVersion";
+    /** The {@code timvw-rust-runtime} release this generator renders for: the default of {@link #RUNTIME_VERSION}. */
+    public static final String DEFAULT_RUNTIME_VERSION = "0.1";
+    /**
+     * A path dependency on {@code timvw-rust-runtime} next to the version (with {@code httpStack=tower}), for testing
+     * against an unreleased runtime; defaults to the system property {@code timvw-rust.runtimePath}.
+     */
+    public static final String RUNTIME_PATH = "runtimePath";
     /** Set on an operation with {@link #RESPONSE_FUNCTIONS}: the context its {@code _response} twin renders with. */
     static final String RESPONSE_FUNCTION = "x-rust-response-function";
     /** Set when an API module has a {@code <Operation>ResponseHeaders} struct: {@code api_response.rs} has its helpers. */
@@ -464,6 +483,19 @@ public class TimvwRustCodegen extends RustCodegenBase {
         cliOptions.add(CliOption.newBoolean(DEPRECATED_ATTRIBUTES,
                 "Deprecated properties and schemas get #[deprecated]; every generated model and API file starts with "
                         + "#![allow(deprecated)], so only callers are warned", false));
+        CliOption httpStack = new CliOption(HTTP_STACK,
+                "How the client sends requests: 'tower' sends through timvw_rust_runtime::Client, a tower service "
+                        + "(reqwest by default) that takes tower layers and can be replaced; 'reqwest-middleware' sends "
+                        + "through reqwest and reqwest-middleware").defaultValue(HTTP_STACK_TOWER);
+        httpStack.addEnum(HTTP_STACK_TOWER, "tower service from the timvw-rust-runtime crate (default)");
+        httpStack.addEnum(HTTP_STACK_REQWEST_MIDDLEWARE, "reqwest with reqwest-middleware");
+        cliOptions.add(httpStack);
+        cliOptions.add(new CliOption(RUNTIME_VERSION,
+                "With httpStack=tower: the version requirement of timvw-rust-runtime in Cargo.toml")
+                .defaultValue(DEFAULT_RUNTIME_VERSION));
+        cliOptions.add(CliOption.newString(RUNTIME_PATH,
+                "With httpStack=tower: a path dependency on timvw-rust-runtime (next to the version), to build "
+                        + "against an unreleased runtime"));
         cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
                 "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
                         + "object-typed query parameter is sent as a string"));
@@ -476,7 +508,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
     @Override
     public String getHelp() {
-        return "Generates an async Rust client (reqwest with reqwest-middleware) whose public API is determined by "
+        return "Generates an async Rust client (a tower service from timvw-rust-runtime, or reqwest with "
+                + "reqwest-middleware) whose public API is determined by "
                 + "the spec, the options and the generator version.";
     }
 
@@ -802,6 +835,29 @@ public class TimvwRustCodegen extends RustCodegenBase {
             additionalProperties.put("x-rust-crate", String.valueOf(additionalProperties.get("packageName"))
                     .replace('-', '_'));
         }
+        Object stack = additionalProperties.get(HTTP_STACK);
+        String httpStack = stack == null || String.valueOf(stack).isEmpty() ? HTTP_STACK_TOWER : String.valueOf(stack);
+        if (!HTTP_STACK_TOWER.equals(httpStack) && !HTTP_STACK_REQWEST_MIDDLEWARE.equals(httpStack)) {
+            throw new IllegalArgumentException(String.format("%s: option '%s' is '%s'; use '%s' or '%s'",
+                    GENERATOR_NAME, HTTP_STACK, httpStack, HTTP_STACK_TOWER, HTTP_STACK_REQWEST_MIDDLEWARE));
+        }
+        boolean tower = HTTP_STACK_TOWER.equals(httpStack);
+        additionalProperties.put(HTTP_STACK, httpStack);
+        additionalProperties.put("httpStackTower", tower);
+        additionalProperties.put("httpCrate", tower ? "timvw_rust_runtime" : "reqwest");
+        additionalProperties.put("httpErrorVariant", tower ? "Http" : "Reqwest");
+        Object runtimeVersion = additionalProperties.get(RUNTIME_VERSION);
+        additionalProperties.put(RUNTIME_VERSION, runtimeVersion == null || String.valueOf(runtimeVersion).isEmpty()
+                ? DEFAULT_RUNTIME_VERSION : String.valueOf(runtimeVersion));
+        Object runtimePath = additionalProperties.get(RUNTIME_PATH);
+        String path = runtimePath == null || String.valueOf(runtimePath).isEmpty()
+                ? System.getProperty("timvw-rust.runtimePath") : String.valueOf(runtimePath);
+        if (path == null || path.isEmpty()) {
+            additionalProperties.remove(RUNTIME_PATH);
+        } else {
+            additionalProperties.put(RUNTIME_PATH, path.replace('\\', '/'));
+        }
+
         Object plan = additionalProperties.get(UNION_PLAN_FILE);
         unionPlanFile = plan == null || String.valueOf(plan).isEmpty() ? null : String.valueOf(plan);
         for (String flag : Arrays.asList(USER_AGENT_FROM_PACKAGE)) {

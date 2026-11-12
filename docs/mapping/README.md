@@ -44,7 +44,8 @@ templates (ported from `-g rust`), not something it inherits, so a rule can chan
 ## What the generator renders
 
 The **Rust** entry of every rule is what `timvw-rust` renders without options, in the one client configuration it
-generates (async reqwest with reqwest-middleware; the matching stock options are rejected, see the README's
+generates (async, sending through a tower service from `timvw-rust-runtime`, `httpStack=tower`; the matching stock
+options are rejected, see the README's
 [options](../../README.md#options)). What used to be the baseline options (`boxOnlyCycles`,
 `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`,
 `unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) is always applied, and setting one fails
@@ -56,10 +57,14 @@ entry describes those and every other option as a variation of what the generato
 
 ## HTTP library
 
-`timvw-rust` generates for one HTTP library, [reqwest](https://docs.rs/reqwest) (with
-[reqwest-middleware](https://docs.rs/reqwest-middleware)). `--library` with anything else (stock `-g rust` also has
-`hyper`, `hyper0x` and `reqwest-trait`) is rejected. The generated code uses reqwest directly; there is no transport
-layer in between.
+By default (`httpStack=tower`) the generated code sends through
+[`timvw-rust-runtime`](../../runtime/README.md): its `Client` is a [tower](https://docs.rs/tower) service, reqwest
+unless replaced, and its `RequestBuilder`, `Response` and `multipart` have the methods of reqwest's that the code calls.
+With `httpStack=reqwest-middleware` it uses [reqwest](https://docs.rs/reqwest) and
+[reqwest-middleware](https://docs.rs/reqwest-middleware) directly, as up to 0.24, and the **Library** rows name the
+reqwest type of the same name (`reqwest::Response` for `timvw_rust_runtime::Response`, and so on). `--library` (stock
+`-g rust` has `hyper`, `hyper0x` and `reqwest-trait`) is rejected; see the
+[HTTP stack guide](../guides/http-stack.md).
 
 Most of the mapping does not depend on that choice: the models, their names, and how they encode and decode are
 serde types. Some types come from the HTTP library, and would differ with another one. A rule that renders such a type
@@ -67,12 +72,12 @@ has a **Library** row that names it. These are:
 
 | Where | Type from the HTTP library |
 | --- | --- |
-| a binary response (`format: binary`, `application/octet-stream`) | `reqwest::Response`, read as bytes or a stream |
-| a binary request body or file part | `std::path::PathBuf`; the file is opened with tokio and streamed as a `reqwest::Body` or a `reqwest::multipart::Part` |
-| a `multipart/form-data` body | built as a `reqwest::multipart::Form` |
+| a binary response (`format: binary`, `application/octet-stream`) | `timvw_rust_runtime::Response`, read as bytes or a stream |
+| a binary request body or file part | `std::path::PathBuf`; the file is opened with tokio and streamed as a `timvw_rust_runtime::Body` or a `timvw_rust_runtime::multipart::Part` |
+| a `multipart/form-data` body | built as a `timvw_rust_runtime::multipart::Form` |
 | a `text/event-stream` response (`typedEventStreams`) | a stream over the response's bytes |
-| the client | `reqwest_middleware::ClientWithMiddleware` in `Configuration` |
-| transport errors | `Error::Reqwest(reqwest::Error)`, `Error::ReqwestMiddleware(reqwest_middleware::Error)` |
+| the client | `timvw_rust_runtime::Client` in `Configuration` (`reqwest_middleware::ClientWithMiddleware` with `httpStack=reqwest-middleware`) |
+| transport errors | `Error::Http(timvw_rust_runtime::Error)` (`Error::Reqwest(reqwest::Error)` and `Error::ReqwestMiddleware(reqwest_middleware::Error)` with `httpStack=reqwest-middleware`) |
 
 ## Objects
 

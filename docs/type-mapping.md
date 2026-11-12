@@ -9,8 +9,9 @@ rust` renders something else, what. The former baseline options (`boxOnlyCycles`
 `boxResponseError`. The [README](../README.md#options) explains each option; the [generator
 comparison](comparison/README.md) holds the same constructs against stock `-g rust` and progenitor.
 
-The rendering assumes `library=reqwest`, the only HTTP library `timvw-rust` supports. Rows marked *(reqwest)*
-render types that come from the HTTP library; the others do not depend on it
+Rows marked *(reqwest)* render types that come from the HTTP stack: `timvw-rust-runtime`'s with the default
+`httpStack=tower` (`timvw_rust_runtime::Response` where a row names `reqwest::Response`), reqwest's with
+`httpStack=reqwest-middleware`. The others do not depend on it
 ([mapping: HTTP library](mapping/README.md#http-library)).
 
 Every example here was generated from [`comparison/spec.yaml`](comparison/spec.yaml) or a spec like it.

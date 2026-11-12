@@ -122,7 +122,7 @@ fn the_decoder_reads_server_sent_events() {
 /// payload is an error the stream goes on after, and `[DONE]` ends the stream.
 #[tokio::test]
 async fn a_stream_decodes_each_payload_by_its_type() {
-    let body: Vec<Result<&'static [u8], reqwest::Error>> = vec![
+    let body: Vec<Result<&'static [u8], timvw_rust_runtime::Error>> = vec![
         Ok(b"event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"r\"}}\n\n"),
         Ok(b"event: whatever\ndata: {\"type\":\"response.output_text.delta\",\"sequence_"),
         Ok(b"number\":1,\"delta\":\"Hi\"}\n\n"),
@@ -154,7 +154,7 @@ async fn a_stream_decodes_each_payload_by_its_type() {
 /// The events undecoded: names, ids and raw data, up to `[DONE]`; a typed stream hands them over unread.
 #[tokio::test]
 async fn the_events_can_be_read_undecoded() {
-    let body = || -> Vec<Result<&'static [u8], reqwest::Error>> {
+    let body = || -> Vec<Result<&'static [u8], timvw_rust_runtime::Error>> {
         vec![
         Ok(b"event: one\nid: 7\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":1,\"delta\":\"a\"}\n\n"),
         Ok(b"event: two\ndata: not json\n\ndata: [DONE]\n\ndata: after\n\n"),

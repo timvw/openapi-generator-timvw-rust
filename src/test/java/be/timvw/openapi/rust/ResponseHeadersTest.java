@@ -107,7 +107,7 @@ class ResponseHeadersTest {
         assertContains(text, "x_status: super::api_response::header_value(headers, \"x-status\", |v| "
                 + "serde_json::from_value::<models::Status>(serde_json::Value::String(v.to_owned())).ok()),");
         assertContains(text, "x_ids: super::api_response::header_list(headers, \"x-ids\", |v| v.parse::<i64>().ok()),");
-        assertContains(text, "impl From<&reqwest::header::HeaderMap> for CreateImageResponseHeaders {");
+        assertContains(text, "impl From<&timvw_rust_runtime::header::HeaderMap> for CreateImageResponseHeaders {");
         String helpers = Files.readString(on.resolve("src/apis/api_response.rs"));
         assertContains(helpers, "pub fn typed_headers<H>(&self) -> H");
         assertContains(helpers, "pub(crate) fn header_value<T>(");
@@ -151,7 +151,7 @@ class ResponseHeadersTest {
         String text = api(on);
         // listImages declares headers only on its 429
         assertFalse(text.contains("ListImagesResponseHeaders"), text);
-        // a file response has no twin: its function returns the reqwest::Response
+        // a file response has no twin: its function returns the timvw_rust_runtime::Response
         assertFalse(text.contains("DownloadImageResponseHeaders"), text);
         assertFalse(api(off).contains("ResponseHeaders"));
         assertFalse(api(off).contains("header_value"));
@@ -224,7 +224,7 @@ class ResponseHeadersTest {
         assertContains(text, "#[derive(Clone, Debug, Default, PartialEq)]\npub struct CreateImageErrorHeaders {");
         assertContains(text, "x_request_id: super::api_response::header_value(headers, \"x-request-id\", "
                 + "|v| v.parse::<uuid::Uuid>().ok()),");
-        assertContains(text, "impl From<&reqwest::header::HeaderMap> for CreateImageErrorHeaders {");
+        assertContains(text, "impl From<&timvw_rust_runtime::header::HeaderMap> for CreateImageErrorHeaders {");
         // the success headers are a struct of their own
         assertFalse(struct(text, "CreateImageResponseHeaders").contains("x_trace_id"));
     }
@@ -263,7 +263,7 @@ class ResponseHeadersTest {
         String mod = Files.readString(on.resolve("src/apis/mod.rs"));
         assertContains(mod, "impl<T> ResponseContent<T> {");
         assertContains(mod, "    pub fn typed_headers<H>(&self) -> H\n    where\n"
-                + "        H: for<'h> From<&'h reqwest::header::HeaderMap>,\n    {\n        H::from(&self.headers)\n");
+                + "        H: for<'h> From<&'h timvw_rust_runtime::header::HeaderMap>,\n    {\n        H::from(&self.headers)\n");
     }
 
     @Test

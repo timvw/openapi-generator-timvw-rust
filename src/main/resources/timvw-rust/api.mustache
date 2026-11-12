@@ -3,7 +3,7 @@
 #![allow({{{.}}})]
 {{/apiLintAllows}}
 
-use reqwest;
+use {{httpCrate}};
 use serde::{Deserialize, Serialize{{#x-rust-import-serde-error}}, de::Error as _{{/x-rust-import-serde-error}}};
 use crate::{apis::ResponseContent, models};
 use super::{Error, configuration{{#x-rust-import-content-type}}, ContentType{{/x-rust-import-content-type}}{{#multipartHelperImport}}, multipart_helper{{/multipartHelperImport}}};

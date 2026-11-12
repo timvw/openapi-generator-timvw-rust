@@ -3,7 +3,8 @@
 `timvw-rust` generates an async Rust client from an OpenAPI 3.0 or 3.1 spec. It is a plugin for
 [openapi-generator](https://openapi-generator.tech): openapi-generator parses the spec and drives the run, and
 everything Rust is the plugin's own (type mapping, naming, model and operation processing, every template). The crate
-it writes has one async function per operation, with a builder, on reqwest and reqwest-middleware. Its models decode
+it writes has one async function per operation, with a builder, sending through a [tower](https://docs.rs/tower)
+service from [`timvw-rust-runtime`](runtime/README.md) (reqwest unless you replace it). Its models decode
 what the server sends:
 - unions decode by their tag;
 - enums accept values the spec does not list yet;
@@ -21,7 +22,7 @@ From the directory that holds `openapi.yaml`:
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.24.0-og7.27.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:0.25.0-og7.27.0 generate \
   -g timvw-rust \
   -i /local/openapi.yaml \
   -o /local/my-client \
@@ -39,7 +40,7 @@ in the guides, except those marked as code of an older release or abridged signa
 
 ```text
 my-client/
-  Cargo.toml          bon, serde, serde_json, reqwest, reqwest-middleware, ... (see below)
+  Cargo.toml          bon, serde, serde_json, timvw-rust-runtime, ... (see below)
   src/lib.rs
   src/apis/           configuration.rs, mod.rs (Error, ResponseContent), items_api.rs: one module per tag
   src/models/         one file per schema, mod.rs, validation.rs (the Validate trait)
@@ -87,8 +88,24 @@ let item = items_api::create_item()
 ```
 
 `Configuration` holds the base path, the credentials of the spec's security schemes, the user agent and the
-`reqwest_middleware::ClientWithMiddleware` every call goes through, so retries, tracing or authentication are added
-as middleware.
+`timvw_rust_runtime::Client` every call goes through: a tower service, reqwest by default. Retries, timeouts, rate
+limits or tracing are tower layers on it, and `Client::from_service` replaces reqwest with any service (a hyper client,
+a mock in tests):
+
+```rust
+use std::time::Duration;
+use timvw_rust_runtime::retry::RetryPolicy;
+use timvw_rust_runtime::tower::retry::RetryLayer;
+
+let mut configuration = Configuration::new();
+let policy = RetryPolicy::new(3).max_delay(Duration::from_secs(10));
+configuration.client = configuration.client.clone().layer(RetryLayer::new(policy));
+```
+
+`RetryPolicy` retries `429`, `408` and `5xx` responses and failed connections, honouring `Retry-After`. The
+[runtime's guide](runtime/README.md) covers retries, timeouts, logging (`trace::TraceLayer`, feature `tracing`),
+headers and authentication layers, and rate limits. With
+`httpStack=reqwest-middleware` the client is a `reqwest_middleware::ClientWithMiddleware` instead, as before 0.25.
 
 ### Models
 
@@ -176,7 +193,9 @@ Pass options with `--additional-properties=<name>=<value>,...` or in a `-c` conf
 | `useChrono` | `true` | `date`/`date-time` as chrono types; `false` renders both as `String` ([rule](docs/mapping/schema.md#schemaformatdate-time)) |
 | `useSerdePathToError` | `false` | success bodies decode through `serde_path_to_error`, so a decoding error names the path |
 | `supportMultipleResponses` | `false` | a function returns `ResponseContent<<Operation>Success>`, an enum of its 2xx responses, with status and headers |
-| `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none). Several values only work in a `-c` config file, as a comma ends an `--additional-properties` value |
+| `httpStack` | `tower` | how requests are sent: `tower` through `timvw_rust_runtime::Client` (a tower service, reqwest by default); `reqwest-middleware` through reqwest and reqwest-middleware, as up to 0.24 ([guide](docs/guides/http-stack.md)) |
+| `runtimeVersion`, `runtimePath` | `0.1`, unset | with `httpStack=tower`: the `timvw-rust-runtime` version requirement, and a path dependency next to it to build against an unreleased runtime |
+| `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none; with `httpStack=tower` the crate also has a default `retry` feature and a `tracing` feature). Several values only work in a `-c` config file, as a comma ends an `--additional-properties` value |
 | `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl` | unset | `Cargo.toml` `publish`, `repository`, `documentation`, `homepage` |
 | `bonBuilders` | `true` | `bon::Builder` on model structs and `#[bon::builder]` on API functions; `false` makes the functions take positional arguments ([rule](docs/mapping/schema.md#schemaproperties)) |
 | `userAgentFromPackage` | `false` | default user agent `<packageName>/<crate version>` |
@@ -216,8 +235,8 @@ and the like rename what is generated. `--schema-mappings Filter=crate::custom::
 in place of a component schema: it is named by that path everywhere, and no model is generated for the schema
 ([rule](docs/mapping/components.md#componentsschemas)).
 
-**Not options.** `timvw-rust` generates one client: async reqwest with reqwest-middleware. Setting stock `-g rust`'s
-options for other clients fails generation, whatever the value. These are `library` (other than `reqwest`),
+**Not options.** `timvw-rust` generates one async client, whose HTTP stack `httpStack` chooses. Setting stock
+`-g rust`'s options for other clients fails generation, whatever the value. These are `library` (other than `reqwest`),
 `supportAsync`, `supportMiddleware`, `useSingleRequestParameter`, `preferUnsignedInt`, `bestFitInt`,
 `enumNameSuffix`, `hideGenerationTimestamp`, `avoidBoxedModels`, `mockall`, `topLevelApiClient`,
 `withAWSV4Signature`, `supportTokenSource`, `useBonBuilder` (use `bonBuilders`) and `templateDir` (`-t`). The options
@@ -230,7 +249,7 @@ operation with `x-group-parameters` fails too. The [migration guide](docs/guides
 
 | What | Where |
 | --- | --- |
-| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>`, e.g. `0.24.0-og7.27.0`; `<version>` and `latest` point at the newest openapi-generator |
+| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>`, e.g. `0.25.0-og7.27.0`; `<version>` and `latest` point at the newest openapi-generator |
 | Maven | `be.timvw:openapi-generator-timvw-rust` on Maven Central |
 | Generator name | `timvw-rust` (`-g timvw-rust`) |
 | openapi-generator | built and tested against 7.27.0, which the image bundles; another minor version logs a warning |
@@ -251,7 +270,7 @@ add the generator as a dependency of the plugin:
     <dependency>
       <groupId>be.timvw</groupId>
       <artifactId>openapi-generator-timvw-rust</artifactId>
-      <version>0.24.0</version>
+      <version>0.25.0</version>
     </dependency>
   </dependencies>
   <executions>
@@ -277,14 +296,16 @@ dependencies the generator writes, which depend on the spec and the options:
 
 | Dependency | When |
 | --- | --- |
-| `serde`, `serde_json`, `serde_repr`, `url`, `reqwest`, `reqwest-middleware` | always |
+| `serde`, `serde_json`, `serde_repr`, `url` | always |
+| `timvw-rust-runtime` | `httpStack=tower` (the default) |
+| `reqwest`, `reqwest-middleware` | `httpStack=reqwest-middleware` |
 | `bon` | `bonBuilders` (the default) |
 | `serde_with` | a nullable optional property (`Option<Option<T>>`) or a `format: byte` property |
 | `chrono` | a `date` or `date-time` anywhere (model, parameter, union variant), with `useChrono` (the default) |
 | `uuid` | a `format: uuid` anywhere |
 | `regex` | a `pattern` that `validate()` checks |
-| `futures-core`, reqwest's `stream` feature | `typedEventStreams` with an operation that streams |
-| `tokio` (`fs`), `tokio-util` (`codec`), reqwest's `stream` feature | a file body, or a multipart file without `multipartHelper` |
+| `futures-core` (and reqwest's `stream` feature with `httpStack=reqwest-middleware`) | `typedEventStreams` with an operation that streams |
+| `tokio` (`fs`), `tokio-util` (`codec`) (and reqwest's `stream` feature with `httpStack=reqwest-middleware`) | a file body, or a multipart file without `multipartHelper` |
 | `serde_path_to_error` | `useSerdePathToError` |
 
 The rule: on every upgrade of the generator (and every spec update), generate once into an empty directory and
@@ -340,7 +361,7 @@ jar.
 ## Releasing
 
 1. Make sure `main` is green.
-2. Tag and push: `git tag v0.24.0 && git push origin v0.24.0`.
+2. Tag and push: `git tag v0.25.0 && git push origin v0.25.0`.
 3. The `Release` workflow (`.github/workflows/release.yml`) does the rest:
    - It sets the pom version from the tag and runs `./mvnw -Prelease deploy`. That signs the jar, sources and javadoc
      with GPG and publishes them through the Sonatype Central Portal.
@@ -350,6 +371,18 @@ jar.
 
 Secrets: `CENTRAL_USERNAME`, `CENTRAL_PASSWORD`, `GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`. The image push uses the
 workflow's `GITHUB_TOKEN`. The pom's version on `main` stays a `-SNAPSHOT`, and the workflow never commits.
+
+### Releasing the runtime
+
+`timvw-rust-runtime` (`runtime/`) has its own version and is released with
+[release-plz](https://release-plz.dev) by `.github/workflows/runtime-release.yml`:
+
+1. A push to `main` that changes `runtime/` opens or updates a release PR (version bump and `runtime/CHANGELOG.md`).
+2. Merge it, then run the `Release runtime` workflow with `release_action=publish`. It publishes to crates.io and
+   tags `timvw-rust-runtime-v<version>`, which the generator's `Release` workflow (`v*`) ignores.
+
+Release the runtime before a generator version whose `DEFAULT_RUNTIME_VERSION` needs it. Secret:
+`CARGO_REGISTRY_TOKEN`; `BOT_APP_ID` and `BOT_PRIVATE_KEY` (optional) let the release PR trigger CI.
 
 ## Layout
 

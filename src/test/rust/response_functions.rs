@@ -120,7 +120,7 @@ async fn text_status_and_headers() {
     .await;
     let response = get_item(&configuration).await;
     assert_eq!(response.text(), ITEM);
-    assert_eq!(response.status, reqwest::StatusCode::NON_AUTHORITATIVE_INFORMATION);
+    assert_eq!(response.status, timvw_rust_runtime::StatusCode::NON_AUTHORITATIVE_INFORMATION);
     assert_eq!(response.headers["x-request-id"], "req-7");
     assert_eq!(response.headers["content-type"], "application/json");
 
@@ -132,7 +132,7 @@ async fn text_status_and_headers() {
         .call()
         .await
         .unwrap();
-    assert_eq!(deleted.status, reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(deleted.status, timvw_rust_runtime::StatusCode::NO_CONTENT);
     assert_eq!(deleted.headers["location"], "/items/item-1");
     assert_eq!(deleted.text(), "");
 
@@ -172,7 +172,7 @@ async fn an_error_status_is_the_typed_error() {
         .unwrap_err();
     match error {
         Error::ResponseError(content) => {
-            assert_eq!(content.status, reqwest::StatusCode::NOT_FOUND);
+            assert_eq!(content.status, timvw_rust_runtime::StatusCode::NOT_FOUND);
             match content.entity {
                 Some(items_api::GetItemError::Status404(problem)) => {
                     assert_eq!(problem.detail, "no such item")

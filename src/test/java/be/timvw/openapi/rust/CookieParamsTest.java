@@ -77,7 +77,7 @@ class CookieParamsTest {
                 "cookies.push(format!(\"ids={}\", items.iter().map(crate::apis::cookie_encode)"
                         + ".collect::<Vec<String>>().join(\",\")));",
                 "cookies.push(format!(\"api_token={}\", crate::apis::cookie_encode(value)));",
-                "req_builder = req_builder.header(reqwest::header::COOKIE, cookies.join(\"; \"));")) {
+                "req_builder = req_builder.header(timvw_rust_runtime::header::COOKIE, cookies.join(\"; \"));")) {
             assertTrue(get.contains(push), push + " not in:\n" + get);
         }
         assertTrue(function("get_keyed").contains("api_token={}"), function("get_keyed"));

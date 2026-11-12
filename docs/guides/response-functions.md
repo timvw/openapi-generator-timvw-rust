@@ -98,7 +98,7 @@ Which functions get a twin:
 | a JSON body (`models::Item`, `Vec<models::Item>`, ...) | yes, `ApiResponse<models::Item>` |
 | a text body (`String`) | yes, `ApiResponse<String>`; read it with `text()` (`json()` expects a JSON string literal, `"..."`) |
 | nothing (`()`) | yes, `ApiResponse<()>`, for the status and headers |
-| a binary body (`reqwest::Response`) | no: that already is the response, with `status()`, `headers()` and the bytes |
+| a binary body (`timvw_rust_runtime::Response`) | no: that already is the response, with `status()`, `headers()` and the bytes |
 | an event stream (`typedEventStreams`, `EventStream<..>`) | no: the body is a stream, not a value to hold |
 | a webhook (`webhookModule`) | no: a webhook function describes a request the API sends to you, so there is no response to read |
 
@@ -116,13 +116,13 @@ naming both. Rename one of them (its `operationId`) or leave the option off. An 
 <!-- not compiled: the API, without bodies -->
 ```rust
 pub struct ApiResponse<T> {
-    pub status: reqwest::StatusCode,
-    pub headers: reqwest::header::HeaderMap,
+    pub status: timvw_rust_runtime::StatusCode,
+    pub headers: timvw_rust_runtime::header::HeaderMap,
     // the body, as text
 }
 
 impl<T> ApiResponse<T> {
-    pub fn new(status: reqwest::StatusCode, headers: reqwest::header::HeaderMap, body: String) -> Self;
+    pub fn new(status: timvw_rust_runtime::StatusCode, headers: timvw_rust_runtime::header::HeaderMap, body: String) -> Self;
     pub fn text(&self) -> &str;
     pub fn json_as<U: DeserializeOwned>(&self) -> Result<U, serde_json::Error>;
     pub fn json_borrowed<'a, U: Deserialize<'a>>(&'a self) -> Result<U, serde_json::Error>;
@@ -211,7 +211,7 @@ let response = items_api::get_item_response()
     .call()
     .await?;
 
-if response.status == reqwest::StatusCode::NON_AUTHORITATIVE_INFORMATION {
+if response.status == timvw_rust_runtime::StatusCode::NON_AUTHORITATIVE_INFORMATION {
     // ...
 }
 let request_id = response
@@ -221,7 +221,7 @@ let request_id = response
 let item: models::Item = response.json()?;
 ```
 
-`headers` is a `reqwest::header::HeaderMap`: lookups ignore case, and a header can occur more than once
+`headers` is a `timvw_rust_runtime::header::HeaderMap` (the `http` crate's, as reqwest's is): lookups ignore case, and a header can occur more than once
 (`get_all`). The headers the spec declares for a success are also [typed](#declared-headers-typed).
 
 For a success without content, the twin is how you get its headers at all:
@@ -232,8 +232,8 @@ let deleted = items_api::delete_item_response()
     .id("42")
     .call()
     .await?;
-assert_eq!(deleted.status, reqwest::StatusCode::NO_CONTENT);
-let location = deleted.headers.get(reqwest::header::LOCATION);
+assert_eq!(deleted.status, timvw_rust_runtime::StatusCode::NO_CONTENT);
+let location = deleted.headers.get(timvw_rust_runtime::header::LOCATION);
 ```
 
 ### Declared headers, typed
@@ -283,7 +283,7 @@ if let Some(request_id) = &headers.x_request_id {
 `typed_headers` takes the struct as a type argument because `ApiResponse<models::Item>` does not say which operation
 it came from: two operations can return the same `T`, with other headers. Annotating the variable works as well
 (`let headers: items_api::GetItemResponseHeaders = response.typed_headers();`). The struct also reads any
-`reqwest::header::HeaderMap`, with `from_headers` or `From`: `items_api::GetItemResponseHeaders::from_headers(&map)`.
+`timvw_rust_runtime::header::HeaderMap`, with `from_headers` or `From`: `items_api::GetItemResponseHeaders::from_headers(&map)`.
 
 The rule is [`header.schema.typed`](../mapping/header.md#headerschematyped).
 
@@ -374,7 +374,7 @@ match items_api::create_item()
   `headers` field is there either way.
 
 `typed_headers` takes the struct as a type argument, as `ApiResponse::typed_headers` does; `from_headers` and `From`
-read any `reqwest::header::HeaderMap`. The rule is
+read any `timvw_rust_runtime::header::HeaderMap`. The rule is
 [`header.schema.typed-error`](../mapping/header.md#headerschematyped-error).
 
 ### In tests
@@ -383,8 +383,8 @@ read any `reqwest::header::HeaderMap`. The rule is
 
 ```rust
 let response: ApiResponse<models::Item> = ApiResponse::new(
-    reqwest::StatusCode::OK,
-    reqwest::header::HeaderMap::new(),
+    timvw_rust_runtime::StatusCode::OK,
+    timvw_rust_runtime::header::HeaderMap::new(),
     r#"{"id":"42","name":"first"}"#.to_owned(),
 );
 assert_eq!(response.json()?.name, "first");
@@ -431,7 +431,7 @@ function makes too, before it decodes and drops it.
 
 - **The content type is not checked.** The operation's function fails a success that is not JSON (or text, where the
   spec allows it) with a message naming the content type. The twin returns whatever came, and `json()` fails later
-  with serde's message. Look at `response.headers.get(reqwest::header::CONTENT_TYPE)` if it matters.
+  with serde's message. Look at `response.headers.get(timvw_rust_runtime::header::CONTENT_TYPE)` if it matters.
 - **`json()` decodes with `serde_json`** and returns a `serde_json::Error`, also when the crate is generated with
   `useSerdePathToError`, so its error does not carry the path. Where you need the path, decode the text yourself:
 

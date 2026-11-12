@@ -8,7 +8,9 @@ extern crate serde_repr;
 extern crate serde;
 extern crate serde_json;
 extern crate url;
+{{^httpStackTower}}
 extern crate reqwest;
+{{/httpStackTower}}
 
 pub mod apis;
 pub mod models;

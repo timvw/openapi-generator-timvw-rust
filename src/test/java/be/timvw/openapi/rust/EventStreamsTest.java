@@ -152,7 +152,7 @@ class EventStreamsTest {
         assertTrue(signature(on, "create_response_stream").contains("create_response: &models::CreateResponse"));
         assertTrue(signature(on, "create_voice_multipart").contains("audio: std::path::PathBuf"));
         String api = api(on);
-        assertTrue(api.contains("req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, \"application/sdp\")"
+        assertTrue(api.contains("req_builder = req_builder.header(timvw_rust_runtime::header::CONTENT_TYPE, \"application/sdp\")"
                 + ".body(p_body_body.to_owned());"), api);
         assertTrue(api.contains("/// Sends the request body as `application/json`; `create_edit` sends it as "
                 + "`multipart/form-data`."), api);
@@ -163,14 +163,15 @@ class EventStreamsTest {
         String api = api(on);
         int start = api.indexOf("pub async fn create_response_stream(");
         String body = api.substring(start, api.indexOf("\n}\n", start));
-        assertTrue(body.contains("req_builder = req_builder.header(reqwest::header::ACCEPT, \"text/event-stream\");"));
+        assertTrue(body.contains("req_builder = req_builder.header(timvw_rust_runtime::header::ACCEPT, \"text/event-stream\");"));
         assertTrue(body.contains("if !content_type.starts_with(\"text/event-stream\") {"));
         assertTrue(body.contains("Ok(super::sse::EventStream::from_response(resp))"));
         assertTrue(Files.exists(on.resolve("src/apis/sse.rs")));
         assertTrue(Files.readString(on.resolve("src/apis/mod.rs")).contains("pub mod sse;"));
         String cargo = Files.readString(on.resolve("Cargo.toml"));
         assertTrue(cargo.contains("futures-core = \"^0.3\""), cargo);
-        assertTrue(cargo.contains("\"stream\""), cargo);
+        // The runtime always streams response bodies (with httpStack=reqwest-middleware: reqwest's "stream" feature).
+        assertTrue(cargo.contains("timvw-rust-runtime = "), cargo);
     }
 
     @Test

@@ -1538,7 +1538,7 @@ dependencies = [
 name = "timvw-rust-runtime"
 version = "0.4.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "futures-channel",
  "futures-core",

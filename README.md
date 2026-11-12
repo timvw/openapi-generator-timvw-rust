@@ -211,6 +211,11 @@ Pass options with `--additional-properties=<name>=<value>,...` or in a `-c` conf
 A list option takes entries separated by `|`, `;` or whitespace on the command line (a comma ends an
 `--additional-properties` value), or a JSON array in a `-c` file.
 
+**Stock naming options.** `--model-name-prefix`, `--model-name-suffix`, `--model-name-mappings`, `--name-mappings`
+and the like rename what is generated. `--schema-mappings Filter=crate::custom::Filter` uses a type of your own crate
+in place of a component schema: it is named by that path everywhere, and no model is generated for the schema
+([rule](docs/mapping/components.md#componentsschemas)).
+
 **Not options.** `timvw-rust` generates one client: async reqwest with reqwest-middleware. Setting stock `-g rust`'s
 options for other clients fails generation, whatever the value. These are `library` (other than `reqwest`),
 `supportAsync`, `supportMiddleware`, `useSingleRequestParameter`, `preferUnsignedInt`, `bestFitInt`,

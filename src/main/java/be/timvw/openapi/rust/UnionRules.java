@@ -272,6 +272,15 @@ final class UnionRules {
      */
     static Map<String, CodegenModel> plan(Map<String, ModelsMap> allModels, Consumer<String> warn,
                                           Consumer<String> ownFields) {
+        return plan(allModels, warn, ownFields, Map.of());
+    }
+
+    /**
+     * {@link #plan(Map, Consumer, Consumer)} with the types {@code --schema-mappings} puts in place of schemas, and what
+     * each accepts ({@link #mappedShapes}): a variant of one is ordered by that.
+     */
+    static Map<String, CodegenModel> plan(Map<String, ModelsMap> allModels, Consumer<String> warn,
+                                          Consumer<String> ownFields, Map<String, Map<Kind, Accepts>> mapped) {
         Map<String, CodegenModel> byName = byName(allModels);
         Map<String, CodegenModel> unions = new LinkedHashMap<>();
         Map<String, List<CodegenProperty>> branches = new LinkedHashMap<>();
@@ -291,7 +300,7 @@ final class UnionRules {
                         + "empty enum");
             }
         }
-        Shapes shapes = new Shapes(byName, branches);
+        Shapes shapes = new Shapes(byName, branches, mapped);
         for (Map.Entry<String, CodegenModel> e : unions.entrySet()) {
             CodegenModel cm = e.getValue();
             warnAboutOwnFields(cm, branches.get(e.getKey()), byName, ownFields);
@@ -499,6 +508,65 @@ final class UnionRules {
     enum Kind { OBJECT, ARRAY, STRING, NUMBER, BOOLEAN }
 
     /**
+     * What the type that {@code --schema-mappings} puts in place of a schema accepts, by its path, read from the schema
+     * it replaces: there is no model to read it from. An object schema (properties, {@code additionalProperties} or an
+     * {@code allOf}) is an object, without fields a variant could be compared on; a string, number, boolean or array
+     * schema that kind, closed when it has an {@code enum}; anything else ({@code oneOf}, {@code anyOf}, no type) every
+     * kind.
+     */
+    @SuppressWarnings("rawtypes")
+    static Map<String, Map<Kind, Accepts>> mappedShapes(OpenAPI openAPI, Map<String, String> schemaMapping) {
+        Map<String, Map<Kind, Accepts>> shapes = new LinkedHashMap<>();
+        if (openAPI == null || schemaMapping == null) {
+            return shapes;
+        }
+        for (Map.Entry<String, String> e : schemaMapping.entrySet()) {
+            Schema schema = org.openapitools.codegen.utils.ModelUtils.getSchema(openAPI, e.getKey());
+            if (schema == null) {
+                continue;
+            }
+            Map<Kind, Accepts> accepts = new EnumMap<>(Kind.class);
+            int rank = schema.getEnum() != null ? Accepts.CLOSED : Accepts.FREE;
+            String type = org.openapitools.codegen.utils.ModelUtils.getType(schema);
+            if (isObjectShaped(schema)) {
+                accepts.put(Kind.OBJECT, Accepts.of(Accepts.FREE));
+            } else if (schema.getOneOf() != null || schema.getAnyOf() != null || type == null) {
+                for (Kind kind : Kind.values()) {
+                    accepts.put(kind, Accepts.of(Accepts.ANY));
+                }
+            } else if ("string".equals(type)) {
+                accepts.put(Kind.STRING, Accepts.of(rank));
+            } else if ("integer".equals(type) || "number".equals(type)) {
+                accepts.put(Kind.NUMBER, Accepts.of(rank));
+            } else if ("boolean".equals(type)) {
+                accepts.put(Kind.BOOLEAN, Accepts.of(rank));
+            } else if ("array".equals(type)) {
+                accepts.put(Kind.ARRAY, Accepts.of(Accepts.FREE));
+            } else {
+                for (Kind kind : Kind.values()) {
+                    accepts.put(kind, Accepts.of(Accepts.ANY));
+                }
+            }
+            shapes.put(e.getValue(), accepts);
+        }
+        return shapes;
+    }
+
+    /**
+     * Whether a schema is one a struct or a map would be generated for: an object with properties,
+     * {@code additionalProperties} or an {@code allOf}, without an {@code enum}, {@code oneOf} or {@code anyOf}.
+     */
+    @SuppressWarnings("rawtypes")
+    static boolean isObjectShaped(Schema schema) {
+        if (schema.getEnum() != null || schema.getOneOf() != null || schema.getAnyOf() != null) {
+            return false;
+        }
+        return org.openapitools.codegen.utils.ModelUtils.isObjectSchema(schema)
+                || org.openapitools.codegen.utils.ModelUtils.isMapSchema(schema) || schema.getProperties() != null
+                || schema.getAllOf() != null;
+    }
+
+    /**
      * What a type accepts of one kind. {@code rank} separates the classes of a kind, greater is narrower ({@link #ANY}
      * below {@link #MAP} below {@link #FREE} below {@link #CLOSED}). For objects {@code structs} are the structs that
      * could decode it, through the arms of a union if {@code union} is set; for arrays {@code items} is what the items
@@ -530,10 +598,19 @@ final class UnionRules {
         private final Map<String, List<CodegenProperty>> unions;
         private final Map<String, Map<Kind, Accepts>> done = new LinkedHashMap<>();
         private final Set<String> active = new HashSet<>();
+        /** What each type a schema mapping names accepts, by its path ({@link #mappedShapes}). */
+        private final Map<String, Map<Kind, Accepts>> mapped;
 
-        Shapes(Map<String, CodegenModel> byName, Map<String, List<CodegenProperty>> unions) {
+        Shapes(Map<String, CodegenModel> byName, Map<String, List<CodegenProperty>> unions,
+               Map<String, Map<Kind, Accepts>> mapped) {
             this.byName = byName;
             this.unions = unions;
+            this.mapped = mapped;
+        }
+
+        /** Whether a type is one a schema mapping names: the crate's own, with no model to read. */
+        boolean isMapped(String type) {
+            return mapped.containsKey(type);
         }
 
         /** Stable topological order: the first remaining variant that no remaining variant must precede. */
@@ -706,6 +783,9 @@ final class UnionRules {
                     result.put(kind, Accepts.of(Accepts.ANY));
                 }
                 return result;
+            }
+            if (mapped.containsKey(type)) {
+                return mapped.get(type);
             }
             if (type.startsWith("Option<")) {
                 // a nullable item accepts what its type does (and null, which no variant tells apart)
@@ -883,8 +963,15 @@ final class UnionRules {
      */
     @SuppressWarnings("rawtypes")
     static DispatchCounts dispatch(Map<String, CodegenModel> unions, Map<String, ModelsMap> allModels, OpenAPI openAPI) {
+        return dispatch(unions, allModels, openAPI, Map.of());
+    }
+
+    /** {@link #dispatch(Map, Map, OpenAPI)} with the types schema mappings name ({@link #mappedShapes}). */
+    @SuppressWarnings("rawtypes")
+    static DispatchCounts dispatch(Map<String, CodegenModel> unions, Map<String, ModelsMap> allModels, OpenAPI openAPI,
+                                   Map<String, Map<Kind, Accepts>> mapped) {
         Map<String, CodegenModel> byName = byName(allModels);
-        Shapes shapes = shapes(byName, unions);
+        Shapes shapes = shapes(byName, unions, mapped);
         Tags tags = new Tags(SpecRules.schemas(openAPI));
         int explicit = 0;
         int implicit = 0;
@@ -996,6 +1083,10 @@ final class UnionRules {
                                     Set<String> seen) {
         // The type as rendered: the complexType of an inline branch is its schema's name, not its model's.
         String target = payload.dataType.replaceFirst("^models::", "");
+        if (shapes.isMapped(target)) {
+            // the crate's own type: what its fields are is not the generator's to check
+            return;
+        }
         CodegenModel model = byName.get(target);
         if (model != null && unions.containsKey(target)) {
             if (seen.add(target)) {
@@ -1017,9 +1108,15 @@ final class UnionRules {
 
     /** Reads what a type accepts, with the variants {@link #plan} settled. */
     static Shapes shapes(Map<String, CodegenModel> byName, Map<String, CodegenModel> unions) {
+        return shapes(byName, unions, Map.of());
+    }
+
+    /** {@link #shapes(Map, Map)} with the types schema mappings name ({@link #mappedShapes}). */
+    static Shapes shapes(Map<String, CodegenModel> byName, Map<String, CodegenModel> unions,
+                         Map<String, Map<Kind, Accepts>> mapped) {
         Map<String, List<CodegenProperty>> variants = new LinkedHashMap<>();
         unions.forEach((name, cm) -> variants.put(name, variantsOf(cm)));
-        return new Shapes(byName, variants);
+        return new Shapes(byName, variants, mapped);
     }
 
     @SuppressWarnings("unchecked")

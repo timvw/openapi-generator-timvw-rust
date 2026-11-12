@@ -257,7 +257,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String BODY_REF_DIRECT = "x-rust-body-ref-direct";
     /** Key under which the api template finds whether its module uses the multipart helper. */
     static final String MULTIPART_HELPER_IMPORT = "multipartHelperImport";
-    /** Set on a parameter whose dataType already carries {@code models::}. */
+    /**
+     * Set on a parameter whose dataType is already a path: {@code models::X}, or the type a schema mapping names
+     * ({@code crate::custom::Filter}).
+     */
     static final String TYPE_QUALIFIED = "x-rust-type-qualified";
     /** Key under which the api template finds the module {@code default_api} re-exports. */
     static final String WEBHOOK_REEXPORT_KEY = "webhookReexport";
@@ -544,8 +547,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
         objs = super.postProcessAllModels(objs);
         List<String> ownFields = new ArrayList<>();
+        Map<String, Map<UnionRules.Kind, UnionRules.Accepts>> mapped = UnionRules.mappedShapes(openAPI, schemaMapping);
         Map<String, CodegenModel> unions = UnionRules.plan(objs,
-                msg -> LOGGER.warn("{}: unions: {}", GENERATOR_NAME, msg), ownFields::add);
+                msg -> LOGGER.warn("{}: unions: {}", GENERATOR_NAME, msg), ownFields::add, mapped);
         // A field declared next to oneOf/anyOf that a variant lacks: one line per field is thousands for
         // openai-client-base, so one warning with the count, and each field at debug.
         ownFields.forEach(msg -> LOGGER.debug("{}: unions: {}", GENERATOR_NAME, msg));
@@ -562,13 +566,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
         BoxRules.mark(objs);
         UnionRules.payloads(unions, objs);
         unionModels.putAll(unions);
-        UnionRules.DispatchCounts counts = UnionRules.dispatch(unions, objs, openAPI);
+        UnionRules.DispatchCounts counts = UnionRules.dispatch(unions, objs, openAPI, mapped);
         anyDispatch = counts.explicit() + counts.implicit() > 0;
         LOGGER.info("{}: union dispatch: {} tagged ({} by a discriminator, {} implicitly), {} untagged; {} have a value "
                         + "on two variants, {} allow the tag to be missing", GENERATOR_NAME,
                 counts.explicit() + counts.implicit(), counts.explicit(), counts.implicit(), counts.untagged(),
                 counts.sharedValue(), counts.optional());
-        openEnumsCensus = OpenEnums.mark(objs, unions, openAPI);
+        openEnumsCensus = OpenEnums.mark(objs, unions, openAPI, mapped);
         LOGGER.info("{}: open enums: {} enums, {} reachable, {} of them guarded; {} tagged unions, {} reachable, {} of "
                         + "them guarded; {} untagged unions left as they are", GENERATOR_NAME,
                 openEnumsCensus.enums().size(), openEnumsCensus.reachableEnums().size(),
@@ -1267,6 +1271,22 @@ public class TimvwRustCodegen extends RustCodegenBase {
     }
 
     /**
+     * The types {@code --schema-mappings} puts in place of a schema that would be a struct or a map: an object, with
+     * properties, {@code additionalProperties} or an {@code allOf}, and no enum, {@code oneOf} or {@code anyOf}. A
+     * parameter of one is sent as its JSON, as one of a generated struct is, so the type needs {@code Serialize}. A
+     * mapped scalar, enum or union schema is sent with {@code Display}, as the type's own text.
+     */
+    private Set<String> mappedStructs() {
+        Set<String> mapped = new HashSet<>();
+        for (Map.Entry<String, String> e : schemaMapping.entrySet()) {
+            if (isMappedStruct(e.getKey())) {
+                mapped.add(e.getValue());
+            }
+        }
+        return mapped;
+    }
+
+    /**
      * The models that end up as a struct: no enum, discriminated union or {@code oneOf}, as in the model template.
      */
     private static Set<String> renderedStructs(List<ModelMap> allModels) {
@@ -1677,6 +1697,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
         objs = super.postProcessOperationsWithModels(objs, allModels);
         boolean helperUsed = false;
         Set<String> structs = renderedStructs(allModels);
+        Set<String> mappedStructs = mappedStructs();
+        structs.addAll(mappedStructs);
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             for (CodegenOperation op : objs.getOperations().getOperation()) {
                 op.vendorExtensions.putIfAbsent(ERROR_ENUM, op.operationIdCamelCase + "Error");
@@ -1702,13 +1724,20 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         continue;
                     }
                     for (CodegenParameter p : params) {
-                        if (p.dataType != null && p.dataType.startsWith("models::")) {
+                        if (p.dataType != null && (p.dataType.startsWith("models::")
+                                || schemaMapping.containsValue(p.dataType))) {
                             p.vendorExtensions.put(TYPE_QUALIFIED, true);
                         }
+                        if (p.dataType != null && schemaMapping.containsValue(p.dataType)) {
+                            markMapped(p, mappedStructs.contains(p.dataType));
+                        }
                         markStructJson(p, structs);
-                        if (p.vendorExtensions.containsKey(STRUCT_JSON) && !p.isMap) {
+                        // a mapped type has no model file to check: it is the crate's own
+                        if (p.vendorExtensions.containsKey(STRUCT_JSON) && !p.isMap
+                                && !mappedStructs.contains(p.dataType)) {
                             structJsonModels.add(p.dataType.replaceFirst("^models::", ""));
-                        } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS) && !p.items.isContainer) {
+                        } else if (p.vendorExtensions.containsKey(STRUCT_JSON_ITEMS) && !p.items.isContainer
+                                && !mappedStructs.contains(p.items.dataType)) {
                             structJsonModels.add(p.items.dataType.replaceFirst("^models::", ""));
                         }
                         if (p.dataType != null && unionModels.containsKey(p.dataType.replaceFirst("^models::", ""))) {

@@ -34,7 +34,7 @@ Neither client sets `responseFunctions`, so neither gets typed error headers.
 
 ### Model names
 
-Neither client sets a model name prefix, suffix or mapping.
+Neither client sets a model name prefix, suffix or mapping, or a schema mapping.
 
 - With `--model-name-prefix`, `--model-name-suffix` or `--model-name-mappings`, generation no longer fails with
   "parameters of these types are serialized as JSON, but they are no longer structs" when a struct is a JSON
@@ -50,6 +50,15 @@ Neither client sets a model name prefix, suffix or mapping.
   0.23.0 rendered `ApiFilter(models::ApiFilter)`, `ApiText(String)` and
   `ApiApiTextVariant(models::ApiApiLooseApiTextVariantEnum)`. Code that names such a variant or hoisted enum under a
   prefix or suffix changes; without one nothing does.
+- `--schema-mappings Filter=crate::custom::Filter` uses the type it names in place of the schema
+  ([`components.schemas`](mapping/components.md#componentsschemas)). Up to 0.23.0 (and in stock `-g rust`) every
+  reference still named `models::Filter`, which was not written, so the crate did not compile, and a header
+  parameter of it was sent with `to_string()`. Now a field, an array item, a map value, a union variant, a
+  parameter, a request body and a response are `crate::custom::Filter` as given, with no model, doc or doc link for
+  the schema, and a tagged union selects the variant by its tag value. A parameter of a type in place of an object
+  schema is sent as its JSON, as one of a generated struct is (the header and each item of an array query parameter
+  too); one in place of any other schema with `Display`. The schema mapping wins over a model name prefix, suffix
+  or mapping of the same schema.
 
 ### Webhooks
 

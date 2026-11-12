@@ -233,9 +233,15 @@ final class OpenEnums {
      * {@link UnionRules#dispatch}, since the order of the variants and the tags decide what is guarded.
      */
     static Census mark(Map<String, ModelsMap> allModels, Map<String, CodegenModel> unions, OpenAPI openAPI) {
+        return mark(allModels, unions, openAPI, Map.of());
+    }
+
+    /** {@link #mark(Map, Map, OpenAPI)} with the types schema mappings name ({@link UnionRules#mappedShapes}). */
+    static Census mark(Map<String, ModelsMap> allModels, Map<String, CodegenModel> unions, OpenAPI openAPI,
+                       Map<String, Map<UnionRules.Kind, UnionRules.Accepts>> mapped) {
         Map<String, CodegenModel> byName = UnionRules.byName(allModels);
         Set<String> reachable = reachable(openAPI);
-        Guards guards = new Guards(byName, unions);
+        Guards guards = new Guards(byName, unions, mapped);
         guards.run();
 
         Set<String> enums = new TreeSet<>();
@@ -320,10 +326,11 @@ final class OpenEnums {
         private final Set<String> seen = new HashSet<>();
         private final Set<String> closing = new HashSet<>();
 
-        Guards(Map<String, CodegenModel> byName, Map<String, CodegenModel> unions) {
+        Guards(Map<String, CodegenModel> byName, Map<String, CodegenModel> unions,
+               Map<String, Map<UnionRules.Kind, UnionRules.Accepts>> mapped) {
             this.byName = byName;
             this.unions = unions;
-            this.shapes = UnionRules.shapes(byName, unions);
+            this.shapes = UnionRules.shapes(byName, unions, mapped);
         }
 
         /** What a later variant accepts: its type, and the fixed values of an enum if it is one. */

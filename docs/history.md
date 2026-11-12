@@ -9,13 +9,16 @@ is the [mapping](mapping/README.md).
 **Status:** openai-client-base and langfuse-client-base generate without scripts (Milestones 2 and 3, up to 0.17),
 the plugin owns its Rust layer (0.20), and 0.21 renders the documented [mapping](mapping/README.md) with the changes
 of [decisions.md](decisions.md); 0.22 fixes types the JSON did not decode to and parameters typed as text; 0.23 adds typed response headers and fixes
-null-only schemas and doc links. The
+null-only schemas and doc links; 0.24 adds typed error headers and fixes webhooks, model name options and schema
+mappings. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
-## Unreleased
+## 0.24.0
 
-Additions and fixes that change nothing for openai-client-base or langfuse-client-base.
+Additions and fixes that change nothing for openai-client-base or langfuse-client-base: their generated code and
+docs are the same. Code generated with a model name prefix or suffix renames some union variants (see
+[migration](guides/migration.md#from-023-to-024)).
 
 ### Response headers
 

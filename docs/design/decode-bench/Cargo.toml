@@ -8,7 +8,7 @@ publish = false
 # the body, or leaving heavy fields as raw JSON would save. See ../partial-decoding-and-ownership.md.
 
 [dependencies]
-openai-client-base = "=0.26.0"
+openai-client-base = "=0.29.0"
 langfuse-client-base = "=0.18.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }

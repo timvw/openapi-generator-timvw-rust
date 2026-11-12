@@ -69,19 +69,60 @@ jobs:
       - name: Docker build
         run: docker build --build-arg OPENAPI_GENERATOR_VERSION="$OPENAPI_GENERATOR_VERSION" -t timvw-rust:ci .
 
-      - name: Generate petstore
+      - name: Generate petstore (httpStack tower and reqwest-middleware)
         run: |
-          docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" timvw-rust:ci generate \
-            -g timvw-rust \
-            -i /local/test-specs/petstore.yaml \
-            -o /local/target/petstore \
-            --additional-properties=packageName=petstore
+          # The tower client builds against this commit's runtime (runtime/), not the released one.
+          for stack in tower reqwest-middleware; do
+            docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" timvw-rust:ci generate \
+              -g timvw-rust \
+              -i /local/test-specs/petstore.yaml \
+              -o "/local/target/petstore-$stack" \
+              --additional-properties=packageName=petstore,httpStack=$stack,runtimePath=../../runtime
+          done
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: target/petstore
+          workspaces: |
+            target/petstore-tower
+            target/petstore-reqwest-middleware
 
       - name: cargo build generated petstore
-        run: cargo build --manifest-path target/petstore/Cargo.toml
+        run: |
+          cargo build --manifest-path target/petstore-tower/Cargo.toml
+          cargo build --manifest-path target/petstore-reqwest-middleware/Cargo.toml
+
+  runtime:
+    name: timvw-rust-runtime
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtime
+
+      - uses: taiki-e/install-action@cargo-hack
+
+      - name: fmt
+        run: cargo fmt --check
+
+      - name: clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: test
+        run: cargo test --all-features
+
+      - name: Every feature on its own
+        run: cargo hack check --each-feature --no-dev-deps
+
+      - name: Package
+        run: cargo publish --dry-run

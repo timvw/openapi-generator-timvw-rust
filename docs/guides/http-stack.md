@@ -67,6 +67,11 @@ let page = items_api::list_items().configuration(&configuration).call().await?;
 assert_eq!(page.data[0].name, "Lamp");
 ```
 
+To send or decode types of your own, call `configuration.client` directly, with the same layers; for a
+`text/event-stream` response, `response.events().json::<T>()` decodes each event. The runtime's guide shows
+[how](../../runtime/README.md#your-own-types-and-server-sent-events). A generated `apis::sse` re-exports the runtime's
+parser (`Decoder`, `Event`, `Events`).
+
 A failure to send is `Error::Http(timvw_rust_runtime::Error)`: `is_builder()` (the request could not be built),
 `is_request()` (the service failed; `is_timeout()` and `is_connect()` narrow it down) or `is_body()` (reading the
 response failed). Its `source()` is the service's own error, a `reqwest::Error` or a layer's.

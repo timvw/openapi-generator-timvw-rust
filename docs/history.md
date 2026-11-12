@@ -37,6 +37,9 @@ langfuse-client-base change in their dependencies, `Configuration.client` and th
 - The runtime logs with `tracing` (feature `tracing`, forwarded by the generated crate): `trace::TraceLayer` opens a
   span per request and logs each response and retry. Its README is a guide to retries, timeouts, logging, middleware
   and limits.
+- The server-sent-events parser moved into the runtime (`timvw_rust_runtime::sse`); a generated `apis/sse.rs`
+  re-exports `Decoder`, `Event`, `Events` and `DONE` and keeps `EventStream`. With the runtime, a caller streams into
+  types of its own: `response.events().json::<T>()`.
 - `httpStack=reqwest-middleware` renders 0.24's output.
 
 ## 0.24.0

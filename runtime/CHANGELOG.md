@@ -21,4 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   event per response and per retry.
 - `Client::layer` and `Client::from_service` take services that are `Clone + Send` but not `Sync`, such as
   `ConcurrencyLimit` or a `Buffer`ed `RateLimit`.
+- `sse`: a `text/event-stream` parser (`Decoder`, `Event`), `Response::events()` and `Events::json::<T>()` to decode
+  each event's `data:` to a type of your own. Generated clients use it for their typed event streams.
 - The README is a guide to retries, timeouts, logging, middleware, limits and testing; its examples are doctests.

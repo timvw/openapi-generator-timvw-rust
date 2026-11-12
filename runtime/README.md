@@ -14,6 +14,7 @@ crate ships, any layer from the tower ecosystem, or write your own.
 - [Middleware: headers, authentication, layers of your own](#middleware)
 - [Concurrency and rate limits](#concurrency-and-rate-limits)
 - [Choosing the HTTP client, and tests without a network](#choosing-the-http-client)
+- [Your own types, and streams of server-sent events](#your-own-types-and-server-sent-events)
 - [Errors](#errors)
 - [Features](#features)
 
@@ -317,6 +318,43 @@ let client = Client::from_service(tower::service_fn(|request: http::Request<Body
 
 Without the `reqwest` feature (and `rustls` or `native-tls`), the crate does not depend on reqwest, and
 `Client::default()` fails every request: set a service with `Client::from_service`.
+
+## Your own types and server-sent events
+
+A generated function decodes to the spec's models. To send and decode types of your own (fewer fields, a provider
+whose replies differ, `serde_json::Value`), call the client directly: the same layers apply (retries, logging).
+`Response::events()` reads a `text/event-stream` body, and `.json::<T>()` decodes each event's `data:`:
+
+```rust,no_run
+use futures_util::StreamExt;
+use serde::Deserialize;
+use timvw_rust_runtime::{Client, Method};
+
+#[derive(Deserialize)]
+struct Delta {
+    id: String,
+}
+
+async fn run(client: &Client, api_key: &str) -> Result<(), timvw_rust_runtime::Error> {
+    let request = serde_json::json!({"model": "some-model", "stream": true});
+    let response = client
+        .request(Method::POST, "https://api.example.com/v1/chat/completions")
+        .bearer_auth(api_key)
+        .json(&request)
+        .send()
+        .await?;
+    let mut deltas = response.events().json::<Delta>();
+    while let Some(delta) = deltas.next().await {
+        println!("{}", delta?.id);
+    }
+    Ok(())
+}
+```
+
+`data: [DONE]` or the end of the body ends the stream. A payload that does not decode yields an error whose
+`is_decode()` is true, and the stream goes on. `events()` alone gives each `sse::Event` undecoded (`event:`, `data:`,
+`id:`), and `sse::Decoder` is the parser, for a body read some other way. A generated client's typed event streams use
+the same parser.
 
 ## Errors
 

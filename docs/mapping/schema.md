@@ -57,9 +57,9 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | `type: string, format: binary` (a file) |
-| Rust | as a request body, multipart part or parameter: `std::path::PathBuf`, the file to send. As a response: `reqwest::Response`, to read as bytes or a stream |
+| Rust | as a request body, multipart part or parameter: `std::path::PathBuf`, the file to send. As a response: `timvw_rust_runtime::Response`, to read as bytes or a stream |
 | Wire | the file's bytes, streamed from disk; the response body as it comes |
-| Library | `reqwest::Response`; the file is opened with tokio and streamed as a `reqwest::Body` or `reqwest::multipart::Part` |
+| Library | `timvw_rust_runtime::Response`; the file is opened with tokio and streamed as a `timvw_rust_runtime::Body` or `timvw_rust_runtime::multipart::Part` |
 | Options | `fileProperties` renders listed `Schema.property` entries as files |
 | Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L107), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L150) |
 

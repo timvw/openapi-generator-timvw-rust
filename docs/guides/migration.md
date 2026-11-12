@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [From 0.24 to 0.25](#from-024-to-025): the client sends through a tower service from `timvw-rust-runtime`.
 - [From 0.23 to 0.24](#from-023-to-024): union variant names under a model name prefix or suffix.
 - [From 0.22 to 0.23](#from-022-to-023): one rare type change.
 - [From 0.21 to 0.22](#from-021-to-022): every breaking change, with the code before and after.
@@ -8,6 +9,35 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From 0.24 to 0.25
+
+0.25 adds `httpStack`. Its default, `tower`, sends every request through `timvw_rust_runtime::Client`, a tower service
+from the new [`timvw-rust-runtime`](../../runtime/README.md) crate (reqwest by default), instead of
+`reqwest_middleware::ClientWithMiddleware`. The generated functions, models and `ResponseContent` do not change. To
+keep 0.24's output, set `httpStack=reqwest-middleware`; nothing else changes then.
+
+With the default `tower`:
+
+- `Cargo.toml` depends on `timvw-rust-runtime` instead of `reqwest` and `reqwest-middleware`. The features
+  `native-tls` and `rustls` stay and are passed on to the runtime; a new default feature `retry` enables
+  `timvw_rust_runtime::retry`. A hand-kept `Cargo.toml` follows the generated one.
+- `Configuration.client` is a `timvw_rust_runtime::Client` (`configuration::Client` re-exports it, where
+  `configuration::ClientWithMiddleware` was). A `reqwest_middleware` stack becomes tower layers:
+  `Client::from_reqwest(reqwest_client)` for a configured `reqwest::Client`, `.layer(..)` for each middleware. The
+  [HTTP stack guide](http-stack.md#moving-from-reqwest-middleware-to-tower) maps the common ones.
+- `apis::Error` has `Http(timvw_rust_runtime::Error)` where it had `Reqwest(reqwest::Error)` and
+  `ReqwestMiddleware(reqwest_middleware::Error)`. A `match` on those variants matches `Http`; the reqwest error is its
+  `source()`.
+- `ResponseContent.status` and `.headers`, and `ApiResponse`'s, are the same `http` types as before, named through
+  the runtime: `timvw_rust_runtime::StatusCode` and `timvw_rust_runtime::header::HeaderMap`. Code that names them
+  through `reqwest::` compiles while it depends on reqwest itself; otherwise it names them through the runtime.
+- A file response (`format: binary`) is a `timvw_rust_runtime::Response`, with `status()`, `headers()`, `bytes()` and
+  `bytes_stream()`, where it was a `reqwest::Response`. With `typedEventStreams`, `sse::Events::from_response` takes
+  one, and a failure reading the stream is `Error::Http`.
+
+To upgrade a client repository, bump the image tag to `0.25.0-og7.27.0`, regenerate, and run
+`cargo clippy --all-targets -- -D warnings` and `cargo test`.
 
 ## From 0.23 to 0.24
 
@@ -389,10 +419,10 @@ After:
 
 ```rust
 let content = ResponseContent {
-    status: reqwest::StatusCode::TOO_MANY_REQUESTS,
+    status: timvw_rust_runtime::StatusCode::TOO_MANY_REQUESTS,
     content: body.clone(),
     entity: None::<items_api::CreateItemError>,
-    headers: reqwest::header::HeaderMap::new(),
+    headers: timvw_rust_runtime::header::HeaderMap::new(),
 };
 ```
 

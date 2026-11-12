@@ -37,7 +37,7 @@ fs = ["dep:tokio", "tokio/fs", "tokio/io-util", "dep:mime_guess"]
 tracing = ["dep:tracing", "dep:web-time"]
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 bytes = "1"
 futures-core = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }

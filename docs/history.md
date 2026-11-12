@@ -34,6 +34,9 @@ langfuse-client-base change in their dependencies, `Configuration.client` and th
 - The runtime has a retry policy for `tower::retry` (`429`, `408`, `5xx`, failed connections; `Retry-After`;
   exponential backoff). A request body held in memory, multipart included, is sent again on a retry; a streamed body is
   not retried.
+- The runtime logs with `tracing` (feature `tracing`, forwarded by the generated crate): `trace::TraceLayer` opens a
+  span per request and logs each response and retry. Its README is a guide to retries, timeouts, logging, middleware
+  and limits.
 - `httpStack=reqwest-middleware` renders 0.24's output.
 
 ## 0.24.0

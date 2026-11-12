@@ -1,6 +1,7 @@
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{Mutex, PoisonError};
 use std::task::{Context, Poll};
 
 use tower::util::BoxCloneSyncService;
@@ -44,13 +45,12 @@ impl Client {
     }
 
     /// A client that sends with any tower service from `http::Request<Body>` to `http::Response<B>`.
+    ///
+    /// The service must be `Clone` and `Send`, not `Sync`: services such as `ConcurrencyLimit` that cannot be shared
+    /// between threads are held behind a lock that is only taken to clone them.
     pub fn from_service<S, B>(service: S) -> Self
     where
-        S: Service<http::Request<Body>, Response = http::Response<B>>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
+        S: Service<http::Request<Body>, Response = http::Response<B>> + Clone + Send + 'static,
         S::Error: Into<BoxError>,
         S::Future: Send + 'static,
         B: http_body::Body + Send + Sync + 'static,
@@ -61,7 +61,7 @@ impl Client {
             .map_response(|response: http::Response<B>| response.map(Body::wrap))
             .map_err(Into::into);
         Self {
-            service: BoxCloneSyncService::new(service),
+            service: BoxCloneSyncService::new(SyncService(Mutex::new(service))),
         }
     }
 
@@ -71,11 +71,8 @@ impl Client {
     pub fn layer<L, B>(self, layer: L) -> Self
     where
         L: Layer<HttpService>,
-        L::Service: Service<http::Request<Body>, Response = http::Response<B>>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
+        L::Service:
+            Service<http::Request<Body>, Response = http::Response<B>> + Clone + Send + 'static,
         <L::Service as Service<http::Request<Body>>>::Error: Into<BoxError>,
         <L::Service as Service<http::Request<Body>>>::Future: Send + 'static,
         B: http_body::Body + Send + Sync + 'static,
@@ -125,6 +122,41 @@ impl Default for Client {
 impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client").finish_non_exhaustive()
+    }
+}
+
+/// Makes a `Clone + Send` service `Sync`. Every request clones the service, under the lock, and calls the clone, so
+/// the lock is never held across `poll_ready` or `call` on a shared value.
+struct SyncService<S>(Mutex<S>);
+
+impl<S: Clone> Clone for SyncService<S> {
+    fn clone(&self) -> Self {
+        let service = self
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        Self(Mutex::new(service))
+    }
+}
+
+impl<S: Service<R>, R> Service<R> for SyncService<S> {
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.0
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .poll_ready(cx)
+    }
+
+    fn call(&mut self, request: R) -> Self::Future {
+        self.0
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .call(request)
     }
 }
 

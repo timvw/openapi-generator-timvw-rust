@@ -75,7 +75,8 @@ class HttpStackTest {
         assertTrue(cargo.contains("default = [\"native-tls\", \"retry\"]\n"
                 + "native-tls = [\"timvw-rust-runtime/native-tls\"]\n"
                 + "rustls = [\"timvw-rust-runtime/rustls\"]\n"
-                + "retry = [\"timvw-rust-runtime/retry\"]"), cargo);
+                + "retry = [\"timvw-rust-runtime/retry\"]\n"
+                + "tracing = [\"timvw-rust-runtime/tracing\"]"), cargo);
         assertFalse(cargo.contains("reqwest"), cargo);
 
         String configuration = read(out, "src/apis/configuration.rs");

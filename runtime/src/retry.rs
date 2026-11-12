@@ -128,6 +128,15 @@ impl<B> Policy<http::Request<Body>, http::Response<B>, BoxError> for RetryPolicy
         let retry_after = retryable(result)?;
         let delay = self.delay(retry_after);
         self.attempts += 1;
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            target: "timvw_rust_runtime::trace",
+            attempt = self.attempts,
+            max_retries = self.max_retries,
+            delay_ms = delay.as_millis() as u64,
+            status = result.as_ref().ok().map(|response| response.status().as_u16()),
+            "retrying"
+        );
         Some(Box::pin(tokio::time::sleep(delay)))
     }
 

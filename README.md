@@ -102,7 +102,9 @@ let policy = RetryPolicy::new(3).max_delay(Duration::from_secs(10));
 configuration.client = configuration.client.clone().layer(RetryLayer::new(policy));
 ```
 
-`RetryPolicy` retries `429`, `408` and `5xx` responses and failed connections, honouring `Retry-After`. With
+`RetryPolicy` retries `429`, `408` and `5xx` responses and failed connections, honouring `Retry-After`. The
+[runtime's guide](runtime/README.md) covers retries, timeouts, logging (`trace::TraceLayer`, feature `tracing`),
+headers and authentication layers, and rate limits. With
 `httpStack=reqwest-middleware` the client is a `reqwest_middleware::ClientWithMiddleware` instead, as before 0.25.
 
 ### Models
@@ -193,7 +195,7 @@ Pass options with `--additional-properties=<name>=<value>,...` or in a `-c` conf
 | `supportMultipleResponses` | `false` | a function returns `ResponseContent<<Operation>Success>`, an enum of its 2xx responses, with status and headers |
 | `httpStack` | `tower` | how requests are sent: `tower` through `timvw_rust_runtime::Client` (a tower service, reqwest by default); `reqwest-middleware` through reqwest and reqwest-middleware, as up to 0.24 ([guide](docs/guides/http-stack.md)) |
 | `runtimeVersion`, `runtimePath` | `0.1`, unset | with `httpStack=tower`: the `timvw-rust-runtime` version requirement, and a path dependency next to it to build against an unreleased runtime |
-| `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none; with `httpStack=tower` the crate also has a default `retry` feature). Several values only work in a `-c` config file, as a comma ends an `--additional-properties` value |
+| `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none; with `httpStack=tower` the crate also has a default `retry` feature and a `tracing` feature). Several values only work in a `-c` config file, as a comma ends an `--additional-properties` value |
 | `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl` | unset | `Cargo.toml` `publish`, `repository`, `documentation`, `homepage` |
 | `bonBuilders` | `true` | `bon::Builder` on model structs and `#[bon::builder]` on API functions; `false` makes the functions take positional arguments ([rule](docs/mapping/schema.md#schemaproperties)) |
 | `userAgentFromPackage` | `false` | default user agent `<packageName>/<crate version>` |

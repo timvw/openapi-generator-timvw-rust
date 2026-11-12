@@ -72,6 +72,7 @@ default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry
 native-tls = ["timvw-rust-runtime/native-tls"]
 rustls = ["timvw-rust-runtime/rustls"]
 retry = ["timvw-rust-runtime/retry"]
+tracing = ["timvw-rust-runtime/tracing"]
 {{/httpStackTower}}
 {{^httpStackTower}}
 {{^useAsyncFileStream}}

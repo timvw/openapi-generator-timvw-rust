@@ -25,6 +25,8 @@ rustls = ["reqwest", "reqwest/rustls"]
 native-tls = ["reqwest", "reqwest/native-tls"]
 # `retry::RetryPolicy`: retries 429 and 5xx responses, honouring `Retry-After` (sleeps with tokio).
 retry = ["tower/retry", "dep:tokio", "tokio/time"]
+# `trace::TraceLayer`: logs each request, its status and duration (and each retry) with `tracing`.
+tracing = ["dep:tracing"]
 
 [dependencies]
 base64 = "0.22"
@@ -43,11 +45,15 @@ url = "2.5"
 
 reqwest = { version = "0.13", default-features = false, features = ["stream"], optional = true }
 tokio = { version = "1", default-features = false, optional = true }
+tracing = { version = "0.1.40", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
-tower = { version = "0.5.2", features = ["util", "retry", "timeout"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+tracing = "0.1.40"
+tower = { version = "0.5.2", features = ["util", "retry", "timeout", "limit", "buffer"] }
+tower-http = { version = "0.6", features = ["set-header", "trace"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 wiremock = "0.6"
 
 [lints.rust]

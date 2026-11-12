@@ -16,3 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `multipart::{Form, Part}`: `multipart/form-data` encoding.
 - `ReqwestService` (feature `reqwest`).
 - `retry::RetryPolicy` (feature `retry`): retries `429`, `408`, `5xx` and connect failures, honouring `Retry-After`.
+- `trace::TraceLayer` (feature `tracing`): a `tracing` span per request (method, URL without query, status) and an
+  event per response and per retry.
+- `Client::layer` and `Client::from_service` take services that are `Clone + Send` but not `Sync`, such as
+  `ConcurrencyLimit` or a `Buffer`ed `RateLimit`.
+- The README is a guide to retries, timeouts, logging, middleware, limits and testing; its examples are doctests.

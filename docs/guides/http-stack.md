@@ -40,6 +40,13 @@ let policy = RetryPolicy::new(3).max_delay(Duration::from_secs(10));
 configuration.client = configuration.client.clone().layer(RetryLayer::new(policy));
 ```
 
+Logging (feature `tracing`), headers, authentication, timeouts and rate limits are layers too. The
+[runtime's guide](../../runtime/README.md) covers each:
+[retries](../../runtime/README.md#retries), [timeouts](../../runtime/README.md#timeouts),
+[logging](../../runtime/README.md#logging), [middleware](../../runtime/README.md#middleware) (a header on every
+request, a layer of your own that fetches a token),
+[concurrency and rate limits](../../runtime/README.md#concurrency-and-rate-limits).
+
 A service of your own answers without a network, for tests:
 
 ```rust
@@ -78,6 +85,7 @@ with the `runtime/` directory of the same commit.
 | --- | --- | --- |
 | `native-tls` or `rustls` | `native-tls` (`reqwestDefaultFeatures`) | reqwest, with that TLS, as `Client::default()` |
 | `retry` | yes | `timvw_rust_runtime::retry` |
+| `tracing` | no | `timvw_rust_runtime::trace::TraceLayer`: logs each request and retry with `tracing` |
 
 Without `native-tls` and `rustls`, `Client::default()` fails every request; set a client with `Client::from_service`.
 

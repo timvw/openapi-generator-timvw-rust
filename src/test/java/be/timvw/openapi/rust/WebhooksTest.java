@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WebhooksTest {
 
     private static final String SPEC = "src/test/resources/webhooks.yaml";
+    private static final String WEBHOOK_ONLY_SPEC = "src/test/resources/webhook-only-tags.yaml";
 
     @TempDir
     static Path merged;
@@ -39,6 +40,9 @@ class WebhooksTest {
     @TempDir
     static Path apart;
 
+    @TempDir
+    static Path webhookOnly;
+
     @BeforeAll
     static void generate() {
         generate(SPEC, merged, new LinkedHashMap<>());
@@ -48,6 +52,7 @@ class WebhooksTest {
         Map<String, Object> module = new LinkedHashMap<>();
         module.put(TimvwRustCodegen.WEBHOOK_MODULE, "Hooks");
         generate(SPEC, apart, module);
+        generate(WEBHOOK_ONLY_SPEC, webhookOnly, new LinkedHashMap<>());
     }
 
     private static void generate(String spec, Path output, Map<String, Object> options) {
@@ -120,6 +125,50 @@ class WebhooksTest {
     }
 
     /**
+     * Regression (0.23.0): a tag that only webhooks carry got its module file, but {@code src/apis/mod.rs} did not
+     * declare it, so its functions were not part of the crate. Each such module is now declared, in name order.
+     */
+    @Test
+    void webhookOnlyTagsAreDeclaredInModRs() throws IOException {
+        String mod = read(webhookOnly, "src/apis/mod.rs");
+        assertContains(mod, "pub mod audit_api;\npub mod default_api;\npub mod events_api;\n");
+        assertContains(read(webhookOnly, "src/apis/audit_api.rs"), "pub async fn audit_logged(configuration: "
+                + "&configuration::Configuration, audit_entry: &models::AuditEntry) "
+                + "-> Result<(), Error<AuditLoggedError>>");
+        String events = read(webhookOnly, "src/apis/events_api.rs");
+        assertContains(events, "pub async fn item_created(");
+        assertContains(events, "pub async fn item_deleted(");
+        String paths = read(webhookOnly, "src/apis/default_api.rs");
+        assertContains(paths, "pub async fn list_items(");
+        assertContains(paths, "pub async fn ping(");
+        assertFalse(paths.contains("item_created") || paths.contains("audit_logged"), paths);
+    }
+
+    /** The README lists the webhooks of every module and links their docs, like the path operations. */
+    @Test
+    void theReadmeListsTheWebhooks() throws IOException {
+        String readme = read(webhookOnly, "README.md");
+        assertContains(readme, "*AuditApi* | [**audit_logged**](docs/AuditApi.md#audit_logged) | **POST** "
+                + "/auditLogged | \n*DefaultApi* | [**list_items**](docs/DefaultApi.md#list_items) | **GET** /items | "
+                + "\n*DefaultApi* | [**ping**](docs/DefaultApi.md#ping) | **POST** /ping | \n*EventsApi* | "
+                + "[**item_created**](docs/EventsApi.md#item_created) | **POST** /itemCreated | \n*EventsApi* | "
+                + "[**item_deleted**](docs/EventsApi.md#item_deleted) | **POST** /itemDeleted | \n");
+        assertContains(read(webhookOnly, "docs/AuditApi.md"), "## audit_logged");
+        String events = read(webhookOnly, "docs/EventsApi.md");
+        assertContains(events, "## item_created");
+        assertContains(events, "## item_deleted");
+        assertContains(read(merged, "README.md"), "*PetsApi* | [**pet_adopted**](docs/PetsApi.md#pet_adopted)");
+    }
+
+    /** With {@code webhookModule}, mod.rs declares the webhook module once and the README lists the path APIs only. */
+    @Test
+    void webhookModuleIsDeclaredOnce() throws IOException {
+        String mod = read(apart, "src/apis/mod.rs");
+        assertTrue(mod.indexOf("pub mod hooks_api;") == mod.lastIndexOf("pub mod hooks_api;"), mod);
+        assertFalse(read(apart, "README.md").contains("HooksApi"));
+    }
+
+    /**
      * A webhook that would take the name of a path method of its module fails generation, naming the option. The
      * spec validation already rejects two equal operationIds; a {@code _response} twin is a method name too.
      */
@@ -155,11 +204,14 @@ class WebhooksTest {
         assertTrue(messages.contains("set webhookModule"), messages);
     }
 
-    /** The crate with path operations and webhooks in one module builds and passes clippy. Needs cargo. */
+    /**
+     * The crates with path operations and webhooks in one module, and with modules that hold only webhooks, build
+     * and pass clippy. Needs cargo.
+     */
     @Test
     void theMergedCrateCompiles() throws IOException, InterruptedException {
         Assumptions.assumeTrue(cargo(merged, 30, "--version") != null, "no cargo");
-        for (Path crate : List.of(merged, withResponses)) {
+        for (Path crate : List.of(merged, withResponses, webhookOnly)) {
             String clippy = cargo(crate, 900, "clippy", "--all-targets", "--", "-D", "warnings",
                     "-A", "clippy::needless_return");
             assertNotNull(clippy, "clippy did not finish");

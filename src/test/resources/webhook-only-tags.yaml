@@ -1,0 +1,71 @@
+openapi: 3.1.0
+info:
+  title: Tags that only webhooks carry
+  version: 1.0.0
+# WebhooksTest: Audit and Events are carried by webhooks only, so audit_api and events_api hold only webhooks and
+# src/apis/mod.rs declares them with default_api, which holds the path operation and the untagged webhook.
+paths:
+  /items:
+    get:
+      operationId: listItems
+      responses:
+        '200':
+          description: the items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+webhooks:
+  itemCreated:
+    post:
+      operationId: itemCreated
+      tags: [Events]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+      responses:
+        '200':
+          description: received
+  itemDeleted:
+    post:
+      operationId: itemDeleted
+      tags: [Events]
+      responses:
+        '204':
+          description: received
+  auditLogged:
+    post:
+      operationId: auditLogged
+      tags: [Audit]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditEntry'
+      responses:
+        '200':
+          description: received
+  ping:
+    post:
+      operationId: ping
+      responses:
+        '204':
+          description: received
+components:
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+    AuditEntry:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string

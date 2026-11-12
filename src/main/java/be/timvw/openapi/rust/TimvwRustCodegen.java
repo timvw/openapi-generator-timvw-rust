@@ -1042,11 +1042,15 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
     /**
      * {@code src/apis/mod.rs} declares the webhook module: the template lists only the path APIs
-     * ({@code apiInfo.apis}), while webhooks are bundled apart under {@code webhooks}.
+     * ({@code apiInfo.apis}), while webhooks are bundled apart under {@code webhooks}. Without {@code webhookModule}
+     * the webhook APIs join {@code apiInfo.apis} (see {@link #addWebhookApis}).
      */
     @Override
     public Map<String, Object> postProcessSupportingFileData(Map<String, Object> objs) {
         objs = super.postProcessSupportingFileData(objs);
+        if (webhookModule == null) {
+            addWebhookApis(objs);
+        }
         if (webhookModule != null && objs.get("webhooks") instanceof List && !((List<?>) objs.get("webhooks")).isEmpty()) {
             List<?> webhooks = (List<?>) objs.get("webhooks");
             if (webhooks.size() > 1) {
@@ -1063,6 +1067,54 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     GENERATOR_NAME, TYPED_EVENT_STREAMS);
         }
         return objs;
+    }
+
+    /**
+     * Without {@code webhookModule}, {@code src/apis/mod.rs} and the README list the webhook APIs with the path APIs
+     * ({@code apiInfo.apis}). A webhook API whose tag path operations also carry replaces that path API: it holds the
+     * path operations followed by the webhooks ({@link #mergePathOperations}), so the README lists the webhooks too. A
+     * tag that only webhooks carry is added, before the first API whose class name sorts after it, so that its module
+     * is declared and part of the crate.
+     */
+    @SuppressWarnings("unchecked")
+    private void addWebhookApis(Map<String, Object> objs) {
+        if (!(objs.get("webhooks") instanceof List) || !(objs.get("apiInfo") instanceof Map)) {
+            return;
+        }
+        Map<String, Object> apiInfo = (Map<String, Object>) objs.get("apiInfo");
+        List<Object> apis = apiInfo.get("apis") instanceof List
+                ? new ArrayList<>((List<Object>) apiInfo.get("apis")) : new ArrayList<>();
+        int added = 0;
+        for (Object webhook : (List<?>) objs.get("webhooks")) {
+            if (!(webhook instanceof Map) || ((Map<?, ?>) webhook).get("classname") == null) {
+                continue;
+            }
+            String classname = String.valueOf(((Map<?, ?>) webhook).get("classname"));
+            int at = apis.size();
+            boolean replaced = false;
+            for (int i = 0; i < apis.size(); i++) {
+                Object name = apis.get(i) instanceof Map ? ((Map<?, ?>) apis.get(i)).get("classname") : null;
+                if (classname.equals(String.valueOf(name))) {
+                    apis.set(i, webhook);
+                    replaced = true;
+                    break;
+                }
+                if (at == apis.size() && name != null && String.valueOf(name).compareTo(classname) > 0) {
+                    at = i;
+                }
+            }
+            if (!replaced) {
+                apis.add(at, webhook);
+                added++;
+                LOGGER.info("{}: the webhooks of {} have no path operations; {}.rs is declared in mod.rs",
+                        GENERATOR_NAME, classname, ((Map<?, ?>) webhook).get("classFilename"));
+            }
+        }
+        apiInfo.put("apis", apis);
+        if (added > 0) {
+            LOGGER.info("{}: {} API modules hold only webhooks (set {} to generate every webhook into one module)",
+                    GENERATOR_NAME, added, WEBHOOK_MODULE);
+        }
     }
 
     /**

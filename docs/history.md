@@ -69,6 +69,12 @@ Neither client sets a model name prefix, suffix or mapping, or a schema mapping.
   `default_api.rs` and `docs/DefaultApi.md`. A webhook whose function would take the name of a path method of its
   module fails generation and names `webhookModule`. openai-client-base sets `webhookModule` and langfuse-client-base
   has no webhooks, so neither changes.
+- Without `webhookModule`, a tag that only webhooks carry (no path operation has it) gets its module declared in
+  `src/apis/mod.rs`, so its functions are part of the crate; up to 0.23.0 `src/apis/<tag>_api.rs` and
+  `docs/<Tag>Api.md` were written, but the module was not declared. Every such tag gets its own module, and the
+  README's endpoint table lists the webhooks of every module, those that join path operations included
+  ([`openapi.webhooks`](mapping/openapi.md#openapiwebhooks)). openai-client-base sets `webhookModule` and
+  langfuse-client-base has no webhooks, so neither changes.
 
 ## 0.23.0
 

@@ -534,10 +534,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     /**
      * {@link #toModelName} without the model name prefix and suffix: the name of a union variant, or the part of a
      * schema name that {@link #toModelName} completes later. The prefix and suffix belong to the type, once: a variant
-     * {@code Text} or a hoisted schema {@code LooseTextVariantEnum} with them would get them again.
+     * {@code Text} or a hoisted schema {@code LooseTextVariantEnum} with them would get them again. A schema that
+     * {@code --schema-mappings} maps has no model to rename: its variant keeps the schema's name.
      */
     public String toVariantName(String name) {
-        if (modelNameMapping.containsKey(name)) {
+        if (modelNameMapping.containsKey(name) && !schemaMapping.containsKey(name)) {
             return modelNameMapping.get(name);
         }
         return sanitizeIdentifier(name, CasingType.CAMEL_CASE, "model", "model", false);
@@ -621,6 +622,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             return typeMapping.get("map") + "<" + typeMapping.get("string") + ", "
                     + itemType(ModelUtils.getAdditionalProperties(p)) + ">";
         } else if (!org.apache.commons.lang3.StringUtils.isEmpty(p.get$ref())) {
+            String mapped = schemaMapping.get(ModelUtils.getSimpleRef(p.get$ref()));
+            if (mapped != null) {
+                // --schema-mappings Filter=crate::custom::Filter: the crate's own type, by its path, and no model
+                return mapped;
+            }
             try {
                 return "models::" + toModelName(ModelUtils.getSimpleRef(p.get$ref()));
             } catch (Exception e) {
@@ -639,7 +645,70 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         if (typeMapping.containsValue(oasType) || languageSpecificPrimitives.contains(oasType)) {
             return oasType;
         }
+        if (schemaMapping.containsKey(oasType)) {
+            return schemaMapping.get(oasType);
+        }
         return "models::" + toModelName(oasType);
+    }
+
+    /**
+     * A parameter of a schema that {@code --schema-mappings} maps is of the mapped type, by its path: the base
+     * generator takes the model name of the {@code $ref} ({@code Filter}), which the API template turns into
+     * {@code models::Filter}.
+     */
+    @Override
+    @SuppressWarnings("rawtypes")
+    protected String getParameterDataType(io.swagger.v3.oas.models.parameters.Parameter parameter, Schema schema) {
+        Schema unaliased = unaliasSchema(schema);
+        String mapped = unaliased.get$ref() == null ? null
+                : schemaMapping.get(ModelUtils.getSimpleRef(unaliased.get$ref()));
+        return mapped != null ? mapped : super.getParameterDataType(parameter, schema);
+    }
+
+    /**
+     * A request body of a mapped schema is of the mapped type, as a parameter is ({@link #getParameterDataType}), and
+     * is flagged by its shape ({@link #markMapped}): a string schema's flags would type it {@code &str}.
+     */
+    @Override
+    @SuppressWarnings("rawtypes")
+    public CodegenParameter fromRequestBody(io.swagger.v3.oas.models.parameters.RequestBody body, Set<String> imports,
+                                            String bodyParameterName) {
+        CodegenParameter p = super.fromRequestBody(body, imports, bodyParameterName);
+        io.swagger.v3.oas.models.parameters.RequestBody referenced = openAPI == null ? body
+                : ModelUtils.getReferencedRequestBody(openAPI, body);
+        Schema schema = referenced == null ? null : ModelUtils.getSchemaFromRequestBody(referenced);
+        String name = schema == null || schema.get$ref() == null ? null : ModelUtils.getSimpleRef(schema.get$ref());
+        if (p != null && name != null && schemaMapping.containsKey(name)) {
+            p.dataType = schemaMapping.get(name);
+            p.baseType = p.dataType;
+            markMapped(p, isMappedStruct(name));
+        }
+        return p;
+    }
+
+    /** Whether the schema a schema mapping replaces is one a struct or a map would be generated for. */
+    @SuppressWarnings("rawtypes")
+    protected boolean isMappedStruct(String schemaName) {
+        Schema schema = openAPI == null ? null : ModelUtils.getSchema(openAPI, schemaName);
+        return schema != null && UnionRules.isObjectShaped(schema);
+    }
+
+    /**
+     * A parameter or request body of a type a schema mapping names takes that type as it is, and is sent as a
+     * generated type of its shape would be: one in place of an object schema as its JSON (as a struct is), any other
+     * with {@code Display} (as a schema enum is: {@code isEnumRef}, which the template sends with {@code to_string}).
+     * The base generator flags it by the schema it replaces (a string schema {@code isString}, which the template
+     * types as {@code &str}); the type is opaque, so only its shape counts.
+     */
+    static void markMapped(CodegenParameter p, boolean struct) {
+        p.isString = false;
+        p.isUuid = false;
+        p.isEnum = false;
+        p.isFreeFormObject = false;
+        p.isAnyType = false;
+        p.isPrimitiveType = false;
+        p.isModel = struct;
+        p.isEnumRef = !struct;
     }
 
     /** Set while a parameter or form field is typed: its items are never {@code Option} ({@link #fromParameter}). */

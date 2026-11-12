@@ -1,0 +1,155 @@
+openapi: 3.0.3
+info: {title: Mapped schemas, version: 1.0.0}
+# MappedSchemasTest generates this with --schema-mappings for Filter, Circle and Token (crate::custom::Filter,
+# ...): types of the crate's own (src/test/rust/mapped_schemas_custom.rs). Filter is a field, an array item, a map
+# value, a request body, a JSON query parameter, a header parameter, a response and a union variant; Circle a variant
+# of a discriminated union; Token, in place of a string schema, a path, query and header parameter, a body and a field.
+paths:
+  /search:
+    post:
+      operationId: search
+      parameters:
+        - name: filter
+          in: query
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Filter'}
+        - name: X-Filter
+          in: header
+          schema: {$ref: '#/components/schemas/Filter'}
+        - name: filters
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/Filter'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Filter'}
+      responses:
+        '200':
+          description: the filter the server read
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Filter'}
+  /results/{token}:
+    get:
+      operationId: listResults
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Token'}
+        - name: after
+          in: query
+          schema: {$ref: '#/components/schemas/Token'}
+        - name: X-Token
+          in: header
+          schema: {$ref: '#/components/schemas/Token'}
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Result'}
+  /shapes:
+    get:
+      operationId: getShape
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Shape'}
+  /tokens:
+    put:
+      operationId: putToken
+      parameters:
+        - name: tokens
+          in: query
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/Token'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Token'}
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Token'}
+  /choices:
+    post:
+      operationId: choose
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Choice'}
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Filter'}
+components:
+  schemas:
+    Filter:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string}
+        mode: {$ref: '#/components/schemas/Mode'}
+    Mode:
+      type: string
+      enum: [exact, prefix]
+    Result:
+      type: object
+      required: [filter]
+      properties:
+        filter: {$ref: '#/components/schemas/Filter'}
+        previous: {$ref: '#/components/schemas/Filter'}
+        filters:
+          type: array
+          items: {$ref: '#/components/schemas/Filter'}
+        byName:
+          type: object
+          additionalProperties: {$ref: '#/components/schemas/Filter'}
+        mode: {$ref: '#/components/schemas/Mode'}
+        next: {$ref: '#/components/schemas/Token'}
+    Token:
+      type: string
+      description: an opaque string the crate wraps in a type of its own
+    Choice:
+      oneOf:
+        - {$ref: '#/components/schemas/Filter'}
+        - {type: string}
+    Circle:
+      type: object
+      required: [kind, radius]
+      properties:
+        kind: {type: string}
+        radius: {type: number}
+    Square:
+      type: object
+      required: [kind, side]
+      properties:
+        kind: {type: string}
+        side: {type: number}
+    Shape:
+      oneOf:
+        - {$ref: '#/components/schemas/Circle'}
+        - {$ref: '#/components/schemas/Square'}
+      discriminator:
+        propertyName: kind
+        mapping:
+          circle: '#/components/schemas/Circle'
+          square: '#/components/schemas/Square'

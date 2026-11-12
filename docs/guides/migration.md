@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [From 0.23 to 0.24](#from-023-to-024): union variant names under a model name prefix or suffix.
 - [From 0.22 to 0.23](#from-022-to-023): one rare type change.
 - [From 0.21 to 0.22](#from-021-to-022): every breaking change, with the code before and after.
 - [From 0.20 to 0.21](#from-020-to-021): every breaking change, with the code before and after.
@@ -7,6 +8,33 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From 0.23 to 0.24
+
+0.24 adds typed accessors for declared error-response headers (with `responseFunctions`) and fixes webhooks without
+`webhookModule`, the model name options and `--schema-mappings`; the configuration does not change, and neither
+openai-client-base nor langfuse-client-base changes. One change renames types:
+
+- With `--model-name-prefix` or `--model-name-suffix`, a union variant no longer carries the prefix or suffix, and a
+  string enum branch a union hoists into a model gets it once
+  ([rule](../mapping/schema.md#schemaoneofvariant-names)). With prefix `Api`, `ApiFilter(models::ApiFilter)`,
+  `ApiText(String)` and `ApiApiTextVariant(models::ApiApiLooseApiTextVariantEnum)` become
+  `Filter(models::ApiFilter)`, `Text(String)` and `TextVariant(models::ApiLooseTextVariantEnum)`. Code that names
+  such a variant or hoisted enum uses the new names; without a prefix or suffix nothing changes.
+
+Specs that failed or lost code before now generate in full:
+
+- Without `webhookModule`, webhooks join the path operations of their tag's module instead of overwriting it, and a
+  tag that only webhooks carry gets its module declared. A webhook whose function name clashes with a path
+  operation's in the same module fails generation; set `webhookModule` to keep the webhooks apart.
+- `--model-name-prefix`, `--model-name-suffix` and `--model-name-mappings` no longer fail generation when a struct is
+  a JSON parameter or request body.
+- `--schema-mappings Name=path::Type` uses that type everywhere and writes no model for the schema. The type needs
+  `Clone`, `Debug`, `PartialEq`, `Serialize` and `Deserialize`, and `Display` when it replaces a schema that is not
+  an object and is used as a parameter.
+
+To upgrade a client repository, bump the image tag to `0.24.0-og7.27.0`, regenerate, and run
+`cargo clippy --all-targets -- -D warnings` and `cargo test`.
 
 ## From 0.22 to 0.23
 

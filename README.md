@@ -22,7 +22,7 @@ From the directory that holds `openapi.yaml`:
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.24.0-og7.27.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:0.25.0-og7.27.0 generate \
   -g timvw-rust \
   -i /local/openapi.yaml \
   -o /local/my-client \
@@ -247,7 +247,7 @@ operation with `x-group-parameters` fails too. The [migration guide](docs/guides
 
 | What | Where |
 | --- | --- |
-| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>`, e.g. `0.24.0-og7.27.0`; `<version>` and `latest` point at the newest openapi-generator |
+| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>`, e.g. `0.25.0-og7.27.0`; `<version>` and `latest` point at the newest openapi-generator |
 | Maven | `be.timvw:openapi-generator-timvw-rust` on Maven Central |
 | Generator name | `timvw-rust` (`-g timvw-rust`) |
 | openapi-generator | built and tested against 7.27.0, which the image bundles; another minor version logs a warning |
@@ -268,7 +268,7 @@ add the generator as a dependency of the plugin:
     <dependency>
       <groupId>be.timvw</groupId>
       <artifactId>openapi-generator-timvw-rust</artifactId>
-      <version>0.24.0</version>
+      <version>0.25.0</version>
     </dependency>
   </dependencies>
   <executions>
@@ -359,7 +359,7 @@ jar.
 ## Releasing
 
 1. Make sure `main` is green.
-2. Tag and push: `git tag v0.24.0 && git push origin v0.24.0`.
+2. Tag and push: `git tag v0.25.0 && git push origin v0.25.0`.
 3. The `Release` workflow (`.github/workflows/release.yml`) does the rest:
    - It sets the pom version from the tag and runs `./mvnw -Prelease deploy`. That signs the jar, sources and javadoc
      with GPG and publishes them through the Sonatype Central Portal.
@@ -369,6 +369,18 @@ jar.
 
 Secrets: `CENTRAL_USERNAME`, `CENTRAL_PASSWORD`, `GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`. The image push uses the
 workflow's `GITHUB_TOKEN`. The pom's version on `main` stays a `-SNAPSHOT`, and the workflow never commits.
+
+### Releasing the runtime
+
+`timvw-rust-runtime` (`runtime/`) has its own version and is released with
+[release-plz](https://release-plz.dev) by `.github/workflows/runtime-release.yml`:
+
+1. A push to `main` that changes `runtime/` opens or updates a release PR (version bump and `runtime/CHANGELOG.md`).
+2. Merge it, then run the `Release runtime` workflow with `release_action=publish`. It publishes to crates.io and
+   tags `timvw-rust-runtime-v<version>`, which the generator's `Release` workflow (`v*`) ignores.
+
+Release the runtime before a generator version whose `DEFAULT_RUNTIME_VERSION` needs it. Secret:
+`CARGO_REGISTRY_TOKEN`; `BOT_APP_ID` and `BOT_PRIVATE_KEY` (optional) let the release PR trigger CI.
 
 ## Layout
 

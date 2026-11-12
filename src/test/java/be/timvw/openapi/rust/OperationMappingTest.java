@@ -111,7 +111,7 @@ class OperationMappingTest {
         String get = function("items_api", "get_item");
         assertContains(get, "if let Some(ref param_value) = p_cookie_session {\n"
                 + "        cookies.push(format!(\"session={}\", crate::apis::cookie_encode(param_value)));");
-        assertContains(get, "req_builder = req_builder.header(reqwest::header::COOKIE, cookies.join(\"; \"));");
+        assertContains(get, "req_builder = req_builder.header(timvw_rust_runtime::header::COOKIE, cookies.join(\"; \"));");
         assertFalse(function("items_api", "delete_item").contains("COOKIE"));
     }
 
@@ -158,11 +158,11 @@ class OperationMappingTest {
                         + "        .or_else(|| serde_json::from_str(&content).ok().map(GetItemError::UnknownValue));\n"
                         + "        Err(Error::ResponseError(Box::new(ResponseContent { status, content, entity, headers })))");
         String mod = read("src/apis/mod.rs");
-        assertContains(mod, "pub struct ResponseContent<T> {\n    pub status: reqwest::StatusCode,\n"
+        assertContains(mod, "pub struct ResponseContent<T> {\n    pub status: timvw_rust_runtime::StatusCode,\n"
                 + "    pub content: String,\n    pub entity: Option<T>,\n"
                 + "    /// The response's headers (`retry-after`, `x-request-id`, rate limits, ...).\n"
-                + "    pub headers: reqwest::header::HeaderMap,\n}");
-        assertContains(mod, "    Reqwest(reqwest::Error),\n    ReqwestMiddleware(reqwest_middleware::Error),\n"
+                + "    pub headers: timvw_rust_runtime::header::HeaderMap,\n}");
+        assertContains(mod, "    Http(timvw_rust_runtime::Error),\n"
                 + "    Serde(serde_json::Error),\n    Io(std::io::Error),\n    ResponseError(Box<ResponseContent<T>>),");
     }
 
@@ -171,7 +171,7 @@ class OperationMappingTest {
         String configuration = read("src/apis/configuration.rs");
         assertContains(configuration, "base_path: \"https://api.example.com/v1\".to_owned(),");
         assertContains(configuration, "user_agent: Some(\"OpenAPI-Generator/2.1.0/rust\".to_owned()),");
-        assertContains(configuration, "pub client: reqwest_middleware::ClientWithMiddleware,");
+        assertContains(configuration, "pub client: timvw_rust_runtime::Client,");
     }
 
     @Test

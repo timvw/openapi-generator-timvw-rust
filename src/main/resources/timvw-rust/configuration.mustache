@@ -3,13 +3,25 @@
 #![allow({{{.}}})]
 {{/apiLintAllows}}
 
+{{#httpStackTower}}
+pub use timvw_rust_runtime::Client;
+{{/httpStackTower}}
+{{^httpStackTower}}
 pub use reqwest_middleware::ClientWithMiddleware;
+{{/httpStackTower}}
 
 #[derive(Clone)]
 pub struct Configuration {
     pub base_path: String,
     pub user_agent: Option<String>,
+    {{#httpStackTower}}
+    /// Sends the requests: reqwest by default. Wrap it in tower layers with `Client::layer`, or replace it with
+    /// `Client::from_service`.
+    pub client: timvw_rust_runtime::Client,
+    {{/httpStackTower}}
+    {{^httpStackTower}}
     pub client: reqwest_middleware::ClientWithMiddleware,
+    {{/httpStackTower}}
     pub basic_auth: Option<BasicAuth>,
     pub oauth_access_token: Option<String>,
     pub bearer_access_token: Option<String>,
@@ -61,7 +73,12 @@ impl Default for Configuration {
         Configuration {
             base_path: "{{{basePath}}}".to_owned(),
             user_agent: {{#httpUserAgent}}Some("{{{.}}}".to_owned()){{/httpUserAgent}}{{^httpUserAgent}}{{#userAgentFromPackage}}Some(concat!("{{{packageName}}}/", env!("CARGO_PKG_VERSION")).to_owned()){{/userAgentFromPackage}}{{^userAgentFromPackage}}Some("OpenAPI-Generator/{{{version}}}/rust".to_owned()){{/userAgentFromPackage}}{{/httpUserAgent}},
+            {{#httpStackTower}}
+            client: timvw_rust_runtime::Client::default(),
+            {{/httpStackTower}}
+            {{^httpStackTower}}
             client: reqwest_middleware::ClientBuilder::new(reqwest::Client::new()).build(),
+            {{/httpStackTower}}
             basic_auth: None,
             oauth_access_token: None,
             bearer_access_token: None,

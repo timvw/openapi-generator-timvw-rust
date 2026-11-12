@@ -1,4 +1,4 @@
-use reqwest::multipart;
+use {{httpCrate}}::multipart;
 /// Internal multipart helper functions for file uploads
 /// This module provides utilities to handle file uploads in multipart forms
 use std::path::{Path, PathBuf};
@@ -59,7 +59,7 @@ pub fn add_schema_value_to_form(
     field_name: &str,
     value: serde_json::Value,
     content_type: Option<&str>,
-) -> Result<multipart::Form, reqwest::Error> {
+) -> Result<multipart::Form, {{httpCrate}}::Error> {
     let default_json = matches!(
         &value,
         serde_json::Value::Object(_) | serde_json::Value::Array(_)

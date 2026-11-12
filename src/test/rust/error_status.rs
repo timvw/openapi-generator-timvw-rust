@@ -130,7 +130,7 @@ async fn the_error_has_the_response_headers() {
     let e = thing("429 Too Many Requests", r#"{"message":"slow down"}"#).await;
     assert_eq!(e.headers["x-request-id"], "req-429 Too Many Requests");
     assert_eq!(e.headers["retry-after"], "30");
-    assert_eq!(e.headers[reqwest::header::CONTENT_TYPE], "application/json");
+    assert_eq!(e.headers[timvw_rust_runtime::header::CONTENT_TYPE], "application/json");
     let configuration = serve("503 Service Unavailable", "{}").await;
     let e = error(
         default_api::get_bare()

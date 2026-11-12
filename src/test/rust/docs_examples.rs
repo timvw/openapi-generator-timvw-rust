@@ -20,19 +20,19 @@ fn new_item() -> models::NewItem {
 
 fn not_found() -> ResponseContent<items_api::GetItemError> {
     ResponseContent {
-        status: reqwest::StatusCode::NOT_FOUND,
+        status: timvw_rust_runtime::StatusCode::NOT_FOUND,
         content: r#"{"detail":"no such item"}"#.to_owned(),
         entity: Some(items_api::GetItemError::Status404(models::Problem::new("no such item".to_owned()))),
-        headers: reqwest::header::HeaderMap::new(),
+        headers: timvw_rust_runtime::header::HeaderMap::new(),
     }
 }
 
 fn rejected() -> ResponseContent<items_api::CreateItemError> {
     ResponseContent {
-        status: reqwest::StatusCode::BAD_REQUEST,
+        status: timvw_rust_runtime::StatusCode::BAD_REQUEST,
         content: "bad input".to_owned(),
         entity: Some(items_api::CreateItemError::Status400("bad input".to_owned())),
-        headers: reqwest::header::HeaderMap::new(),
+        headers: timvw_rust_runtime::header::HeaderMap::new(),
     }
 }
 
@@ -69,6 +69,17 @@ mod readme {
             .call()
             .await?;
         Ok(())
+    }
+
+    #[test]
+    fn layers() {
+        use std::time::Duration;
+        use timvw_rust_runtime::retry::RetryPolicy;
+        use timvw_rust_runtime::tower::retry::RetryLayer;
+
+        let mut configuration = Configuration::new();
+        let policy = RetryPolicy::new(3).max_delay(Duration::from_secs(10));
+        configuration.client = configuration.client.clone().layer(RetryLayer::new(policy));
     }
 
     #[test]
@@ -157,14 +168,14 @@ mod errors {
     }
 
     fn retry_after(response: &ResponseContent<items_api::CreateItemError>) -> Option<std::time::Duration> {
-        let seconds = response.headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
+        let seconds = response.headers.get(timvw_rust_runtime::header::RETRY_AFTER)?.to_str().ok()?;
         seconds.parse().ok().map(std::time::Duration::from_secs)
     }
 
     #[test]
     fn headers() {
         let mut response = rejected();
-        response.headers.insert(reqwest::header::RETRY_AFTER, "30".parse().unwrap());
+        response.headers.insert(timvw_rust_runtime::header::RETRY_AFTER, "30".parse().unwrap());
         assert_eq!(retry_after(&response), Some(std::time::Duration::from_secs(30)));
     }
 
@@ -177,10 +188,10 @@ mod errors {
         }
 
         let error: Error<items_api::GetItemError> = Error::ResponseError(Box::new(ResponseContent {
-            status: reqwest::StatusCode::NOT_FOUND,
+            status: timvw_rust_runtime::StatusCode::NOT_FOUND,
             content: r#"{"detail":"no such item"}"#.to_owned(),
             entity: Some(items_api::GetItemError::Status404(models::Problem::new("no such item".to_owned()))),
-            headers: reqwest::header::HeaderMap::new(),
+            headers: timvw_rust_runtime::header::HeaderMap::new(),
         }));
         assert_eq!(error.to_string(), "error in response: status code 404 Not Found");
     }
@@ -339,7 +350,7 @@ mod response_functions {
             .call()
             .await?;
 
-        if response.status == reqwest::StatusCode::NON_AUTHORITATIVE_INFORMATION {
+        if response.status == timvw_rust_runtime::StatusCode::NON_AUTHORITATIVE_INFORMATION {
             // ...
         }
         let request_id = response
@@ -353,8 +364,8 @@ mod response_functions {
             .id("42")
             .call()
             .await?;
-        assert_eq!(deleted.status, reqwest::StatusCode::NO_CONTENT);
-        let location = deleted.headers.get(reqwest::header::LOCATION);
+        assert_eq!(deleted.status, timvw_rust_runtime::StatusCode::NO_CONTENT);
+        let location = deleted.headers.get(timvw_rust_runtime::header::LOCATION);
         Ok(())
     }
 
@@ -369,7 +380,7 @@ mod response_functions {
             println!("request {request_id}");
         }
         let annotated: items_api::GetItemResponseHeaders = response.typed_headers();
-        let map = reqwest::header::HeaderMap::new();
+        let map = timvw_rust_runtime::header::HeaderMap::new();
         assert_eq!(items_api::GetItemResponseHeaders::from_headers(&map), Default::default());
         Ok(())
     }
@@ -398,7 +409,7 @@ mod response_functions {
     #[test]
     fn error_headers_of_a_response_content() {
         let mut content = rejected();
-        content.headers.insert(reqwest::header::RETRY_AFTER, "30".parse().unwrap());
+        content.headers.insert(timvw_rust_runtime::header::RETRY_AFTER, "30".parse().unwrap());
         assert_eq!(content.typed_headers::<items_api::CreateItemErrorHeaders>().retry_after, Some(30));
     }
 
@@ -426,8 +437,8 @@ mod response_functions {
     #[test]
     fn in_tests() -> Result<(), serde_json::Error> {
         let response: ApiResponse<models::Item> = ApiResponse::new(
-            reqwest::StatusCode::OK,
-            reqwest::header::HeaderMap::new(),
+            timvw_rust_runtime::StatusCode::OK,
+            timvw_rust_runtime::header::HeaderMap::new(),
             r#"{"id":"42","name":"first"}"#.to_owned(),
         );
         assert_eq!(response.json()?.name, "first");
@@ -437,7 +448,7 @@ mod response_functions {
     #[test]
     fn path_to_error() -> Result<(), BoxError> {
         let response: ApiResponse<models::Item> =
-            ApiResponse::new(reqwest::StatusCode::OK, Default::default(), r#"{"id":"42","name":7}"#.to_owned());
+            ApiResponse::new(timvw_rust_runtime::StatusCode::OK, Default::default(), r#"{"id":"42","name":7}"#.to_owned());
         let decoded: Result<models::Item, _> = (|| -> Result<models::Item, BoxError> {
             let item: models::Item =
                 serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(response.text()))?;
@@ -467,11 +478,32 @@ mod response_functions {
     /// `json()` of `ApiResponse<String>` wants a JSON string literal and of `ApiResponse<()>` a `null`: use `text()`.
     #[test]
     fn text_and_unit() {
-        let r: ApiResponse<String> = ApiResponse::new(reqwest::StatusCode::OK, Default::default(), "1.2.3".into());
+        let r: ApiResponse<String> = ApiResponse::new(timvw_rust_runtime::StatusCode::OK, Default::default(), "1.2.3".into());
         assert_eq!(r.text(), "1.2.3");
         assert!(r.json().is_err());
-        let u: ApiResponse<()> = ApiResponse::new(reqwest::StatusCode::NO_CONTENT, Default::default(), String::new());
+        let u: ApiResponse<()> = ApiResponse::new(timvw_rust_runtime::StatusCode::NO_CONTENT, Default::default(), String::new());
         assert!(u.json().is_err());
+    }
+}
+
+/// docs/guides/http-stack.md
+mod http_stack {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_service_of_your_own() -> Result<(), BoxError> {
+        use timvw_rust_runtime::http;
+        use timvw_rust_runtime::{Body, BoxError, Client};
+
+        let service = timvw_rust_runtime::tower::service_fn(|_request: http::Request<Body>| async {
+            let page = r#"{"data":[{"id":"1","name":"Lamp"}],"has_more":false}"#;
+            Ok::<_, BoxError>(http::Response::builder().header("content-type", "application/json").body(Body::from(page))?)
+        });
+        let mut configuration = Configuration::new();
+        configuration.client = Client::from_service(service);
+        let page = items_api::list_items().configuration(&configuration).call().await?;
+        assert_eq!(page.data[0].name, "Lamp");
+        Ok(())
     }
 }
 
@@ -542,10 +574,10 @@ mod migration {
     fn headers_and_boxes() {
         let body = String::from("{}");
         let content = ResponseContent {
-            status: reqwest::StatusCode::TOO_MANY_REQUESTS,
+            status: timvw_rust_runtime::StatusCode::TOO_MANY_REQUESTS,
             content: body.clone(),
             entity: None::<items_api::CreateItemError>,
-            headers: reqwest::header::HeaderMap::new(),
+            headers: timvw_rust_runtime::header::HeaderMap::new(),
         };
 
         let result: Result<models::Item, Error<items_api::GetItemError>> = Err(Error::ResponseError(Box::new(not_found())));

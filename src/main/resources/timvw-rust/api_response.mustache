@@ -35,10 +35,10 @@ use serde::Deserialize;
 /// use serde::Deserialize;
 ///
 /// // What a `_response` function returns; built by hand here, it comes from the server in use.
-/// let mut headers = reqwest::header::HeaderMap::new();
+/// let mut headers = {{httpCrate}}::header::HeaderMap::new();
 /// headers.insert("x-request-id", "req-1".parse().unwrap());
 /// let response: ApiResponse<serde_json::Value> = ApiResponse::new(
-///     reqwest::StatusCode::OK,
+///     {{httpCrate}}::StatusCode::OK,
 ///     headers,
 ///     r#"{"id":"item-1","name":"first","tags":["a","b"]}"#.to_owned(),
 /// );
@@ -64,16 +64,16 @@ use serde::Deserialize;
 /// let name: Name = response.json_borrowed()?;
 /// assert_eq!(name.name, "first");
 ///
-/// assert_eq!(response.status, reqwest::StatusCode::OK);
+/// assert_eq!(response.status, {{httpCrate}}::StatusCode::OK);
 /// assert_eq!(response.headers["x-request-id"], "req-1");
 /// assert!(response.text().starts_with('{'));
 /// # Ok::<(), serde_json::Error>(())
 /// ```
 pub struct ApiResponse<T> {
     /// The status of the response, a success (`2xx` or `3xx`).
-    pub status: reqwest::StatusCode,
+    pub status: {{httpCrate}}::StatusCode,
     /// The headers of the response.
-    pub headers: reqwest::header::HeaderMap,
+    pub headers: {{httpCrate}}::header::HeaderMap,
     body: String,
     _type: PhantomData<fn() -> T>,
 }
@@ -81,7 +81,7 @@ pub struct ApiResponse<T> {
 impl<T> ApiResponse<T> {
     /// A response with this status, headers and body. The `_response` functions build it; a caller can too, for
     /// tests.
-    pub fn new(status: reqwest::StatusCode, headers: reqwest::header::HeaderMap, body: String) -> Self {
+    pub fn new(status: {{httpCrate}}::StatusCode, headers: {{httpCrate}}::header::HeaderMap, body: String) -> Self {
         ApiResponse {
             status,
             headers,
@@ -114,7 +114,7 @@ impl<T> ApiResponse<T> {
     /// parse. The same as `H::from(&response.headers)`.
     pub fn typed_headers<H>(&self) -> H
     where
-        H: for<'h> From<&'h reqwest::header::HeaderMap>,
+        H: for<'h> From<&'h {{httpCrate}}::header::HeaderMap>,
     {
         H::from(&self.headers)
     }
@@ -153,7 +153,7 @@ impl<T> fmt::Debug for ApiResponse<T> {
 /// The first value of the header `name`, trimmed, read by `parse`: `None` when it is missing, not UTF-8 or does
 /// not parse. Used by the `<Operation>ResponseHeaders` and `<Operation>ErrorHeaders` structs.
 pub(crate) fn header_value<T>(
-    headers: &reqwest::header::HeaderMap,
+    headers: &{{httpCrate}}::header::HeaderMap,
     name: &str,
     parse: impl Fn(&str) -> Option<T>,
 ) -> Option<T> {
@@ -167,7 +167,7 @@ pub(crate) fn header_value<T>(
 /// each trimmed and read by `parse`; empty items are skipped. `None` when the header is missing, or when a value is
 /// not UTF-8 or an item does not parse.
 pub(crate) fn header_list<T>(
-    headers: &reqwest::header::HeaderMap,
+    headers: &{{httpCrate}}::header::HeaderMap,
     name: &str,
     parse: impl Fn(&str) -> Option<T>,
 ) -> Option<Vec<T>> {

@@ -60,8 +60,20 @@ chrono = { version = "^0.4",  features = ["serde"] }
 {{#useAsyncFileStream}}
 tokio = { version = "^1.46.0", features = ["fs"] }
 tokio-util = { version = "^0.7", features = ["codec"] }
+{{^httpStackTower}}
 reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart", "stream", "query", "form"] }
+{{/httpStackTower}}
 {{/useAsyncFileStream}}
+{{#httpStackTower}}
+timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}} }
+
+[features]
+default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry"]
+native-tls = ["timvw-rust-runtime/native-tls"]
+rustls = ["timvw-rust-runtime/rustls"]
+retry = ["timvw-rust-runtime/retry"]
+{{/httpStackTower}}
+{{^httpStackTower}}
 {{^useAsyncFileStream}}
 reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart"{{#typedEventStreams}}, "stream"{{/typedEventStreams}}, "query", "form"] }
 {{/useAsyncFileStream}}
@@ -71,3 +83,4 @@ reqwest-middleware = { version = "^0.5", features = ["json", "multipart", "query
 default = [{{#reqwestDefaultFeatures}}"{{.}}"{{^-last}}, {{/-last}}{{/reqwestDefaultFeatures}}]
 native-tls = ["reqwest/native-tls"]
 rustls = ["reqwest/rustls"]
+{{/httpStackTower}}

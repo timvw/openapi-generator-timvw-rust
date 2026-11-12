@@ -19,36 +19,48 @@ crate ships, any layer from the tower ecosystem, or write your own.
 
 ## Quick start
 
-A generated client keeps its `Client` in `Configuration.client`. `Client::default()` sends with reqwest; `layer` wraps
-it:
+A generated client keeps its `Client` in `Configuration.client`, which starts as `Client::default()`: reqwest, with
+[retries](#retries) of `429`, `408`, `5xx` and failed connections. `layer` wraps it in more:
 
 ```rust,no_run
 use std::time::Duration;
-use timvw_rust_runtime::retry::RetryPolicy;
 use timvw_rust_runtime::trace::TraceLayer;
 use timvw_rust_runtime::Client;
-use tower::retry::RetryLayer;
 use tower::timeout::TimeoutLayer;
 
-let client = Client::default()
-    .layer(TimeoutLayer::new(Duration::from_secs(60))) // each attempt
-    .layer(TraceLayer::new()) // logs each attempt
-    .layer(RetryLayer::new(RetryPolicy::default())); // retries 429, 408, 5xx, failed connections
+let client = Client::default() // reqwest, with retries
+    .layer(TraceLayer::new()) // logs each call, and each retry
+    .layer(TimeoutLayer::new(Duration::from_secs(120))); // bounds the whole call, retries included
 
 // In a generated client:
 // let mut configuration = my_client::apis::configuration::Configuration::new();
 // configuration.client = client;
 ```
 
-**Layers apply from the inside out: the last one added sees a request first.** Above, the retry layer is outermost:
-each attempt gets its own 60 s timeout and its own log line. Put `TimeoutLayer` last to bound the whole call,
-retries included.
+**Layers apply from the inside out: the last one added sees a request first.** Layers added to `Client::default()`
+wrap its retries. To put a layer inside the retries (a timeout or a log line per attempt), or to retry differently,
+build the stack from the bare service, `Client::from_service(ReqwestService::default())`:
+
+```rust,no_run
+use std::time::Duration;
+use timvw_rust_runtime::retry::RetryPolicy;
+use timvw_rust_runtime::trace::TraceLayer;
+use timvw_rust_runtime::{Client, ReqwestService};
+use tower::retry::RetryLayer;
+use tower::timeout::TimeoutLayer;
+
+let client = Client::from_service(ReqwestService::default()) // reqwest, no retries
+    .layer(TimeoutLayer::new(Duration::from_secs(60))) // each attempt
+    .layer(TraceLayer::new()) // logs each attempt
+    .layer(RetryLayer::new(RetryPolicy::default())); // retries
+```
 
 A `Client` is cheap to clone, and clones share their layers' state (a rate limit, a token cache).
 
 ## Retries
 
-`retry::RetryPolicy` (feature `retry`, on by default) is a `tower::retry::Policy` for HTTP APIs:
+`Client::default()`, `Client::new()` and `Client::from_reqwest(..)` retry with `RetryPolicy::default()` (feature
+`retry`, on by default). `retry::RetryPolicy` is a `tower::retry::Policy` for HTTP APIs:
 
 - It retries `429 Too Many Requests`, `408 Request Timeout`, every `5xx` and failures to connect. Any other response
   or error is returned at once.
@@ -61,14 +73,16 @@ A `Client` is cheap to clone, and clones share their layers' state (a rate limit
 ```rust,no_run
 use std::time::Duration;
 use timvw_rust_runtime::retry::RetryPolicy;
-use timvw_rust_runtime::Client;
+use timvw_rust_runtime::{Client, ReqwestService};
 use tower::retry::RetryLayer;
 
 let policy = RetryPolicy::new(5)
     .base_delay(Duration::from_millis(500))
     .max_delay(Duration::from_secs(30));
-let client = Client::default().layer(RetryLayer::new(policy));
+let client = Client::from_service(ReqwestService::default()).layer(RetryLayer::new(policy));
 ```
+
+Without retries: `Client::from_service(ReqwestService::default())`, or build without the `retry` feature.
 
 The policy retries every method, `POST` included: for most APIs a `429` or `503` means the request was not processed.
 If a retried `POST` could act twice on your API, send an idempotency key the API understands, or write a
@@ -166,9 +180,9 @@ first), the reverse of chaining `Client::layer`:
 use std::time::Duration;
 use timvw_rust_runtime::retry::RetryPolicy;
 use timvw_rust_runtime::trace::TraceLayer;
-use timvw_rust_runtime::Client;
+use timvw_rust_runtime::{Client, ReqwestService};
 
-let client = Client::default().layer(
+let client = Client::from_service(ReqwestService::default()).layer(
     tower::ServiceBuilder::new()
         .retry(RetryPolicy::default())
         .layer(TraceLayer::new())
@@ -270,7 +284,7 @@ These layers need tower's `limit` and `buffer` features in your `Cargo.toml`, li
 ## Choosing the HTTP client
 
 `Client::from_reqwest` sends with a `reqwest::Client` you built (a proxy, a custom TLS setup, connect and read timeouts,
-pool settings), and layers go on top as usual:
+pool settings), with the default retries; `Client::from_service(ReqwestService::new(reqwest_client))` without them:
 
 ```rust,no_run
 use std::time::Duration;
@@ -284,8 +298,8 @@ let reqwest_client = reqwest::Client::builder()
 let client = Client::from_reqwest(reqwest_client);
 ```
 
-`Client::from_service` sends with any tower service from `http::Request<Body>` to `http::Response<B>`: a hyper
-client, a client for another runtime, or a function that answers without a network, for tests:
+`Client::from_service` sends with any tower service from `http::Request<Body>` to `http::Response<B>`, as is, with no
+retries added: a hyper client, a client for another runtime, or a function that answers without a network, for tests:
 
 ```rust,no_run
 use timvw_rust_runtime::{http, Body, BoxError, Client};
@@ -326,7 +340,7 @@ generated client turns it into `apis::Error::ResponseError`.
 | `rustls` | yes | reqwest with rustls, as `Client::default()` |
 | `native-tls` | no | reqwest with the platform's TLS |
 | `reqwest` | via `rustls` or `native-tls` | `ReqwestService`, `Client::from_reqwest` |
-| `retry` | yes | `retry::RetryPolicy` (sleeps with tokio) |
+| `retry` | yes | `retry::RetryPolicy` (sleeps with tokio), and retries in `Client::default()` |
 | `tracing` | no | `trace::TraceLayer`, and a log event per retry |
 
 A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names.

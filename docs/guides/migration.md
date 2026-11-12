@@ -21,7 +21,8 @@ With the default `tower`:
 
 - `Cargo.toml` depends on `timvw-rust-runtime` instead of `reqwest` and `reqwest-middleware`. The features
   `native-tls` and `rustls` stay and are passed on to the runtime; a new default feature `retry` enables
-  `timvw_rust_runtime::retry`. A hand-kept `Cargo.toml` follows the generated one.
+  `timvw_rust_runtime::retry` and makes `Configuration::new()` retry `429`, `408`, `5xx` and failed connections. A
+  client that added its own retry layer drops it, or builds from `Client::from_service(ReqwestService::default())`. A hand-kept `Cargo.toml` follows the generated one.
 - `Configuration.client` is a `timvw_rust_runtime::Client` (`configuration::Client` re-exports it, where
   `configuration::ClientWithMiddleware` was). A `reqwest_middleware` stack becomes tower layers:
   `Client::from_reqwest(reqwest_client)` for a configured `reqwest::Client`, `.layer(..)` for each middleware. The

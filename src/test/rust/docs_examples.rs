@@ -76,10 +76,11 @@ mod readme {
         use std::time::Duration;
         use timvw_rust_runtime::retry::RetryPolicy;
         use timvw_rust_runtime::tower::retry::RetryLayer;
+        use timvw_rust_runtime::{Client, ReqwestService};
 
-        let mut configuration = Configuration::new();
-        let policy = RetryPolicy::new(3).max_delay(Duration::from_secs(10));
-        configuration.client = configuration.client.clone().layer(RetryLayer::new(policy));
+        let mut configuration = Configuration::new(); // retries with RetryPolicy::default()
+        let policy = RetryPolicy::new(5).max_delay(Duration::from_secs(30));
+        configuration.client = Client::from_service(ReqwestService::default()).layer(RetryLayer::new(policy));
     }
 
     #[test]

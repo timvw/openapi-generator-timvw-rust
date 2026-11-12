@@ -11,10 +11,15 @@ use std::time::Duration;
 use timvw_rust_runtime::http::{self, HeaderValue};
 use timvw_rust_runtime::retry::RetryPolicy;
 use timvw_rust_runtime::trace::TraceLayer;
-use timvw_rust_runtime::{Body, Client, Method, StatusCode};
+use timvw_rust_runtime::{Body, Client, Method, ReqwestService, StatusCode};
 use tower::{Layer, Service, ServiceBuilder};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+/// reqwest without the default retries, so a test sets its own layers.
+fn bare() -> Client {
+    Client::from_service(ReqwestService::default())
+}
 
 /// Collects what a `tracing` subscriber writes.
 #[derive(Clone, Default)]
@@ -67,7 +72,7 @@ async fn the_trace_layer_logs_requests_and_retries_without_the_query() {
         .finish();
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    let client = Client::default()
+    let client = bare()
         .layer(TraceLayer::new())
         .layer(tower::retry::RetryLayer::new(
             RetryPolicy::new(2).base_delay(Duration::from_millis(1)),
@@ -102,7 +107,7 @@ async fn a_header_on_every_request() {
         .mount(&server)
         .await;
 
-    let client = Client::default()
+    let client = bare()
         .layer(tower::util::MapRequestLayer::new(
             |mut request: http::Request<Body>| {
                 request
@@ -182,7 +187,7 @@ async fn a_layer_of_your_own_can_do_async_work() {
         .mount(&server)
         .await;
 
-    let client = Client::default().layer(BearerTokenLayer {
+    let client = bare().layer(BearerTokenLayer {
         token: Arc::default(),
     });
     assert_eq!(get(&client, server.uri()).await, StatusCode::OK);
@@ -198,7 +203,7 @@ async fn concurrency_and_rate_limits() {
         .await;
 
     // ConcurrencyLimit is Clone but not Sync; a Client takes it anyway, and its clones share the limit.
-    let client = Client::default().layer(tower::limit::ConcurrencyLimitLayer::new(2));
+    let client = bare().layer(tower::limit::ConcurrencyLimitLayer::new(2));
     let started = std::time::Instant::now();
     let requests = (0..4).map(|_| get(&client, server.uri()));
     for status in futures_util::future::join_all(requests).await {
@@ -207,7 +212,7 @@ async fn concurrency_and_rate_limits() {
     assert!(started.elapsed() >= Duration::from_millis(40));
 
     // RateLimit is not Clone: a Buffer in front of it shares one limiter between the client's clones.
-    let client = Client::default().layer(
+    let client = bare().layer(
         ServiceBuilder::new()
             .buffer(64)
             .rate_limit(2, Duration::from_millis(100)),
@@ -228,7 +233,7 @@ async fn tower_http_trace_layer_fits() {
         .mount(&server)
         .await;
 
-    let client = Client::default().layer(tower_http::trace::TraceLayer::new_for_http());
+    let client = bare().layer(tower_http::trace::TraceLayer::new_for_http());
     let response = client
         .request(Method::GET, &server.uri())
         .send()

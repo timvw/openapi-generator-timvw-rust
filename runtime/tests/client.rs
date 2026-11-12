@@ -7,10 +7,15 @@ use std::time::Duration;
 
 use timvw_rust_runtime::multipart::{Form, Part};
 use timvw_rust_runtime::retry::RetryPolicy;
-use timvw_rust_runtime::{Body, Client, Method, StatusCode};
+use timvw_rust_runtime::{Body, Client, Method, ReqwestService, StatusCode};
 use tower::retry::RetryLayer;
 use wiremock::matchers::{body_string_contains, header, header_regex, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+/// reqwest without the default retries, so a test sets its own layers.
+fn bare() -> Client {
+    Client::from_service(ReqwestService::default())
+}
 
 fn fast_retries(max: usize) -> RetryLayer<RetryPolicy> {
     RetryLayer::new(RetryPolicy::new(max).base_delay(Duration::from_millis(1)))
@@ -29,7 +34,7 @@ async fn sends_json_with_query_and_auth() {
         .mount(&server)
         .await;
 
-    let response = Client::default()
+    let response = bare()
         .request(Method::POST, &format!("{}/items", server.uri()))
         .query(&[("limit", 10)])
         .bearer_auth("token")
@@ -59,7 +64,7 @@ async fn sends_multipart() {
         "file",
         Part::bytes(b"{}\n".to_vec()).file_name("data.jsonl"),
     );
-    let response = Client::default()
+    let response = bare()
         .request(Method::POST, &format!("{}/files", server.uri()))
         .multipart(form)
         .send()
@@ -81,7 +86,7 @@ async fn retries_rate_limits_then_succeeds() {
         .mount(&server)
         .await;
 
-    let client = Client::default().layer(fast_retries(3));
+    let client = bare().layer(fast_retries(3));
     let response = client
         .request(Method::POST, &server.uri())
         .json(&serde_json::json!({}))
@@ -100,7 +105,7 @@ async fn gives_up_after_max_retries() {
         .mount(&server)
         .await;
 
-    let client = Client::default().layer(fast_retries(2));
+    let client = bare().layer(fast_retries(2));
     let response = client
         .request(Method::GET, &server.uri())
         .send()
@@ -118,8 +123,7 @@ async fn a_timeout_layer_fails_the_request() {
         .mount(&server)
         .await;
 
-    let client =
-        Client::default().layer(tower::timeout::TimeoutLayer::new(Duration::from_millis(50)));
+    let client = bare().layer(tower::timeout::TimeoutLayer::new(Duration::from_millis(50)));
     let error = client
         .request(Method::GET, &server.uri())
         .send()
@@ -162,11 +166,53 @@ async fn streams_the_response_body() {
         .mount(&server)
         .await;
 
-    let response = Client::default()
+    let response = bare()
         .request(Method::GET, &server.uri())
         .send()
         .await
         .unwrap();
     let chunks: Vec<_> = response.bytes_stream().try_collect().await.unwrap();
     assert_eq!(chunks.concat(), b"data: 1\n\ndata: 2\n\n");
+}
+
+#[tokio::test]
+async fn the_default_client_retries() {
+    let server = MockServer::start().await;
+
+    for client in [
+        Client::default(),
+        Client::from_reqwest(reqwest::Client::new()),
+    ] {
+        server.reset().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(503).insert_header("retry-after", "0"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let response = client
+            .request(Method::GET, &server.uri())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    }
+
+    // from_service is used as is: no retries.
+    server.reset().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let response = bare()
+        .request(Method::GET, &server.uri())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
 }

@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `Client`: sends the requests of a generated client through a tower service (`HttpService`), reqwest by default;
+- `Client`: sends the requests of a generated client through a tower service (`HttpService`), reqwest with retries by
+  default (`Client::default`, `Client::new`, `Client::from_reqwest`);
   `Client::layer` adds tower layers, `Client::from_service` takes any service.
 - `RequestBuilder` and `Response` with the methods of reqwest's that generated clients use.
 - `Body`: bytes (clonable, so retryable) or a stream.

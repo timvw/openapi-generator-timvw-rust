@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/timvw/openapi-generator-timvw-rust/releases/tag/timvw-rust-runtime-v0.1.0) - 2026-11-12
+
+### Added
+
+- [**breaking**] tower HTTP stack via timvw-rust-runtime (default), httpStack option ([#93](https://github.com/timvw/openapi-generator-timvw-rust/pull/93))
+
 ### Added
 
 - `Client`: sends the requests of a generated client through a tower service (`HttpService`), reqwest by default;

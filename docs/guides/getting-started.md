@@ -166,10 +166,10 @@ See [validation](validation.md).
 
 | What | Where |
 | --- | --- |
-| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>`, e.g. `0.27.0-og7.27.0`; `<version>` and `latest` point at the newest openapi-generator |
+| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>` ([tags](https://github.com/timvw/openapi-generator-timvw-rust/pkgs/container/openapi-generator-timvw-rust)); `<version>` and `latest` point at the newest openapi-generator |
 | Maven | `be.timvw:openapi-generator-timvw-rust` on Maven Central |
 | Generator name | `timvw-rust` (`-g timvw-rust`) |
-| openapi-generator | built and tested against 7.27.0, which the image bundles; another minor version logs a warning |
+| openapi-generator | built and tested against the version in the image tag (`-og<version>`), which the image bundles; another minor version logs a warning |
 
 The image is a drop-in for `openapitools/openapi-generator-cli`: same arguments, same `/local` mount, same
 `JAVA_OPTS`. Options go on the command line or, for lists and comma-separated values, in a `-c` config file
@@ -177,12 +177,14 @@ The image is a drop-in for `openapitools/openapi-generator-cli`: same arguments,
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.27.0-og7.27.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:latest generate \
   -g timvw-rust \
   -i /local/openapi.yaml \
   -o /local/my-client \
   -c /local/generator-config.json
 ```
+
+In CI, pin `:<version>-og<openapi-generator version>` from the [list of tags](https://github.com/timvw/openapi-generator-timvw-rust/pkgs/container/openapi-generator-timvw-rust) instead of `:latest`.
 
 ```json
 {
@@ -201,12 +203,14 @@ add the generator as a dependency of the plugin:
 <plugin>
   <groupId>org.openapitools</groupId>
   <artifactId>openapi-generator-maven-plugin</artifactId>
-  <version>7.27.0</version>
+  <!-- the openapi-generator version the timvw-rust release was built against (its image tag's -og<version>) -->
+  <version>A.B.C</version>
   <dependencies>
     <dependency>
       <groupId>be.timvw</groupId>
       <artifactId>openapi-generator-timvw-rust</artifactId>
-      <version>0.27.0</version>
+      <!-- the latest release on Maven Central -->
+      <version>X.Y.Z</version>
     </dependency>
   </dependencies>
   <executions>

@@ -16,7 +16,6 @@ are compiled by the tests.
 pub enum Error<T> {
     Http(timvw_rust_runtime::Error),               // building or sending the request, or reading the response, failed
     Serde(serde_json::Error),                      // a success body did not decode, or a parameter did not serialize
-    Io(std::io::Error),                            // not produced by the generated code (`?` on an io::Error converts)
     ResponseError(Box<ResponseContent<T>>),        // the server answered with a 4xx or 5xx status
 }
 
@@ -31,8 +30,8 @@ pub struct ResponseContent<T> {
 `timvw_rust_runtime::Error` tells what failed with `is_builder()`,
 `is_request()` (the service failed: no connection, a timeout layer gave up; `is_timeout()` and `is_connect()` say
 which), `is_body()` and `is_io()` (a file to upload could not be read, or `save_to` could not write); its `source()`
-is the service's own error. A file that cannot be read is `Http` with `is_io()`, not `Io`. (Up to 0.28,
-`httpStack=reqwest-middleware` had `Reqwest(reqwest::Error)` and `ReqwestMiddleware(reqwest_middleware::Error)`
+is the service's own error. A file that cannot be read is `Http` with `is_io()`. (Up to 0.28, `Error` also had
+`Io(std::io::Error)`, which 0.29 removed, and `httpStack=reqwest-middleware` had `Reqwest(reqwest::Error)` and `ReqwestMiddleware(reqwest_middleware::Error)`
 instead of `Http`.)
 
 With `useSerdePathToError` there is also `SerdePathToError(serde_path_to_error::Error<serde_json::Error>)`, the

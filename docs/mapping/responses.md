@@ -22,6 +22,6 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | any operation |
-| Rust | `Error<T>` also has `Http(timvw_rust_runtime::Error)` (building or sending the request, or reading the response, failed, a file to upload could not be read: `is_io()`), `Serde(serde_json::Error)` (a success body did not decode, or a struct parameter did not serialize) and `Io(std::io::Error)` (not produced by the generated code; `?` on an `io::Error` converts) |
+| Rust | `Error<T>` also has `Http(timvw_rust_runtime::Error)` (building or sending the request, or reading the response, failed, a file to upload could not be read: `is_io()`) and `Serde(serde_json::Error)` (a success body did not decode, or a struct parameter did not serialize); up to 0.28 also `Io(std::io::Error)` |
 | Library | `Error::Http` |
 | Tests | [`OperationMappingTest#errorResponsesAreAnUntaggedEnumPerOperation`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L149) |

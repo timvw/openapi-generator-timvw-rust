@@ -1,6 +1,6 @@
 # Guide: migrating
 
-- [From 0.28 to 0.29](#from-028-to-029): `httpStack` and reqwest-middleware removed; models' file fields hold `Upload`s; per-call options without builders and a per-call base URL; runtime 0.4.
+- [From 0.28 to 0.29](#from-028-to-029): `httpStack` and reqwest-middleware removed; `Error::Io` removed; models' file fields hold `Upload`s; per-call options without builders and a per-call base URL; runtime 0.4.
 - [From 0.27 to 0.28](#from-027-to-028): multipart unions with a file variant hold `Upload`s; runtime 0.3.1 and its `TimeoutLayer`.
 - [From 0.26 to 0.27](#from-026-to-027): file parameters are `timvw_rust_runtime::Upload`s; runtime 0.3; WebAssembly.
 - [From 0.25 to 0.26](#from-025-to-026): the credentials of `Configuration` are `SecretString`s; per-call headers and query parameters; runtime 0.2 retries.
@@ -44,7 +44,7 @@ default since 0.25, and reqwest-middleware is no longer generated; remove it (it
 | `.with(TracingMiddleware::default())` | `.layer(tower_http::trace::TraceLayer::new_for_http())`, or the runtime's `trace::TraceLayer` (feature `tracing`) |
 | a `reqwest_middleware::Middleware` of your own | a `tower::Layer` of your own (or `tower::ServiceBuilder::map_request`) |
 | `Error::Reqwest(e)`, `Error::ReqwestMiddleware(e)` | `Error::Http(e)` |
-| `Error::Io(e)` (a file to upload could not be read) | `Error::Http(e)` with `e.is_io()` |
+| `Error::Io(e)` (a file to upload could not be read) | `Error::Http(e)` with `e.is_io()` (`Error::Io` is gone in 0.29) |
 | `reqwest::StatusCode`, `reqwest::header::*` | `timvw_rust_runtime::StatusCode`, `timvw_rust_runtime::header::*` (the same types) |
 | a file response is a `reqwest::Response` | a file response is a `timvw_rust_runtime::Response` (`status()`, `headers()`, `bytes()`, `bytes_stream()`, `save_to(path)`) |
 | a file parameter is a `std::path::PathBuf` | a `timvw_rust_runtime::Upload`; the builder setter takes the `PathBuf` as it is |
@@ -70,6 +70,26 @@ let body = models::CreateContainerFileBody::builder().file(PathBuf::from("data.c
 ```
 
 With `apiFeatures`, the `-types` features of such models depend on the runtime.
+
+### `apis::Error::Io` is removed
+
+`apis::Error` no longer has `Io(std::io::Error)`, nor its `From<std::io::Error>`: nothing in the generated code
+produced it since 0.27 (a file that cannot be read is `Error::Http` whose `is_io()` is true). Remove a `match` arm on
+it:
+
+<!-- not compiled: code of 0.28 -->
+```rust
+// 0.28
+match error {
+    Error::Http(e) => ..,
+    Error::Io(e) => ..,      // remove: never produced
+    Error::Serde(e) => ..,
+    Error::ResponseError(content) => ..,
+}
+```
+
+A `?` on a `std::io::Error` in a function of your own that returns `apis::Error` no longer converts: map it into your
+own error type.
 
 ### Per-call options without builders
 

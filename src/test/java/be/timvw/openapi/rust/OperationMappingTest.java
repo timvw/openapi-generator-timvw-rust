@@ -163,7 +163,9 @@ class OperationMappingTest {
                 + "    /// The response's headers (`retry-after`, `x-request-id`, rate limits, ...).\n"
                 + "    pub headers: timvw_rust_runtime::header::HeaderMap,\n}");
         assertContains(mod, "    Http(timvw_rust_runtime::Error),\n"
-                + "    Serde(serde_json::Error),\n    Io(std::io::Error),\n    ResponseError(Box<ResponseContent<T>>),");
+                + "    Serde(serde_json::Error),\n    ResponseError(Box<ResponseContent<T>>),");
+        assertFalse(mod.contains("Io("), mod);
+        assertFalse(mod.contains("std::io::Error"), mod);
     }
 
     @Test

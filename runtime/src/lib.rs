@@ -13,6 +13,7 @@ mod client;
 mod error;
 pub mod multipart;
 mod request;
+mod request_options;
 #[cfg(feature = "reqwest")]
 mod reqwest_service;
 mod response;
@@ -26,12 +27,17 @@ pub use body::Body;
 pub use client::{Client, HttpService};
 pub use error::Error;
 pub use request::RequestBuilder;
+pub use request_options::RequestOptions;
 #[cfg(feature = "reqwest")]
 pub use reqwest_service::ReqwestService;
 pub use response::Response;
 
 pub use http;
 pub use http::{header, HeaderMap, Method, StatusCode};
+/// Credentials of a generated `Configuration` are [`SecretString`]s: their `Debug` is redacted, their memory is
+/// zeroed when dropped, and [`ExposeSecret::expose_secret`] reads them.
+pub use secrecy;
+pub use secrecy::{ExposeSecret, SecretString};
 pub use tower;
 
 /// The error type services and layers return: any error that can cross threads.

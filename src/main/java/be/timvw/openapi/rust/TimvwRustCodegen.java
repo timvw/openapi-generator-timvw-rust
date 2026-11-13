@@ -194,12 +194,24 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /** The version requirement of {@code timvw-rust-runtime} in the generated Cargo.toml (with {@code httpStack=tower}). */
     public static final String RUNTIME_VERSION = "runtimeVersion";
     /** The {@code timvw-rust-runtime} release this generator renders for: the default of {@link #RUNTIME_VERSION}. */
-    public static final String DEFAULT_RUNTIME_VERSION = "0.1";
+    public static final String DEFAULT_RUNTIME_VERSION = "0.2";
     /**
      * A path dependency on {@code timvw-rust-runtime} next to the version (with {@code httpStack=tower}), for testing
      * against an unreleased runtime; defaults to the system property {@code timvw-rust.runtimePath}.
      */
     public static final String RUNTIME_PATH = "runtimePath";
+    /**
+     * Set on every operation: the name of its {@code timvw_rust_runtime::RequestOptions} parameter (with
+     * {@code httpStack=tower} and {@code bonBuilders}), {@code options} unless a parameter of the operation has it.
+     */
+    static final String OPTIONS_PARAM = "x-rust-options-param";
+    /**
+     * One Cargo feature per group of API operations (a tag, or a group of {@link #API_FEATURES_FILE}), with a
+     * {@code -types} twin for its models alone, {@code types} and {@code full} (see {@link ApiFeatures}).
+     */
+    public static final String API_FEATURES = "apiFeatures";
+    /** A YAML or JSON file of feature groups selecting operations by tag and path prefix; implies {@link #API_FEATURES}. */
+    public static final String API_FEATURES_FILE = "apiFeaturesFile";
     /** Set on an operation with {@link #RESPONSE_FUNCTIONS}: the context its {@code _response} twin renders with. */
     static final String RESPONSE_FUNCTION = "x-rust-response-function";
     /** Set when an API module has a {@code <Operation>ResponseHeaders} struct: {@code api_response.rs} has its helpers. */
@@ -384,6 +396,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /** With {@link #RESPONSE_FUNCTIONS}: the spec operation of each method, for its typed headers. */
     private final Map<CodegenOperation, io.swagger.v3.oas.models.Operation> specOperations =
             new java.util.IdentityHashMap<>();
+    private boolean apiFeatures;
+    private List<ApiFeatures.Group> apiFeatureGroups = List.of();
+    /** With {@link #API_FEATURES}: the features of the operations and models, planned once the spec is final. */
+    private ApiFeatures.Plan apiFeaturesPlan;
     /** The methods per API module ({@code tag#operationId}), to fail on a suffixed name another operation has. */
     private final Map<String, String> methodNames = new HashMap<>();
 
@@ -496,6 +512,14 @@ public class TimvwRustCodegen extends RustCodegenBase {
         cliOptions.add(CliOption.newString(RUNTIME_PATH,
                 "With httpStack=tower: a path dependency on timvw-rust-runtime (next to the version), to build "
                         + "against an unreleased runtime"));
+        cliOptions.add(CliOption.newBoolean(API_FEATURES,
+                "One Cargo feature per API group (a tag by default, e.g. vector-stores; untagged operations are "
+                        + "default-api), each with a <group>-types twin enabling only its models (no HTTP client), plus "
+                        + "types (every model) and full (everything, a default feature). Models and API modules or "
+                        + "functions get #[cfg(feature = ...)]", false));
+        cliOptions.add(CliOption.newString(API_FEATURES_FILE,
+                "With apiFeatures (implied): a YAML or JSON file mapping a feature name to the 'tags' and/or 'paths' "
+                        + "(path prefixes) of its operations; operations no group selects keep their tag's feature"));
         cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
                 "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
                         + "object-typed query parameter is sent as a string"));
@@ -858,6 +882,19 @@ public class TimvwRustCodegen extends RustCodegenBase {
             additionalProperties.put(RUNTIME_PATH, path.replace('\\', '/'));
         }
 
+        Object featuresFile = additionalProperties.get(API_FEATURES_FILE);
+        boolean withFile = featuresFile != null && !String.valueOf(featuresFile).isEmpty();
+        apiFeatures = additionalProperties.containsKey(API_FEATURES) && convertPropertyToBooleanAndWriteBack(API_FEATURES);
+        if (withFile && additionalProperties.containsKey(API_FEATURES) && !apiFeatures) {
+            throw new IllegalArgumentException(String.format("%s: %s is set, but %s is false; drop one of them",
+                    GENERATOR_NAME, API_FEATURES_FILE, API_FEATURES));
+        }
+        apiFeatures |= withFile;
+        if (withFile) {
+            apiFeatureGroups = ApiFeatures.read(java.nio.file.Paths.get(String.valueOf(featuresFile)));
+        }
+        additionalProperties.put(API_FEATURES, apiFeatures);
+
         Object plan = additionalProperties.get(UNION_PLAN_FILE);
         unionPlanFile = plan == null || String.valueOf(plan).isEmpty() ? null : String.valueOf(plan);
         for (String flag : Arrays.asList(USER_AGENT_FROM_PACKAGE)) {
@@ -964,6 +1001,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
         super.preprocessOpenAPI(openAPI);
         for (String where : SpecNormalizer.integerWithFloatFormatToNumber(openAPI)) {
             LOGGER.warn("{}: read 'type: integer' with a float format as 'type: number' at {}", GENERATOR_NAME, where);
+        }
+        if (apiFeatures) {
+            // Fails on a groups file that does not fit the spec here, where the error is not wrapped; the plan the
+            // templates use is made again once the models are processed.
+            apiFeaturesPlan();
+            apiFeaturesPlan = null;
         }
     }
 
@@ -1115,6 +1158,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
             objs.put(WEBHOOK_MODULES_KEY, Arrays.asList(toApiFilename(webhookModule)));
         }
+        if (apiFeatures) {
+            describeApiFeatures(objs);
+        }
         if (typedEventStreams && !anyEventStream) {
             // No operation streams: no sse.rs, no `pub mod sse;` and no stream dependencies in Cargo.toml.
             objs.put(TYPED_EVENT_STREAMS, false);
@@ -1123,6 +1169,76 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     GENERATOR_NAME, TYPED_EVENT_STREAMS);
         }
         return objs;
+    }
+
+    /** The features of the operations and models, planned on first use: the spec no longer changes by then. */
+    private ApiFeatures.Plan apiFeaturesPlan() {
+        if (apiFeaturesPlan == null) {
+            apiFeaturesPlan = ApiFeatures.plan(openAPI, apiFeatureGroups,
+                    new ApiFeatures.Naming(this::sanitizeTag, this::toApiName, this::toApiFilename));
+            LOGGER.info("{}: {}: {} features: {}", GENERATOR_NAME, API_FEATURES, apiFeaturesPlan.features.size(),
+                    apiFeaturesPlan.features);
+        }
+        return apiFeaturesPlan;
+    }
+
+    /** With {@code apiFeatures}: the cfg of an API module's items and of its operations' items. */
+    private void markApiFeatures(Map<String, Object> module, String classname, List<CodegenOperation> operations) {
+        ApiFeatures.Plan plan = apiFeaturesPlan();
+        String cfg = plan.moduleCfg(classname);
+        if (cfg != null) {
+            module.put(ApiFeatures.MODULE_CFG, cfg);
+        } else {
+            LOGGER.warn("{}: {}: API module {} has no operation the spec lists; it is not gated", GENERATOR_NAME,
+                    API_FEATURES, classname);
+        }
+        for (CodegenOperation op : operations) {
+            String own = plan.operationCfg(classname, op.path, op.httpMethod);
+            if (own != null) {
+                op.vendorExtensions.put(ApiFeatures.OPERATION_CFG, own);
+            }
+        }
+    }
+
+    /**
+     * With {@code apiFeatures}: the features for Cargo.toml and the README, the cfg of every model, of the webhook
+     * module and of its re-export.
+     */
+    private void describeApiFeatures(Map<String, Object> objs) {
+        ApiFeatures.Plan plan = apiFeaturesPlan();
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (String f : plan.features) {
+            Map<String, Object> g = new LinkedHashMap<>();
+            g.put("name", f);
+            g.put("selects", plan.selects.get(f));
+            groups.add(g);
+        }
+        objs.put("apiFeatureGroups", groups);
+        List<String> full = new ArrayList<>(plan.features);
+        full.add(ApiFeatures.TYPES);
+        objs.put("apiFeaturesFull", full);
+        objs.put("apiFeaturesTypes", plan.features.stream().map(f -> f + ApiFeatures.TYPES_SUFFIX).toList());
+        if (webhookModule != null) {
+            String cfg = plan.moduleCfg(toApiName(sanitizeTag(webhookModule)));
+            if (cfg != null) {
+                objs.put("webhookModuleCfg", cfg);
+            }
+        }
+        if (objs.get("models") instanceof List) {
+            int gated = 0;
+            for (Object m : (List<?>) objs.get("models")) {
+                if (m instanceof ModelMap && ((ModelMap) m).getModel() != null) {
+                    CodegenModel cm = ((ModelMap) m).getModel();
+                    String cfg = plan.modelCfg(cm.name);
+                    if (cfg != null) {
+                        cm.vendorExtensions.put(ApiFeatures.MODEL_CFG, cfg);
+                        gated++;
+                    }
+                }
+            }
+            LOGGER.info("{}: {}: {} of {} models are gated", GENERATOR_NAME, API_FEATURES, gated,
+                    ((List<?>) objs.get("models")).size());
+        }
     }
 
     /**
@@ -1186,6 +1302,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 UnionRules.writeDispatchModule(models);
                 logPruned(UnionRules.DISPATCH_MODULE, HelperPruning.prune(
                         models.resolve(UnionRules.DISPATCH_MODULE + ".rs"), List.of(models), !pruneAllHelpers));
+                if (apiFeatures) {
+                    // the models the enabled features compile may not use every helper
+                    java.nio.file.Path mod = models.resolve("mod.rs");
+                    String declaration = "pub(crate) mod " + UnionRules.DISPATCH_MODULE + ";\n";
+                    java.nio.file.Files.writeString(mod, java.nio.file.Files.readString(mod).replace(declaration,
+                            "#[allow(dead_code)]\n" + declaration));
+                }
             }
             if (multipartHelper) {
                 java.nio.file.Path apis = java.nio.file.Paths.get(outputFolder, "src", "apis");
@@ -1207,6 +1330,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     msg -> LOGGER.warn("{}: FromStr: {}", GENERATOR_NAME, msg));
             LOGGER.info("{}: FromStr: {} closed enums, {} of them given a Display", GENERATOR_NAME, result.enums(),
                     result.displaysAdded());
+            if (apiFeatures) {
+                // the enabled features may compile no closed enum, which is what constructs the error
+                java.nio.file.Path mod = models.resolve("mod.rs");
+                String declaration = "pub mod " + EnumFromStr.ERROR_MODULE + ";\n";
+                java.nio.file.Files.writeString(mod, java.nio.file.Files.readString(mod).replace(declaration,
+                        "#[allow(dead_code)]\n" + declaration));
+            }
         } catch (java.io.IOException e) {
             throw new IllegalStateException(GENERATOR_NAME + ": cannot process " + models, e);
         }
@@ -1670,6 +1800,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
             List<io.swagger.v3.oas.models.servers.Server> servers) {
         CodegenOperation co = super.fromOperation(path, httpMethod, operation, servers);
         co.vendorExtensions.put(ERROR_ENUM, co.operationIdCamelCase + "Error");
+        co.vendorExtensions.put(OPTIONS_PARAM, optionsParam(co));
         // Here rather than in postProcessOperationsWithModels, which webhook operations never reach.
         for (List<CodegenParameter> params : Arrays.asList(co.allParams, co.bodyParams, co.requiredParams,
                 co.optionalParams)) {
@@ -1682,6 +1813,27 @@ public class TimvwRustCodegen extends RustCodegenBase {
             specOperations.put(co, operation);
         }
         return co;
+    }
+
+    /**
+     * The name of the per-call {@code RequestOptions} parameter: {@code options}, or {@code request_options} (then
+     * {@code request_options_2}, ...) when a parameter of the operation is named so.
+     */
+    static String optionsParam(CodegenOperation co) {
+        Set<String> taken = new HashSet<>(List.of("configuration"));
+        if (co.allParams != null) {
+            for (CodegenParameter p : co.allParams) {
+                taken.add(p.paramName.startsWith("r#") ? p.paramName.substring(2) : p.paramName);
+            }
+        }
+        if (!taken.contains("options")) {
+            return "options";
+        }
+        String name = "request_options";
+        for (int i = 2; taken.contains(name); i++) {
+            name = "request_options_" + i;
+        }
+        return name;
     }
 
     /**
@@ -1737,6 +1889,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             Set<String> documented = new HashSet<>(documentedModels);
             documented.addAll(DocLinks.documented(allModels));
             DocLinks.markOperations(objs.getWebhooks().getOperation(), documented);
+        }
+        if (apiFeatures && objs.getWebhooks() != null && objs.getWebhooks().getOperation() != null) {
+            markApiFeatures(objs, objs.getWebhooks().getClassname(), objs.getWebhooks().getOperation());
         }
         mergePathOperations(objs);
         return objs;
@@ -1890,6 +2045,15 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (webhookModuleReexport && objs.getOperations() != null
                 && toApiName("default").equals(objs.getOperations().getClassname())) {
             objs.put(WEBHOOK_REEXPORT_KEY, toApiFilename(webhookModule));
+            if (apiFeatures) {
+                String cfg = apiFeaturesPlan().moduleCfg(toApiName(sanitizeTag(webhookModule)));
+                if (cfg != null) {
+                    objs.put("webhookReexportCfg", cfg);
+                }
+            }
+        }
+        if (apiFeatures && objs.getOperations() != null && objs.getOperations().getOperation() != null) {
+            markApiFeatures(objs, objs.getOperations().getClassname(), objs.getOperations().getOperation());
         }
         if (objs.getOperations() != null && objs.getOperations().getClassname() != null) {
             pathApis.put(objs.getOperations().getClassname(), objs);

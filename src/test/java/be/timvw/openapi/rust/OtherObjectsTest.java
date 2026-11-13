@@ -125,6 +125,6 @@ class OtherObjectsTest {
         nowhere("SCOPEDESC");
         nowhere("example.com/authorize");
         nowhere("example.com/token");
-        assertTrue(rust.contains("pub oauth_access_token: Option<String>,"));
+        assertTrue(rust.contains("pub oauth_access_token: Option<SecretString>,"));
     }
 }

@@ -16,6 +16,9 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 {{#supportMultipleResponses}}
 {{#operations}}
 {{#operation}}
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
 /// struct for typed successes of method [`{{operationId}}`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -37,6 +40,9 @@ pub enum {{{operationIdCamelCase}}}Success {
 {{#operations}}
 {{#operation}}
 {{^vendorExtensions.x-rust-content-variant}}
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
 /// struct for typed errors of method [`{{operationId}}`]
 {{#vendorExtensions.x-rust-error-headers}}
 ///
@@ -62,9 +68,15 @@ pub enum {{{operationIdCamelCase}}}Error {
 
 {{/vendorExtensions.x-rust-content-variant}}
 {{#vendorExtensions.x-rust-response-headers}}
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
 {{>api_typed_headers}}
 {{/vendorExtensions.x-rust-response-headers}}
 {{#vendorExtensions.x-rust-error-headers}}
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
 {{>api_typed_headers}}
 {{/vendorExtensions.x-rust-error-headers}}
 {{/operation}}
@@ -72,12 +84,21 @@ pub enum {{{operationIdCamelCase}}}Error {
 
 {{#operations}}
 {{#operation}}
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
 {{>api_function}}
 {{#vendorExtensions.x-rust-response-function}}
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
 {{>api_function}}
 {{/vendorExtensions.x-rust-response-function}}
 {{/operation}}
 {{/operations}}
 {{#webhookReexport}}
+{{#webhookReexportCfg}}
+#[cfg({{{.}}})]
+{{/webhookReexportCfg}}
 pub use super::{{{.}}}::*;
 {{/webhookReexport}}

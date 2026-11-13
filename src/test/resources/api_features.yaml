@@ -1,0 +1,195 @@
+openapi: 3.0.3
+info:
+  title: Api features
+  description: Tags, untagged operations under two path prefixes, and models reached through allOf, a discriminated
+    oneOf, arrays and maps, for apiFeatures.
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      tags: [Pets]
+      responses:
+        "200":
+          description: the pets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pet'
+        default:
+          description: an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      operationId: createPet
+      tags: [Pets]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                photo:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+  /store/orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [Store]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        "404":
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /admin/users:
+    get:
+      operationId: listUsers
+      responses:
+        "200":
+          description: the users
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/User'
+  /admin/audit:
+    get:
+      operationId: getAudit
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            $ref: '#/components/schemas/AuditKind'
+      responses:
+        "200":
+          description: the audit log
+          content:
+            text/plain:
+              schema:
+                type: string
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        default:
+          description: an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  schemas:
+    Problem:
+      type: object
+      properties:
+        message:
+          type: string
+    Pet:
+      oneOf:
+        - $ref: '#/components/schemas/Cat'
+        - $ref: '#/components/schemas/Dog'
+      discriminator:
+        propertyName: kind
+        mapping:
+          cat: '#/components/schemas/Cat'
+          dog: Dog
+    PetBase:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+          minLength: 1
+    Cat:
+      allOf:
+        - $ref: '#/components/schemas/PetBase'
+        - type: object
+          properties:
+            lives:
+              type: integer
+    Dog:
+      allOf:
+        - $ref: '#/components/schemas/PetBase'
+        - type: object
+          properties:
+            toy:
+              $ref: '#/components/schemas/Toy'
+    Toy:
+      type: object
+      properties:
+        name:
+          type: string
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        pets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pet'
+    User:
+      type: object
+      properties:
+        name:
+          type: string
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+    Role:
+      type: string
+      enum: [admin, member]
+    AuditKind:
+      type: string
+      enum: [login, logout]
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+    Unused:
+      type: object
+      properties:
+        note:
+          type: string

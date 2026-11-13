@@ -7,7 +7,7 @@ use serde::Serialize;
 use url::Url;
 
 use crate::multipart::Form;
-use crate::{Body, Client, Error, Method, Response};
+use crate::{Body, Client, Error, Method, RequestOptions, Response};
 
 /// Builds a request, with the methods of reqwest's `RequestBuilder` that generated clients use.
 ///
@@ -106,9 +106,18 @@ impl RequestBuilder {
         self.sensitive_header(AUTHORIZATION, format!("Basic {encoded}"))
     }
 
-    fn sensitive_header(self, name: HeaderName, value: String) -> Self {
+    /// Sets a header, replacing any earlier value, and marks it sensitive (see [`HeaderValue::set_sensitive`]): for
+    /// credentials such as an API key.
+    pub fn sensitive_header<K, V>(self, name: K, value: V) -> Self
+    where
+        HeaderName: TryFrom<K>,
+        <HeaderName as TryFrom<K>>::Error: Into<http::Error>,
+        HeaderValue: TryFrom<V>,
+        <HeaderValue as TryFrom<V>>::Error: Into<http::Error>,
+    {
         self.with(|parts| {
-            let mut value = HeaderValue::try_from(value).map_err(Error::builder)?;
+            let name = HeaderName::try_from(name).map_err(|e| Error::builder(e.into()))?;
+            let mut value = HeaderValue::try_from(value).map_err(|e| Error::builder(e.into()))?;
             value.set_sensitive(true);
             parts.headers.insert(name, value);
             Ok(())
@@ -163,6 +172,22 @@ impl RequestBuilder {
                     .insert(CONTENT_LENGTH, HeaderValue::from(bytes.len()));
             }
             parts.body = Some(body);
+            Ok(())
+        })
+    }
+
+    /// Applies the extra headers and query parameters of [`RequestOptions`]: each of its headers replaces every value
+    /// the request has under that name (call it last to override what was set before, as generated clients do), and
+    /// its query parameters are appended.
+    pub fn options(self, options: &RequestOptions) -> Self {
+        let query = options.query_pairs();
+        let this = if query.is_empty() {
+            self
+        } else {
+            self.query(query)
+        };
+        this.with(|parts| {
+            parts.headers.extend(options.header_map().clone());
             Ok(())
         })
     }
@@ -270,6 +295,72 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(basic.headers()[AUTHORIZATION], "Basic dXNlcjpwYXNz");
+        assert!(basic.headers()[AUTHORIZATION].is_sensitive());
+    }
+
+    #[test]
+    fn secrets_are_exposed_only_into_sensitive_headers() {
+        use crate::{ExposeSecret, SecretString};
+        let key = SecretString::from("sk-123");
+        assert!(!format!("{key:?}").contains("sk-123"));
+        let request = builder("https://example.com")
+            .header("x-api-key", "old")
+            .sensitive_header("x-api-key", key.expose_secret())
+            .bearer_auth(key.expose_secret())
+            .build()
+            .unwrap();
+        let values: Vec<_> = request.headers().get_all("x-api-key").iter().collect();
+        assert_eq!(values, ["sk-123"]);
+        assert!(values[0].is_sensitive());
+        assert!(!format!("{:?}", request.headers()).contains("sk-123"));
+        assert_eq!(request.headers()[AUTHORIZATION], "Bearer sk-123");
+    }
+
+    #[test]
+    fn options_override_headers_and_append_query() {
+        let mut tags = HeaderMap::new();
+        tags.append("x-tag", HeaderValue::from_static("a"));
+        tags.append("x-tag", HeaderValue::from_static("b"));
+        let options = RequestOptions::new()
+            .header("x-generated", "from-options")
+            .unwrap()
+            .header(AUTHORIZATION, "Bearer other")
+            .unwrap()
+            .headers(tags)
+            .query(&[("b", "2"), ("a", "3")])
+            .unwrap();
+        let request = builder("https://example.com/items?a=1")
+            .header("x-generated", "one")
+            .header("x-generated", "two")
+            .header("x-kept", "kept")
+            .header("x-tag", "generated")
+            .bearer_auth("secret")
+            .options(&options)
+            .build()
+            .unwrap();
+        let headers = request.headers();
+        assert_eq!(
+            headers.get_all("x-generated").iter().collect::<Vec<_>>(),
+            ["from-options"]
+        );
+        assert_eq!(headers["x-kept"], "kept");
+        assert_eq!(
+            headers.get_all("x-tag").iter().collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert_eq!(headers[AUTHORIZATION], "Bearer other");
+        assert_eq!(request.uri(), "https://example.com/items?a=1&b=2&a=3");
+    }
+
+    #[test]
+    fn empty_options_change_nothing() {
+        let request = builder("https://example.com/items")
+            .header("x-kept", "kept")
+            .options(&RequestOptions::new())
+            .build()
+            .unwrap();
+        assert_eq!(request.uri(), "https://example.com/items");
+        assert_eq!(request.headers().len(), 1);
     }
 
     #[test]

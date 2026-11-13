@@ -1,0 +1,26 @@
+#!/bin/sh
+# Test-only cargo shim (put first on PATH by pom.xml's surefire configuration).
+#
+# The tests build their generated crates with one shared CARGO_TARGET_DIR, so dependencies compile once per run. Cargo
+# leaves a path package's location out of its hash, so two generated crates with the same package name (several tests
+# reuse e.g. `small_fixes_fixture`) would share artifacts and a test could link the other crate's stale build. This
+# removes the crate's own artifacts before every cargo command; its dependencies stay compiled.
+self_dir=$(cd "$(dirname "$0")" && pwd)
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vx "$self_dir" | paste -sd: -)
+export PATH
+
+manifest=Cargo.toml
+prev=
+for arg in "$@"; do
+    case "$prev" in --manifest-path) manifest=$arg ;; esac
+    case "$arg" in --manifest-path=*) manifest=${arg#--manifest-path=} ;; esac
+    prev=$arg
+done
+
+if [ -n "$CARGO_TARGET_DIR" ] && [ -f "$manifest" ] && [ "$1" != clean ]; then
+    pkg=$(sed -n 's/^name *= *"\(.*\)"/\1/p' "$manifest" | head -n 1)
+    if [ -n "$pkg" ]; then
+        cargo clean --quiet --manifest-path "$manifest" -p "$pkg" >/dev/null 2>&1 || true
+    fi
+fi
+exec cargo "$@"

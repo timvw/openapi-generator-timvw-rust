@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [From 0.25 to 0.26](#from-025-to-026): the credentials of `Configuration` are `SecretString`s; per-call headers and query parameters.
 - [From 0.24 to 0.25](#from-024-to-025): the client sends through a tower service from `timvw-rust-runtime`.
 - [From 0.23 to 0.24](#from-023-to-024): union variant names under a model name prefix or suffix.
 - [From 0.22 to 0.23](#from-022-to-023): one rare type change.
@@ -9,6 +10,61 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From 0.25 to 0.26
+
+### Credentials
+
+With `httpStack=tower` (the default), the secrets of `Configuration` are `secrecy::SecretString`s instead of
+`String`s: `bearer_access_token` and `oauth_access_token` are `Option<SecretString>`, `BasicAuth` is
+`(String, Option<SecretString>)` and `ApiKey::key` is a `SecretString`. The username and `ApiKey::prefix` stay
+`String`s. `configuration::SecretString` re-exports the type; it is made from a `String` or a `&str` with `.into()` or
+`SecretString::from`, and read back with `ExposeSecret::expose_secret` (`configuration::ExposeSecret`). With
+`httpStack=reqwest-middleware` nothing changes.
+
+Before:
+
+<!-- not compiled: 0.25 -->
+```rust
+let token = "sk-123".to_owned();
+configuration.bearer_access_token = Some(token);
+configuration.oauth_access_token = Some("oauth-token".to_owned());
+configuration.basic_auth = Some(("user".to_owned(), Some("password".to_owned())));
+configuration.api_key = Some(ApiKey {
+    prefix: Some("Token".to_owned()),
+    key: "key".to_owned(),
+});
+```
+
+After:
+
+```rust
+let token = "sk-123".to_owned();
+configuration.bearer_access_token = Some(token.into());
+configuration.oauth_access_token = Some(SecretString::from("oauth-token"));
+configuration.basic_auth = Some(("user".to_owned(), Some("password".into())));
+configuration.api_key = Some(ApiKey {
+    prefix: Some("Token".to_owned()),
+    key: "key".into(),
+});
+```
+
+Code that read a credential back reads `token.expose_secret()` where it read `token`. The generated client needs
+`timvw-rust-runtime` 0.2, which has `SecretString` and `RequestBuilder::sensitive_header`; the generated
+`Cargo.toml` asks for `^0.2`.
+
+### Per-call request options
+
+0.26 adds an optional last argument to every operation with `httpStack=tower` and `bonBuilders` (the defaults):
+`options: Option<&timvw_rust_runtime::RequestOptions>`, `.options(&options)` on the builder, for extra headers and
+query parameters of one call ([HTTP stack guide](http-stack.md#headers-and-query-parameters-for-one-call)). A call
+that does not set it sends what it sent before, so builder calls compile and behave as with 0.25. Two exceptions:
+
+- An operation with a parameter named `options` keeps it; its request options are `.request_options(..)`.
+- The generated code needs `timvw-rust-runtime` 0.2 (`RequestOptions`, `SecretString`): the generated `Cargo.toml`
+  asks for `^0.2`.
+
+`bonBuilders=false` and `httpStack=reqwest-middleware` render what 0.25 rendered.
 
 ## From 0.24 to 0.25
 

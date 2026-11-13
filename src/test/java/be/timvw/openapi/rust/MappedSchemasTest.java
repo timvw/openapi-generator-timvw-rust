@@ -83,10 +83,12 @@ class MappedSchemasTest {
         String api = read(out, "src/apis/default_api.rs");
         assertContains(api, "pub async fn search(configuration: &configuration::Configuration, "
                 + "filter2: &crate::custom::Filter, filter: Option<crate::custom::Filter>, "
-                + "x_filter: Option<crate::custom::Filter>, filters: Option<Vec<crate::custom::Filter>>) "
+                + "x_filter: Option<crate::custom::Filter>, filters: Option<Vec<crate::custom::Filter>>, "
+                + "options: Option<&timvw_rust_runtime::RequestOptions>) "
                 + "-> Result<crate::custom::Filter, Error<SearchError>>");
         assertContains(api, "pub async fn put_token(configuration: &configuration::Configuration, "
-                + "body: &crate::custom::Token, tokens: Option<Vec<crate::custom::Token>>) "
+                + "body: &crate::custom::Token, tokens: Option<Vec<crate::custom::Token>>, "
+                + "options: Option<&timvw_rust_runtime::RequestOptions>) "
                 + "-> Result<crate::custom::Token, Error<PutTokenError>>");
         assertContains(api, "-> Result<Vec<crate::custom::Filter>, Error<ChooseError>>");
         try (Stream<Path> files = Files.walk(out)) {

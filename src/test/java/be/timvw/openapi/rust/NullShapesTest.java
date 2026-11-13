@@ -104,13 +104,13 @@ class NullShapesTest {
         for (Path crate : List.of(out, helper)) {
             String api = Files.readString(crate.resolve("src/apis/default_api.rs"));
             assertContains(api, "get_things(configuration: &configuration::Configuration, filter: Option<&str>, "
-                    + "filters: Option<Vec<serde_json::Value>>) -> Result<models::Holder, ");
+                    + "filters: Option<Vec<serde_json::Value>>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<models::Holder, ");
             assertContains(api, "post_things(configuration: &configuration::Configuration, body: "
-                    + "Option<&serde_json::Value>) -> Result<serde_json::Value, ");
+                    + "Option<&serde_json::Value>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<serde_json::Value, ");
             assertContains(api, "post_form(configuration: &configuration::Configuration, anything: "
-                    + "Option<serde_json::Value>, count: Option<i64>)");
+                    + "Option<serde_json::Value>, count: Option<i64>, options: Option<&timvw_rust_runtime::RequestOptions>)");
             assertContains(api, "upload(configuration: &configuration::Configuration, file: "
-                    + "Option<std::path::PathBuf>, meta: Option<serde_json::Value>)");
+                    + "Option<std::path::PathBuf>, meta: Option<serde_json::Value>, options: Option<&timvw_rust_runtime::RequestOptions>)");
             assertFalse(api.contains("models::Null") || api.contains("LessThanGreaterThan")
                     || api.contains("models::serde_json"), api);
         }

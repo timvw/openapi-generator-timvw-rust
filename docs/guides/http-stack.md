@@ -7,8 +7,9 @@ A generated client sends its requests through `Configuration.client`. What that 
 | `tower` (default) | `timvw_rust_runtime::Client`: a [tower](https://docs.rs/tower) service, reqwest unless replaced | 0.25 |
 | `reqwest-middleware` | `reqwest_middleware::ClientWithMiddleware` | up to 0.24 the only stack |
 
-The generated functions are the same with both: the same signatures, the same models, the same `ResponseContent`. What
-differs is how you configure sending, and the variants of `apis::Error` that report a failure to send.
+The generated functions are the same with both: the same arguments, the same models, the same `ResponseContent`. What
+differs is how you configure sending, the variants of `apis::Error` that report a failure to send, and, with `tower`,
+[headers and query parameters for one call](#headers-and-query-parameters-for-one-call).
 
 The examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as `my_client`. They
 are compiled by the tests.
@@ -28,8 +29,11 @@ repository next to the generator. Its `Client` is a tower service from `http::Re
 
 Retries are on by default (feature `retry`): `Client::default()`, and so `Configuration::new()`, retries with
 `RetryPolicy::default()`. `RetryPolicy` retries `429`, `408` and `5xx` responses
-and failed connections, waits as long as `Retry-After` asks or backs off exponentially, and does not retry a request
-with a streamed body (it cannot be sent twice). A body held in memory, which is every JSON, form and text body and every
+and failed connections, waits as long as `Retry-After` (or `retry-after-ms`) asks, up to 60 s, or else backs off
+exponentially with jitter, and does not retry a request with a streamed body (it cannot be sent twice). A `429` that
+will not pass by waiting, such as OpenAI's `insufficient_quota`, is not retried once you turn on
+`timvw_rust_runtime::retry::RetryLayer::permanent_429` (opt-in, since what makes a `429` permanent differs between
+APIs; see [permanent `429`s](../../runtime/README.md#permanent-429s-an-exhausted-quota)). A body held in memory, which is every JSON, form and text body and every
 multipart body without a streamed file, is sent again. Layers added to `Client::default()` wrap its retries; for
 another policy, or none, start from `Client::from_service(ReqwestService::default())`:
 
@@ -67,6 +71,33 @@ let page = items_api::list_items().configuration(&configuration).call().await?;
 assert_eq!(page.data[0].name, "Lamp");
 ```
 
+### Headers and query parameters for one call
+
+A layer changes every request. For one call, every operation's builder takes `.options(&options)`: a
+`RequestOptions` (`apis::RequestOptions`, the runtime's) with extra headers and query parameters. They are applied
+after everything the function sets, parameters, authentication, `Content-Type` and `Accept` included: each header
+replaces the values the request has under its name, and the query parameters are appended to the generated ones.
+`header` and `query` check their input, and fail with an `Error` whose `is_builder()` is true:
+
+```rust
+use my_client::apis::RequestOptions;
+
+let options = RequestOptions::new()
+    .header("x-request-source", "batch")? // replaces a generated header of that name
+    .query(&[("trace", "1")])?; // after the generated query
+let page = items_api::list_items()
+    .configuration(&configuration)
+    .limit(10)
+    .options(&options)
+    .call()
+    .await?;
+```
+
+Every method of an operation takes them: the `_response` twins, the methods of `contentTypeMethods` (multipart
+included) and the `_stream` methods of `typedEventStreams`. When an operation has a parameter named `options`, the
+setter is `.request_options(..)`. One `RequestOptions` can be reused for many calls. There is no such argument with
+`bonBuilders=false`, nor with `httpStack=reqwest-middleware`.
+
 To send or decode types of your own, call `configuration.client` directly, with the same layers; for a
 `text/event-stream` response, `response.events().json::<T>()` decodes each event. The runtime's guide shows
 [how](../../runtime/README.md#your-own-types-and-server-sent-events). A generated `apis::sse` re-exports the runtime's
@@ -80,6 +111,30 @@ The generated code builds requests with `timvw_rust_runtime::RequestBuilder` and
 `timvw_rust_runtime::Response`, which have the methods of reqwest's that the code uses, so it reads as before. Status
 codes and headers are the `http` crate's types (`timvw_rust_runtime::StatusCode`, `timvw_rust_runtime::header`), the
 same types reqwest re-exports.
+
+### Credentials
+
+The secrets of `Configuration` are `secrecy::SecretString`s, as async-openai keeps its key:
+`bearer_access_token`, `oauth_access_token`, the password of `basic_auth` and the `key` of `api_key` (the username and
+the key's `prefix` stay `String`s). `configuration::SecretString` and `configuration::ExposeSecret` re-export the
+runtime's. A `SecretString` is made from a `String` or a `&str` (`.into()` or `SecretString::from`), prints as
+`[REDACTED]`, and is zeroed in memory when dropped:
+
+```rust
+use my_client::apis::configuration::{ApiKey, ExposeSecret, SecretString};
+
+let mut configuration = Configuration::new();
+configuration.bearer_access_token = Some(SecretString::from(std::env::var("API_TOKEN")?));
+configuration.basic_auth = Some(("user".to_owned(), Some("password".into())));
+configuration.api_key = Some(ApiKey { prefix: None, key: "sk-123".into() });
+println!("{configuration:?}"); // the secrets print as [REDACTED]
+let key: &str = configuration.api_key.as_ref().unwrap().key.expose_secret();
+```
+
+The generated code exposes a secret only where it builds the request, and sends an `Authorization`, api-key or
+`Cookie` header marked sensitive (`HeaderValue::set_sensitive`), so `Debug` of the request's headers and HTTP/2 header
+compression leave it out. An api key in a query parameter is part of the URL. With `httpStack=reqwest-middleware` the
+credentials are `String`s, as before 0.26.
 
 ### The runtime version
 

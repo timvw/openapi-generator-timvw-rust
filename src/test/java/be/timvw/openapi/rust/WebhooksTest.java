@@ -78,11 +78,12 @@ class WebhooksTest {
     @Test
     void untaggedWebhooksJoinTheUntaggedPathOperationsInDefaultApi() throws IOException {
         String api = read(merged, "src/apis/default_api.rs");
-        assertContains(api, "pub async fn list_items(configuration: &configuration::Configuration, ) "
+        assertContains(api, "pub async fn list_items(configuration: &configuration::Configuration, "
+                + "options: Option<&timvw_rust_runtime::RequestOptions>) "
                 + "-> Result<Vec<models::Item>, Error<ListItemsError>>");
         assertContains(api, "pub enum ListItemsError {");
         assertContains(api, "pub async fn item_created(configuration: &configuration::Configuration, "
-                + "item: Option<&models::Item>) -> Result<(), Error<ItemCreatedError>>");
+                + "item: Option<&models::Item>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<(), Error<ItemCreatedError>>");
         assertContains(api, "pub enum ItemCreatedError {");
         assertTrue(api.indexOf("pub async fn list_items(") < api.indexOf("pub async fn item_created("), api);
         String doc = read(merged, "docs/DefaultApi.md");
@@ -94,7 +95,7 @@ class WebhooksTest {
     @Test
     void aTaggedWebhookJoinsThePathOperationsOfItsTag() throws IOException {
         String api = read(merged, "src/apis/pets_api.rs");
-        assertContains(api, "pub async fn get_pet(configuration: &configuration::Configuration, id: &str)");
+        assertContains(api, "pub async fn get_pet(configuration: &configuration::Configuration, id: &str, options: Option<&timvw_rust_runtime::RequestOptions>)");
         assertContains(api, "pub async fn pet_adopted(");
         String doc = read(merged, "docs/PetsApi.md");
         assertContains(doc, "## get_pet");
@@ -133,7 +134,8 @@ class WebhooksTest {
         String mod = read(webhookOnly, "src/apis/mod.rs");
         assertContains(mod, "pub mod audit_api;\npub mod default_api;\npub mod events_api;\n");
         assertContains(read(webhookOnly, "src/apis/audit_api.rs"), "pub async fn audit_logged(configuration: "
-                + "&configuration::Configuration, audit_entry: &models::AuditEntry) "
+                + "&configuration::Configuration, audit_entry: &models::AuditEntry, "
+                + "options: Option<&timvw_rust_runtime::RequestOptions>) "
                 + "-> Result<(), Error<AuditLoggedError>>");
         String events = read(webhookOnly, "src/apis/events_api.rs");
         assertContains(events, "pub async fn item_created(");

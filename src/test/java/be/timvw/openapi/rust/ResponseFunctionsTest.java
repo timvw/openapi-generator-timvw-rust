@@ -91,7 +91,7 @@ class ResponseFunctionsTest {
     @Test
     void aJsonOperationGetsAResponseTwinReturningApiResponse() throws IOException {
         assertContains(signature(on, "items_api", "get_item_response"), "get_item_response(configuration: "
-                + "&configuration::Configuration, id: &str) -> Result<super::ApiResponse<models::Item>, "
+                + "&configuration::Configuration, id: &str, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<super::ApiResponse<models::Item>, "
                 + "Error<GetItemError>>");
         assertContains(signature(on, "items_api", "list_items_response"),
                 "-> Result<super::ApiResponse<Vec<models::Item>>, Error<ListItemsError>>");

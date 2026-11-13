@@ -10,9 +10,55 @@ is the [mapping](mapping/README.md).
 the plugin owns its Rust layer (0.20), and 0.21 renders the documented [mapping](mapping/README.md) with the changes
 of [decisions.md](decisions.md); 0.22 fixes types the JSON did not decode to and parameters typed as text; 0.23 adds typed response headers and fixes
 null-only schemas and doc links; 0.24 adds typed error headers and fixes webhooks, model name options and schema
-mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` crate (`httpStack`). The
+mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` crate (`httpStack`); 0.26 keeps
+credentials in `SecretString`s, adds headers and query parameters per call and a Cargo feature per API group
+(`apiFeatures`). The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.26.0
+
+The credentials of `Configuration` become `SecretString`s with the default `httpStack=tower`: openai-client-base and
+langfuse-client-base change where they set a token (see [migration](guides/migration.md#from-025-to-026)). Generated
+clients need `timvw-rust-runtime` 0.2 (`^0.2`), which also retries with jitter, honours longer `Retry-After`s and
+can leave permanent `429`s (OpenAI's `insufficient_quota`) unretried.
+
+### Credentials
+
+- `bearer_access_token`, `oauth_access_token`, the password of `basic_auth` and `ApiKey::key` are
+  `secrecy::SecretString`s, as async-openai keeps its key; the username and the key's prefix stay `String`s.
+  `configuration::SecretString` and `configuration::ExposeSecret` re-export the runtime's (`timvw_rust_runtime`
+  re-exports `secrecy`). `Debug` still prints `[REDACTED]`.
+- The generated code exposes a secret only where it builds the header, query parameter or cookie, and sends the
+  `Authorization`, api-key and `Cookie` headers marked sensitive, through the runtime's new
+  `RequestBuilder::sensitive_header`.
+- `httpStack=reqwest-middleware` renders 0.25's output: the credentials stay `String`s.
+
+### Per-call request options
+
+- With `httpStack=tower` and `bonBuilders`, every operation's builder takes `.options(&options)`, a
+  `timvw_rust_runtime::RequestOptions` (re-exported as `apis::RequestOptions`) with extra headers and query
+  parameters, as async-openai's `RequestOptions` (without its path override). The function applies them last, after
+  its parameters, authentication, `Content-Type` and `Accept`: each header replaces the request's values of that name,
+  the query parameters are appended. The `_response` twins and the methods of `contentTypeMethods` and
+  `typedEventStreams` take them too. An operation with a parameter named `options` names it `request_options`.
+- The runtime adds `RequestOptions` and `RequestBuilder::options`.
+- `httpStack=reqwest-middleware` and `bonBuilders=false` render 0.25's output.
+
+### `apiFeatures`
+
+Off by default, and off the output is byte for byte what it was (both HTTP stacks, every test spec and the OpenAI
+spec). Nothing to migrate.
+
+- `apiFeatures=true` gives the crate a Cargo feature per tag, with a `-types` twin compiling only the tag's models
+  without the HTTP client, plus `types` and `full` (a default feature), as async-openai 0.43 has
+  ([guide](guides/api-features.md)). `apiFeaturesFile` groups operations by tags and path prefixes instead, which
+  openai-client-base needs for its 60 untagged operations (`/organization`, `/containers`, `/chatkit`, ...).
+- A group's models are found from the spec: every schema its operations reach through `$ref`, discriminator mappings
+  included. A group that takes part of an API module gates the module's functions one by one; the modules do not
+  change.
+- openai-client-base with async-openai's 29 groups: `responses` compiles 851 of the 3,131 models, in 19 s instead of 77 s
+  for the crate (dev build), and `responses-types` none of the HTTP stack. Every feature compiles alone.
 
 ## 0.25.0
 

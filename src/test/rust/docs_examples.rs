@@ -46,7 +46,7 @@ mod readme {
 
         let mut configuration = Configuration::new();
         configuration.base_path = "https://api.example.com/v1".to_owned();
-        configuration.bearer_access_token = Some("secret".to_owned());
+        configuration.bearer_access_token = Some("secret".into());
 
         let page = items_api::list_items()
             .configuration(&configuration)
@@ -506,11 +506,75 @@ mod http_stack {
         assert_eq!(page.data[0].name, "Lamp");
         Ok(())
     }
+
+    fn credentials() -> Result<(), BoxError> {
+        use my_client::apis::configuration::{ApiKey, ExposeSecret, SecretString};
+
+        let mut configuration = Configuration::new();
+        configuration.bearer_access_token = Some(SecretString::from(std::env::var("API_TOKEN")?));
+        configuration.basic_auth = Some(("user".to_owned(), Some("password".into())));
+        configuration.api_key = Some(ApiKey { prefix: None, key: "sk-123".into() });
+        println!("{configuration:?}"); // the secrets print as [REDACTED]
+        let key: &str = configuration.api_key.as_ref().unwrap().key.expose_secret();
+        Ok(())
+    }
+}
+
+/// docs/guides/http-stack.md
+mod http_stack_options {
+    use super::*;
+
+    #[tokio::test]
+    async fn headers_and_query_parameters_for_one_call() -> Result<(), BoxError> {
+        use timvw_rust_runtime::{http, Body, Client};
+
+        let mut configuration = Configuration::new();
+        configuration.client = Client::from_service(timvw_rust_runtime::tower::service_fn(
+            |request: http::Request<Body>| async move {
+                assert_eq!(request.headers()["x-request-source"], "batch");
+                assert_eq!(request.uri().query(), Some("limit=10&trace=1"));
+                let page = r#"{"data":[],"has_more":false}"#;
+                Ok::<_, timvw_rust_runtime::BoxError>(
+                    http::Response::builder()
+                        .header("content-type", "application/json")
+                        .body(Body::from(page))?,
+                )
+            },
+        ));
+
+        use my_client::apis::RequestOptions;
+
+        let options = RequestOptions::new()
+            .header("x-request-source", "batch")? // replaces a generated header of that name
+            .query(&[("trace", "1")])?; // after the generated query
+        let page = items_api::list_items()
+            .configuration(&configuration)
+            .limit(10)
+            .options(&options)
+            .call()
+            .await?;
+        assert!(page.data.is_empty());
+        Ok(())
+    }
 }
 
 /// docs/guides/migration.md
 mod migration {
     use super::*;
+
+    fn secret_credentials() {
+        use my_client::apis::configuration::{ApiKey, SecretString};
+
+        let mut configuration = Configuration::new();
+        let token = "sk-123".to_owned();
+        configuration.bearer_access_token = Some(token.into());
+        configuration.oauth_access_token = Some(SecretString::from("oauth-token"));
+        configuration.basic_auth = Some(("user".to_owned(), Some("password".into())));
+        configuration.api_key = Some(ApiKey {
+            prefix: Some("Token".to_owned()),
+            key: "key".into(),
+        });
+    }
 
     async fn bodies() -> Result<(), BoxError> {
         let configuration = configuration();

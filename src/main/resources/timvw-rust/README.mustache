@@ -39,6 +39,24 @@ Class | Method | HTTP request | Description
 {{#models}}{{#model}} - [{{{classname}}}]({{{modelDocPath}}}{{{classname}}}.md)
 {{/model}}{{/models}}
 
+{{#apiFeatures}}
+## Cargo features
+
+Each group of API operations is a Cargo feature: `<group>` compiles its API functions with their models and the HTTP
+client, `<group>-types` only its models. `types` is every model and `full` everything; the default features include
+`full`. To compile only what you use:
+
+```toml
+{{{packageName}}} = { path = "./{{{packageName}}}", default-features = false, features = ["native-tls", "<group>"] }
+```
+
+Feature | Operations
+------- | ----------
+{{#apiFeatureGroups}}
+`{{{name}}}` | {{{selects}}}
+{{/apiFeatureGroups}}
+
+{{/apiFeatures}}
 To get access to the crate's generated documentation, use:
 
 ```sh

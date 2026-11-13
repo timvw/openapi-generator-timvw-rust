@@ -109,7 +109,7 @@ class NullBranchParamsTest {
             assertTrue(form.contains("since: Option<chrono::DateTime<chrono::FixedOffset>>, status: "
                     + "Option<models::Status>, id: Option<uuid::Uuid>, "), form);
         }
-        assertTrue(signature("post_thing_form").contains("owner: Option<uuid::Uuid>)"), api());
+        assertTrue(signature("post_thing_form").contains("owner: Option<uuid::Uuid>, options: Option<&timvw_rust_runtime::RequestOptions>)"), api());
         assertFalse(api().contains("models::uuid") || api().contains("models::chrono"), api());
         String docs = Files.readString(out.resolve("docs/DefaultApi.md"));
         assertTrue(docs.contains("| The status to set, if any. |"), docs);
@@ -121,9 +121,9 @@ class NullBranchParamsTest {
      */
     @Test
     void aPlainAllOfFormFieldTakesTheReferencedType() throws IOException {
-        assertTrue(signature("post_form").contains("plain_id: Option<uuid::Uuid>)"), signature("post_form"));
+        assertTrue(signature("post_form").contains("plain_id: Option<uuid::Uuid>, options: Option<&timvw_rust_runtime::RequestOptions>)"), signature("post_form"));
         String multipart = signature("post_multipart");
-        assertTrue(multipart.contains("plain_since: Option<chrono::DateTime<chrono::FixedOffset>>)"), multipart);
+        assertTrue(multipart.contains("plain_since: Option<chrono::DateTime<chrono::FixedOffset>>, options: Option<&timvw_rust_runtime::RequestOptions>)"), multipart);
         assertTrue(api().contains("multipart_form.text(\"plain_since\", param_value.to_rfc3339());"), api());
     }
 
@@ -135,7 +135,7 @@ class NullBranchParamsTest {
     void aWrappedReferenceIsUnwrapped() throws IOException {
         String thing = signature("get_thing");
         assertTrue(thing.contains("wrapped_all: Option<models::Status>, wrapped_one: Option<models::Status>,"), thing);
-        assertTrue(signature("get_wrapped").contains("a: uuid::Uuid, b: models::Status, c: &str)"),
+        assertTrue(signature("get_wrapped").contains("a: uuid::Uuid, b: models::Status, c: &str, options: Option<&timvw_rust_runtime::RequestOptions>)"),
                 signature("get_wrapped"));
         String docs = Files.readString(out.resolve("docs/DefaultApi.md"));
         assertTrue(docs.contains("**wrapped_one** | Option<[**Status**](Status.md)> | The status, wrapped in a "

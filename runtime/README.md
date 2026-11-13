@@ -15,6 +15,8 @@ crate ships, any layer from the tower ecosystem, or write your own.
 - [Concurrency and rate limits](#concurrency-and-rate-limits)
 - [Choosing the HTTP client, and tests without a network](#choosing-the-http-client)
 - [Your own types, and streams of server-sent events](#your-own-types-and-server-sent-events)
+- [Credentials](#credentials)
+- [Headers and query parameters for one call](#headers-and-query-parameters-for-one-call)
 - [Errors](#errors)
 - [Features](#features)
 
@@ -44,10 +46,9 @@ build the stack from the bare service, `Client::from_service(ReqwestService::def
 
 ```rust,no_run
 use std::time::Duration;
-use timvw_rust_runtime::retry::RetryPolicy;
+use timvw_rust_runtime::retry::{RetryLayer, RetryPolicy};
 use timvw_rust_runtime::trace::TraceLayer;
 use timvw_rust_runtime::{Client, ReqwestService};
-use tower::retry::RetryLayer;
 use tower::timeout::TimeoutLayer;
 
 let client = Client::from_service(ReqwestService::default()) // reqwest, no retries
@@ -60,28 +61,66 @@ A `Client` is cheap to clone, and clones share their layers' state (a rate limit
 
 ## Retries
 
-`Client::default()`, `Client::new()` and `Client::from_reqwest(..)` retry with `RetryPolicy::default()` (feature
-`retry`, on by default). `retry::RetryPolicy` is a `tower::retry::Policy` for HTTP APIs:
+`Client::default()`, `Client::new()` and `Client::from_reqwest(..)` retry with
+`retry::RetryLayer::new(RetryPolicy::default())` (feature `retry`, on by default). `retry::RetryPolicy` is a
+`tower::retry::Policy` for HTTP APIs:
 
 - It retries `429 Too Many Requests`, `408 Request Timeout`, every `5xx` and failures to connect. Any other response
   or error is returned at once.
-- It waits as long as `Retry-After` asks (in seconds), or else backs off exponentially: 200 ms, 400 ms, 800 ms, ...,
-  capped at 8 s. The cap applies to `Retry-After` too.
+- It waits as long as the server asks, with `retry-after-ms` (milliseconds, as OpenAI sends) or `Retry-After`
+  (seconds), up to `max_retry_after` (60 s by default). A response that asks for longer is returned at once instead
+  of retried: waiting less than asked would likely fail again, and an hour-long wait is rarely what a caller wants.
+  (`Retry-After` as an HTTP date is ignored, and the policy backs off.)
+- Otherwise it backs off exponentially: 200 ms, 400 ms, 800 ms, ..., capped at `max_delay` (8 s). Each delay is
+  jittered, picked at random between half and all of it, so that clients that failed together do not retry together;
+  `.jitter(false)` turns that off. A server's `Retry-After` is not jittered, nor capped by `max_delay`.
 - It retries at most 3 times by default.
 - It does not retry a request whose body is a stream (a streamed file upload), since that cannot be sent twice. JSON,
   form, text and in-memory multipart bodies are sent again.
 
 ```rust,no_run
 use std::time::Duration;
-use timvw_rust_runtime::retry::RetryPolicy;
+use timvw_rust_runtime::retry::{RetryLayer, RetryPolicy};
 use timvw_rust_runtime::{Client, ReqwestService};
-use tower::retry::RetryLayer;
 
 let policy = RetryPolicy::new(5)
     .base_delay(Duration::from_millis(500))
-    .max_delay(Duration::from_secs(30));
+    .max_delay(Duration::from_secs(30)) // the backoff
+    .max_retry_after(Duration::from_secs(120)); // the longest Retry-After to wait for
 let client = Client::from_service(ReqwestService::default()).layer(RetryLayer::new(policy));
 ```
+
+`retry::RetryLayer::new(policy)` retries just like `tower::retry::RetryLayer::new(policy)`, which works too.
+
+### Permanent `429`s: an exhausted quota
+
+Some APIs answer `429` both for a rate limit, which passes, and for a quota or credit that is used up, which does not:
+OpenAI's `insufficient_quota`. Only the body tells them apart. `RetryLayer::permanent_429` reads the body of each
+`429` (up to `body_limit`, 64 KiB by default) and gives it to a function; when that returns `true`, the response is
+returned at once, marked with the `retry::Permanent` extension. The body is put back, so the caller, and a generated
+client's error, still read all of it. `retry::openai_insufficient_quota` is that function for OpenAI (an `error.code`
+or `error.type` of `insufficient_quota`):
+
+```rust,no_run
+use timvw_rust_runtime::retry::{openai_insufficient_quota, RetryLayer, RetryPolicy};
+use timvw_rust_runtime::{Client, ReqwestService};
+
+let client = Client::from_service(ReqwestService::default()).layer(
+    RetryLayer::new(RetryPolicy::default())
+        .permanent_429(openai_insufficient_quota)
+        .body_limit(16 * 1024),
+);
+
+// Any API: a function of the body's bytes.
+let client = Client::from_service(ReqwestService::default()).layer(
+    RetryLayer::default().permanent_429(|body: &[u8]| body.windows(14).any(|w| w == b"quota_exceeded")),
+);
+```
+
+`Client::default()` does not read `429` bodies: what makes a `429` permanent differs between APIs, so the runtime
+leaves it to the client of each API to turn on. A body longer than the limit, or one that fails to read, is treated as
+a rate limit. A layer of your own inside the retries can mark any response not to retry:
+`response.extensions_mut().insert(retry::Permanent)`.
 
 Without retries: `Client::from_service(ReqwestService::default())`, or build without the `retry` feature.
 
@@ -122,7 +161,8 @@ total timeout ends the stream; use a connect timeout instead, or none.
   `http.response.status_code`;
 - an event when the response arrives, with `status` and `elapsed_ms`: `DEBUG` below `500`, `WARN` for a `5xx` or a
   failure to send;
-- with `RetryPolicy`, a `DEBUG` event `retrying` with `attempt`, `max_retries`, `delay_ms` and `status`.
+- with `RetryPolicy`, a `DEBUG` event `retrying` with `attempt`, `max_retries`, `delay_ms` and `status`, and a
+  `DEBUG` event `not retrying: ...` for a `Retry-After` beyond `max_retry_after` or a permanent `429`.
 
 Headers and bodies are never logged. The target is `timvw_rust_runtime::trace`:
 
@@ -179,13 +219,13 @@ first), the reverse of chaining `Client::layer`:
 
 ```rust,no_run
 use std::time::Duration;
-use timvw_rust_runtime::retry::RetryPolicy;
+use timvw_rust_runtime::retry::RetryLayer;
 use timvw_rust_runtime::trace::TraceLayer;
 use timvw_rust_runtime::{Client, ReqwestService};
 
 let client = Client::from_service(ReqwestService::default()).layer(
     tower::ServiceBuilder::new()
-        .retry(RetryPolicy::default())
+        .layer(RetryLayer::default())
         .layer(TraceLayer::new())
         .timeout(Duration::from_secs(60)),
 );
@@ -328,18 +368,18 @@ whose replies differ, `serde_json::Value`), call the client directly: the same l
 ```rust,no_run
 use futures_util::StreamExt;
 use serde::Deserialize;
-use timvw_rust_runtime::{Client, Method};
+use timvw_rust_runtime::{Client, ExposeSecret, Method, SecretString};
 
 #[derive(Deserialize)]
 struct Delta {
     id: String,
 }
 
-async fn run(client: &Client, api_key: &str) -> Result<(), timvw_rust_runtime::Error> {
+async fn run(client: &Client, api_key: &SecretString) -> Result<(), timvw_rust_runtime::Error> {
     let request = serde_json::json!({"model": "some-model", "stream": true});
     let response = client
         .request(Method::POST, "https://api.example.com/v1/chat/completions")
-        .bearer_auth(api_key)
+        .bearer_auth(api_key.expose_secret())
         .json(&request)
         .send()
         .await?;
@@ -355,6 +395,63 @@ async fn run(client: &Client, api_key: &str) -> Result<(), timvw_rust_runtime::E
 `is_decode()` is true, and the stream goes on. `events()` alone gives each `sse::Event` undecoded (`event:`, `data:`,
 `id:`), and `sse::Decoder` is the parser, for a body read some other way. A generated client's typed event streams use
 the same parser.
+
+## Credentials
+
+A generated `Configuration` keeps its tokens, basic-auth password and api key in
+[`secrecy`](https://docs.rs/secrecy)'s `SecretString`, which this crate re-exports (`timvw_rust_runtime::secrecy`,
+`SecretString` and `ExposeSecret`). A `SecretString` is made from a `String` or a `&str`, its `Debug` is redacted,
+and it is zeroed when dropped. `bearer_auth`, `basic_auth` and `sensitive_header` take the exposed value and mark the
+header sensitive, so the `Debug` of the request's headers leaves it out:
+
+```rust
+use timvw_rust_runtime::{Client, ExposeSecret, Method, SecretString};
+
+let key = SecretString::from("sk-123");
+assert_eq!(format!("{key:?}"), "SecretBox<str>([REDACTED])");
+
+let request = Client::default()
+    .request(Method::GET, "https://api.example.com/v1/models")
+    .sensitive_header("x-api-key", key.expose_secret())
+    .build()?;
+assert!(request.headers()["x-api-key"].is_sensitive());
+assert!(!format!("{:?}", request.headers()).contains("sk-123"));
+# Ok::<(), timvw_rust_runtime::Error>(())
+```
+
+## Headers and query parameters for one call
+
+A layer changes every request. `RequestOptions` holds extra headers and query parameters for one call; every
+operation of a generated client takes it, `.options(&options)` on its builder, and `RequestBuilder::options` applies it
+to a request of your own:
+
+```rust,no_run
+use timvw_rust_runtime::{Client, Method, RequestOptions};
+
+async fn run(client: &Client) -> Result<(), timvw_rust_runtime::Error> {
+    let options = RequestOptions::new()
+        .header("x-request-source", "batch")?
+        .query(&[("trace", "1")])?;
+    // generated: items_api::list_items().configuration(&configuration).options(&options).call().await
+    let response = client
+        .request(Method::GET, "https://api.example.com/v1/items?limit=10")
+        .bearer_auth("secret")
+        .options(&options)
+        .send()
+        .await?; // GET /v1/items?limit=10&trace=1, with x-request-source: batch
+    Ok(())
+}
+```
+
+- A header of the options replaces every value the request has under its name, whatever set it: a generated header
+  parameter, `Authorization`, `Content-Type`, `Accept`. Generated clients apply the options last, after everything
+  else. `RequestOptions::header` sets one value (a second call for the same name replaces it); `headers` merges a
+  `HeaderMap`, keeping several values of one name.
+- Query parameters are appended after the request's own: a name the request already has is sent twice.
+- `header` and `query` check their input at once and return an `Error` whose `is_builder()` is true for an invalid
+  header name or value, or a query that is not a flat list of pairs.
+- The options do not change the path or the body. One value can be cloned, or reused for many calls.
+- A header value marked with `HeaderValue::set_sensitive` stays sensitive (hidden from `Debug` output).
 
 ## Errors
 
@@ -378,15 +475,15 @@ generated client turns it into `apis::Error::ResponseError`.
 | `rustls` | yes | reqwest with rustls, as `Client::default()` |
 | `native-tls` | no | reqwest with the platform's TLS |
 | `reqwest` | via `rustls` or `native-tls` | `ReqwestService`, `Client::from_reqwest` |
-| `retry` | yes | `retry::RetryPolicy` (sleeps with tokio), and retries in `Client::default()` |
+| `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with tokio), and retries in `Client::default()` |
 | `tracing` | no | `trace::TraceLayer`, and a log event per retry |
 
 A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names.
 
 ## What the generated code uses
 
-The generated functions build requests with `RequestBuilder` (`query`, `header`, `bearer_auth`, `basic_auth`, `json`,
-`form`, `body`, `multipart`, `build`) and read responses with `Response` (`status`, `headers`, `text`, `bytes`,
+The generated functions build requests with `RequestBuilder` (`query`, `header`, `sensitive_header`, `bearer_auth`,
+`basic_auth`, `json`, `form`, `body`, `multipart`, `options`, `build`) and read responses with `Response` (`status`, `headers`, `text`, `bytes`,
 `bytes_stream`): the methods of reqwest's types of the same names. `multipart::Form` encodes multipart bodies.
 
 ## License

@@ -50,9 +50,7 @@ impl Client {
     pub fn from_reqwest(client: reqwest::Client) -> Self {
         let client = Self::from_service(crate::ReqwestService::new(client));
         #[cfg(feature = "retry")]
-        let client = client.layer(tower::retry::RetryLayer::new(
-            crate::retry::RetryPolicy::default(),
-        ));
+        let client = client.layer(crate::retry::RetryLayer::default());
         client
     }
 

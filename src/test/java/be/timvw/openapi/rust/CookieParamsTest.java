@@ -63,7 +63,7 @@ class CookieParamsTest {
     void theArgumentsKeepTheirTypes() throws IOException {
         assertTrue(api().contains("pub async fn get_items(configuration: &configuration::Configuration, session: &str, "
                 + "theme: Option<&str>, at: Option<chrono::DateTime<chrono::FixedOffset>>, id: Option<uuid::Uuid>, "
-                + "tags: Option<Vec<String>>, ids: Option<Vec<String>>)"), api());
+                + "tags: Option<Vec<String>>, ids: Option<Vec<String>>, options: Option<&timvw_rust_runtime::RequestOptions>)"), api());
     }
 
     @Test
@@ -77,7 +77,7 @@ class CookieParamsTest {
                 "cookies.push(format!(\"ids={}\", items.iter().map(crate::apis::cookie_encode)"
                         + ".collect::<Vec<String>>().join(\",\")));",
                 "cookies.push(format!(\"api_token={}\", crate::apis::cookie_encode(value)));",
-                "req_builder = req_builder.header(timvw_rust_runtime::header::COOKIE, cookies.join(\"; \"));")) {
+                "req_builder = req_builder.sensitive_header(timvw_rust_runtime::header::COOKIE, cookies.join(\"; \"));")) {
             assertTrue(get.contains(push), push + " not in:\n" + get);
         }
         assertTrue(function("get_keyed").contains("api_token={}"), function("get_keyed"));

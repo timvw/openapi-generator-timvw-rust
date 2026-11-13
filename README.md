@@ -58,7 +58,7 @@ use my_client::apis::items_api;
 
 let mut configuration = Configuration::new();
 configuration.base_path = "https://api.example.com/v1".to_owned();
-configuration.bearer_access_token = Some("secret".to_owned());
+configuration.bearer_access_token = Some("secret".into());
 
 let page = items_api::list_items()
     .configuration(&configuration)
@@ -69,6 +69,11 @@ for item in &page.data {
     println!("{} {}", item.id, item.name);
 }
 ```
+
+The credentials (`bearer_access_token`, `oauth_access_token`, the password of `basic_auth`, the key of `api_key`) are
+`SecretString`s from [secrecy](https://docs.rs/secrecy): `Some("secret".into())` or `Some(SecretString::from(token))`
+sets one, `Debug` prints `[REDACTED]`, and the generated code reads them only to build the request
+([more](docs/guides/http-stack.md#credentials)).
 
 An optional argument has a setter for the value (`.limit(10)`) and a `maybe_` setter for an `Option`
 (`.maybe_limit(None)`). A request body is borrowed, so you keep it after the call:
@@ -103,10 +108,14 @@ let policy = RetryPolicy::new(5).max_delay(Duration::from_secs(30));
 configuration.client = Client::from_service(ReqwestService::default()).layer(RetryLayer::new(policy));
 ```
 
-`Configuration::new()` retries `429`, `408` and `5xx` responses and failed connections, honouring `Retry-After`
-(`RetryPolicy::default()`: 3 retries); the example retries more. The
+`Configuration::new()` retries `429`, `408` and `5xx` responses and failed connections, honouring `Retry-After` up to
+60 s and backing off with jitter otherwise (`RetryPolicy::default()`: 3 retries); the example retries more. A `429`
+whose body says it is permanent (OpenAI's `insufficient_quota`) is not retried with
+`timvw_rust_runtime::retry::RetryLayer::permanent_429`, an opt-in. The
 [runtime's guide](runtime/README.md) covers retries, timeouts, logging (`trace::TraceLayer`, feature `tracing`),
-headers and authentication layers, and rate limits. With
+headers and authentication layers, and rate limits. Headers and query parameters for one call go on its builder,
+`.options(&options)` with an `apis::RequestOptions`
+([guide](docs/guides/http-stack.md#headers-and-query-parameters-for-one-call)). With
 `httpStack=reqwest-middleware` the client is a `reqwest_middleware::ClientWithMiddleware` instead, as before 0.25.
 
 ### Models
@@ -198,6 +207,8 @@ Pass options with `--additional-properties=<name>=<value>,...` or in a `-c` conf
 | `httpStack` | `tower` | how requests are sent: `tower` through `timvw_rust_runtime::Client` (a tower service, reqwest by default); `reqwest-middleware` through reqwest and reqwest-middleware, as up to 0.24 ([guide](docs/guides/http-stack.md)) |
 | `runtimeVersion`, `runtimePath` | `0.1`, unset | with `httpStack=tower`: the `timvw-rust-runtime` version requirement, and a path dependency next to it to build against an unreleased runtime |
 | `reqwestDefaultFeatures` | `native-tls` | the crate's default features, passed on to reqwest (comma-separated, empty for none; with `httpStack=tower` the crate also has a default `retry` feature and a `tracing` feature). Several values only work in a `-c` config file, as a comma ends an `--additional-properties` value |
+| `apiFeatures` | `false` | a Cargo feature per tag (`vector-stores`, untagged `default-api`), each with a `-types` twin that compiles only its models, without the HTTP client; plus `types` and `full` (a default feature). Models, API modules and functions get `#[cfg(feature = ..)]` ([guide](docs/guides/api-features.md)) |
+| `apiFeaturesFile` | unset | with `apiFeatures` (implied): a YAML file naming groups of operations by `tags` and `paths` prefixes, in place of the tag features ([guide](docs/guides/api-features.md#groups-from-a-file-apifeaturesfile)) |
 | `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl` | unset | `Cargo.toml` `publish`, `repository`, `documentation`, `homepage` |
 | `bonBuilders` | `true` | `bon::Builder` on model structs and `#[bon::builder]` on API functions; `false` makes the functions take positional arguments ([rule](docs/mapping/schema.md#schemaproperties)) |
 | `userAgentFromPackage` | `false` | default user agent `<packageName>/<crate version>` |
@@ -310,6 +321,9 @@ dependencies the generator writes, which depend on the spec and the options:
 | `tokio` (`fs`), `tokio-util` (`codec`) (and reqwest's `stream` feature with `httpStack=reqwest-middleware`) | a file body, or a multipart file without `multipartHelper` |
 | `serde_path_to_error` | `useSerdePathToError` |
 
+With `apiFeatures`, the HTTP dependencies (`timvw-rust-runtime`, or `reqwest` and `reqwest-middleware`, and `tokio`,
+`tokio-util`) are `optional = true`, and the generated `[features]` section lists every group: copy both.
+
 The rule: on every upgrade of the generator (and every spec update), generate once into an empty directory and
 compare its `Cargo.toml` with yours.
 
@@ -319,6 +333,7 @@ compare its `Cargo.toml` with yours.
 | --- | --- |
 | [docs/guides/errors.md](docs/guides/errors.md) | the `Error` type, status variants, headers, text errors |
 | [docs/guides/validation.md](docs/guides/validation.md) | `validate()`: what it checks, what it skips, the off switch |
+| [docs/guides/api-features.md](docs/guides/api-features.md) | `apiFeatures`: a Cargo feature per API group, and types-only features |
 | [docs/guides/response-functions.md](docs/guides/response-functions.md) | `responseFunctions`: status, (typed) headers and partial decoding of a success |
 | [docs/guides/migration.md](docs/guides/migration.md) | upgrading from 0.21 and 0.20, and coming from stock `-g rust` |
 | [docs/mapping](docs/mapping/README.md) | what each OpenAPI construct becomes, as rules per specification object, each with its tests |

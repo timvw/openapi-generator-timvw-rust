@@ -68,7 +68,7 @@ class OperationMappingTest {
     void anOperationIsAnAsyncFunctionWithABuilder() throws IOException {
         String items = read("src/apis/items_api.rs");
         assertContains(items, "#[bon::builder]\npub async fn create_item(configuration: &configuration::Configuration, "
-                + "item: &models::Item) -> Result<models::Item, Error<CreateItemError>> {");
+                + "item: &models::Item, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<models::Item, Error<CreateItemError>> {");
     }
 
     @Test
@@ -76,7 +76,7 @@ class OperationMappingTest {
         assertContains(read("src/apis/items_api.rs"), "pub async fn get_item(configuration: &configuration::Configuration, "
                 + "item_id: &str, limit: Option<i32>, tag: Option<Vec<String>>, ids: Option<Vec<String>>, "
                 + "filter: Option<&str>, x_request_id: Option<&str>, x_flags: Option<Vec<String>>, "
-                + "session: Option<&str>, order: Option<&str>)");
+                + "session: Option<&str>, order: Option<&str>, options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     @Test
@@ -111,13 +111,13 @@ class OperationMappingTest {
         String get = function("items_api", "get_item");
         assertContains(get, "if let Some(ref param_value) = p_cookie_session {\n"
                 + "        cookies.push(format!(\"session={}\", crate::apis::cookie_encode(param_value)));");
-        assertContains(get, "req_builder = req_builder.header(timvw_rust_runtime::header::COOKIE, cookies.join(\"; \"));");
+        assertContains(get, "req_builder = req_builder.sensitive_header(timvw_rust_runtime::header::COOKIE, cookies.join(\"; \"));");
         assertFalse(function("items_api", "delete_item").contains("COOKIE"));
     }
 
     @Test
     void anInlineEnumParameterIsAString() throws IOException {
-        assertContains(function("items_api", "get_item"), "order: Option<&str>)");
+        assertContains(function("items_api", "get_item"), "order: Option<&str>, options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     @Test
@@ -129,7 +129,7 @@ class OperationMappingTest {
     void aFormBodyIsAnArgumentPerPropertySentWithForm() throws IOException {
         String login = function("default_api", "login");
         assertContains(login, "pub async fn login(configuration: &configuration::Configuration, user: &str, "
-                + "remember: Option<bool>) -> Result<String, Error<LoginError>> {");
+                + "remember: Option<bool>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<String, Error<LoginError>> {");
         assertContains(login, "req_builder = req_builder.form(&multipart_form_params);");
     }
 
@@ -176,15 +176,16 @@ class OperationMappingTest {
 
     @Test
     void eachOperationSendsTheCredentialsOfItsSecurity() throws IOException {
-        assertContains(function("items_api", "get_item"), "req_builder = req_builder.bearer_auth(token.to_owned());");
+        assertContains(function("items_api", "get_item"), "req_builder = req_builder.bearer_auth(timvw_rust_runtime::ExposeSecret::expose_secret(token));");
         String delete = function("items_api", "delete_item");
-        assertContains(delete, "req_builder.basic_auth(auth_conf.0.to_owned(), auth_conf.1.to_owned());");
+        assertContains(delete, "req_builder.basic_auth(&auth_conf.0, "
+                + "auth_conf.1.as_ref().map(timvw_rust_runtime::ExposeSecret::expose_secret));");
         assertFalse(delete.contains("bearer_auth"), delete);
-        assertContains(function("items_api", "create_item"), "req_builder = req_builder.header(\"X-Api-Key\", value);");
+        assertContains(function("items_api", "create_item"), "req_builder = req_builder.sensitive_header(\"X-Api-Key\", value);");
         assertContains(function("default_api", "login"), "if let Some(ref token) = configuration.oauth_access_token {");
         String configuration = read("src/apis/configuration.rs");
         assertContains(configuration, "pub basic_auth: Option<BasicAuth>,");
-        assertContains(configuration, "pub type BasicAuth = (String, Option<String>);");
+        assertContains(configuration, "pub type BasicAuth = (String, Option<SecretString>);");
         assertContains(configuration, "pub api_key: Option<ApiKey>,");
     }
 }

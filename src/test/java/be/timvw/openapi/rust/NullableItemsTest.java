@@ -99,11 +99,11 @@ class NullableItemsTest {
         String api = Files.readString(v30.resolve("src/apis/default_api.rs"));
         // nor in a urlencoded or multipart field, a file part included
         assertContains(api, "post_form(configuration: &configuration::Configuration, tags: Option<Vec<String>>, "
-                + "files: Option<Vec<std::path::PathBuf>>)");
-        assertContains(api, "put_form(configuration: &configuration::Configuration, tags: Option<Vec<String>>)");
+                + "files: Option<Vec<std::path::PathBuf>>, options: Option<&timvw_rust_runtime::RequestOptions>)");
+        assertContains(api, "put_form(configuration: &configuration::Configuration, tags: Option<Vec<String>>, options: Option<&timvw_rust_runtime::RequestOptions>)");
         // null has no spelling in a query string
-        assertContains(api, "ids: Option<Vec<String>>) -> Result<" + MAP + "Option<i64>>, Error<GetHolderError>>");
-        assertContains(api, "thing: &[Option<models::Thing>]) -> Result<models::Holder, Error<PostHolderError>>");
+        assertContains(api, "ids: Option<Vec<String>>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<" + MAP + "Option<i64>>, Error<GetHolderError>>");
+        assertContains(api, "thing: &[Option<models::Thing>], options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<models::Holder, Error<PostHolderError>>");
     }
 
     @Test

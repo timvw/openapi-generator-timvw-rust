@@ -10,7 +10,8 @@ is the [mapping](mapping/README.md).
 the plugin owns its Rust layer (0.20), and 0.21 renders the documented [mapping](mapping/README.md) with the changes
 of [decisions.md](decisions.md); 0.22 fixes types the JSON did not decode to and parameters typed as text; 0.23 adds typed response headers and fixes
 null-only schemas and doc links; 0.24 adds typed error headers and fixes webhooks, model name options and schema
-mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` crate (`httpStack`). The
+mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` crate (`httpStack`); 0.26 adds
+headers and query parameters per call. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
@@ -29,6 +30,17 @@ langfuse-client-base change where they set a token (see [migration](guides/migra
   `Authorization`, api-key and `Cookie` headers marked sensitive, through the runtime's new
   `RequestBuilder::sensitive_header`.
 - `httpStack=reqwest-middleware` renders 0.25's output: the credentials stay `String`s.
+
+### Per-call request options
+
+- With `httpStack=tower` and `bonBuilders`, every operation's builder takes `.options(&options)`, a
+  `timvw_rust_runtime::RequestOptions` (re-exported as `apis::RequestOptions`) with extra headers and query
+  parameters, as async-openai's `RequestOptions` (without its path override). The function applies them last, after
+  its parameters, authentication, `Content-Type` and `Accept`: each header replaces the request's values of that name,
+  the query parameters are appended. The `_response` twins and the methods of `contentTypeMethods` and
+  `typedEventStreams` take them too. An operation with a parameter named `options` names it `request_options`.
+- The runtime adds `RequestOptions` and `RequestBuilder::options`.
+- `httpStack=reqwest-middleware` and `bonBuilders=false` render 0.25's output.
 
 ## 0.25.0
 

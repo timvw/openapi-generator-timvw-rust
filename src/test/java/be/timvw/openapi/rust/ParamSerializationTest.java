@@ -111,7 +111,7 @@ class ParamSerializationTest {
 
     @Test
     void anArrayOfUuidsBodyIsNamedAfterThem() throws IOException {
-        assertContains(api(), "pub async fn post_ids(configuration: &configuration::Configuration, uuid: &[uuid::Uuid])");
+        assertContains(api(), "pub async fn post_ids(configuration: &configuration::Configuration, uuid: &[uuid::Uuid], options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     @Test

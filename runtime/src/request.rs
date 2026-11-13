@@ -7,7 +7,7 @@ use serde::Serialize;
 use url::Url;
 
 use crate::multipart::Form;
-use crate::{Body, Client, Error, Method, Response};
+use crate::{Body, Client, Error, Method, RequestOptions, Response};
 
 /// Builds a request, with the methods of reqwest's `RequestBuilder` that generated clients use.
 ///
@@ -176,6 +176,22 @@ impl RequestBuilder {
         })
     }
 
+    /// Applies the extra headers and query parameters of [`RequestOptions`]: each of its headers replaces every value
+    /// the request has under that name (call it last to override what was set before, as generated clients do), and
+    /// its query parameters are appended.
+    pub fn options(self, options: &RequestOptions) -> Self {
+        let query = options.query_pairs();
+        let this = if query.is_empty() {
+            self
+        } else {
+            self.query(query)
+        };
+        this.with(|parts| {
+            parts.headers.extend(options.header_map().clone());
+            Ok(())
+        })
+    }
+
     /// The request, or the first error of the steps that built it.
     pub fn build(self) -> Result<http::Request<Body>, Error> {
         let parts = self.request?;
@@ -298,6 +314,53 @@ mod tests {
         assert!(values[0].is_sensitive());
         assert!(!format!("{:?}", request.headers()).contains("sk-123"));
         assert_eq!(request.headers()[AUTHORIZATION], "Bearer sk-123");
+    }
+
+    #[test]
+    fn options_override_headers_and_append_query() {
+        let mut tags = HeaderMap::new();
+        tags.append("x-tag", HeaderValue::from_static("a"));
+        tags.append("x-tag", HeaderValue::from_static("b"));
+        let options = RequestOptions::new()
+            .header("x-generated", "from-options")
+            .unwrap()
+            .header(AUTHORIZATION, "Bearer other")
+            .unwrap()
+            .headers(tags)
+            .query(&[("b", "2"), ("a", "3")])
+            .unwrap();
+        let request = builder("https://example.com/items?a=1")
+            .header("x-generated", "one")
+            .header("x-generated", "two")
+            .header("x-kept", "kept")
+            .header("x-tag", "generated")
+            .bearer_auth("secret")
+            .options(&options)
+            .build()
+            .unwrap();
+        let headers = request.headers();
+        assert_eq!(
+            headers.get_all("x-generated").iter().collect::<Vec<_>>(),
+            ["from-options"]
+        );
+        assert_eq!(headers["x-kept"], "kept");
+        assert_eq!(
+            headers.get_all("x-tag").iter().collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert_eq!(headers[AUTHORIZATION], "Bearer other");
+        assert_eq!(request.uri(), "https://example.com/items?a=1&b=2&a=3");
+    }
+
+    #[test]
+    fn empty_options_change_nothing() {
+        let request = builder("https://example.com/items")
+            .header("x-kept", "kept")
+            .options(&RequestOptions::new())
+            .build()
+            .unwrap();
+        assert_eq!(request.uri(), "https://example.com/items");
+        assert_eq!(request.headers().len(), 1);
     }
 
     #[test]

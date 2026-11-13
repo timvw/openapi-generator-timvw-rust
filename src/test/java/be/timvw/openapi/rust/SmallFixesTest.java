@@ -151,7 +151,7 @@ class SmallFixesTest {
     void withoutTypedEventStreamsNoMethodReturnsAStream() throws IOException, InterruptedException {
         String api = Files.readString(streamWithoutTyped.resolve("src/apis/default_api.rs"));
         assertContains(api, "pub async fn create_events_form(configuration: &configuration::Configuration, "
-                + "name: Option<&str>) -> Result<models::Event, Error<CreateEventsError>> {");
+                + "name: Option<&str>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<models::Event, Error<CreateEventsError>> {");
         assertFalse(api.contains("sse::"), api);
         assertFalse(Files.exists(streamWithoutTyped.resolve("src/apis/sse.rs")));
         assertClippyClean(streamWithoutTyped);
@@ -166,11 +166,11 @@ class SmallFixesTest {
     void anEnvelopeStreamGetsNoStreamInAnyMethod() throws IOException, InterruptedException {
         String api = Files.readString(streamTyped.resolve("src/apis/default_api.rs"));
         assertContains(api, "pub async fn create_envelopes_form(configuration: &configuration::Configuration, "
-                + "name: Option<&str>) -> Result<models::Envelope, Error<CreateEnvelopesError>> {");
+                + "name: Option<&str>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<models::Envelope, Error<CreateEnvelopesError>> {");
         assertContains(api, "pub async fn create_envelopes(configuration: &configuration::Configuration, "
-                + "req: &models::Req) -> Result<models::Envelope, Error<CreateEnvelopesError>> {");
+                + "req: &models::Req, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<models::Envelope, Error<CreateEnvelopesError>> {");
         assertContains(api, "pub async fn create_events_form(configuration: &configuration::Configuration, "
-                + "name: Option<&str>) -> Result<super::sse::EventStream<models::Event, CreateEventsError>, "
+                + "name: Option<&str>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<super::sse::EventStream<models::Event, CreateEventsError>, "
                 + "Error<CreateEventsError>> {");
         assertClippyClean(streamTyped);
     }

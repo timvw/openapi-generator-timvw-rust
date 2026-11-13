@@ -520,6 +520,44 @@ mod http_stack {
     }
 }
 
+/// docs/guides/http-stack.md
+mod http_stack_options {
+    use super::*;
+
+    #[tokio::test]
+    async fn headers_and_query_parameters_for_one_call() -> Result<(), BoxError> {
+        use timvw_rust_runtime::{http, Body, Client};
+
+        let mut configuration = Configuration::new();
+        configuration.client = Client::from_service(timvw_rust_runtime::tower::service_fn(
+            |request: http::Request<Body>| async move {
+                assert_eq!(request.headers()["x-request-source"], "batch");
+                assert_eq!(request.uri().query(), Some("limit=10&trace=1"));
+                let page = r#"{"data":[],"has_more":false}"#;
+                Ok::<_, timvw_rust_runtime::BoxError>(
+                    http::Response::builder()
+                        .header("content-type", "application/json")
+                        .body(Body::from(page))?,
+                )
+            },
+        ));
+
+        use my_client::apis::RequestOptions;
+
+        let options = RequestOptions::new()
+            .header("x-request-source", "batch")? // replaces a generated header of that name
+            .query(&[("trace", "1")])?; // after the generated query
+        let page = items_api::list_items()
+            .configuration(&configuration)
+            .limit(10)
+            .options(&options)
+            .call()
+            .await?;
+        assert!(page.data.is_empty());
+        Ok(())
+    }
+}
+
 /// docs/guides/migration.md
 mod migration {
     use super::*;

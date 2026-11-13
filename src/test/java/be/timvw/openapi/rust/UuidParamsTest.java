@@ -83,11 +83,11 @@ class UuidParamsTest {
         assertTrue(api.contains("pub async fn get_item(configuration: &configuration::Configuration, id: uuid::Uuid, "
                 + "ids: Vec<uuid::Uuid>, owner: uuid::Uuid, before: Option<uuid::Uuid>, tags: Vec<uuid::Uuid>, "
                 + "x_request_id: uuid::Uuid, parent: Option<uuid::Uuid>, tags_csv: Option<Vec<uuid::Uuid>>, "
-                + "x_trace_id: Option<uuid::Uuid>, x_span_ids: Option<Vec<uuid::Uuid>>)"), api);
+                + "x_trace_id: Option<uuid::Uuid>, x_span_ids: Option<Vec<uuid::Uuid>>, options: Option<&timvw_rust_runtime::RequestOptions>)"), api);
         assertTrue(api.contains("pub async fn post_form(configuration: &configuration::Configuration, "
-                + "id: uuid::Uuid, parent: Option<uuid::Uuid>, ids: Option<Vec<uuid::Uuid>>)"), api);
+                + "id: uuid::Uuid, parent: Option<uuid::Uuid>, ids: Option<Vec<uuid::Uuid>>, options: Option<&timvw_rust_runtime::RequestOptions>)"), api);
         assertTrue(api.contains("pub async fn post_upload(configuration: &configuration::Configuration, "
-                + "id: uuid::Uuid, parent: Option<uuid::Uuid>)"), api);
+                + "id: uuid::Uuid, parent: Option<uuid::Uuid>, options: Option<&timvw_rust_runtime::RequestOptions>)"), api);
         assertFalse(api.contains(": &str") || api.contains("Option<&str>"), api);
     }
 

@@ -68,7 +68,7 @@ class OperationMappingTest {
     void anOperationIsAnAsyncFunctionWithABuilder() throws IOException {
         String items = read("src/apis/items_api.rs");
         assertContains(items, "#[bon::builder]\npub async fn create_item(configuration: &configuration::Configuration, "
-                + "item: &models::Item) -> Result<models::Item, Error<CreateItemError>> {");
+                + "item: &models::Item, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<models::Item, Error<CreateItemError>> {");
     }
 
     @Test
@@ -76,7 +76,7 @@ class OperationMappingTest {
         assertContains(read("src/apis/items_api.rs"), "pub async fn get_item(configuration: &configuration::Configuration, "
                 + "item_id: &str, limit: Option<i32>, tag: Option<Vec<String>>, ids: Option<Vec<String>>, "
                 + "filter: Option<&str>, x_request_id: Option<&str>, x_flags: Option<Vec<String>>, "
-                + "session: Option<&str>, order: Option<&str>)");
+                + "session: Option<&str>, order: Option<&str>, options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     @Test
@@ -117,7 +117,7 @@ class OperationMappingTest {
 
     @Test
     void anInlineEnumParameterIsAString() throws IOException {
-        assertContains(function("items_api", "get_item"), "order: Option<&str>)");
+        assertContains(function("items_api", "get_item"), "order: Option<&str>, options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     @Test
@@ -129,7 +129,7 @@ class OperationMappingTest {
     void aFormBodyIsAnArgumentPerPropertySentWithForm() throws IOException {
         String login = function("default_api", "login");
         assertContains(login, "pub async fn login(configuration: &configuration::Configuration, user: &str, "
-                + "remember: Option<bool>) -> Result<String, Error<LoginError>> {");
+                + "remember: Option<bool>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<String, Error<LoginError>> {");
         assertContains(login, "req_builder = req_builder.form(&multipart_form_params);");
     }
 

@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the crate root): generated clients keep their credentials in `SecretString`s.
 - `RequestBuilder::sensitive_header`: sets a header, replacing an earlier value, and marks it sensitive, as
   `bearer_auth` and `basic_auth` do. Generated clients send an api key and the `Cookie` header with it.
+- `RequestOptions`: extra headers and query parameters for one call (`header`, `headers`, `query`), and
+  `RequestBuilder::options` to apply them: each header replaces the request's values of that name, the query
+  parameters are appended. Generated clients (`httpStack=tower`) take them on every operation's builder,
+  `.options(&options)`, and apply them after the headers, query and authentication they set.
 
 ### Changed
 

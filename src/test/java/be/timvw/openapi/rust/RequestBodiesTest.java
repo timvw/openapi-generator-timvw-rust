@@ -62,48 +62,48 @@ class RequestBodiesTest {
     @Test
     void aModelBodyIsBorrowedAndSentAsIs() throws IOException {
         String create = function("create_item");
-        assertContains(create, "create_item(configuration: &configuration::Configuration, item: &models::Item)");
+        assertContains(create, "create_item(configuration: &configuration::Configuration, item: &models::Item, options: Option<&timvw_rust_runtime::RequestOptions>)");
         assertContains(create, "req_builder = req_builder.json(p_body_item);");
     }
 
     @Test
     void anOptionalBodyIsAnOptionalReference() throws IOException {
         String update = function("update_item");
-        assertContains(update, "update_item(configuration: &configuration::Configuration, item: Option<&models::Item>)");
+        assertContains(update, "update_item(configuration: &configuration::Configuration, item: Option<&models::Item>, options: Option<&timvw_rust_runtime::RequestOptions>)");
         assertContains(update, "req_builder = req_builder.json(&p_body_item);");
     }
 
     @Test
     void anArrayBodyIsASlice() throws IOException {
         assertContains(function("create_items"),
-                "create_items(configuration: &configuration::Configuration, item: &[models::Item])");
+                "create_items(configuration: &configuration::Configuration, item: &[models::Item], options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     @Test
     void aMapAndAnyValueAreBorrowed() throws IOException {
-        assertContains(function("set_labels"), "request_body: &std::collections::HashMap<String, String>)");
-        assertContains(function("send_anything"), "body: Option<&serde_json::Value>)");
+        assertContains(function("set_labels"), "request_body: &std::collections::HashMap<String, String>, options: Option<&timvw_rust_runtime::RequestOptions>)");
+        assertContains(function("send_anything"), "body: Option<&serde_json::Value>, options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     @Test
     void anArrayOfNumbersIsASliceToo() throws IOException {
-        assertContains(function("set_counts"), "request_body: &[i64])");
+        assertContains(function("set_counts"), "request_body: &[i64], options: Option<&timvw_rust_runtime::RequestOptions>)");
         assertContains(function("set_counts"), "req_builder = req_builder.json(p_body_request_body);");
     }
 
     @Test
     void aUnionIsBorrowedAndANullBranchMakesItOptional() throws IOException {
-        assertContains(function("send_shape"), "shape: &models::Shape)");
-        assertContains(function("send_maybe_item"), "item: Option<&models::Item>)");
+        assertContains(function("send_shape"), "shape: &models::Shape, options: Option<&timvw_rust_runtime::RequestOptions>)");
+        assertContains(function("send_maybe_item"), "item: Option<&models::Item>, options: Option<&timvw_rust_runtime::RequestOptions>)");
         assertContains(function("send_maybe_item"), "req_builder = req_builder.json(&p_body_item);");
     }
 
     @Test
     void datesStayByValueAndStringTypedBodiesAreStr() throws IOException {
-        assertContains(function("set_when"), "body: chrono::DateTime<chrono::FixedOffset>)");
-        assertContains(function("set_day"), "body: chrono::NaiveDate)");
-        assertContains(function("set_color"), "body: &str)");
-        assertContains(function("set_blob"), "body: &str)");
+        assertContains(function("set_when"), "body: chrono::DateTime<chrono::FixedOffset>, options: Option<&timvw_rust_runtime::RequestOptions>)");
+        assertContains(function("set_day"), "body: chrono::NaiveDate, options: Option<&timvw_rust_runtime::RequestOptions>)");
+        assertContains(function("set_color"), "body: &str, options: Option<&timvw_rust_runtime::RequestOptions>)");
+        assertContains(function("set_blob"), "body: &str, options: Option<&timvw_rust_runtime::RequestOptions>)");
         // Both are String, not isString: borrowed by this rule (they were `body: String`), so sent without a second &.
         assertContains(function("set_color"), "req_builder = req_builder.json(p_body_body);");
         assertContains(function("set_blob"), "req_builder = req_builder.json(p_body_body);");
@@ -113,15 +113,15 @@ class RequestBodiesTest {
     void aWebhookBodyIsBorrowedToo() throws IOException {
         String hooks = Files.readString(out.resolve("src/apis/hooks_api.rs"));
         assertContains(hooks, "item_created_post(configuration: &configuration::Configuration, "
-                + "item: Option<&models::Item>)");
+                + "item: Option<&models::Item>, options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     @Test
     void numbersStringsAndFilesKeepTheirType() throws IOException {
-        assertContains(function("set_count"), "body: i64)");
+        assertContains(function("set_count"), "body: i64, options: Option<&timvw_rust_runtime::RequestOptions>)");
         assertContains(function("set_count"), "req_builder = req_builder.json(&p_body_body);");
-        assertContains(function("set_name"), "body: &str)");
-        assertContains(function("upload"), "body: std::path::PathBuf)");
+        assertContains(function("set_name"), "body: &str, options: Option<&timvw_rust_runtime::RequestOptions>)");
+        assertContains(function("upload"), "body: std::path::PathBuf, options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     /** Runs src/test/rust/request_bodies.rs and clippy on the generated crate. Needs cargo. */

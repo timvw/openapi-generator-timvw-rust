@@ -1,0 +1,90 @@
+openapi: 3.0.3
+info:
+  title: Request options
+  version: 1.0.0
+# Per-call RequestOptions (httpStack=tower): a JSON body with a header and a query parameter and bearer auth
+# (createItem), its multipart method (contentTypeMethods: createItem_multipart), an operation with a typed event
+# stream (createChat, createChat_stream), and an operation whose own parameter is named `options` (search).
+security:
+  - bearer: []
+paths:
+  /items:
+    post:
+      operationId: createItem
+      parameters:
+        - name: X-Trace
+          in: header
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: The item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+  /chat:
+    post:
+      operationId: createChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+      responses:
+        '200':
+          description: The answer, or its chunks when streamed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chunk'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/Chunk'
+  /search:
+    get:
+      operationId: search
+      parameters:
+        - name: options
+          in: query
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Nothing
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  schemas:
+    Item:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    Chunk:
+      type: object
+      required: [delta]
+      properties:
+        delta:
+          type: string

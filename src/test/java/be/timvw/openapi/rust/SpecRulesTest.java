@@ -171,7 +171,7 @@ class SpecRulesTest {
         String api = read("src/apis/default_api.rs");
         assertTrue(api.contains("metadata: Option<&str>,"), api);
         assertTrue(api.contains("filter: Option<std::collections::HashMap<String, String>>,"), api);
-        assertTrue(api.contains("ids: Option<Vec<String>>)"), api);
+        assertTrue(api.contains("ids: Option<Vec<String>>, options: Option<&timvw_rust_runtime::RequestOptions>)"), api);
         // style reset to form/explode: arrays go as repeated parameters.
         assertTrue(api.contains("req_builder = req_builder.query(&[(\"ids\", item)]);"), api);
         assertFalse(api.contains("items.join("), api);

@@ -634,6 +634,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
             // `From<PathBuf>` for the unions: Upload::path.
             additionalProperties.put(UploadParams.RUNTIME_FS, true);
         }
+        if (httpStackTower && UploadParams.markModels(objs, unions, additionalProperties)) {
+            // A path converts into the upload of a field (Upload::path).
+            additionalProperties.put(UploadParams.RUNTIME_FS, true);
+        }
         anyDispatch = counts.explicit() + counts.implicit() > 0;
         LOGGER.info("{}: union dispatch: {} tagged ({} by a discriminator, {} implicitly), {} untagged; {} have a value "
                         + "on two variants, {} allow the tag to be missing", GENERATOR_NAME,
@@ -1248,7 +1252,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (objs.get("models") instanceof List) {
             for (Object m : (List<?>) objs.get("models")) {
                 if (m instanceof ModelMap && ((ModelMap) m).getModel() != null
-                        && ((ModelMap) m).getModel().vendorExtensions.containsKey(UploadParams.FILE_UNION)) {
+                        && (((ModelMap) m).getModel().vendorExtensions.containsKey(UploadParams.FILE_UNION)
+                        || ((ModelMap) m).getModel().vendorExtensions.containsKey(UploadParams.UPLOAD_MODEL))) {
                     SortedSet<String> f = plan.models.get(((ModelMap) m).getModel().name);
                     if (f == null || f.isEmpty()) {
                         uploadFeatures.add(ApiFeatures.TYPES);

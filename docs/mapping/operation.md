@@ -14,7 +14,8 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | --- | --- |
 | OpenAPI | an operation's first tag |
 | Rust | a module per tag, `src/apis/<tag>_api.rs` (`items_api`), declared in `src/apis/mod.rs`; operations without a tag are in `default_api` |
-| Tests | [`OperationMappingTest#aTagIsAModuleAndUntaggedOperationsAreInDefaultApi`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L60) |
+| Options | `apiFeatures` gives each tag a Cargo feature (`<tag>`, `<tag>-types`) gating its module and models; `apiFeaturesFile` groups operations by tags and path prefixes, gating functions one by one in a module a group takes part of ([guide](../guides/api-features.md)) |
+| Tests | [`OperationMappingTest#aTagIsAModuleAndUntaggedOperationsAreInDefaultApi`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L60), [`ApiFeaturesTest#oneFeaturePerTag`](../../src/test/java/be/timvw/openapi/rust/ApiFeaturesTest.java#L90), [`ApiFeaturesTest#groupsFromAFile`](../../src/test/java/be/timvw/openapi/rust/ApiFeaturesTest.java#L133) |
 
 ### `operation.operationId`
 

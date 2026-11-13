@@ -1,6 +1,12 @@
 {{#models}}
 {{#model}}
+{{#vendorExtensions.x-rust-model-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-model-cfg}}
 pub mod {{{classFilename}}};
+{{#vendorExtensions.x-rust-model-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-model-cfg}}
 pub use self::{{{classFilename}}}::{{{classname}}};
 {{/model}}
 {{/models}}

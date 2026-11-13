@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Upload::name` and `Upload::media_type`: the file name and media type an upload is sent with (set, or taken from a
+  path).
+
 - `ProviderLayer` (`provider::ProviderLayer`): sends requests to another provider of the same API. It replaces the
   base URL (the provider's own, or a generated base declared with `rewrite_from`) keeping the rest of the path and the
   query, rewrites the path with `map_path`, and sets headers (`header`, `sensitive_header`, `headers`) and query

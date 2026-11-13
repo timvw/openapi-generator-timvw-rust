@@ -192,3 +192,20 @@ async fn save_to_writes_the_whole_body() {
     tokio::io::copy(&mut reader, &mut copy).await.unwrap();
     assert_eq!(copy, contents.as_bytes());
 }
+
+#[test]
+fn an_upload_tells_its_name_and_media_type() {
+    use timvw_rust_runtime::Upload;
+    let bytes = Upload::bytes(b"abc".to_vec());
+    assert_eq!(bytes.name(), None);
+    assert_eq!(bytes.media_type(), None);
+    let named = bytes.file_name("notes.txt").mime("text/plain");
+    assert_eq!(named.name(), Some("notes.txt"));
+    assert_eq!(named.media_type(), Some("text/plain"));
+    #[cfg(feature = "fs")]
+    {
+        let path = Upload::path("/tmp/photo.png");
+        assert_eq!(path.name(), Some("photo.png"));
+        assert_eq!(path.media_type(), Some("image/png"));
+    }
+}

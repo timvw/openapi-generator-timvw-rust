@@ -131,6 +131,17 @@ impl Upload {
         self
     }
 
+    /// The file name: the one set with [`Upload::file_name`], or a path's last component. `None` for bytes, readers
+    /// and streams without one.
+    pub fn name(&self) -> Option<&str> {
+        self.file_name.as_deref()
+    }
+
+    /// The media type: the one set with [`Upload::mime`], or guessed from a path's extension.
+    pub fn media_type(&self) -> Option<&str> {
+        self.mime.as_deref()
+    }
+
     /// Sets the length of the source in bytes, for a stream or a reader: the body is then sent with a
     /// `Content-Length`, and the stream must have exactly that many bytes.
     pub fn len(mut self, len: u64) -> Self {

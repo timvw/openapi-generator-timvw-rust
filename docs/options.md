@@ -115,7 +115,9 @@ Tests: [`ErrorsAndLintsTest`](../src/test/java/be/timvw/openapi/rust/ErrorsAndLi
 
 ### `runtimeVersion`
 
-string, default `0.4` (the runtime release this generator renders for, `DEFAULT_RUNTIME_VERSION`). The version
+string, default: the runtime release this generator was built for (`DEFAULT_RUNTIME_VERSION` in
+[`TimvwRustCodegen.java`](../src/main/java/be/timvw/openapi/rust/TimvwRustCodegen.java); the
+[crates.io badge](https://crates.io/crates/timvw-rust-runtime) shows the current release). The version
 requirement of `timvw-rust-runtime` in `Cargo.toml`, written as `^<value>`. Every generated client sends through
 `timvw_rust_runtime::Client`, a tower service (reqwest unless replaced) from
 [`timvw-rust-runtime`](../runtime/README.md), with retries by default, `SecretString` credentials, per-call
@@ -123,12 +125,13 @@ requirement of `timvw-rust-runtime` in `Cargo.toml`, written as `^<value>`. Ever
 client with `cargo update`; set it only to require a newer patch release.
 
 ```bash
---additional-properties=runtimeVersion=0.4.1
+# for example, to require a patch release (use a release of the runtime this generator was built for)
+--additional-properties=runtimeVersion=X.Y.Z
 ```
 
 ```toml
-# Cargo.toml with the default
-timvw-rust-runtime = { version = "^0.4", default-features = false }
+# Cargo.toml: <runtimeVersion> is the value of the option (the default unless set)
+timvw-rust-runtime = { version = "^<runtimeVersion>", default-features = false }
 ```
 
 Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java) (`theRuntimeVersionAndPathAreOptions`, `theDefaultRuntimeVersionIsTheRuntimeCrates`).
@@ -143,7 +146,7 @@ string, unset by default. A path dependency on `timvw-rust-runtime` next to the 
 ```
 
 ```toml
-timvw-rust-runtime = { version = "^0.4", default-features = false, path = "../openapi-generator-timvw-rust/runtime" }
+timvw-rust-runtime = { version = "^<runtimeVersion>", default-features = false, path = "../openapi-generator-timvw-rust/runtime" }
 ```
 
 Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java) (`theRuntimeVersionAndPathAreOptions`).

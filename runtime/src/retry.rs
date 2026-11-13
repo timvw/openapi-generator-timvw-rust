@@ -49,6 +49,8 @@ pub const DEFAULT_BODY_LIMIT: usize = 64 * 1024;
 /// - Without those headers it backs off exponentially from [`RetryPolicy::base_delay`] (200 ms), doubling on each retry
 ///   up to [`RetryPolicy::max_delay`] (8 s), with jitter: each delay is picked at random between half and all of it, so
 ///   that clients that failed together do not retry together. [`RetryPolicy::jitter`] turns that off.
+/// - A request that timed out (a [`TimeoutLayer`](crate::timeout::TimeoutLayer) inside the retries, or a reqwest
+///   timeout) is retried only with [`RetryPolicy::retry_timeouts`]: it may have reached the server.
 /// - It never retries a response marked [`Permanent`] (see [`RetryLayer::permanent_429`]), nor a request whose body is
 ///   a stream (a streamed file upload), which cannot be sent again.
 #[derive(Clone, Debug)]
@@ -60,6 +62,7 @@ pub struct RetryPolicy {
     max_retry_after: Duration,
     jitter: bool,
     server_directed_429: bool,
+    retry_timeouts: bool,
 }
 
 impl RetryPolicy {
@@ -73,6 +76,7 @@ impl RetryPolicy {
             max_retry_after: Duration::from_secs(60),
             jitter: true,
             server_directed_429: false,
+            retry_timeouts: false,
         }
     }
 
@@ -110,6 +114,15 @@ impl RetryPolicy {
     /// limit), and with it when it will. `408`, `5xx` and connect failures are retried either way.
     pub fn server_directed_429(mut self, server_directed: bool) -> Self {
         self.server_directed_429 = server_directed;
+        self
+    }
+
+    /// Whether a request that timed out is retried (default `false`), like a failure to connect: with a
+    /// [`TimeoutLayer`](crate::timeout::TimeoutLayer) inside the retries, an attempt that takes too long is given up
+    /// and tried again. A request that timed out may have reached the server, so turn this on for requests that are
+    /// safe to repeat (or that the API deduplicates, with an idempotency key).
+    pub fn retry_timeouts(mut self, retry: bool) -> Self {
+        self.retry_timeouts = retry;
         self
     }
 
@@ -198,6 +211,7 @@ impl Clocks {
 fn retryable<B>(
     result: &Result<http::Response<B>, BoxError>,
     server_directed_429: bool,
+    retry_timeouts: bool,
 ) -> Option<Option<Instant>> {
     match result {
         Ok(response) => {
@@ -222,7 +236,9 @@ fn retryable<B>(
             }
             Some(deadline)
         }
-        Err(error) => is_connect(error.as_ref()).then_some(None),
+        Err(error) => (is_connect(error.as_ref())
+            || (retry_timeouts && crate::error::is_timeout(error.as_ref())))
+        .then_some(None),
     }
 }
 
@@ -279,7 +295,7 @@ impl<B> Policy<http::Request<Body>, http::Response<B>, BoxError> for RetryPolicy
         if self.attempts >= self.max_retries {
             return None;
         }
-        let retry_after = retryable(result, self.server_directed_429)?;
+        let retry_after = retryable(result, self.server_directed_429, self.retry_timeouts)?;
         let now = Instant::now();
         let Some(deadline) = self.deadline(retry_after, now) else {
             #[cfg(feature = "tracing")]
@@ -553,7 +569,7 @@ mod tests {
         server_directed_429: bool,
     ) -> Option<Option<Duration>> {
         let now = Instant::now();
-        retryable(result, server_directed_429)
+        retryable(result, server_directed_429, false)
             .map(|deadline| deadline.map(|deadline| deadline.saturating_duration_since(now)))
     }
 

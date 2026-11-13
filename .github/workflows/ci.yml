@@ -122,6 +122,14 @@ jobs:
       - name: Every feature on its own
         run: cargo hack check --each-feature --no-dev-deps
 
+      # The docs build with any feature set: a link to an item a feature leaves out is a broken intra-doc link.
+      - name: docs (no default features, each feature, all features)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo doc --no-deps --no-default-features
+          cargo hack doc --no-deps --each-feature
+
       - name: Package
         run: cargo publish --dry-run
 
@@ -153,6 +161,11 @@ jobs:
 
       - name: Every feature on its own (wasm32-unknown-unknown)
         run: cargo hack check --target wasm32-unknown-unknown --each-feature --no-dev-deps
+
+      - name: docs (wasm32-unknown-unknown, each feature and all features)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo hack doc --no-deps --target wasm32-unknown-unknown --each-feature
 
       - name: wasm-bindgen version
         id: wasm-bindgen

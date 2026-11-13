@@ -29,6 +29,8 @@ mod response;
 pub mod retry;
 pub mod sse;
 #[cfg(feature = "time")]
+pub mod timeout;
+#[cfg(feature = "time")]
 mod timer;
 #[cfg(feature = "tracing")]
 pub mod trace;

@@ -45,9 +45,14 @@ pub struct Client {
 }
 
 impl Client {
-    /// A client that sends with a new `reqwest::Client`, retrying with [`RetryPolicy::default`] (feature `retry`).
-    ///
-    /// [`RetryPolicy::default`]: crate::retry::RetryPolicy
+    #[cfg_attr(
+        feature = "retry",
+        doc = "A client that sends with a new `reqwest::Client`, retrying with [`RetryPolicy::default`](crate::retry::RetryPolicy) (feature `retry`)."
+    )]
+    #[cfg_attr(
+        not(feature = "retry"),
+        doc = "A client that sends with a new `reqwest::Client`, retrying with `RetryPolicy::default` (feature `retry`)."
+    )]
     #[cfg(feature = "reqwest")]
     pub fn new() -> Self {
         Self::from_reqwest(reqwest::Client::new())
@@ -131,8 +136,15 @@ impl Client {
     }
 }
 
-/// With feature `reqwest` [`Client::new`]: reqwest, with retries when feature `retry` is on; without it a client whose every request fails, to be
-/// replaced with [`Client::from_service`].
+#[cfg_attr(
+    feature = "reqwest",
+    doc = "With feature `reqwest` [`Client::new`]: reqwest, with retries when feature `retry` is on; without it a client"
+)]
+#[cfg_attr(
+    not(feature = "reqwest"),
+    doc = "With feature `reqwest` `Client::new`: reqwest, with retries when feature `retry` is on; without it a client"
+)]
+/// whose every request fails, to be replaced with [`Client::from_service`].
 impl Default for Client {
     fn default() -> Self {
         #[cfg(feature = "reqwest")]

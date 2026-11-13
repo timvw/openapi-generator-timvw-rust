@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-13
+
+### Added
+
+- `timeout::TimeoutLayer` (feature `time`): fails a request whose response does not arrive within a time limit, with an
+  `Error` whose `is_timeout()` is true. It waits with the crate's timer, tokio's natively and the host's `setTimeout`
+  on WebAssembly, where `fetch` has no timeout and tower's `TimeoutLayer` does not work. Outside `RetryLayer` it bounds
+  the whole call, inside it each attempt. Opt-in: clients still have no timeout by default.
+- `RetryPolicy::retry_timeouts` (default `false`): retry a request that timed out (a `TimeoutLayer` inside the
+  retries, tower's, or a reqwest timeout), like a failure to connect.
+- `impl PartialEq for Upload`: equal bytes, the same path, or the same stream or `from_fn` function (an upload and its
+  clones), with the same file name, media type, length, slice and `buffer_for_retry` limit. Generated multipart unions
+  with a file variant hold an `Upload` and derive `PartialEq`.
+
+### Fixed
+
+- The docs build with any features and on any target (`cargo doc --no-default-features`, WebAssembly): links to items
+  a feature set or target leaves out are plain text there.
+
 ## [0.3.0] - 2026-11-13
 
 ### Added

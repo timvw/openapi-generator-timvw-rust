@@ -30,9 +30,9 @@ A generated client keeps its `Client` in `Configuration.client`, which starts as
 
 ```rust,no_run
 use std::time::Duration;
+use timvw_rust_runtime::timeout::TimeoutLayer;
 use timvw_rust_runtime::trace::TraceLayer;
 use timvw_rust_runtime::Client;
-use tower::timeout::TimeoutLayer;
 
 let client = Client::default() // reqwest, with retries
     .layer(TraceLayer::new()) // logs each call, and each retry
@@ -50,14 +50,14 @@ build the stack from the bare service, `Client::from_service(ReqwestService::def
 ```rust,no_run
 use std::time::Duration;
 use timvw_rust_runtime::retry::{RetryLayer, RetryPolicy};
+use timvw_rust_runtime::timeout::TimeoutLayer;
 use timvw_rust_runtime::trace::TraceLayer;
 use timvw_rust_runtime::{Client, ReqwestService};
-use tower::timeout::TimeoutLayer;
 
 let client = Client::from_service(ReqwestService::default()) // reqwest, no retries
     .layer(TimeoutLayer::new(Duration::from_secs(60))) // each attempt
     .layer(TraceLayer::new()) // logs each attempt
-    .layer(RetryLayer::new(RetryPolicy::default())); // retries
+    .layer(RetryLayer::new(RetryPolicy::default().retry_timeouts(true))); // retries, a timed-out attempt too
 ```
 
 A `Client` is cheap to clone, and clones share their layers' state (a rate limit, a token cache).
@@ -152,8 +152,10 @@ and `clone_request`. `Body::try_clone` clones a body held in memory.
 
 ## Timeouts
 
-`tower::timeout::TimeoutLayer` fails a request that takes too long. Where it sits decides what it bounds (see
-[Quick start](#quick-start)). A timeout is an `Error` whose `is_timeout()` is true:
+A client has no timeout until you add one. `timeout::TimeoutLayer` (feature `time`, on with `retry`) fails a request
+whose response (its status and headers) does not arrive in time; reading the body is not part of it. It waits with
+tokio's timer natively and the host's `setTimeout` on [WebAssembly](#webassembly), where `fetch` has no timeout of its
+own and tower's `TimeoutLayer` (tokio's timer) does not work. A timeout is an `Error` whose `is_timeout()` is true:
 
 ```rust,no_run
 use std::time::Duration;
@@ -167,8 +169,34 @@ async fn list_items(client: &Client) -> Result<(), timvw_rust_runtime::Error> {
     Ok(())
 }
 
-let client = Client::default().layer(tower::timeout::TimeoutLayer::new(Duration::from_secs(30)));
+let client = Client::default().layer(timvw_rust_runtime::timeout::TimeoutLayer::new(Duration::from_secs(30)));
 ```
+
+Where it sits decides what it bounds (layers apply from the inside out, see [Quick start](#quick-start)):
+
+| Stack | The timeout bounds |
+| --- | --- |
+| `Client::default().layer(TimeoutLayer::new(t))` | the whole call: every attempt and the waits between them |
+| `Client::from_service(service).layer(TimeoutLayer::new(t)).layer(RetryLayer::new(policy))` | each attempt; one that times out ends the call, unless `policy.retry_timeouts(true)` retries it |
+| both, the per-attempt one first | each attempt, and the whole call |
+
+`RetryPolicy::retry_timeouts(true)` retries a request that timed out like one that failed to connect. It is off by
+default: a request that timed out may have reached the server, so turn it on for requests that are safe to repeat.
+
+```rust,no_run
+use std::time::Duration;
+use timvw_rust_runtime::retry::{RetryLayer, RetryPolicy};
+use timvw_rust_runtime::timeout::TimeoutLayer;
+use timvw_rust_runtime::{Client, ReqwestService};
+
+let client = Client::from_service(ReqwestService::default())
+    .layer(TimeoutLayer::new(Duration::from_secs(30))) // each attempt
+    .layer(RetryLayer::new(RetryPolicy::default().retry_timeouts(true)))
+    .layer(TimeoutLayer::new(Duration::from_secs(120))); // the whole call
+```
+
+tower's `tower::timeout::TimeoutLayer` works natively too, and its `Elapsed` error is a timeout for `is_timeout()` and
+`retry_timeouts` as well.
 
 reqwest's own timeouts (connect timeout, read timeout) are set on a `reqwest::Client`, see
 [Choosing the HTTP client](#choosing-the-http-client). For a response streamed for minutes (server-sent events), a
@@ -516,8 +544,9 @@ async fn run(response: timvw_rust_runtime::Response) -> Result<(), timvw_rust_ru
 ## Uploads and downloads
 
 An `Upload` is something to send: a request body (`.body(upload)`) or a multipart part (`multipart::Part::upload`).
-A generated client takes one for every file parameter, and a `PathBuf`, a `&Path`, a `Vec<u8>` or `Bytes` converts
-into one.
+A generated client takes one for every file parameter (and a multipart union's file variant holds one), and a
+`PathBuf`, a `&Path`, a `Vec<u8>` or `Bytes` converts into one. Two uploads are equal (`PartialEq`) when they send the
+same thing: equal bytes, the same path, or the same stream (an upload and its clones).
 
 | Made with | Length | Sent again by a retry |
 | --- | --- | --- |
@@ -650,7 +679,7 @@ A request that fails to send is an `Error`:
 | `is_decode()` | the response could not be decoded (JSON) |
 | `is_io()` | a file could not be read or written: a missing [upload](#uploads-and-downloads), a failed `save_to` |
 
-`source()` is the error of the service or layer that failed: a `reqwest::Error`, tower's `Elapsed`, or your own. A
+`source()` is the error of the service or layer that failed: a `reqwest::Error`, a timeout, or your own. A
 generated client wraps it as `apis::Error::Http(error)`. A response with an error status is not an `Error` here; the
 generated client turns it into `apis::Error::ResponseError`.
 
@@ -670,8 +699,10 @@ timvw-rust-runtime = { version = "0.3", default-features = false, features = ["r
 
 - **Sending.** reqwest sends with the host's `fetch`. `fetch` takes a request body whole, so a streamed body (an
   `Upload::stream`, a multipart form with one) is read into memory first; responses still stream as they arrive.
-  Connect and read timeouts, proxies and TLS settings belong to the host: `tower::timeout::TimeoutLayer` still works,
-  as does any other layer.
+  Proxies and TLS settings belong to the host, and `fetch` has no timeout: add
+  [`timeout::TimeoutLayer`](#timeouts), which waits with the host's `setTimeout` (tower's `TimeoutLayer` needs tokio's
+  timer and does not work there). A request that times out is dropped, and reqwest aborts its `fetch`. Any other layer
+  works.
 - **Retries** wait as natively: exponential backoff with jitter, `Retry-After` and `retry-after-ms` (an HTTP date is
   read against the host's clock, `Date.now()`). The timer is the host's `setTimeout` (`gloo-timers`) and deadlines use
   `performance.now()` (`web-time`), as `std::time::Instant::now()` panics there. A failure to `fetch` is not retried:
@@ -704,7 +735,7 @@ timvw-rust-runtime = { version = "0.3", default-features = false, features = ["r
 | `native-tls` | no | reqwest with the platform's TLS (on WebAssembly: reqwest, the host does TLS) |
 | `reqwest` | via `rustls` or `native-tls` | `ReqwestService`, `Client::from_reqwest` |
 | `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with the `time` timer, read `Retry-After` dates with `httpdate`), and retries in `Client::default()`; turns on `time` |
-| `time` | via `retry` | `sse::Events::idle_timeout` and the sleeps of retries: tokio's timer, the host's `setTimeout` on [WebAssembly](#webassembly) |
+| `time` | via `retry` | [`timeout::TimeoutLayer`](#timeouts), `sse::Events::idle_timeout` and the sleeps of retries: tokio's timer, the host's `setTimeout` on [WebAssembly](#webassembly) |
 | `fs` | yes | file and reader [uploads](#uploads-and-downloads) (`Upload::path`, `Upload::file`, `Upload::reader`), `Response::save_to` and `Response::into_async_read` (tokio); on WebAssembly only `Upload::path` and `From<PathBuf>`, which fail when sent |
 | `tracing` | no | `trace::TraceLayer`, and a log event per retry |
 

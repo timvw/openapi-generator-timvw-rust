@@ -12,7 +12,7 @@ Every group `g` has two features:
 | Feature | What it compiles |
 | --- | --- |
 | `g` | the group's API functions, its models and the HTTP client (`apis`, `configuration`) |
-| `g-types` | the group's models only: no `apis` module, no `timvw-rust-runtime` (or `reqwest`), no `tokio` |
+| `g-types` | the group's models only: no `apis` module, no `timvw-rust-runtime` (with `httpStack=reqwest-middleware`: no `reqwest`, `reqwest-middleware`, `tokio`) |
 | `types` | every model, also those no operation uses |
 | `full` | every group and `types`; a default feature, so a crate that does not choose compiles what it compiled before |
 
@@ -79,8 +79,11 @@ Generation fails, rather than writing a feature that compiles nothing or means t
   on the features.
 - `models/mod.rs`: each model's `pub mod` and `pub use` get the `-types` features that need it,
   `#[cfg(any(feature = "evals-types", feature = "responses-types"))]`.
-- `Cargo.toml`: `timvw-rust-runtime` (`reqwest` and `reqwest-middleware` with `httpStack=reqwest-middleware`), `tokio`
-  and `tokio-util` are optional, enabled by `_api`; the TLS features forward with `?` so they do not enable the client.
+- `Cargo.toml`: `timvw-rust-runtime` is optional, enabled by `_api` (with `httpStack=reqwest-middleware`: `reqwest`,
+  `reqwest-middleware`, and `tokio` and `tokio-util` when a file is streamed); `native-tls`, `rustls`, `retry` and
+  `tracing` forward with `?` so they do not enable the client.
+- An API module whose functions are gated one by one carries `#![allow(unused_imports)]`, as a feature set may compile
+  none of the functions that use an import: a crate that keeps a `lib.rs` of its own needs no allow for it.
 
 The generated `Cargo.toml` ends with the features, one comment per group saying what it selects; the README lists them
 too. A crate that keeps its own `Cargo.toml` copies that section and the `optional = true` of those dependencies.
@@ -101,7 +104,7 @@ types = [
     "administration-types",
     "audio-types",
 ]
-_api = ["dep:timvw-rust-runtime", "dep:tokio", "dep:tokio-util"]
+_api = ["dep:timvw-rust-runtime"]
 # tags Audit Logs, Projects, Users; paths under `/organization`
 administration = ["administration-types", "_api"]
 administration-types = []

@@ -22,6 +22,27 @@ The timvw-rust crate is generated with 0.21, where the former baseline options (
 of them, it names a rendering timvw-rust always has. The stock and progenitor crates are regenerated with the same
 versions as before (openapi-generator 7.27.0, progenitor 0.16.0).
 
+The snippets and counts are of that 0.21 crate. The models and the mapping compared here have not changed since in
+what this page shows; the client around them has. With 0.27 (and the default `httpStack=tower`), the timvw-rust crate
+also has, beyond the [summary](#summary):
+
+| | timvw-rust 0.27 |
+| --- | --- |
+| HTTP client | `timvw_rust_runtime::Client`, a tower service (reqwest unless replaced) taking tower layers, instead of a `reqwest_middleware::ClientWithMiddleware` ([HTTP stack](../guides/http-stack.md)) |
+| Retries | by default: `429`, `408`, `5xx` and failed connections, `Retry-After` honoured up to 60 s, jittered backoff, permanent `429`s opt-in ([runtime](../../runtime/README.md#retries)) |
+| Credentials | `secrecy::SecretString`, redacted in `Debug`, sent in headers marked sensitive |
+| Headers and query for one call | `.options(&RequestOptions)` on every operation |
+| Another provider of the API | `ProviderLayer`: base URL, path, headers and query rewritten ([runtime](../../runtime/README.md#providers)) |
+| Multipart upload | the file is a `timvw_rust_runtime::Upload` (a path, bytes, a reader or a stream), streamed with a `Content-Length` and sent again on a retry, where the snapshot reads a `PathBuf` into memory |
+| Binary response | `save_to(path)`, `into_async_read()` |
+| Event streams | `idle_timeout` for a stream that stalls |
+| Compile time | a Cargo feature per tag or group of operations, with types-only twins (`apiFeatures`, [guide](../guides/api-features.md)) |
+| WebAssembly | builds for `wasm32-unknown-unknown` as it is |
+
+Neither stock `-g rust` 7.27.0 nor progenitor 0.16.0 retries on its own; both take a `reqwest` client (stock with
+`supportMiddleware` a `ClientWithMiddleware`, where `reqwest-retry` adds retries) and keep credentials as plain
+strings (stock) or leave authentication to the caller's client (progenitor).
+
 ## Summary
 
 | | stock `-g rust` | timvw-rust | progenitor |
@@ -281,7 +302,9 @@ has them.
 - **timvw-rust** keeps stock's coverage and takes progenitor's type rules where they fit (boxing only on cycles,
   `i64`, `FromStr`, `Default` only where valid, borrowed request bodies, status and headers through
   `responseFunctions`). It adds what neither has: tag dispatch with precise errors, open enums, error variants by
-  status with headers, `validate()` without changing a type, typed event streams and a method per media type.
+  status with headers, `validate()` without changing a type, typed event streams and a method per media type; and,
+  since 0.25, a tower client with retries, per-call options, providers, streamed uploads, Cargo feature groups and
+  WebAssembly ([above](#timvw-rust-compared-with-stock--g-rust-and-progenitor)).
 
 ## Open points
 

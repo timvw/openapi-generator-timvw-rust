@@ -57,8 +57,11 @@ final class MultipartRules {
     static final String FILE_UNION_NULLABLE = "x-multipart-file-union-nullable";
     static final String FILE_UNION_OPTIONAL = "x-multipart-file-union-optional";
 
-    private static final String FILE_TYPE = "std::path::PathBuf";
+    private static final String FILE_TYPE = UploadParams.PATH;
     private static final String FILES_TYPE = "Vec<" + FILE_TYPE + ">";
+    /** A file variant with {@code httpStack=tower} ({@link UploadParams#markUnions}). */
+    private static final String UPLOAD_TYPE = UploadParams.UPLOAD;
+    private static final String UPLOADS_TYPE = UploadParams.UPLOADS;
     private static final Pattern MODEL_REFERENCE = Pattern.compile("models::(\\w+)");
 
     private static final Set<String> SCALARS = new HashSet<>(Arrays.asList("string", "integer", "number", "boolean"));
@@ -128,8 +131,8 @@ final class MultipartRules {
         String partName = arrayPartName(openAPI, p.baseName, root, schema);
         List<Map<String, Object>> arms = new ArrayList<>();
         for (CodegenProperty v : UnionRules.variants(union)) {
-            boolean file = FILE_TYPE.equals(v.dataType);
-            boolean files = FILES_TYPE.equals(v.dataType);
+            boolean file = FILE_TYPE.equals(v.dataType) || UPLOAD_TYPE.equals(v.dataType);
+            boolean files = FILES_TYPE.equals(v.dataType) || UPLOADS_TYPE.equals(v.dataType);
             if (!file && !files && holdsFile(v.dataType, unions, new HashSet<>())) {
                 throw new IllegalStateException(TimvwRustCodegen.GENERATOR_NAME + ": multipart parameter "
                         + op.operationId + "." + p.baseName + ": variant " + v.name + " of " + union.classname
@@ -157,7 +160,7 @@ final class MultipartRules {
 
     /** Whether a Rust type holds a file, directly, in a container, or through a union. */
     private static boolean holdsFile(String type, Map<String, CodegenModel> unions, Set<String> seen) {
-        if (type.contains(FILE_TYPE)) {
+        if (type.contains(FILE_TYPE) || type.contains(UPLOAD_TYPE)) {
             return true;
         }
         Matcher references = MODEL_REFERENCE.matcher(type);

@@ -137,14 +137,22 @@ class HttpStackTest {
         assertTrue(e.getMessage().contains("'tower' or 'reqwest-middleware'"), e.getMessage());
     }
 
-    /** The default runtime version is the major and minor of the runtime crate in this repository. */
+    /**
+     * The default runtime version is the major and minor of the runtime crate in this repository, with the patch
+     * release whose features the generated code needs (at most the crate's own) when it is not the first.
+     */
     @Test
     void theDefaultRuntimeVersionIsTheRuntimeCrates() throws IOException {
-        Matcher version = Pattern.compile("(?m)^version = \"(\\d+)\\.(\\d+)\\.\\d+\"")
+        Matcher version = Pattern.compile("(?m)^version = \"(\\d+)\\.(\\d+)\\.(\\d+)\"")
                 .matcher(Files.readString(Path.of("runtime/Cargo.toml")));
         assertTrue(version.find());
         String expected = "0".equals(version.group(1)) ? "0." + version.group(2) : version.group(1);
-        assertEquals(expected, TimvwRustCodegen.DEFAULT_RUNTIME_VERSION);
+        String requirement = TimvwRustCodegen.DEFAULT_RUNTIME_VERSION;
+        if (!requirement.equals(expected)) {
+            Matcher patch = Pattern.compile("0\\.(\\d+)\\.(\\d+)").matcher(requirement);
+            assertTrue(patch.matches() && patch.group(1).equals(version.group(2))
+                    && Integer.parseInt(patch.group(2)) <= Integer.parseInt(version.group(3)), requirement);
+        }
     }
 
     /** Both stacks build, with and without multipartHelper. Needs cargo; without it there is nothing to build. */

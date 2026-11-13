@@ -107,6 +107,14 @@ pub enum {{{classname}}} {
     {{#description}}
     /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
     {{/description}}
+    {{#vendorExtensions.x-rust-enum-file}}
+    {{#description}}
+    ///
+    {{/description}}
+    /// {{#vendorExtensions.x-rust-enum-upload}}A file to upload: a path, bytes or a stream.{{/vendorExtensions.x-rust-enum-upload}}{{#vendorExtensions.x-rust-enum-uploads}}Files to upload: paths, bytes or streams.{{/vendorExtensions.x-rust-enum-uploads}} An upload has no JSON form: serializing this variant is an error,
+    /// and JSON never decodes to it.
+    #[serde(skip)]
+    {{/vendorExtensions.x-rust-enum-file}}
     {{{name}}}({{{vendorExtensions.x-rust-enum-payload}}}),
 {{/vendorExtensions.x-rust-enum-variants}}
 {{#vendorExtensions.x-rust-enum-dispatch}}
@@ -184,6 +192,51 @@ impl From<&str> for {{{classname}}} {
 }
 
 {{/vendorExtensions.x-rust-enum-text}}
+{{#vendorExtensions.x-rust-file-union}}
+impl {{{classname}}} {
+    {{#file}}
+    /// A file to upload: a path (`PathBuf`, `&Path`), bytes (`Vec<u8>`, `Bytes`) or any `timvw_rust_runtime::Upload`.
+    pub fn file(upload: impl Into<timvw_rust_runtime::Upload>) -> Self {
+        Self::{{{.}}}(upload.into())
+    }
+    {{/file}}
+    {{#files}}
+    /// Files to upload, one part each: paths, bytes or any `timvw_rust_runtime::Upload`s.
+    pub fn files(uploads: impl IntoIterator<Item = impl Into<timvw_rust_runtime::Upload>>) -> Self {
+        Self::{{{.}}}(uploads.into_iter().map(Into::into).collect())
+    }
+    {{/files}}
+}
+
+{{#file}}
+impl From<timvw_rust_runtime::Upload> for {{{classname}}} {
+    fn from(upload: timvw_rust_runtime::Upload) -> Self {
+        Self::{{{.}}}(upload)
+    }
+}
+
+impl From<std::path::PathBuf> for {{{classname}}} {
+    fn from(path: std::path::PathBuf) -> Self {
+        Self::{{{.}}}(path.into())
+    }
+}
+
+{{/file}}
+{{#files}}
+impl From<Vec<timvw_rust_runtime::Upload>> for {{{classname}}} {
+    fn from(uploads: Vec<timvw_rust_runtime::Upload>) -> Self {
+        Self::{{{.}}}(uploads)
+    }
+}
+
+impl From<Vec<std::path::PathBuf>> for {{{classname}}} {
+    fn from(paths: Vec<std::path::PathBuf>) -> Self {
+        Self::files(paths)
+    }
+}
+
+{{/files}}
+{{/vendorExtensions.x-rust-file-union}}
 impl std::fmt::Display for {{{classname}}} {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -194,6 +247,16 @@ impl std::fmt::Display for {{{classname}}} {
             {{#vendorExtensions.x-rust-enum-rfc3339-display}}
             Self::{{{name}}}(value) => write!(f, "{}", value.to_rfc3339()),
             {{/vendorExtensions.x-rust-enum-rfc3339-display}}
+            {{#vendorExtensions.x-rust-enum-upload}}
+            Self::{{{name}}}(value) => f.write_str(value.name().unwrap_or("file")),
+            {{/vendorExtensions.x-rust-enum-upload}}
+            {{#vendorExtensions.x-rust-enum-uploads}}
+            Self::{{{name}}}(value) => {
+                let names: Vec<&str> = value.iter().map(|upload| upload.name().unwrap_or("file")).collect();
+                f.write_str(&names.join(","))
+            }
+            {{/vendorExtensions.x-rust-enum-uploads}}
+            {{^vendorExtensions.x-rust-enum-file}}
             {{^vendorExtensions.x-rust-enum-plain-display}}
             {{^vendorExtensions.x-rust-enum-rfc3339-display}}
             Self::{{{name}}}(value) => match serde_json::to_string(value) {
@@ -202,6 +265,7 @@ impl std::fmt::Display for {{{classname}}} {
             },
             {{/vendorExtensions.x-rust-enum-rfc3339-display}}
             {{/vendorExtensions.x-rust-enum-plain-display}}
+            {{/vendorExtensions.x-rust-enum-file}}
             {{/vendorExtensions.x-rust-enum-variants}}
             {{#vendorExtensions.x-rust-enum-dispatch}}
             {{#catchAll}}

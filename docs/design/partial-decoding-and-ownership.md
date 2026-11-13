@@ -30,31 +30,33 @@ match content_type {
 
 ## Measurements
 
-[`decode-bench`](decode-bench/) decodes two realistic bodies with the published crates (openai-client-base 0.26.0,
-langfuse-client-base 0.18.0): a chat completion with token log probabilities (2 choices, 400 tokens with 5
-alternatives each) and a page of 100 Langfuse traces with chat messages as input and output. Each variant decodes
-the same bytes; time is the median per decode, allocations are those of one decode. Apple M3 Pro, rustc 1.98.1,
-`cargo run --release`; two runs agreed within 10%.
+[`decode-bench`](decode-bench/) decodes two realistic bodies with the published crates (openai-client-base 0.32.0,
+langfuse-client-base 0.23.0, both generated with timvw-rust 0.27.0): a chat completion with token log probabilities
+(2 choices, 400 tokens with 5 alternatives each) and a page of 100 Langfuse traces with chat messages as input and
+output. Each variant decodes the same bytes; time is the median per decode, allocations are those of one decode.
+Measured on 2026-11-13: Apple M3 Pro, macOS 27.0.1, rustc 1.98.1, `cargo run --release`; two runs agreed within 2%
+(the machine was not idle). The first measurement, on openai-client-base 0.26.0 and langfuse-client-base 0.18.0, gave
+the same allocations and times within 5%.
 
 **OpenAI chat completion with logprobs (306 KiB)**
 
 | Variant | Time | vs. today | Allocations | Allocated |
 | --- | --- | --- | --- | --- |
-| generated type, from text (today) | 663 µs | 1.00× | 12023 | 1235 KiB |
-| generated type, from bytes | 721 µs | 1.09× | 12022 | 929 KiB |
-| generated type, `logprobs` as raw JSON | 337 µs | 0.51× | 8 | 5 KiB |
-| caller's subset (id, message text), owned | 330 µs | 0.50× | 5 | 4 KiB |
-| caller's subset, borrowed | 330 µs | 0.50× | 4 | 4 KiB |
+| generated type, from text (today) | 684 µs | 1.00× | 12023 | 1235 KiB |
+| generated type, from bytes | 752 µs | 1.10× | 12022 | 929 KiB |
+| generated type, `logprobs` as raw JSON | 341 µs | 0.50× | 8 | 5 KiB |
+| caller's subset (id, message text), owned | 338 µs | 0.49× | 5 | 4 KiB |
+| caller's subset, borrowed | 336 µs | 0.49× | 4 | 4 KiB |
 
 **Langfuse trace list, 100 traces (151 KiB)**
 
 | Variant | Time | vs. today | Allocations | Allocated |
 | --- | --- | --- | --- | --- |
 | generated type, from text (today) | 210 µs | 1.00× | 5307 | 761 KiB |
-| generated type, from bytes | 237 µs | 1.13× | 5306 | 610 KiB |
-| `input`, `output`, `metadata` as raw JSON | 132 µs | 0.63× | 1907 | 117 KiB |
-| caller's subset (id, name, latency), owned | 81 µs | 0.39× | 207 | 17 KiB |
-| caller's subset, borrowed | 80 µs | 0.38× | 107 | 16 KiB |
+| generated type, from bytes | 235 µs | 1.12× | 5306 | 610 KiB |
+| `input`, `output`, `metadata` as raw JSON | 130 µs | 0.62× | 1907 | 117 KiB |
+| caller's subset (id, name, latency), owned | 83 µs | 0.39× | 207 | 17 KiB |
+| caller's subset, borrowed | 82 µs | 0.39× | 107 | 16 KiB |
 
 What this shows:
 

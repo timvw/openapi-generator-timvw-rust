@@ -7,5 +7,6 @@
   "userAgentFromPackage": true,
   "resetQueryParameterStyle": true,
   "typedEventStreams": true,
-  "contentTypeMethods": true
+  "contentTypeMethods": true,
+  "apiFeatures": true
 }

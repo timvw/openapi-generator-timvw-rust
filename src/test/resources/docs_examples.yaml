@@ -131,6 +131,49 @@ paths:
       responses:
         "204":
           description: deleted
+  /items/{id}/image:
+    put:
+      operationId: uploadItemImage
+      tags: [Items]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                caption:
+                  type: string
+      responses:
+        "204":
+          description: stored
+    get:
+      operationId: getItemImage
+      tags: [Items]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: the image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
   /owners/{owner_id}/items:
     get:
       operationId: listOwnerItems

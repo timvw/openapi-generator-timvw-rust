@@ -75,8 +75,8 @@ class MultipartTest {
         String api = norm(Files.readString(dir.resolve("src/apis/uploads_api.rs")));
         assertTrue(api.contains("use super::{Error, configuration, ContentType, multipart_helper};"), api);
         // Required and optional files.
-        assertTrue(api.contains("multipart_form = multipart_helper::add_file_to_form(multipart_form, &p_form_file, \"file\")?;"), api);
-        assertTrue(api.contains("if let Some(ref param_value) = p_form_mask { // Add file to multipart form multipart_form = multipart_helper::add_file_to_form(multipart_form, param_value, \"mask\")?; }"), api);
+        assertTrue(api.contains("multipart_form = multipart_helper::add_file_to_form(multipart_form, &p_form_file, \"file\").await?;"), api);
+        assertTrue(api.contains("if let Some(ref param_value) = p_form_mask { // Add file to multipart form multipart_form = multipart_helper::add_file_to_form(multipart_form, param_value, \"mask\").await?; }"), api);
         assertFalse(api.contains("TokioFile::open"), api);
         // Optional array: one part per item.
         assertTrue(api.contains("if let Some(param_value) = p_form_tags { for item in param_value { multipart_form = multipart_helper::add_schema_value_to_form( multipart_form, \"tags\", serde_json::to_value(item)?, None, )?; } }"), api);
@@ -88,7 +88,7 @@ class MultipartTest {
         assertTrue(api.contains("multipart_form = multipart_form.text(\"name\", p_form_name.to_string());"), api);
         assertTrue(api.contains("multipart_form = multipart_form.text(\"mode\", serde_json::to_string(&p_form_mode)?);"), api);
         assertTrue(api.contains("models::UploadCreateRequestImage::Text(value) => { multipart_form = "
-                + "multipart_helper::add_file_to_form(multipart_form, value, \"image\")?; }"), api);
+                + "multipart_helper::add_file_to_form(multipart_form, value, \"image\").await?; }"), api);
         // The helper module is written and declared after configuration; other modules do not import it.
         assertTrue(Files.readString(dir.resolve("src/apis/multipart_helper.rs")).contains("pub fn add_schema_value_to_form("));
         assertTrue(Files.readString(dir.resolve("src/apis/mod.rs")).contains("pub mod configuration;\n\n// Internal helper module for multipart file handling\npub(crate) mod multipart_helper;\n"));

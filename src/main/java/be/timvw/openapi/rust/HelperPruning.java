@@ -26,7 +26,8 @@ import java.util.stream.Stream;
 final class HelperPruning {
 
     private static final Pattern NAME = Pattern.compile(
-            "^(?:pub(?:\\([a-z]+\\))?\\s+)?(?:fn|type|enum|struct|const|static)\\s+(\\w+)", Pattern.MULTILINE);
+            "^(?:pub(?:\\([a-z]+\\))?\\s+)?(?:async\\s+)?(?:fn|type|enum|struct|const|static)\\s+(\\w+)",
+            Pattern.MULTILINE);
 
     private HelperPruning() {
     }

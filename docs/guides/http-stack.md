@@ -30,11 +30,11 @@ repository next to the generator. Its `Client` is a tower service from `http::Re
 Retries are on by default (feature `retry`): `Client::default()`, and so `Configuration::new()`, retries with
 `RetryPolicy::default()`. `RetryPolicy` retries `429`, `408` and `5xx` responses
 and failed connections, waits as long as `Retry-After` (or `retry-after-ms`) asks, up to 60 s, or else backs off
-exponentially with jitter, and does not retry a request with a streamed body (it cannot be sent twice). A `429` that
+exponentially with jitter, and does not retry a request with a body that can be read only once (a stream). A `429` that
 will not pass by waiting, such as OpenAI's `insufficient_quota`, is not retried once you turn on
 `timvw_rust_runtime::retry::RetryLayer::permanent_429` (opt-in, since what makes a `429` permanent differs between
-APIs; see [permanent `429`s](../../runtime/README.md#permanent-429s-an-exhausted-quota)). A body held in memory, which is every JSON, form and text body and every
-multipart body without a streamed file, is sent again. Layers added to `Client::default()` wrap its retries; for
+APIs; see [permanent `429`s](../../runtime/README.md#permanent-429s-an-exhausted-quota)). A body held in memory, which is every JSON, form and text body, is sent again, and
+so is a file: it is opened again for each attempt (see [uploads and downloads](#uploads-and-downloads)). Layers added to `Client::default()` wrap its retries; for
 another policy, or none, start from `Client::from_service(ReqwestService::default())`:
 
 ```rust
@@ -136,6 +136,51 @@ The generated code exposes a secret only where it builds the request, and sends 
 compression leave it out. An api key in a query parameter is part of the URL. With `httpStack=reqwest-middleware` the
 credentials are `String`s, as before 0.26.
 
+### Uploads and downloads
+
+A file parameter (`format: binary`, as a multipart part or as the whole body) is a `timvw_rust_runtime::Upload`, and
+its builder setter takes anything that converts into one: a `PathBuf` or a `&Path` (a file, streamed from disk with
+tokio), a `Vec<u8>` or `Bytes` (held in memory), or an `Upload` made from a reader or a stream. A file is sent with a
+`Content-Length` (its length is read from its metadata before the request is built; a missing file fails then, with
+`Error::Http` whose `is_io()` is true), its multipart part is named after the file and typed from its extension
+(`image/png`), and a retry opens it again. `Upload::bytes(..).file_name(..).mime(..)` names and types bytes; a part
+without a name is named `file`:
+
+```rust
+use std::path::PathBuf;
+use timvw_rust_runtime::Upload;
+
+// A path: streamed from disk, opened again if the request is retried.
+items_api::upload_item_image()
+    .configuration(&configuration)
+    .id("1")
+    .image(PathBuf::from("lamp.png"))
+    .call()
+    .await?;
+
+// Bytes held in memory, with a file name and a media type of your own.
+let png: Vec<u8> = std::fs::read("lamp.png")?;
+items_api::upload_item_image()
+    .configuration(&configuration)
+    .id("1")
+    .image(Upload::bytes(png).file_name("lamp.png").mime("image/png"))
+    .call()
+    .await?;
+
+// A binary response, written to a file as it arrives.
+let response = items_api::get_item_image().configuration(&configuration).id("1").call().await?;
+response.save_to("lamp-copy.png").await?;
+```
+
+`Upload::reader` and `Upload::stream` are read once: a request with one is not retried, unless
+`.buffer_for_retry(limit)` lets it be held in memory when it is no longer than `limit`. `Upload::from_fn` makes a
+fresh stream for every attempt. `Upload::path(..).slice(range)` sends a part of a file, for APIs that take a large file
+in parts. A binary response is a `timvw_rust_runtime::Response`: `save_to(path)` streams it into a temporary file next
+to `path` and renames it once complete, so `path` never holds half a download; `into_async_read()` reads it as a
+tokio `AsyncRead`. The runtime's guide has [the details](../../runtime/README.md#uploads-and-downloads).
+
+With `httpStack=reqwest-middleware` file parameters stay `std::path::PathBuf`s.
+
 ### The runtime version
 
 The generated `Cargo.toml` asks for `timvw-rust-runtime = "^<runtimeVersion>"` (default: the release this generator
@@ -150,6 +195,8 @@ with the `runtime/` directory of the same commit.
 | `native-tls` or `rustls` | `native-tls` (`reqwestDefaultFeatures`) | reqwest, with that TLS, as `Client::default()` |
 | `retry` | yes | `timvw_rust_runtime::retry` |
 | `tracing` | no | `timvw_rust_runtime::trace::TraceLayer`: logs each request and retry with `tracing` |
+
+A crate with a file parameter depends on the runtime with its `fs` feature (files read with tokio, `Response::save_to`).
 
 Without `native-tls` and `rustls`, `Client::default()` fails every request; set a client with `Client::from_service`.
 

@@ -107,7 +107,7 @@ class SchemaMappingTest {
     void binaryIsAFileToSendOrAResponseToRead() throws IOException {
         String api = Files.readString(out.resolve("src/apis/default_api.rs"));
         assertContains(api, "pub async fn put_thing_file(configuration: &configuration::Configuration, id: &str, "
-                + "body: std::path::PathBuf, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<timvw_rust_runtime::Response, Error<PutThingFileError>>");
+                + "#[builder(into)] body: timvw_rust_runtime::Upload, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<timvw_rust_runtime::Response, Error<PutThingFileError>>");
     }
 
     @Test

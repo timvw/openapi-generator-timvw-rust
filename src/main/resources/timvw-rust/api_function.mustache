@@ -26,7 +26,7 @@
 {{#bonBuilders}}
 #[bon::builder]
 {{/bonBuilders}}
-pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-response}}(configuration: &configuration::Configuration, {{#allParams}}{{{paramName}}}: {{!
+pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-response}}(configuration: &configuration::Configuration, {{#allParams}}{{#vendorExtensions.x-rust-builder-attr}}{{{.}}} {{/vendorExtensions.x-rust-builder-attr}}{{{paramName}}}: {{!
 ### Option Start
 }}{{^required}}Option<{{/required}}{{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{!
 ### A body that is only serialized is borrowed
@@ -388,24 +388,24 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#required}}
     {{#isArray}}
     for value in &{{{vendorExtensions.x-rust-param-identifier}}} {
-        multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+        multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
     }
     {{/isArray}}
     {{^isArray}}
     // Add file to multipart form
-    multipart_form = multipart_helper::add_file_to_form(multipart_form, &{{{vendorExtensions.x-rust-param-identifier}}}, "{{{baseName}}}")?;
+    multipart_form = multipart_helper::add_file_to_form(multipart_form, &{{{vendorExtensions.x-rust-param-identifier}}}, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
     {{/isArray}}
     {{/required}}
     {{^required}}
     if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
         {{#isArray}}
         for value in param_value {
-            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
         }
         {{/isArray}}
         {{^isArray}}
         // Add file to multipart form
-        multipart_form = multipart_helper::add_file_to_form(multipart_form, param_value, "{{{baseName}}}")?;
+        multipart_form = multipart_helper::add_file_to_form(multipart_form, param_value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
         {{/isArray}}
     }
     {{/required}}
@@ -458,11 +458,11 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#vendorExtensions.x-multipart-file-union}}
         {{{pattern}}}(value) => {
             {{#isFilePart}}
-            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
             {{/isFilePart}}
             {{#isFileParts}}
             for path in value {
-                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
             }
             {{/isFileParts}}
             {{#isValuePart}}
@@ -484,11 +484,11 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#vendorExtensions.x-multipart-file-union}}
         {{{pattern}}}(value) => {
             {{#isFilePart}}
-            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
             {{/isFilePart}}
             {{#isFileParts}}
             for path in value {
-                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
             }
             {{/isFileParts}}
             {{#isValuePart}}
@@ -510,11 +510,11 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#vendorExtensions.x-multipart-file-union}}
         {{{pattern}}}(value) => {
             {{#isFilePart}}
-            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}")?;
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
             {{/isFilePart}}
             {{#isFileParts}}
             for path in value {
-                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}")?;
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
             }
             {{/isFileParts}}
             {{#isValuePart}}
@@ -575,6 +575,31 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     let mut multipart_form = {{httpCrate}}::multipart::Form::new();
     {{#formParams}}
     {{#isFile}}
+    {{#httpStackTower}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        {{#isArray}}
+        for value in param_value {
+            multipart_form = multipart_form.part("{{{baseName}}}", {{httpCrate}}::multipart::Part::upload(value.resolve().await?));
+        }
+        {{/isArray}}
+        {{^isArray}}
+        multipart_form = multipart_form.part("{{{baseName}}}", {{httpCrate}}::multipart::Part::upload(param_value.resolve().await?));
+        {{/isArray}}
+    }
+    {{/required}}
+    {{#required}}
+    {{#isArray}}
+    for value in {{{vendorExtensions.x-rust-param-identifier}}} {
+        multipart_form = multipart_form.part("{{{baseName}}}", {{httpCrate}}::multipart::Part::upload(value.resolve().await?));
+    }
+    {{/isArray}}
+    {{^isArray}}
+    multipart_form = multipart_form.part("{{{baseName}}}", {{httpCrate}}::multipart::Part::upload({{{vendorExtensions.x-rust-param-identifier}}}.resolve().await?));
+    {{/isArray}}
+    {{/required}}
+    {{/httpStackTower}}
+    {{^httpStackTower}}
     {{^required}}
     if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
         {{#isArray}}
@@ -613,6 +638,7 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     multipart_form = multipart_form.part("{{{baseName}}}", file_part);
     {{/isArray}}
     {{/required}}
+    {{/httpStackTower}}
     {{/isFile}}
     {{^isFile}}
     {{#required}}
@@ -717,6 +743,17 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#hasBodyParam}}
     {{#bodyParams}}
     {{#isFile}}
+    {{#httpStackTower}}
+    {{#required}}
+    req_builder = req_builder.body({{{vendorExtensions.x-rust-param-identifier}}}.resolve().await?);
+    {{/required}}
+    {{^required}}
+    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
+        req_builder = req_builder.body(param_value.resolve().await?);
+    }
+    {{/required}}
+    {{/httpStackTower}}
+    {{^httpStackTower}}
     {{#required}}
     let file = TokioFile::open({{{vendorExtensions.x-rust-param-identifier}}}).await?;
     let stream = FramedRead::new(file, BytesCodec::new());
@@ -729,6 +766,7 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
         req_builder = req_builder.body({{httpCrate}}::Body::wrap_stream(stream));
     }
     {{/required}}
+    {{/httpStackTower}}
     {{/isFile}}
     {{^isFile}}
     {{#vendorExtensions.x-rust-text-body}}

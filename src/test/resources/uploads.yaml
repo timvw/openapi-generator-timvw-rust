@@ -1,0 +1,82 @@
+openapi: 3.0.3
+info:
+  title: Uploads fixture
+  version: "1"
+paths:
+  /files:
+    post:
+      operationId: file_create
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, purpose]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                mask:
+                  type: string
+                  format: binary
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                purpose:
+                  type: string
+      responses:
+        "200":
+          description: ok
+  /batches:
+    post:
+      operationId: batch_create
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "200":
+          description: ok
+  /blobs/{id}:
+    put:
+      operationId: blob_put
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "204":
+          description: stored
+  /blobs:
+    post:
+      operationId: blob_post
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "204":
+          description: stored

@@ -57,9 +57,9 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | `type: string, format: binary` (a file) |
-| Rust | as a request body, multipart part or parameter: `std::path::PathBuf`, the file to send. As a response: `timvw_rust_runtime::Response`, to read as bytes or a stream |
-| Wire | the file's bytes, streamed from disk; the response body as it comes |
-| Library | `timvw_rust_runtime::Response`; the file is opened with tokio and streamed as a `timvw_rust_runtime::Body` or `timvw_rust_runtime::multipart::Part` |
+| Rust | as a request body, multipart part or parameter: `timvw_rust_runtime::Upload`, what to send (a path, bytes, a reader or a stream; the builder setter takes `impl Into<Upload>`, a `PathBuf` too). As a response: `timvw_rust_runtime::Response`, to read as bytes or a stream, or `save_to` a file |
+| Wire | the file's bytes, streamed from disk with a `Content-Length` (a part typed from the file's extension); the response body as it comes |
+| Library | `timvw_rust_runtime::Response`; `timvw_rust_runtime::Upload`, sent as a `timvw_rust_runtime::Body` or `timvw_rust_runtime::multipart::Part::upload`, and opened again by a retry. `httpStack=reqwest-middleware`: `std::path::PathBuf`, opened with tokio |
 | Options | `fileProperties` renders listed `Schema.property` entries as files |
 | Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L107), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L150) |
 
@@ -152,7 +152,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | the `items` of an array or the `additionalProperties` of a map that can be null: `nullable: true` (3.0); `type: [T, "null"]` or a `oneOf`/`anyOf` with a `null` branch (3.1); or a `$ref` to a schema that is one of these (directly or as the single entry of an `allOf`). At any depth, and for an inline enum too |
 | Rust | `Option<T>` as the item or value: `Vec<Option<T>>`, `HashMap<String, Option<T>>`, `HashMap<String, Option<Vec<Option<T>>>>`, `Vec<Option<<Property>>>` for an inline enum. Free-form values stay `serde_json::Value`, which holds `null` itself (also a 3.1 `anyOf`/`oneOf: [{}, {type: "null"}]` and `type: "null"` items, [`schema.type.null`](#schematypenull)). The items of a query, path, header or cookie parameter and of a form field (urlencoded or multipart, a file part included) stay `T`, because `null` cannot be written in those values. A union's array variant of nullable items is named `ArrayOfNullable<Items>` (`ArrayOfNullableStrings`). `validate()` checks the items that are `Some` and skips the ones that are `None` |
 | Wire | `null` decodes to `None`. `None` serializes as `null` and is never skipped |
-| Tests | [`NullableItemsTest#nullableItemsAndValuesAreOptionsAtAnyDepth`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L54), [`#theNullableFormsOf31AreOptionsToo`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L86), [`#responsesAndBodiesFollowTheRuleParametersAndFormFieldsDoNot`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L98), [`#nullItemsDecodeSerializeAndValidate`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L110) |
+| Tests | [`NullableItemsTest#nullableItemsAndValuesAreOptionsAtAnyDepth`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L54), [`#theNullableFormsOf31AreOptionsToo`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L86), [`#responsesAndBodiesFollowTheRuleParametersAndFormFieldsDoNot`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L98), [`#nullItemsDecodeSerializeAndValidate`](../../src/test/java/be/timvw/openapi/rust/NullableItemsTest.java#L111) |
 
 ### `schema.properties.reference`
 
@@ -241,7 +241,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | --- | --- |
 | OpenAPI | `description` |
 | Rust | `///` on the type or field; bare URLs are wrapped in `<...>` (rustdoc's `bare_urls`). A type without a description has no empty `///` |
-| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L90), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L201) |
+| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L90), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L213) |
 
 ## Arrays
 

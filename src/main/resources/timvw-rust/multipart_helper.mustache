@@ -1,4 +1,23 @@
 use {{httpCrate}}::multipart;
+{{#httpStackTower}}
+// Internal multipart helper functions. Files are `timvw_rust_runtime::Upload`s: a path is streamed from disk (and
+// opened again by a retry), bytes are sent as they are.
+use timvw_rust_runtime::Upload;
+
+/// Add a file to a multipart form: the upload's file name (`file` when it has none) and media type.
+/// A path is resolved first (its length read from its metadata, an error when it does not exist), so the form
+/// is sent with a Content-Length; the file itself is read while the request is sent.
+pub async fn add_file_to_form(
+    form: multipart::Form,
+    file: impl Into<Upload>,
+    field_name: &str,
+) -> Result<multipart::Form, timvw_rust_runtime::Error> {
+    let upload = file.into().resolve().await?;
+    Ok(form.part(field_name.to_string(), multipart::Part::upload(upload)))
+}
+
+{{/httpStackTower}}
+{{^httpStackTower}}
 /// Internal multipart helper functions for file uploads
 /// This module provides utilities to handle file uploads in multipart forms
 use std::path::{Path, PathBuf};
@@ -51,6 +70,7 @@ pub fn add_pathbuf_to_form(
     add_file_to_form(form, &path, field_name)
 }
 
+{{/httpStackTower}}
 /// Add a schema-serialized multipart value, applying object and explicit media types.
 /// Object and array values default to application/json; scalar strings retain the
 /// RFC 7578 default unless the schema supplies an explicit contentType override.

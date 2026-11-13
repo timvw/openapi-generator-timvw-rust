@@ -12,9 +12,29 @@ of [decisions.md](decisions.md); 0.22 fixes types the JSON did not decode to and
 null-only schemas and doc links; 0.24 adds typed error headers and fixes webhooks, model name options and schema
 mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` crate (`httpStack`); 0.26 keeps
 credentials in `SecretString`s, adds headers and query parameters per call and a Cargo feature per API group
-(`apiFeatures`). The
+(`apiFeatures`); 0.27 takes file parameters as `timvw_rust_runtime::Upload`s, streamed and retried. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.27.0
+
+File parameters become `timvw_rust_runtime::Upload`s with the default `httpStack=tower` (see
+[migration](guides/migration.md#from-026-to-027)); a builder call that passes a `PathBuf` compiles unchanged.
+
+### Uploads and downloads
+
+- A file parameter (a multipart part, an array of them, or an `application/octet-stream` body) is an `Upload`: a
+  path, bytes, a reader or a stream. The bon setter takes `impl Into<Upload>` (`#[builder(into)]`; an array takes
+  any iterator of them).
+- `multipartHelper`'s `add_file_to_form` is async and streams the file with tokio instead of `std::fs::read`; a
+  multipart union with a file variant keeps its `PathBuf` model and streams it the same way. Without the helper, and
+  for a file body, the code no longer opens files itself (`TokioFile`, `FramedRead`): the crate depends on the
+  runtime's `fs` feature instead of `tokio` and `tokio-util`.
+- A file is sent with a `Content-Length` (the whole multipart form too), its part typed from its extension, and a
+  retry opens it again: the runtime's `Body::try_clone` makes a fresh body from a replayable `Upload`.
+- The runtime adds `Response::save_to` (a temporary file, synced and renamed: never half a download),
+  `Response::into_async_read` and `Events::idle_timeout` for streams that stall.
+- `httpStack=reqwest-middleware` renders what 0.26 rendered, byte for byte.
 
 ## 0.26.0
 

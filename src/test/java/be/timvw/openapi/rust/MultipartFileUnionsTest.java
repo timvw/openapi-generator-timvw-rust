@@ -51,7 +51,7 @@ class MultipartFileUnionsTest {
     }
 
     private static final String ADD_VIDEO_FILE =
-            "multipart_form = multipart_helper::add_file_to_form(multipart_form, value, \"video\")?;";
+            "multipart_form = multipart_helper::add_file_to_form(multipart_form, value, \"video\").await?;";
 
     @Test
     void aRequiredUnionMatchesAndItsFileGoesThroughTheHelper() throws IOException {
@@ -65,7 +65,7 @@ class MultipartFileUnionsTest {
     void anOptionalUnionMatchesInsideTheOption() throws IOException {
         String api = api(on, "videos");
         assertTrue(api.contains("if let Some(ref param_value) = p_form_reference { match param_value {"), api);
-        assertTrue(api.contains("multipart_helper::add_file_to_form(multipart_form, value, \"reference\")?;"), api);
+        assertTrue(api.contains("multipart_helper::add_file_to_form(multipart_form, value, \"reference\").await?;"), api);
         assertFalse(api.contains("multipart_form.text(\"reference\""), api);
     }
 
@@ -81,9 +81,9 @@ class MultipartFileUnionsTest {
     void anArraySendsOnePartPerFileUnderTheDocumentedName() throws IOException {
         String api = api(on, "skills");
         assertTrue(api.contains("for path in value { multipart_form = multipart_helper::add_file_to_form(multipart_form, "
-                + "path, \"files[]\")?; }"), api);
+                + "path, \"files[]\").await?; }"), api);
         // A single file keeps the property's name, as the spec documents the brackets only for the array.
-        assertTrue(api.contains("multipart_helper::add_file_to_form(multipart_form, value, \"files\")?;"), api);
+        assertTrue(api.contains("multipart_helper::add_file_to_form(multipart_form, value, \"files\").await?;"), api);
     }
 
     @Test
@@ -91,7 +91,7 @@ class MultipartFileUnionsTest {
         String api = api(on, "skills");
         String version = api.substring(api.indexOf("pub async fn skill_version_create"));
         assertTrue(version.contains("for path in value { multipart_form = multipart_helper::add_file_to_form("
-                + "multipart_form, path, \"files\")?; }"), version);
+                + "multipart_form, path, \"files\").await?; }"), version);
         assertFalse(version.contains("files[]"), version);
     }
 
@@ -104,7 +104,7 @@ class MultipartFileUnionsTest {
     @Test
     void anEncodingContentTypeIsForTheOtherVariantsNotTheFile() throws IOException {
         String api = api(on, "mixed");
-        assertTrue(api.contains("multipart_helper::add_file_to_form(multipart_form, value, \"encoded\")?;"), api);
+        assertTrue(api.contains("multipart_helper::add_file_to_form(multipart_form, value, \"encoded\").await?;"), api);
         assertTrue(api.contains("\"encoded\", serde_json::to_value(value)?, Some(\"application/vnd.fixture+json\"), )?;"),
                 api);
     }

@@ -99,7 +99,8 @@ class NullableItemsTest {
         String api = Files.readString(v30.resolve("src/apis/default_api.rs"));
         // nor in a urlencoded or multipart field, a file part included
         assertContains(api, "post_form(configuration: &configuration::Configuration, tags: Option<Vec<String>>, "
-                + "files: Option<Vec<std::path::PathBuf>>, options: Option<&timvw_rust_runtime::RequestOptions>)");
+                + "#[builder(with = |files: impl IntoIterator<Item = impl Into<timvw_rust_runtime::Upload>>| "
+                + "files.into_iter().map(Into::into).collect())] files: Option<Vec<timvw_rust_runtime::Upload>>, options: Option<&timvw_rust_runtime::RequestOptions>)");
         assertContains(api, "put_form(configuration: &configuration::Configuration, tags: Option<Vec<String>>, options: Option<&timvw_rust_runtime::RequestOptions>)");
         // null has no spelling in a query string
         assertContains(api, "ids: Option<Vec<String>>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<" + MAP + "Option<i64>>, Error<GetHolderError>>");

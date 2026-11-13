@@ -41,9 +41,9 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | `multipart/form-data` with an object schema |
-| Rust | an argument per property: a file (`format: binary`) as `std::path::PathBuf`, text as `&str` or the type. A model parameter's type is qualified once (stock: `models::models::X`) |
+| Rust | an argument per property: a file (`format: binary`) as `timvw_rust_runtime::Upload` (`impl Into<Upload>` on the builder: a `PathBuf`, bytes), text as `&str` or the type. A model parameter's type is qualified once (stock: `models::models::X`) |
 | Wire | a text part is its value's text: a `date-time` RFC 3339 (`to_rfc3339()`), a `date` `YYYY-MM-DD` ([`schema.format.date-time`](schema.md#schemaformatdate-time)) |
-| Library | built as a `timvw_rust_runtime::multipart::Form`; a file is opened with tokio and streamed as a `timvw_rust_runtime::multipart::Part` named after the file |
+| Library | built as a `timvw_rust_runtime::multipart::Form`; a file is streamed with tokio as a `timvw_rust_runtime::multipart::Part::upload` named after the file and typed from its extension, the form with a `Content-Length` |
 | Options | `multipartHelper` (openai-client-base) sends the parts through `src/apis/multipart_helper.rs`: an optional array sends a part per item, an object one JSON part, and an [`encoding`](encoding.md#encodingcontenttype) `contentType` is applied. A union with file variants sends a file, an array of files, or the other variant's value. `fileProperties=<Schema.property,..>` makes listed properties files. Without the helper an optional string enum part carries its wire value, not its JSON |
 | Tests | [`MultipartTest#helperRulesPerParameterShape`](../../src/test/java/be/timvw/openapi/rust/MultipartTest.java#L73), [`#modelParametersAreQualifiedOnce`](../../src/test/java/be/timvw/openapi/rust/MultipartTest.java#L55), [`#filePropertiesTurnAPropertyIntoAFile`](../../src/test/java/be/timvw/openapi/rust/MultipartTest.java#L44), [`#withoutTheOptionTheStockBlockRendersAndNoHelperIsWritten`](../../src/test/java/be/timvw/openapi/rust/MultipartTest.java#L62), [`MultipartFileUnionsTest#aRequiredUnionMatchesAndItsFileGoesThroughTheHelper`](../../src/test/java/be/timvw/openapi/rust/MultipartFileUnionsTest.java#L57), [`#anArraySendsOnePartPerFileUnderTheDocumentedName`](../../src/test/java/be/timvw/openapi/rust/MultipartFileUnionsTest.java#L81), [`#filesInAShapeMultipartCannotCarryFailGeneration`](../../src/test/java/be/timvw/openapi/rust/MultipartFileUnionsTest.java#L138), [`TitleNamingTest#optionalEnumMultipartPartsUseTheWireValueNotJson`](../../src/test/java/be/timvw/openapi/rust/TitleNamingTest.java#L109), [`DateParamsTest#aDateTimeFormFieldIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L90), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L137) |
 
@@ -52,6 +52,6 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | `application/octet-stream` with `format: binary` |
-| Rust | `std::path::PathBuf`, the file to send ([`schema.format.binary`](schema.md#schemaformatbinary)) |
-| Library | the file is opened with tokio and streamed as a `timvw_rust_runtime::Body` |
+| Rust | `timvw_rust_runtime::Upload`, what to send ([`schema.format.binary`](schema.md#schemaformatbinary)) |
+| Library | streamed as a `timvw_rust_runtime::Body`, with a `Content-Length` when its length is known |
 | Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L107) |

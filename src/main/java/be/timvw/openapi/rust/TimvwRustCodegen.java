@@ -363,6 +363,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private String preprocessedSpecFile;
     private boolean resetQueryParameterStyle;
     private boolean multipartHelper;
+    /** {@code httpStack=tower}: file parameters are {@code timvw_rust_runtime::Upload}s. */
+    private boolean httpStackTower;
+    private boolean bonBuilders;
     private String preprocessedSpecJson;
     private List<String> fileProperties = new ArrayList<>();
     private final Set<String> structJsonModels = new java.util.TreeSet<>();
@@ -458,7 +461,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 "Give every query parameter not listed in deepObjectQueryParameters the default style (form, "
                         + "exploded), so arrays are sent as repeated parameters whatever the spec says", false));
         cliOptions.add(CliOption.newBoolean(MULTIPART_HELPER,
-                "Send multipart bodies through a generated src/apis/multipart_helper.rs: files are read into a part "
+                "Send multipart bodies through a generated src/apis/multipart_helper.rs: a file is a part "
                         + "named after the file, optional arrays send one part per item and optional objects one JSON "
                         + "part, and an encoding contentType of a scalar part is applied", false));
         cliOptions.add(CliOption.newString(FILE_PROPERTIES,
@@ -794,6 +797,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         boolean bonBuilders = !additionalProperties.containsKey(BON_BUILDERS)
                 || convertPropertyToBooleanAndWriteBack(BON_BUILDERS);
         additionalProperties.put(BON_BUILDERS, bonBuilders);
+        this.bonBuilders = bonBuilders;
 
         validateMethods = !additionalProperties.containsKey(VALIDATE_METHODS)
                 || convertPropertyToBooleanAndWriteBack(VALIDATE_METHODS);
@@ -868,6 +872,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         boolean tower = HTTP_STACK_TOWER.equals(httpStack);
         additionalProperties.put(HTTP_STACK, httpStack);
         additionalProperties.put("httpStackTower", tower);
+        httpStackTower = tower;
         additionalProperties.put("httpCrate", tower ? "timvw_rust_runtime" : "reqwest");
         additionalProperties.put("httpErrorVariant", tower ? "Http" : "Reqwest");
         Object runtimeVersion = additionalProperties.get(RUNTIME_VERSION);
@@ -1946,7 +1951,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (!imports.isEmpty()) {
             combined.put("hasImport", true);
         }
-        Imports.markApi(combined, multipartHelper, isSupportMultipleResponses());
+        Imports.markApi(combined, multipartHelper, isSupportMultipleResponses(), httpStackTower);
         objs.clear();
         objs.putAll(combined);
         LOGGER.info("{}: {} webhook operations written into {} next to its {} path operations (set {} to generate "
@@ -2016,6 +2021,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
                             p.vendorExtensions.put(DISPLAY_ITEMS, true);
                         }
                         markText(p);
+                        if (httpStackTower) {
+                            UploadParams.mark(p, bonBuilders);
+                        }
                     }
                 }
                 if (multipartHelper && op.isMultipart && op.formParams != null && !op.formParams.isEmpty()) {
@@ -2027,6 +2035,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         }
                     }
                 }
+                if (httpStackTower && UploadParams.uploads(op)) {
+                    additionalProperties.put(UploadParams.RUNTIME_FS, true);
+                }
             }
         }
         if (helperUsed) {
@@ -2035,7 +2046,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (responseFunctions && objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             addResponseFunctions(objs.getOperations().getOperation());
         }
-        Imports.markApi(objs, multipartHelper, isSupportMultipleResponses());
+        Imports.markApi(objs, multipartHelper, isSupportMultipleResponses(), httpStackTower);
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             // the webhooks' operations are not given the models: the ones documented with the models count too
             Set<String> documented = new HashSet<>(documentedModels);

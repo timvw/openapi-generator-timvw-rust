@@ -394,25 +394,25 @@ The generated `src/apis/api_response.rs` has a doctest along these lines that ru
 
 ## Performance
 
-Measured with [`decode-bench`](../design/decode-bench/) on the published crates (openai-client-base 0.26.0,
-langfuse-client-base 0.18.0): the median time per decode and the allocations of one decode, Apple M3 Pro, rustc
-1.98.1, release build.
+Measured with [`decode-bench`](../design/decode-bench/) on the published crates (openai-client-base 0.32.0,
+langfuse-client-base 0.23.0, generated with timvw-rust 0.27.0) on 2026-11-13: the median time per decode and the
+allocations of one decode, Apple M3 Pro, macOS 27.0.1, rustc 1.98.1, release build.
 
 **OpenAI chat completion with logprobs (306 KiB)**
 
 | Decoding | Time | vs. the generated type | Allocations | Allocated |
 | --- | --- | --- | --- | --- |
-| the generated type (`json()`, what the operation's function does) | 663 µs | 1.00× | 12023 | 1235 KiB |
-| a subset, owned (`json_as()`: id, message text) | 330 µs | 0.50× | 5 | 4 KiB |
-| a subset, borrowed (`json_borrowed()`) | 330 µs | 0.50× | 4 | 4 KiB |
+| the generated type (`json()`, what the operation's function does) | 684 µs | 1.00× | 12023 | 1235 KiB |
+| a subset, owned (`json_as()`: id, message text) | 338 µs | 0.49× | 5 | 4 KiB |
+| a subset, borrowed (`json_borrowed()`) | 336 µs | 0.49× | 4 | 4 KiB |
 
 **Langfuse trace list, 100 traces (151 KiB)**
 
 | Decoding | Time | vs. the generated type | Allocations | Allocated |
 | --- | --- | --- | --- | --- |
 | the generated type | 210 µs | 1.00× | 5307 | 761 KiB |
-| a subset, owned (id, name, latency) | 81 µs | 0.39× | 207 | 17 KiB |
-| a subset, borrowed | 80 µs | 0.38× | 107 | 16 KiB |
+| a subset, owned (id, name, latency) | 83 µs | 0.39× | 207 | 17 KiB |
+| a subset, borrowed | 82 µs | 0.39× | 107 | 16 KiB |
 
 What to take from it:
 

@@ -111,7 +111,7 @@ class OperationMappingTest {
         String get = function("items_api", "get_item");
         assertContains(get, "if let Some(ref param_value) = p_cookie_session {\n"
                 + "        cookies.push(format!(\"session={}\", crate::apis::cookie_encode(param_value)));");
-        assertContains(get, "req_builder = req_builder.header(timvw_rust_runtime::header::COOKIE, cookies.join(\"; \"));");
+        assertContains(get, "req_builder = req_builder.sensitive_header(timvw_rust_runtime::header::COOKIE, cookies.join(\"; \"));");
         assertFalse(function("items_api", "delete_item").contains("COOKIE"));
     }
 
@@ -176,15 +176,16 @@ class OperationMappingTest {
 
     @Test
     void eachOperationSendsTheCredentialsOfItsSecurity() throws IOException {
-        assertContains(function("items_api", "get_item"), "req_builder = req_builder.bearer_auth(token.to_owned());");
+        assertContains(function("items_api", "get_item"), "req_builder = req_builder.bearer_auth(timvw_rust_runtime::ExposeSecret::expose_secret(token));");
         String delete = function("items_api", "delete_item");
-        assertContains(delete, "req_builder.basic_auth(auth_conf.0.to_owned(), auth_conf.1.to_owned());");
+        assertContains(delete, "req_builder.basic_auth(&auth_conf.0, "
+                + "auth_conf.1.as_ref().map(timvw_rust_runtime::ExposeSecret::expose_secret));");
         assertFalse(delete.contains("bearer_auth"), delete);
-        assertContains(function("items_api", "create_item"), "req_builder = req_builder.header(\"X-Api-Key\", value);");
+        assertContains(function("items_api", "create_item"), "req_builder = req_builder.sensitive_header(\"X-Api-Key\", value);");
         assertContains(function("default_api", "login"), "if let Some(ref token) = configuration.oauth_access_token {");
         String configuration = read("src/apis/configuration.rs");
         assertContains(configuration, "pub basic_auth: Option<BasicAuth>,");
-        assertContains(configuration, "pub type BasicAuth = (String, Option<String>);");
+        assertContains(configuration, "pub type BasicAuth = (String, Option<SecretString>);");
         assertContains(configuration, "pub api_key: Option<ApiKey>,");
     }
 }

@@ -106,9 +106,18 @@ impl RequestBuilder {
         self.sensitive_header(AUTHORIZATION, format!("Basic {encoded}"))
     }
 
-    fn sensitive_header(self, name: HeaderName, value: String) -> Self {
+    /// Sets a header, replacing any earlier value, and marks it sensitive (see [`HeaderValue::set_sensitive`]): for
+    /// credentials such as an API key.
+    pub fn sensitive_header<K, V>(self, name: K, value: V) -> Self
+    where
+        HeaderName: TryFrom<K>,
+        <HeaderName as TryFrom<K>>::Error: Into<http::Error>,
+        HeaderValue: TryFrom<V>,
+        <HeaderValue as TryFrom<V>>::Error: Into<http::Error>,
+    {
         self.with(|parts| {
-            let mut value = HeaderValue::try_from(value).map_err(Error::builder)?;
+            let name = HeaderName::try_from(name).map_err(|e| Error::builder(e.into()))?;
+            let mut value = HeaderValue::try_from(value).map_err(|e| Error::builder(e.into()))?;
             value.set_sensitive(true);
             parts.headers.insert(name, value);
             Ok(())
@@ -270,6 +279,25 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(basic.headers()[AUTHORIZATION], "Basic dXNlcjpwYXNz");
+        assert!(basic.headers()[AUTHORIZATION].is_sensitive());
+    }
+
+    #[test]
+    fn secrets_are_exposed_only_into_sensitive_headers() {
+        use crate::{ExposeSecret, SecretString};
+        let key = SecretString::from("sk-123");
+        assert!(!format!("{key:?}").contains("sk-123"));
+        let request = builder("https://example.com")
+            .header("x-api-key", "old")
+            .sensitive_header("x-api-key", key.expose_secret())
+            .bearer_auth(key.expose_secret())
+            .build()
+            .unwrap();
+        let values: Vec<_> = request.headers().get_all("x-api-key").iter().collect();
+        assert_eq!(values, ["sk-123"]);
+        assert!(values[0].is_sensitive());
+        assert!(!format!("{:?}", request.headers()).contains("sk-123"));
+        assert_eq!(request.headers()[AUTHORIZATION], "Bearer sk-123");
     }
 
     #[test]

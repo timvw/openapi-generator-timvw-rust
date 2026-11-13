@@ -58,7 +58,7 @@ use my_client::apis::items_api;
 
 let mut configuration = Configuration::new();
 configuration.base_path = "https://api.example.com/v1".to_owned();
-configuration.bearer_access_token = Some("secret".to_owned());
+configuration.bearer_access_token = Some("secret".into());
 
 let page = items_api::list_items()
     .configuration(&configuration)
@@ -69,6 +69,11 @@ for item in &page.data {
     println!("{} {}", item.id, item.name);
 }
 ```
+
+The credentials (`bearer_access_token`, `oauth_access_token`, the password of `basic_auth`, the key of `api_key`) are
+`SecretString`s from [secrecy](https://docs.rs/secrecy): `Some("secret".into())` or `Some(SecretString::from(token))`
+sets one, `Debug` prints `[REDACTED]`, and the generated code reads them only to build the request
+([more](docs/guides/http-stack.md#credentials)).
 
 An optional argument has a setter for the value (`.limit(10)`) and a `maybe_` setter for an `Option`
 (`.maybe_limit(None)`). A request body is borrowed, so you keep it after the call:

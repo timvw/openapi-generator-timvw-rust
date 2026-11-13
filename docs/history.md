@@ -14,6 +14,22 @@ mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` c
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## 0.26.0
+
+The credentials of `Configuration` become `SecretString`s with the default `httpStack=tower`: openai-client-base and
+langfuse-client-base change where they set a token (see [migration](guides/migration.md#from-025-to-026)).
+
+### Credentials
+
+- `bearer_access_token`, `oauth_access_token`, the password of `basic_auth` and `ApiKey::key` are
+  `secrecy::SecretString`s, as async-openai keeps its key; the username and the key's prefix stay `String`s.
+  `configuration::SecretString` and `configuration::ExposeSecret` re-export the runtime's (`timvw_rust_runtime`
+  re-exports `secrecy`). `Debug` still prints `[REDACTED]`.
+- The generated code exposes a secret only where it builds the header, query parameter or cookie, and sends the
+  `Authorization`, api-key and `Cookie` headers marked sensitive, through the runtime's new
+  `RequestBuilder::sensitive_header`.
+- `httpStack=reqwest-middleware` renders 0.25's output: the credentials stay `String`s.
+
 ## 0.25.0
 
 The client's HTTP stack becomes an option, `httpStack`, whose default changes: openai-client-base and

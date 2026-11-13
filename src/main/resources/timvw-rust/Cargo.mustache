@@ -18,6 +18,9 @@ license = "{{.}}"
 license = "Unlicense"
 {{/licenseInfo}}
 edition = "2021"
+# timvw-rust-runtime's minimum supported Rust version. To build on it, resolve dependency versions that support it:
+# CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update (or resolver = "3" in your workspace).
+rust-version = "{{{rustVersion}}}"
 {{#publishRustRegistry}}
 publish = ["{{.}}"]
 {{/publishRustRegistry}}
@@ -57,14 +60,6 @@ uuid = { version = "^1.8", features = ["serde", "v4"] }
 {{#usesChronoTypes}}
 chrono = { version = "^0.4",  features = ["serde"] }
 {{/usesChronoTypes}}
-{{^httpStackTower}}
-{{#useAsyncFileStream}}
-tokio = { version = "^1.46.0", features = ["fs"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
-tokio-util = { version = "^0.7", features = ["codec"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
-reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart", "stream", "query", "form"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
-{{/useAsyncFileStream}}
-{{/httpStackTower}}
-{{#httpStackTower}}
 timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFeatures}}, features = [{{{runtimeFeatures}}}]{{/runtimeFeatures}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#apiFeatures}}{{^runtimeRequired}}, optional = true{{/runtimeRequired}}{{/apiFeatures}} }
 {{#hasUUIDs}}
 
@@ -79,18 +74,6 @@ native-tls = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtime
 rustls = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/rustls"]
 retry = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/retry"]
 tracing = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/tracing"]
-{{/httpStackTower}}
-{{^httpStackTower}}
-{{^useAsyncFileStream}}
-reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart"{{#typedEventStreams}}, "stream"{{/typedEventStreams}}, "query", "form"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
-{{/useAsyncFileStream}}
-reqwest-middleware = { version = "^0.5", features = ["json", "multipart", "query", "form"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
-
-[features]
-default = [{{#reqwestDefaultFeatures}}"{{.}}"{{^-last}}, {{/-last}}{{/reqwestDefaultFeatures}}{{#apiFeatures}}, "full"{{/apiFeatures}}]
-native-tls = ["reqwest{{#apiFeatures}}?{{/apiFeatures}}/native-tls"]
-rustls = ["reqwest{{#apiFeatures}}?{{/apiFeatures}}/rustls"]
-{{/httpStackTower}}
 {{#apiFeatures}}
 # API features (apiFeatures): `<group>` compiles the group's API functions with its models and the HTTP client,
 # `<group>-types` only its models. `types` is every model, `full` everything.
@@ -104,7 +87,7 @@ types = [
     "{{{.}}}",
 {{/apiFeaturesTypes}}
 ]
-_api = [{{#httpStackTower}}{{^runtimeRequired}}"dep:timvw-rust-runtime"{{/runtimeRequired}}{{/httpStackTower}}{{^httpStackTower}}"dep:reqwest", "dep:reqwest-middleware"{{#useAsyncFileStream}}, "dep:tokio", "dep:tokio-util"{{/useAsyncFileStream}}{{/httpStackTower}}]
+_api = [{{^runtimeRequired}}"dep:timvw-rust-runtime"{{/runtimeRequired}}]
 {{#apiFeatureGroups}}
 # {{{selects}}}
 {{{name}}} = ["{{{name}}}-types", "_api"]

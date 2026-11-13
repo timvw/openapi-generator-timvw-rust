@@ -3,57 +3,31 @@
 #![allow({{{.}}})]
 {{/apiLintAllows}}
 
-{{#httpStackTower}}
 pub use timvw_rust_runtime::Client;
 /// The credentials are `SecretString`s: `Some("sk-...".into())` or `Some(SecretString::from(token))` sets one, and
 /// `ExposeSecret::expose_secret` reads it.
 pub use timvw_rust_runtime::{ExposeSecret, SecretString};
-{{/httpStackTower}}
-{{^httpStackTower}}
-pub use reqwest_middleware::ClientWithMiddleware;
-{{/httpStackTower}}
 
 #[derive(Clone)]
 pub struct Configuration {
     pub base_path: String,
     pub user_agent: Option<String>,
-    {{#httpStackTower}}
     /// Sends the requests: reqwest by default. Wrap it in tower layers with `Client::layer`, or replace it with
     /// `Client::from_service`.
     pub client: timvw_rust_runtime::Client,
-    {{/httpStackTower}}
-    {{^httpStackTower}}
-    pub client: reqwest_middleware::ClientWithMiddleware,
-    {{/httpStackTower}}
     pub basic_auth: Option<BasicAuth>,
-    {{#httpStackTower}}
     pub oauth_access_token: Option<SecretString>,
     pub bearer_access_token: Option<SecretString>,
-    {{/httpStackTower}}
-    {{^httpStackTower}}
-    pub oauth_access_token: Option<String>,
-    pub bearer_access_token: Option<String>,
-    {{/httpStackTower}}
     pub api_key: Option<ApiKey>,
 }
 
-{{#httpStackTower}}
 /// The username and the password.
 pub type BasicAuth = (String, Option<SecretString>);
-{{/httpStackTower}}
-{{^httpStackTower}}
-pub type BasicAuth = (String, Option<String>);
-{{/httpStackTower}}
 
 #[derive(Clone)]
 pub struct ApiKey {
     pub prefix: Option<String>,
-    {{#httpStackTower}}
     pub key: SecretString,
-    {{/httpStackTower}}
-    {{^httpStackTower}}
-    pub key: String,
-    {{/httpStackTower}}
 }
 
 impl std::fmt::Debug for ApiKey {
@@ -93,12 +67,7 @@ impl Default for Configuration {
         Configuration {
             base_path: "{{{basePath}}}".to_owned(),
             user_agent: {{#httpUserAgent}}Some("{{{.}}}".to_owned()){{/httpUserAgent}}{{^httpUserAgent}}{{#userAgentFromPackage}}Some(concat!("{{{packageName}}}/", env!("CARGO_PKG_VERSION")).to_owned()){{/userAgentFromPackage}}{{^userAgentFromPackage}}Some("OpenAPI-Generator/{{{version}}}/rust".to_owned()){{/userAgentFromPackage}}{{/httpUserAgent}},
-            {{#httpStackTower}}
             client: timvw_rust_runtime::Client::default(),
-            {{/httpStackTower}}
-            {{^httpStackTower}}
-            client: reqwest_middleware::ClientBuilder::new(reqwest::Client::new()).build(),
-            {{/httpStackTower}}
             basic_auth: None,
             oauth_access_token: None,
             bearer_access_token: None,

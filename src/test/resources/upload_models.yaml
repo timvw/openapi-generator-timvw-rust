@@ -1,0 +1,80 @@
+openapi: 3.1.0
+info:
+  title: Models with file fields
+  version: "1"
+paths:
+  /containers/{id}/files:
+    post:
+      operationId: container_file_create
+      tags: [containers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      # The body schema is a JSON body too, so it is a model (openai-client-base's CreateContainerFileBody).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContainerFileBody"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ContainerFileBody"
+      responses:
+        "200":
+          description: ok
+  /documents:
+    post:
+      operationId: document_create
+      tags: [documents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentBody"
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    ContainerFileBody:
+      type: object
+      properties:
+        file_id:
+          type: string
+          description: Name of the file to create.
+        file:
+          type: string
+          format: binary
+          description: The file to upload.
+    DocumentBody:
+      type: object
+      required: [file, attachments, nullable_file]
+      properties:
+        title:
+          type: string
+        file:
+          type: string
+          format: binary
+        attachments:
+          type: array
+          items:
+            type: string
+            format: binary
+        extra:
+          type: array
+          items:
+            type: string
+            format: binary
+        nullable_file:
+          type: ["string", "null"]
+          format: binary
+        named:
+          type: object
+          additionalProperties:
+            type: string
+            format: binary

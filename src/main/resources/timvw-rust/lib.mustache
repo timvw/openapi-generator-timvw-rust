@@ -8,12 +8,6 @@ extern crate serde_repr;
 extern crate serde;
 extern crate serde_json;
 extern crate url;
-{{^httpStackTower}}
-{{#apiFeatures}}
-#[cfg(feature = "_api")]
-{{/apiFeatures}}
-extern crate reqwest;
-{{/httpStackTower}}
 
 {{#apiFeatures}}
 #[cfg(feature = "_api")]

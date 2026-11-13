@@ -1,5 +1,11 @@
 # openapi-generator-timvw-rust
 
+[![Maven Central](https://img.shields.io/maven-central/v/be.timvw/openapi-generator-timvw-rust)](https://central.sonatype.com/artifact/be.timvw/openapi-generator-timvw-rust)
+[![timvw-rust-runtime on crates.io](https://img.shields.io/crates/v/timvw-rust-runtime)](https://crates.io/crates/timvw-rust-runtime)
+[![timvw-rust-runtime on docs.rs](https://img.shields.io/docsrs/timvw-rust-runtime)](https://docs.rs/timvw-rust-runtime)
+[![CI](https://github.com/timvw/openapi-generator-timvw-rust/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/timvw/openapi-generator-timvw-rust/actions/workflows/ci.yml?query=branch%3Amain)
+[![Docker image on GHCR](https://img.shields.io/badge/ghcr.io-openapi--generator--timvw--rust-blue?logo=docker)](https://github.com/timvw/openapi-generator-timvw-rust/pkgs/container/openapi-generator-timvw-rust)
+
 `timvw-rust` generates an async Rust client from an OpenAPI 3.0 or 3.1 spec. It is a plugin for
 [openapi-generator](https://openapi-generator.tech): openapi-generator parses the spec and drives the run, and
 everything Rust is the plugin's own (type mapping, naming, model and operation processing, every template). The crate
@@ -22,13 +28,16 @@ From the directory that holds `openapi.yaml`:
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.28.0-og7.27.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:latest generate \
   -g timvw-rust \
   -i /local/openapi.yaml \
   -o /local/my-client \
   --additional-properties=packageName=my-client
 ```
 
+`:latest` is the newest release, built for the newest openapi-generator it supports. In CI, pin
+`:<version>-og<openapi-generator version>` from the [list of tags](https://github.com/timvw/openapi-generator-timvw-rust/pkgs/container/openapi-generator-timvw-rust) so a release does not change
+your output unannounced.
 
 No options are needed: what the generator renders without them is the [mapping](docs/mapping/README.md). The
 [options](docs/options.md) add functions, choose the HTTP stack or adapt a spec. Maven and the openapi-generator Maven
@@ -52,9 +61,11 @@ for item in &page.data {
 }
 ```
 
-Current releases: generator **0.28.0** (`ghcr.io/timvw/openapi-generator-timvw-rust:0.28.0-og7.27.0`,
-`be.timvw:openapi-generator-timvw-rust:0.28.0`, built and tested against openapi-generator 7.27.0) and
-[`timvw-rust-runtime`](runtime/README.md) **0.3.1**, which the generated `Cargo.toml` asks for (`^0.3.1`).
+The generator is released as a Docker image and as `be.timvw:openapi-generator-timvw-rust` on Maven Central, each
+built and tested against the openapi-generator version in its image tag (`-og<version>`).
+[`timvw-rust-runtime`](runtime/README.md) is released on crates.io with versions of its own: the generated
+`Cargo.toml` asks for the runtime release this generator was built for. The badges above show the current releases;
+[history](docs/history.md) has what each one changed.
 
 ## What you get
 
@@ -88,7 +99,7 @@ Current releases: generator **0.28.0** (`ghcr.io/timvw/openapi-generator-timvw-r
 | --- | --- |
 | [Getting started](docs/guides/getting-started.md) | the generated crate: calling an operation, models, errors, validation; running the generator (Docker, Maven), a hand-kept `Cargo.toml` |
 | [Options](docs/options.md) | every option, with its default, an example and its tests; the names the generator rejects |
-| [HTTP stack](docs/guides/http-stack.md) | `httpStack`: the tower client, retries, providers, per-call options, credentials, uploads and downloads, event streams, WebAssembly |
+| [HTTP stack](docs/guides/http-stack.md) | the tower client, retries, providers, per-call options, credentials, uploads and downloads, event streams, WebAssembly |
 | [timvw-rust-runtime](runtime/README.md) | the runtime: retries, timeouts, logging, middleware, providers, rate limits, uploads, its features |
 | [Errors](docs/guides/errors.md) | the `Error` type, status variants, headers, text errors |
 | [Validation](docs/guides/validation.md) | `validate()`: what it checks, what it skips, the off switch |

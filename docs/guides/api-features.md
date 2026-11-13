@@ -12,7 +12,7 @@ Every group `g` has two features:
 | Feature | What it compiles |
 | --- | --- |
 | `g` | the group's API functions, its models and the HTTP client (`apis`, `configuration`) |
-| `g-types` | the group's models only: no `apis` module, no `timvw-rust-runtime` (with `httpStack=reqwest-middleware`: no `reqwest`, `reqwest-middleware`, `tokio`) |
+| `g-types` | the group's models only: no `apis` module, no `timvw-rust-runtime` (unless one of its models holds a file, an `Upload`) |
 | `types` | every model, also those no operation uses |
 | `full` | every group and `types`; a default feature, so a crate that does not choose compiles what it compiled before |
 
@@ -79,9 +79,10 @@ Generation fails, rather than writing a feature that compiles nothing or means t
   on the features.
 - `models/mod.rs`: each model's `pub mod` and `pub use` get the `-types` features that need it,
   `#[cfg(any(feature = "evals-types", feature = "responses-types"))]`.
-- `Cargo.toml`: `timvw-rust-runtime` is optional, enabled by `_api` (with `httpStack=reqwest-middleware`: `reqwest`,
-  `reqwest-middleware`, and `tokio` and `tokio-util` when a file is streamed); `native-tls`, `rustls`, `retry` and
-  `tracing` forward with `?` so they do not enable the client.
+- `Cargo.toml`: `timvw-rust-runtime` is optional, enabled by `_api`, and by a `-types` feature whose models hold a
+  file (an `Upload`: a multipart union's file variant, or a model's file field); it is not optional when a model every
+  feature set compiles holds one. `native-tls`, `rustls`, `retry` and `tracing` forward with `?` so they do not enable
+  the client.
 - An API module whose functions are gated one by one carries `#![allow(unused_imports)]`, as a feature set may compile
   none of the functions that use an import: a crate that keeps a `lib.rs` of its own needs no allow for it.
 

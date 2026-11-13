@@ -1,49 +1,28 @@
 # timvw-rust compared with stock `-g rust` and progenitor
 
-This page compares three ways to generate a Rust client from the same spec:
+This page compares three ways to generate a Rust client from the same spec. It is a snapshot, regenerated on
+2026-11-13 with:
 
 - **stock**: openapi-generator 7.27.0, `-g rust`, with the settings timvw-rust always generates for (`library=reqwest`,
   `supportAsync`, `supportMiddleware`, `useChrono=false`).
-- **timvw-rust**: this generator, with the options openai-client-base runs, minus its OpenAI-specific lists
+- **timvw-rust**: this generator, 0.28.0, with its default HTTP stack, tower (runtime 0.3.1; 0.29 removes the other
+  stack, reqwest-middleware), and the options openai-client-base runs, minus its OpenAI-specific lists
   ([`timvw-rust-config.json`](timvw-rust-config.json)).
-- **progenitor**: Oxide's generator, 0.16.0, through `cargo progenitor --interface builder`. Its types come from typify.
+- **progenitor**: Oxide's generator, 0.16.0 (typify 0.8.0), through `cargo progenitor --interface builder`.
 
-The spec is [`spec.yaml`](spec.yaml), a small chat API in the shape of the OpenAI spec. Every snippet and result here
-comes from running [`generate.sh`](generate.sh), which writes the three crates to `target/comparison/`, runs
-`cargo clippy` on each, and decodes the same JSON payloads with each ([`decode.rs`](decode.rs)). Snippets have their
-file headers and blank lines removed.
+These were the latest releases of each on that date. The spec is [`spec.yaml`](spec.yaml), a small chat API in the
+shape of the OpenAI spec. Every snippet and result here comes from running [`generate.sh`](generate.sh), which writes
+the three crates to `target/comparison/`, runs `cargo clippy` on each (rustc 1.98.1), and decodes the same JSON
+payloads with each ([`decode.rs`](decode.rs)); it also checks each crate for `wasm32-unknown-unknown`, and the
+timvw-rust models without the HTTP client (`--no-default-features --features types`). Snippets have their file headers and blank lines removed.
 
 How timvw-rust renders every OpenAPI construct, with the option behind each rule, is in
-[docs/type-mapping.md](../type-mapping.md).
-
-The timvw-rust crate is generated with 0.21, where the former baseline options (`boxOnlyCycles`,
-`defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`,
-`unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) are always applied. Where this page names one
-of them, it names a rendering timvw-rust always has. The stock and progenitor crates are regenerated with the same
-versions as before (openapi-generator 7.27.0, progenitor 0.16.0).
-
-The snippets and counts are of that 0.21 crate. The models and the mapping compared here have not changed since in
-what this page shows; the client around them has. With 0.27 (and the default `httpStack=tower`), the timvw-rust crate
-also has, beyond the [summary](#summary):
-
-| | timvw-rust 0.27 |
-| --- | --- |
-| HTTP client | `timvw_rust_runtime::Client`, a tower service (reqwest unless replaced) taking tower layers, instead of a `reqwest_middleware::ClientWithMiddleware` ([HTTP stack](../guides/http-stack.md)) |
-| Retries | by default: `429`, `408`, `5xx` and failed connections, `Retry-After` honoured up to 60 s, jittered backoff, permanent `429`s opt-in ([runtime](../../runtime/README.md#retries)) |
-| Credentials | `secrecy::SecretString`, redacted in `Debug`, sent in headers marked sensitive |
-| Headers and query for one call | `.options(&RequestOptions)` on every operation |
-| Another provider of the API | `ProviderLayer`: base URL, path, headers and query rewritten ([runtime](../../runtime/README.md#providers)) |
-| Multipart upload | the file is a `timvw_rust_runtime::Upload` (a path, bytes, a reader or a stream), streamed with a `Content-Length` and sent again on a retry, where the snapshot reads a `PathBuf` into memory |
-| Binary response | `save_to(path)`, `into_async_read()` |
-| Event streams | `idle_timeout` for a stream that stalls |
-| Compile time | a Cargo feature per tag or group of operations, with types-only twins (`apiFeatures`, [guide](../guides/api-features.md)) |
-| WebAssembly | builds for `wasm32-unknown-unknown` as it is |
-
-Neither stock `-g rust` 7.27.0 nor progenitor 0.16.0 retries on its own; both take a `reqwest` client (stock with
-`supportMiddleware` a `ClientWithMiddleware`, where `reqwest-retry` adds retries) and keep credentials as plain
-strings (stock) or leave authentication to the caller's client (progenitor).
+[docs/type-mapping.md](../type-mapping.md). Where this page names a former option (`modelUnions`, `openEnums`, ...),
+it names a rendering timvw-rust always has since 0.21 ([Not options](../options.md#not-options)).
 
 ## Summary
+
+### Models and decoding
 
 | | stock `-g rust` | timvw-rust | progenitor |
 | --- | --- | --- | --- |
@@ -56,17 +35,34 @@ strings (stock) or leave authentication to the caller's client (progenitor).
 | Boxing | every model reference | only on a cycle (`boxOnlyCycles`) | only on a cycle |
 | `nullable` field | `Option<Option<T>>`: absent and `null` differ | `Option<Option<T>>`, a nullable union too | `Option<T>`: `null` is sent as absent |
 | `Default` | on everything, first enum variant picked arbitrarily | only on structs whose fields are all optional (`defaultOnlyWhereValid`) | the same; a schema `default` becomes a serde default |
-| Enum query parameter (`order`) | `Option<&str>` | `Option<&str>`; `ListModelsOrder` with `typedEnumParameters` | `ListModelsOrder` |
 | Builders | none | `bon::Builder` on structs, `#[bon::builder]` on API functions | generated builders for types and requests |
-| Event streams | the JSON method only | `create_chat_completion_stream` yields typed `ChatCompletionChunk`s | not supported |
-| Multipart | stock rendering | helper module, files, arrays, enum text parts | rejected |
-| Return value | `T` | `T`; with `responseFunctions` also `<op>_response` returning `ApiResponse<T>` (status, headers, body decoded on demand) | `ResponseValue<T>` (body, status, headers) |
-| Request body | by value | by reference (`&CreateChatCompletionRequest`) | `TryInto<T>` by value in the builder |
-| Error response | the first variant whose type accepts the body; status and body text, no headers | the variant the status selects, with status, headers and body text; boxed | `ResponseValue<ErrorResponse>` with status and headers |
 | Constraints (`maxLength`, `minimum`, ...) | not checked | `validate()` on every model, called by the caller | a string with `minLength`, `maxLength` or `pattern` is a newtype checked when built and decoded |
+
+### Operations
+
+| | stock `-g rust` | timvw-rust | progenitor |
+| --- | --- | --- | --- |
 | Call shape | free functions taking `&Configuration` | a builder per function (`bonBuilders`), or free functions with `bonBuilders=false` | methods on one `Client` |
+| Enum query parameter (`order`) | `Option<&str>` | `Option<&str>`; `ListModelsOrder` with `typedEnumParameters` | `ListModelsOrder` |
+| Request body | by value | by reference (`&CreateChatCompletionRequest`) | `TryInto<T>` by value in the builder |
+| Return value | `T` | `T`; with `responseFunctions` also `<op>_response` returning `ApiResponse<T>` (status, headers, body decoded on demand) | `ResponseValue<T>` (body, status, headers) |
+| Error response | the first variant whose type accepts the body; status and body text, no headers | the variant the status selects, with status, headers and body text; boxed | `ResponseValue<ErrorResponse>` with status and headers |
+| Event streams | the JSON method only | `create_chat_completion_stream` yields typed `ChatCompletionChunk`s, with an idle timeout | not supported |
+| Multipart file | `std::path::PathBuf`, streamed from the file without a length | `timvw_rust_runtime::Upload` (a path, bytes, a reader or a stream; a `PathBuf` converts), sent with a `Content-Length` and sent again on a retry | rejected |
+| Headers and query for one call | none | `.options(&RequestOptions)` on every operation | none |
+
+### The client
+
+| | stock `-g rust` | timvw-rust | progenitor |
+| --- | --- | --- | --- |
+| HTTP client | `reqwest_middleware::ClientWithMiddleware` | `timvw_rust_runtime::Client`, a tower service (reqwest unless replaced) that takes tower layers ([HTTP stack](../guides/http-stack.md)) | `reqwest::Client` |
+| Retries | none; `reqwest-retry` can be added as middleware | by default: `429`, `408`, `5xx` and failed connections, `Retry-After` honoured up to 60 s, jittered backoff ([runtime](../../runtime/README.md#retries)) | none |
+| Credentials | `String` fields of `Configuration`, redacted by its `Debug` | `secrecy::SecretString`, redacted in `Debug`, sent in headers marked sensitive | none: set on the `reqwest::Client` |
+| Another provider of the API | change `base_path` | `ProviderLayer`: base URL, path, headers and query rewritten ([runtime](../../runtime/README.md#providers)) | change the base URL |
+| Cargo features | none | `default-api` and `default-api-types` here (one pair per tag, `apiFeatures`, [guide](../guides/api-features.md)); `types` builds the models without the HTTP client | none |
+| `wasm32-unknown-unknown` | does not build (tokio's `fs`) | builds | builds |
 | `cargo clippy` warnings | 45 | 0 | 0 |
-| Lines of Rust | 1,666 | 3,672; 2,864 with `validateMethods=false` | 3,320 (one file) |
+| Lines of Rust | 1,666 | 3,449; 2,642 with `validateMethods=false` | 3,320 (one file) |
 
 The rest of the page shows each row in code.
 
@@ -254,13 +250,13 @@ stock boxes every model reference; timvw-rust (`boxOnlyCycles`) and progenitor b
 
 | | stock | timvw-rust | progenitor |
 | --- | --- | --- | --- |
-| Call | `list_models(&config, Some(10), Some("desc"), None)` | `list_models().configuration(&config).limit(10).order("desc").call()` (`bonBuilders=false`: as stock) | `client.list_models().limit(10).order(ListModelsOrder::Desc).send()` |
+| Call | `list_models(&config, Some(10), Some("desc"), None)` | `list_models().configuration(&config).limit(10).order("desc").call()`, `.options(&options)` for one call's headers and query (`bonBuilders=false`: as stock, with `options` last) | `client.list_models().limit(10).order(ListModelsOrder::Desc).send()` |
 | Success | `Result<ModelList, Error<ListModelsError>>` | the same; `list_models_response` with `responseFunctions` | `Result<ResponseValue<ModelList>, Error<ErrorResponse>>` |
 | Error body | `ListModelsError::DefaultResponse(ErrorResponse)` or `UnknownValue(Value)`, the first that decodes | the same variants, chosen by the status; `ResponseContent` boxed, with the response headers | `Error::ErrorResponse(ResponseValue<ErrorResponse>)` |
 | Request body | `create_chat_completion(&config, request)` | `.create_chat_completion_request(&request)` | `.body(request)` |
 | Enum query parameter | `&str` | `&str` | the enum |
 | Event stream (`text/event-stream`) | ignored: one method decoding JSON | `create_chat_completion_stream(..) -> EventStream<ChatCompletionChunk, _>` | generation panics; without it, JSON only |
-| Multipart upload | `upload_file(&config, PathBuf, purpose: &str)` | the same through `multipart_helper` | generation fails |
+| Multipart upload | `upload_file(&config, PathBuf, purpose: &str)` | `upload_file().configuration(&config).file(path).purpose("assistants").call()`, `file` an `impl Into<Upload>` | generation fails |
 | Request headers | user agent | user agent from the package (`userAgentFromPackage`) | an `api-version` header with the spec's `info.version` on every request |
 
 progenitor validates arguments in the builder (`TryInto<ListModelsOrder>`) and reports a bad one as
@@ -302,13 +298,14 @@ has them.
 - **timvw-rust** keeps stock's coverage and takes progenitor's type rules where they fit (boxing only on cycles,
   `i64`, `FromStr`, `Default` only where valid, borrowed request bodies, status and headers through
   `responseFunctions`). It adds what neither has: tag dispatch with precise errors, open enums, error variants by
-  status with headers, `validate()` without changing a type, typed event streams and a method per media type; and,
-  since 0.25, a tower client with retries, per-call options, providers, streamed uploads, Cargo feature groups and
-  WebAssembly ([above](#timvw-rust-compared-with-stock--g-rust-and-progenitor)).
+  status with headers, `validate()` without changing a type, typed event streams and a method per media type; and a
+  client with retries, redacted credentials, per-call options, providers, streamed uploads that survive a retry,
+  Cargo feature groups and WebAssembly ([the client](#the-client)). Like progenitor's on `progenitor-client`, its
+  output depends on a support crate, `timvw-rust-runtime`, that has to be kept in step with the generator.
 
 ## Open points
 
-The comparison found six things timvw-rust rendered worse than stock or progenitor. All six are addressed; the
+The first version of this comparison (on 0.20) found six things timvw-rust rendered worse than stock or progenitor. All six are addressed; the
 [renderings below](#renderings-after-the-comparison) show each one before and after.
 
 | Gap | Fix | Default |
@@ -326,8 +323,9 @@ The options were off because each changes the public API or what a `-D warnings`
 
 ## Renderings after the comparison
 
-This section records the fixes as they were made, before 0.21; `nullableUnionFields` and `schemaDefaultDocs` are no
-longer options. The comparison listed what timvw-rust still rendered
+This section records the fixes as they were made, before 0.21, with the code of that time (a multipart file was a
+`PathBuf` then, it is an `Upload` now); `nullableUnionFields` and `schemaDefaultDocs` are no longer options. The
+comparison listed what timvw-rust still rendered
 worse than one of them. Two fixes change no public API and are always on; the other four change the API or its
 documentation, so each is an option that is off by default. With the options off, openai-client-base and
 langfuse-client-base regenerate with only the two always-on differences (checked by regenerating both crates before
@@ -482,7 +480,7 @@ curl -fsSLo target/openapi-generator-cli-7.27.0.jar https://repo1.maven.org/mave
 ```
 
 ```bash
-cargo install cargo-progenitor && rustup component add rustfmt --toolchain nightly
+cargo install cargo-progenitor && rustup component add rustfmt --toolchain nightly && rustup target add wasm32-unknown-unknown
 ```
 
 ```bash

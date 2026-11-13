@@ -185,27 +185,29 @@ public class TimvwRustCodegen extends RustCodegenBase {
      */
     public static final String RESPONSE_FUNCTIONS = "responseFunctions";
     /**
-     * How the generated client sends requests: {@code tower} (the default) through {@code timvw_rust_runtime::Client},
-     * a tower service that is reqwest unless replaced; {@code reqwest-middleware} through reqwest and
-     * reqwest-middleware, as before 0.25.
+     * Removed in 0.29.0: how the client sent requests ({@code tower} or {@code reqwest-middleware}). The client always
+     * sends through {@code timvw_rust_runtime::Client} (tower), the default since 0.25, so setting it, to any value, is
+     * an error rather than ignored.
      */
     public static final String HTTP_STACK = "httpStack";
-    /** {@link #HTTP_STACK} value: the client sends through the timvw-rust-runtime crate (tower). */
-    public static final String HTTP_STACK_TOWER = "tower";
-    /** {@link #HTTP_STACK} value: the client sends through reqwest and reqwest-middleware. */
-    public static final String HTTP_STACK_REQWEST_MIDDLEWARE = "reqwest-middleware";
-    /** The version requirement of {@code timvw-rust-runtime} in the generated Cargo.toml (with {@code httpStack=tower}). */
+    /** The version requirement of {@code timvw-rust-runtime} in the generated Cargo.toml. */
     public static final String RUNTIME_VERSION = "runtimeVersion";
-    /** The {@code timvw-rust-runtime} release this generator renders for: the default of {@link #RUNTIME_VERSION}. */
-    public static final String DEFAULT_RUNTIME_VERSION = "0.3.1";
     /**
-     * A path dependency on {@code timvw-rust-runtime} next to the version (with {@code httpStack=tower}), for testing
+     * The minimum supported Rust version of a generated crate ({@code rust-version} in its Cargo.toml): the one of the
+     * {@code timvw-rust-runtime} release it renders for.
+     */
+    static final String RUST_VERSION = "1.88";
+    /** The {@code timvw-rust-runtime} release this generator renders for: the default of {@link #RUNTIME_VERSION}. */
+    public static final String DEFAULT_RUNTIME_VERSION = "0.4";
+    /**
+     * A path dependency on {@code timvw-rust-runtime} next to the version, for testing
      * against an unreleased runtime; defaults to the system property {@code timvw-rust.runtimePath}.
      */
     public static final String RUNTIME_PATH = "runtimePath";
     /**
-     * Set on every operation: the name of its {@code timvw_rust_runtime::RequestOptions} parameter (with
-     * {@code httpStack=tower} and {@code bonBuilders}), {@code options} unless a parameter of the operation has it.
+     * Set on every operation: the name of its {@code timvw_rust_runtime::RequestOptions} parameter, the last one (a
+     * setter of the bon builder, or the last positional argument), {@code options} unless a parameter of the
+     * operation has it.
      */
     static final String OPTIONS_PARAM = "x-rust-options-param";
     /**
@@ -319,7 +321,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /**
      * Options of stock {@code -g rust} with the value timvw-rust always generates for: not advertised, and rejected
      * when set, whatever the value, so a configuration taken over from {@code -g rust} fails instead of being
-     * silently ignored. The generator only renders the async reqwest-middleware client.
+     * silently ignored. The generator only renders the async client on timvw-rust-runtime.
      */
     static final Map<String, String> FIXED_VALUES = fixedValues();
 
@@ -366,8 +368,6 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private String preprocessedSpecFile;
     private boolean resetQueryParameterStyle;
     private boolean multipartHelper;
-    /** {@code httpStack=tower}: file parameters are {@code timvw_rust_runtime::Upload}s. */
-    private boolean httpStackTower;
     private boolean bonBuilders;
     private String preprocessedSpecJson;
     private List<String> fileProperties = new ArrayList<>();
@@ -505,19 +505,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
         cliOptions.add(CliOption.newBoolean(DEPRECATED_ATTRIBUTES,
                 "Deprecated properties and schemas get #[deprecated]; every generated model and API file starts with "
                         + "#![allow(deprecated)], so only callers are warned", false));
-        CliOption httpStack = new CliOption(HTTP_STACK,
-                "How the client sends requests: 'tower' sends through timvw_rust_runtime::Client, a tower service "
-                        + "(reqwest by default) that takes tower layers and can be replaced; 'reqwest-middleware' sends "
-                        + "through reqwest and reqwest-middleware").defaultValue(HTTP_STACK_TOWER);
-        httpStack.addEnum(HTTP_STACK_TOWER, "tower service from the timvw-rust-runtime crate (default)");
-        httpStack.addEnum(HTTP_STACK_REQWEST_MIDDLEWARE, "reqwest with reqwest-middleware");
-        cliOptions.add(httpStack);
         cliOptions.add(new CliOption(RUNTIME_VERSION,
-                "With httpStack=tower: the version requirement of timvw-rust-runtime in Cargo.toml")
+                "The version requirement of timvw-rust-runtime in Cargo.toml")
                 .defaultValue(DEFAULT_RUNTIME_VERSION));
         cliOptions.add(CliOption.newString(RUNTIME_PATH,
-                "With httpStack=tower: a path dependency on timvw-rust-runtime (next to the version), to build "
-                        + "against an unreleased runtime"));
+                "A path dependency on timvw-rust-runtime (next to the version), to build against an unreleased "
+                        + "runtime"));
         cliOptions.add(CliOption.newBoolean(API_FEATURES,
                 "One Cargo feature per API group (a tag by default, e.g. vector-stores; untagged operations are "
                         + "default-api), each with a <group>-types twin enabling only its models (no HTTP client), plus "
@@ -538,8 +531,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
     @Override
     public String getHelp() {
-        return "Generates an async Rust client (a tower service from timvw-rust-runtime, or reqwest with "
-                + "reqwest-middleware) whose public API is determined by "
+        return "Generates an async Rust client (a tower service from timvw-rust-runtime) whose public API is "
+                + "determined by "
                 + "the spec, the options and the generator version.";
     }
 
@@ -630,8 +623,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
         UnionRules.payloads(unions, objs);
         unionModels.putAll(unions);
         UnionRules.DispatchCounts counts = UnionRules.dispatch(unions, objs, openAPI, mapped);
-        if (httpStackTower && UploadParams.markUnions(unions)) {
+        if (UploadParams.markUnions(unions)) {
             // `From<PathBuf>` for the unions: Upload::path.
+            additionalProperties.put(UploadParams.RUNTIME_FS, true);
+        }
+        if (UploadParams.markModels(objs, unions, additionalProperties)) {
+            // A path converts into the upload of a field (Upload::path).
             additionalProperties.put(UploadParams.RUNTIME_FS, true);
         }
         anyDispatch = counts.explicit() + counts.implicit() > 0;
@@ -789,14 +786,36 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
         }
 
+        String stackKey = keyIgnoringCase(HTTP_STACK);
+        if (stackKey != null) {
+            throw new IllegalArgumentException(String.format("%s: option '%s' was removed in 0.29.0: the client always "
+                    + "sends through timvw-rust-runtime (tower), the default since 0.25, and reqwest-middleware is no "
+                    + "longer generated; remove it (it was set to '%s'). See docs/guides/migration.md, "
+                    + "\"From 0.28 to 0.29\"", GENERATOR_NAME, stackKey, additionalProperties.get(stackKey)));
+        }
+
+        // A removed option fails whatever its value, an empty one too.
+        String jsonValueKey = keyIgnoringCase(JSON_VALUE_SCHEMAS);
+        if (jsonValueKey != null) {
+            throw new IllegalArgumentException(String.format("%s: %s was removed: unions render as typed enums; drop "
+                    + "the option (it was set to '%s')", GENERATOR_NAME, jsonValueKey,
+                    additionalProperties.get(jsonValueKey)));
+        }
+        String rewritesKey = keyIgnoringCase(LEGACY_MODEL_REWRITES);
+        if (rewritesKey != null) {
+            throw new IllegalArgumentException(String.format("%s: %s was removed: the model-level rules replaced the "
+                    + "text rewrites (unused imports are no longer written, see %s); drop the option (it was set to "
+                    + "'%s')", GENERATOR_NAME, rewritesKey, "x-rust-uses-models", additionalProperties.get(rewritesKey)));
+        }
+
         // After the options with a message of their own, so those keep it; the removed options get theirs below.
         List<String> notSuggested = new ArrayList<>(ALWAYS_ON);
         notSuggested.addAll(FIXED_VALUES.keySet());
         notSuggested.addAll(REJECTED_OPTIONS);
         notSuggested.add(JSON_VALUE_SCHEMAS);
         notSuggested.add(LEGACY_MODEL_REWRITES);
-        UnknownOptions.check(GENERATOR_NAME, additionalProperties.keySet(), cliOptions(),
-                List.of(JSON_VALUE_SCHEMAS, LEGACY_MODEL_REWRITES), notSuggested);
+        notSuggested.add(HTTP_STACK);
+        UnknownOptions.check(GENERATOR_NAME, additionalProperties.keySet(), cliOptions(), List.of(), notSuggested);
 
         setLibrary(REQWEST_LIBRARY);
         super.processOpts();
@@ -828,18 +847,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
         stringIdSchemas = SpecRules.entries(additionalProperties.get(STRING_ID_SCHEMAS));
         stringIdProperties = SpecRules.entries(additionalProperties.get(STRING_ID_PROPERTIES));
         stringProperties = SpecRules.entries(additionalProperties.get(STRING_PROPERTIES));
-        if (!SpecRules.entries(additionalProperties.get(JSON_VALUE_SCHEMAS)).isEmpty()) {
-            throw new IllegalArgumentException(String.format("%s: %s was removed: unions render as typed enums; drop "
-                    + "the option", GENERATOR_NAME, JSON_VALUE_SCHEMAS));
-        }
         deepObjectQueryParameters = SpecRules.entries(additionalProperties.get(DEEP_OBJECT_QUERY_PARAMETERS));
         resetQueryParameterStyle = additionalProperties.containsKey(RESET_QUERY_PARAMETER_STYLE)
                 && convertPropertyToBooleanAndWriteBack(RESET_QUERY_PARAMETER_STYLE);
-        if (additionalProperties.containsKey(LEGACY_MODEL_REWRITES)) {
-            throw new IllegalArgumentException(String.format("%s: %s was removed: the model-level rules replaced the "
-                    + "text rewrites (unused imports are no longer written, see %s); drop the option",
-                    GENERATOR_NAME, LEGACY_MODEL_REWRITES, "x-rust-uses-models"));
-        }
         multipartHelper = additionalProperties.containsKey(MULTIPART_HELPER)
                 && convertPropertyToBooleanAndWriteBack(MULTIPART_HELPER);
         additionalProperties.put(MULTIPART_HELPER, multipartHelper);
@@ -870,18 +880,6 @@ public class TimvwRustCodegen extends RustCodegenBase {
             additionalProperties.put("x-rust-crate", String.valueOf(additionalProperties.get("packageName"))
                     .replace('-', '_'));
         }
-        Object stack = additionalProperties.get(HTTP_STACK);
-        String httpStack = stack == null || String.valueOf(stack).isEmpty() ? HTTP_STACK_TOWER : String.valueOf(stack);
-        if (!HTTP_STACK_TOWER.equals(httpStack) && !HTTP_STACK_REQWEST_MIDDLEWARE.equals(httpStack)) {
-            throw new IllegalArgumentException(String.format("%s: option '%s' is '%s'; use '%s' or '%s'",
-                    GENERATOR_NAME, HTTP_STACK, httpStack, HTTP_STACK_TOWER, HTTP_STACK_REQWEST_MIDDLEWARE));
-        }
-        boolean tower = HTTP_STACK_TOWER.equals(httpStack);
-        additionalProperties.put(HTTP_STACK, httpStack);
-        additionalProperties.put("httpStackTower", tower);
-        httpStackTower = tower;
-        additionalProperties.put("httpCrate", tower ? "timvw_rust_runtime" : "reqwest");
-        additionalProperties.put("httpErrorVariant", tower ? "Http" : "Reqwest");
         Object runtimeVersion = additionalProperties.get(RUNTIME_VERSION);
         additionalProperties.put(RUNTIME_VERSION, runtimeVersion == null || String.valueOf(runtimeVersion).isEmpty()
                 ? DEFAULT_RUNTIME_VERSION : String.valueOf(runtimeVersion));
@@ -893,6 +891,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         } else {
             additionalProperties.put(RUNTIME_PATH, path.replace('\\', '/'));
         }
+        additionalProperties.put("rustVersion", RUST_VERSION);
 
         Object featuresFile = additionalProperties.get(API_FEATURES_FILE);
         boolean withFile = featuresFile != null && !String.valueOf(featuresFile).isEmpty();
@@ -1180,14 +1179,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
             LOGGER.info("{}: {}: no operation has a text/event-stream response, so sse.rs is not written",
                     GENERATOR_NAME, TYPED_EVENT_STREAMS);
         }
-        if (httpStackTower) {
-            objs.put(RUNTIME_FEATURES, runtimeFeatures(objs));
-        }
+        objs.put(RUNTIME_FEATURES, runtimeFeatures(objs));
         return objs;
     }
 
     /**
-     * The features of the runtime dependency (tower stack), quoted and comma-separated for Cargo.toml, or {@code null}
+     * The features of the runtime dependency, quoted and comma-separated for Cargo.toml, or {@code null}
      * for none: {@code fs} when a file parameter takes a path ({@code Upload::path}; the runtime leaves it out on
      * WebAssembly), {@code time} for the idle timeout of typed event streams.
      */
@@ -1227,11 +1224,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             String own = plan.operationCfg(classname, op.path, op.httpMethod);
             if (own != null) {
                 op.vendorExtensions.put(ApiFeatures.OPERATION_CFG, own);
-                if (httpStackTower) {
-                    // Some feature sets compile none of the functions that use an import: the module allows it, so
-                    // a crate's own lib.rs needs no `allow(unused_imports)`.
-                    module.put(ApiFeatures.FUNCTION_GATED, true);
-                }
+                // Some feature sets compile none of the functions that use an import: the module allows it, so a
+                // crate's own lib.rs needs no `allow(unused_imports)`.
+                module.put(ApiFeatures.FUNCTION_GATED, true);
             }
         }
     }
@@ -1248,7 +1243,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (objs.get("models") instanceof List) {
             for (Object m : (List<?>) objs.get("models")) {
                 if (m instanceof ModelMap && ((ModelMap) m).getModel() != null
-                        && ((ModelMap) m).getModel().vendorExtensions.containsKey(UploadParams.FILE_UNION)) {
+                        && (((ModelMap) m).getModel().vendorExtensions.containsKey(UploadParams.FILE_UNION)
+                        || ((ModelMap) m).getModel().vendorExtensions.containsKey(UploadParams.UPLOAD_MODEL))) {
                     SortedSet<String> f = plan.models.get(((ModelMap) m).getModel().name);
                     if (f == null || f.isEmpty()) {
                         uploadFeatures.add(ApiFeatures.TYPES);
@@ -1652,7 +1648,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /**
      * With {@code responseFunctions}, marks every method of one API module whose success is a body: the api template
      * renders it a second time as {@code <operation>_response}, returning {@code ApiResponse<T>}. A file response
-     * already is the {@code reqwest::Response} and an event stream is not a body to hold, so neither gets one. Fails
+     * already is the {@code timvw_rust_runtime::Response} and an event stream is not a body to hold, so neither gets one. Fails
      * when the name is another method's.
      */
     private void addResponseFunctions(List<CodegenOperation> operations) {
@@ -2007,7 +2003,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (!imports.isEmpty()) {
             combined.put("hasImport", true);
         }
-        Imports.markApi(combined, multipartHelper, isSupportMultipleResponses(), httpStackTower);
+        Imports.markApi(combined, isSupportMultipleResponses());
         objs.clear();
         objs.putAll(combined);
         LOGGER.info("{}: {} webhook operations written into {} next to its {} path operations (set {} to generate "
@@ -2077,15 +2073,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
                             p.vendorExtensions.put(DISPLAY_ITEMS, true);
                         }
                         markText(p);
-                        if (httpStackTower) {
-                            UploadParams.mark(p, bonBuilders);
-                        }
+                        UploadParams.mark(p, bonBuilders);
                     }
                 }
                 if (multipartHelper && op.isMultipart && op.formParams != null && !op.formParams.isEmpty()) {
                     MultipartRules.classify(openAPI, op, unionModels,
                             msg -> LOGGER.warn("{}: multipart: {}", GENERATOR_NAME, msg));
-                    if (httpStackTower && bonBuilders) {
+                    if (bonBuilders) {
                         UploadParams.markUnionSetters(op);
                     }
                     for (CodegenParameter p : op.formParams) {
@@ -2094,7 +2088,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         }
                     }
                 }
-                if (httpStackTower && UploadParams.uploads(op)) {
+                if (UploadParams.uploads(op)) {
                     additionalProperties.put(UploadParams.RUNTIME_FS, true);
                 }
             }
@@ -2105,7 +2099,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (responseFunctions && objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             addResponseFunctions(objs.getOperations().getOperation());
         }
-        Imports.markApi(objs, multipartHelper, isSupportMultipleResponses(), httpStackTower);
+        Imports.markApi(objs, isSupportMultipleResponses());
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             // the webhooks' operations are not given the models: the ones documented with the models count too
             Set<String> documented = new HashSet<>(documentedModels);

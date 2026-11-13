@@ -297,8 +297,9 @@ impl<B> Policy<http::Request<Body>, http::Response<B>, BoxError> for RetryPolicy
         }
         let retry_after = retryable(result, self.server_directed_429, self.retry_timeouts)?;
         let now = Instant::now();
-        let Some(deadline) = self.deadline(retry_after, now) else {
-            #[cfg(feature = "tracing")]
+        let deadline = self.deadline(retry_after, now);
+        #[cfg(feature = "tracing")]
+        if deadline.is_none() {
             tracing::debug!(
                 target: "timvw_rust_runtime::trace",
                 retry_after_ms = retry_after
@@ -307,8 +308,8 @@ impl<B> Policy<http::Request<Body>, http::Response<B>, BoxError> for RetryPolicy
                 status = result.as_ref().ok().map(|response| response.status().as_u16()),
                 "not retrying: the server asks to wait longer than max_retry_after"
             );
-            return None;
-        };
+        }
+        let deadline = deadline?;
         self.attempts += 1;
         #[cfg(feature = "tracing")]
         tracing::debug!(
@@ -329,6 +330,12 @@ impl<B> Policy<http::Request<Body>, http::Response<B>, BoxError> for RetryPolicy
         *clone.uri_mut() = request.uri().clone();
         *clone.version_mut() = request.version();
         *clone.headers_mut() = request.headers().clone();
+        if let Some(applied) = request
+            .extensions()
+            .get::<crate::request_options::Applied>()
+        {
+            clone.extensions_mut().insert(applied.clone());
+        }
         Some(clone)
     }
 }

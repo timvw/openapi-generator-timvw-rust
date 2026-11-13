@@ -14,19 +14,30 @@ Method | HTTP request | Description
 
 ## {{{operationId}}}
 
-> {{#returnType}}{{{.}}} {{/returnType}}{{{operationId}}}({{#allParams}}{{{paramName}}}{{^-last}}, {{/-last}}{{/allParams}})
+> {{#returnType}}{{{.}}} {{/returnType}}{{{operationId}}}({{#allParams}}{{{paramName}}}, {{/allParams}}{{{vendorExtensions.x-rust-options-param}}})
 {{{summary}}}{{#notes}}
 
 {{{.}}}{{/notes}}
 
 ### Parameters
 
-{{^allParams}}This endpoint does not need any parameter.{{/allParams}}{{#allParams}}{{#-last}}
 Name | Type | Description  | Required | Notes
-------------- | ------------- | ------------- | ------------- | -------------{{/-last}}{{/allParams}}
+------------- | ------------- | ------------- | ------------- | -------------
 {{#allParams}}
 **{{{paramName}}}** | {{^required}}Option<{{/required}}{{#required}}{{#isNullable}}Option<{{/isNullable}}{{/required}}{{#vendorExtensions.x-doc-link}}[**{{{dataType}}}**]({{{vendorExtensions.x-doc-link}}}){{/vendorExtensions.x-doc-link}}{{^vendorExtensions.x-doc-link}}**{{{dataType}}}**{{/vendorExtensions.x-doc-link}}{{^required}}>{{/required}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}} | {{{description}}}{{#isInnerEnum}} (enum: {{#allowableValues}}{{#values}}{{{.}}}{{^-last}}, {{/-last}}{{/values}}{{/allowableValues}}){{/isInnerEnum}} | {{#required}}[required]{{/required}} |{{#defaultValue}}[default to {{{.}}}]{{/defaultValue}}
 {{/allParams}}
+**{{{vendorExtensions.x-rust-options-param}}}** | Option<&timvw_rust_runtime::RequestOptions> | Per-call extra headers, query parameters and base URL, applied after everything else ([`RequestOptions`](https://docs.rs/timvw-rust-runtime/latest/timvw_rust_runtime/struct.RequestOptions.html)) |  |
+
+{{#bonBuilders}}
+```rust,ignore
+{{{operationId}}}().configuration(&configuration){{#requiredParams}}.{{{paramName}}}(..){{/requiredParams}}.{{{vendorExtensions.x-rust-options-param}}}(&{{{vendorExtensions.x-rust-options-param}}}).call().await
+```
+{{/bonBuilders}}
+{{^bonBuilders}}
+```rust,ignore
+{{{operationId}}}(&configuration, {{#allParams}}{{{paramName}}}, {{/allParams}}Some(&{{{vendorExtensions.x-rust-options-param}}})).await // or None for no options
+```
+{{/bonBuilders}}
 
 ### Return type
 

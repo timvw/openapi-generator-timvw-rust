@@ -13,9 +13,33 @@ null-only schemas and doc links; 0.24 adds typed error headers and fixes webhook
 mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` crate (`httpStack`); 0.26 keeps
 credentials in `SecretString`s, adds headers and query parameters per call and a Cargo feature per API group
 (`apiFeatures`); 0.27 takes file parameters as `timvw_rust_runtime::Upload`s, streamed and retried; 0.28 takes them in
-multipart unions too. The
+multipart unions too; 0.29 in model fields, and removes the reqwest-middleware stack. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.29.0
+
+The reqwest-middleware stack is removed: every client sends through `timvw-rust-runtime` (see
+[migration](guides/migration.md#from-028-to-029)). Generated clients need `timvw-rust-runtime` 0.4 (`^0.4`).
+
+- `httpStack` is a removed option: setting it, to any value, fails generation and points to the migration guide. The
+  output of the default (tower) stack is unchanged by the removal, byte for byte.
+- A model's file field (`format: binary`, one file, an array or a map, optional or nullable) holds
+  `timvw_rust_runtime::Upload` instead of `PathBuf` (openai-client-base: `CreateContainerFileBody.file`). It is
+  `#[serde(skip)]`; a required single file rejects JSON (`deserialize_with`). `new` and the bon setters take
+  `impl Into<Upload>`. With `apiFeatures`, the `-types` features of such models depend on the runtime.
+- With `bonBuilders=false`, every API function takes a last `options: Option<&RequestOptions>` argument.
+- The generated API docs (`docs/<Api>.md`) list the per-call `options` argument of every operation, with a call in the
+  builder or positional form.
+- Generated functions declare `Configuration.base_path` to the request builder, so `RequestOptions::base_url`
+  (runtime 0.4) replaces it for one call.
+- The generated `Cargo.toml` declares `rust-version = "1.88"`, the runtime's. CI and `WasmTest` check the runtime and
+  generated crates on Rust 1.88, natively and for `wasm32-unknown-unknown`.
+- `apis::Error::Io` and its `From<std::io::Error>` are removed: nothing produced them since 0.27.
+- A removed option fails with an empty value too (an empty `jsonValueSchemas` was ignored).
+- Runtime 0.4.0: `RequestOptions::base_url` and `RequestBuilder::base`; per-call `RequestOptions` win over
+  `ProviderLayer` (its headers and query parameters do not replace the call's, and it does not move a call with a base
+  URL of its own); the `retry` feature passes clippy on Rust 1.88 without `tracing`.
 
 ## 0.28.0
 

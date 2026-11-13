@@ -2,16 +2,26 @@ use http::header::{HeaderName, HeaderValue};
 use http::HeaderMap;
 use serde::Serialize;
 
+use url::Url;
+
+use crate::provider::parse_base;
 use crate::Error;
 
-/// Extra headers and query parameters for one call, applied after everything the generated code sets.
+/// Extra headers and query parameters, and another base URL, for one call, applied after everything the generated
+/// code sets.
 ///
-/// A generated operation takes them with `.options(&options)`; [`RequestBuilder::options`](crate::RequestBuilder::options)
-/// applies them to a request of your own. One value can be reused for many calls.
+/// A generated operation takes them with `.options(&options)` (or its last argument without builders);
+/// [`RequestBuilder::options`](crate::RequestBuilder::options) applies them to a request of your own. One value can be
+/// reused for many calls.
 ///
 /// - A header replaces every value the request has under the same name: generated headers, authentication and
 ///   `Content-Type` included. A name set twice on the options keeps both values (see [`RequestOptions::headers`]).
 /// - Query parameters are appended after the generated ones; a name the request already has is sent twice.
+/// - A [base URL](RequestOptions::base_url) sends the call to another host or path prefix: it replaces the
+///   `Configuration.base_path` the request was built on, and the operation's own path and query are kept.
+///
+/// They win over a [`ProviderLayer`](crate::ProviderLayer): it does not replace a header or a query parameter the
+/// options set, and it does not move a call with a base URL of its own to the provider (see its docs).
 ///
 /// ```
 /// use timvw_rust_runtime::RequestOptions;
@@ -27,6 +37,7 @@ use crate::Error;
 pub struct RequestOptions {
     headers: HeaderMap,
     query: Vec<(String, String)>,
+    base: Option<Url>,
 }
 
 impl RequestOptions {
@@ -67,6 +78,39 @@ impl RequestOptions {
         Ok(self)
     }
 
+    /// Sends the call to another base URL, such as `https://eu.api.example.com/v1`: the scheme, host, port and path
+    /// prefix of the request's base (a generated client's `Configuration.base_path`, declared with
+    /// [`RequestBuilder::base`](crate::RequestBuilder::base)) are replaced, and the operation's path and the query are
+    /// kept. On a request without a declared base, the whole path is kept and put after this base's path. Calling it
+    /// again replaces the base. Fails, with an error whose [`is_builder()`](Error::is_builder) is true, on a URL that is
+    /// not absolute or that has a query or fragment.
+    ///
+    /// ```
+    /// use timvw_rust_runtime::{Client, Method, RequestOptions};
+    ///
+    /// let options = RequestOptions::new().base_url("https://eu.api.example.com/v2")?;
+    /// let request = Client::default()
+    ///     .request(Method::GET, "https://api.example.com/v1/models?limit=2")
+    ///     .base("https://api.example.com/v1")
+    ///     .options(&options)
+    ///     .build()?;
+    /// assert_eq!(request.uri(), "https://eu.api.example.com/v2/models?limit=2");
+    /// # Ok::<(), timvw_rust_runtime::Error>(())
+    /// ```
+    pub fn base_url(mut self, base_url: &str) -> Result<Self, Error> {
+        self.base = Some(parse_base(base_url)?);
+        Ok(self)
+    }
+
+    /// The base URL set with [`RequestOptions::base_url`], if any.
+    pub fn base(&self) -> Option<&str> {
+        self.base.as_ref().map(Url::as_str)
+    }
+
+    pub(crate) fn base_url_parsed(&self) -> Option<&Url> {
+        self.base.as_ref()
+    }
+
     /// The headers.
     pub fn header_map(&self) -> &HeaderMap {
         &self.headers
@@ -77,9 +121,46 @@ impl RequestOptions {
         &self.query
     }
 
-    /// Whether there are no headers and no query parameters.
+    /// Whether there are no headers, no query parameters and no base URL.
     pub fn is_empty(&self) -> bool {
-        self.headers.is_empty() && self.query.is_empty()
+        self.headers.is_empty() && self.query.is_empty() && self.base.is_none()
+    }
+}
+
+/// What [`RequestOptions`] set on a request, kept as a request extension by
+/// [`RequestBuilder::options`](crate::RequestBuilder::options): the [`ProviderLayer`](crate::ProviderLayer) leaves
+/// these alone.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Applied {
+    /// The names of the headers the options set.
+    pub(crate) headers: Vec<HeaderName>,
+    /// The names of the query parameters the options added.
+    pub(crate) query: Vec<String>,
+    /// The options moved the request to a base URL of their own.
+    pub(crate) base: bool,
+}
+
+impl Applied {
+    pub(crate) fn add(&mut self, options: &RequestOptions) {
+        for name in options.headers.keys() {
+            if !self.headers.contains(name) {
+                self.headers.push(name.clone());
+            }
+        }
+        for (name, _) in &options.query {
+            if !self.query.contains(name) {
+                self.query.push(name.clone());
+            }
+        }
+        self.base |= options.base.is_some();
+    }
+
+    pub(crate) fn has_header(&self, name: &HeaderName) -> bool {
+        self.headers.contains(name)
+    }
+
+    pub(crate) fn has_query(&self, name: &str) -> bool {
+        self.query.iter().any(|q| q == name)
     }
 }
 
@@ -154,5 +235,33 @@ mod tests {
             .query(&[("a", "")])
             .unwrap()
             .is_empty());
+        assert!(!RequestOptions::new()
+            .base_url("https://example.com")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn base_url_is_a_base() {
+        let options = RequestOptions::new()
+            .base_url("https://a.example/v1")
+            .unwrap()
+            .base_url("https://b.example/v2/")
+            .unwrap();
+        assert_eq!(options.base(), Some("https://b.example/v2/"));
+        for base in [
+            "not a url",
+            "/relative",
+            "https://p.example/v1?a=1",
+            "https://p.example/v1#top",
+        ] {
+            assert!(
+                RequestOptions::new()
+                    .base_url(base)
+                    .unwrap_err()
+                    .is_builder(),
+                "{base}"
+            );
+        }
     }
 }

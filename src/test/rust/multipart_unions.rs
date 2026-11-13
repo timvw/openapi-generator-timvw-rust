@@ -1,5 +1,5 @@
 //! Multipart unions with a file variant at run time, on the crate generated from src/test/resources/multipart_unions.yaml
-//! (`httpStack=tower`, `multipartHelper`). `MultipartFileUnionsTest` copies this file into that crate's tests/ and runs
+//! (`multipartHelper`). `MultipartFileUnionsTest` copies this file into that crate's tests/ and runs
 //! cargo. The file variants hold `timvw_rust_runtime::Upload`s: paths, bytes and streams all go out as file parts. A
 //! local HTTP server answers each request with `200` and hands back the requests it read.
 

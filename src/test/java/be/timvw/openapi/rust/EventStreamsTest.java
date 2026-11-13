@@ -170,7 +170,7 @@ class EventStreamsTest {
         assertTrue(Files.readString(on.resolve("src/apis/mod.rs")).contains("pub mod sse;"));
         String cargo = Files.readString(on.resolve("Cargo.toml"));
         assertTrue(cargo.contains("futures-core = \"^0.3\""), cargo);
-        // The runtime always streams response bodies (with httpStack=reqwest-middleware: reqwest's "stream" feature).
+        // The runtime always streams response bodies.
         assertTrue(cargo.contains("timvw-rust-runtime = "), cargo);
     }
 

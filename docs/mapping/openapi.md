@@ -22,4 +22,4 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | `info.version` |
 | Rust | the default user agent, `OpenAPI-Generator/<version>/rust`, in `Configuration::default()` |
 | Options | `userAgentFromPackage=true` (openai-client-base) makes it `<packageName>/<crate version>`, the version taken from `CARGO_PKG_VERSION` |
-| Tests | [`OperationMappingTest#theFirstServerIsTheBasePathAndTheVersionNamesTheUserAgent`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L170), [`ErrorsAndLintsTest#userAgentIsThePackageAndCrateVersion`](../../src/test/java/be/timvw/openapi/rust/ErrorsAndLintsTest.java#L62) |
+| Tests | [`OperationMappingTest#theFirstServerIsTheBasePathAndTheVersionNamesTheUserAgent`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L172), [`ErrorsAndLintsTest#userAgentIsThePackageAndCrateVersion`](../../src/test/java/be/timvw/openapi/rust/ErrorsAndLintsTest.java#L62) |

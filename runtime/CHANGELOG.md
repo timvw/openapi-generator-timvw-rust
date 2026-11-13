@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-13
+
+### Added
+
+- `RequestOptions::base_url`: sends one call to another base URL (scheme, host, port and path prefix), keeping the
+  operation's path and the query. Fallible like `header` and `query`; `RequestOptions::base` reads it back, and
+  `is_empty` counts it. `RequestBuilder::base` declares the base a request's URL was built on (a generated client's
+  `Configuration.base_path`, which generated code declares), so the per-call base replaces exactly that prefix; without
+  a declared base the whole path is kept.
+
+### Changed
+
+- Per-call `RequestOptions` win over `ProviderLayer`. `RequestBuilder::options` records what the options set (a
+  request extension, kept by `RetryLayer` on a retry), and the layer no longer replaces a header or a query parameter
+  of those names: with an `api-version` in both, the call's own is sent, once. A call with a per-call base URL is not
+  moved by `rewrite_from`; when that base is the provider's own (or under it) the layer still maps the path and adds
+  its headers and query, any other base gets nothing from the layer. Before, the layer replaced headers and query
+  parameters of the same name whatever the options set.
+
 ## [0.3.1] - 2026-11-13
 
 ### Added

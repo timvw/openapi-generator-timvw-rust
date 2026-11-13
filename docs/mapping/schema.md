@@ -59,7 +59,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | `type: string, format: binary` (a file) |
 | Rust | as a request body, multipart part or parameter: `timvw_rust_runtime::Upload`, what to send (a path, bytes, a reader or a stream; the builder setter takes `impl Into<Upload>`, a `PathBuf` too). As a response: `timvw_rust_runtime::Response`, to read as bytes or a stream, or `save_to` a file |
 | Wire | the file's bytes, streamed from disk with a `Content-Length` (a part typed from the file's extension); the response body as it comes |
-| Library | `timvw_rust_runtime::Response`; `timvw_rust_runtime::Upload`, sent as a `timvw_rust_runtime::Body` or `timvw_rust_runtime::multipart::Part::upload`, and opened again by a retry. `httpStack=reqwest-middleware`: `std::path::PathBuf`, opened with tokio |
+| Library | `timvw_rust_runtime::Response`; `timvw_rust_runtime::Upload`, sent as a `timvw_rust_runtime::Body` or `timvw_rust_runtime::multipart::Part::upload`, and opened again by a retry |
 | Options | `fileProperties` renders listed `Schema.property` entries as files |
 | Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L107), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L150) |
 
@@ -241,7 +241,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | --- | --- |
 | OpenAPI | `description` |
 | Rust | `///` on the type or field; bare URLs are wrapped in `<...>` (rustdoc's `bare_urls`). A type without a description has no empty `///` |
-| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L90), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L213) |
+| Tests | [`SchemaMappingTest#descriptionsAreDocCommentsWithBareUrlsWrapped`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`GenerationTest#bareUrlsInDocCommentsAreWrapped`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L90), [`ExtraRulesTest#enumsWithoutADescriptionHaveNoEmptyDocComment`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L206) |
 
 ## Arrays
 

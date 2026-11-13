@@ -22,10 +22,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * File parameters are {@code timvw_rust_runtime::Upload}s with {@code httpStack=tower}, on
+ * File parameters are {@code timvw_rust_runtime::Upload}s, on
  * src/test/resources/uploads.yaml: a builder setter takes anything that converts into one (a {@code PathBuf} too),
  * and files are streamed with a {@code Content-Length} and opened again by a retry. src/test/rust/uploads.rs checks
- * what arrives at a local server, with and without {@code multipartHelper}; reqwest-middleware keeps {@code PathBuf}.
+ * what arrives at a local server, with and without {@code multipartHelper}.
  */
 class UploadsTest {
 
@@ -41,16 +41,12 @@ class UploadsTest {
     static Path helper;
 
     @TempDir
-    static Path middleware;
-
-    @TempDir
     static Path positional;
 
     @BeforeAll
     static void generate() {
         generate(tower, Map.of());
         generate(helper, Map.of(TimvwRustCodegen.MULTIPART_HELPER, "true"));
-        generate(middleware, Map.of(TimvwRustCodegen.HTTP_STACK, TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE));
         generate(positional, Map.of(TimvwRustCodegen.BON_BUILDERS, "false"));
     }
 
@@ -86,7 +82,7 @@ class UploadsTest {
             assertFalse(api.contains("TokioFile"), api);
         }
         assertContains(api(positional), "file: " + UPLOAD + ", purpose: &str, mask: Option<" + UPLOAD + ">, images: "
-                + "Option<Vec<" + UPLOAD + ">>) ->");
+                + "Option<Vec<" + UPLOAD + ">>, options: Option<&timvw_rust_runtime::RequestOptions>) ->");
         assertFalse(api(positional).contains("#[builder"), api(positional));
     }
 
@@ -116,15 +112,6 @@ class UploadsTest {
                     + "features = \\[\"fs\"\\].*"), cargo);
             assertFalse(cargo.contains("tokio"), cargo);
         }
-    }
-
-    @Test
-    void reqwestMiddlewareKeepsPaths() throws IOException {
-        String api = api(middleware);
-        assertContains(api, "file: std::path::PathBuf, purpose: &str, mask: Option<std::path::PathBuf>,");
-        assertContains(api, "TokioFile::open(");
-        assertFalse(api.contains(UPLOAD), api);
-        assertContains(Files.readString(middleware.resolve("Cargo.toml")), "tokio-util");
     }
 
     /** Runs src/test/rust/uploads.rs on the generated crates, and clippy. Needs cargo. */

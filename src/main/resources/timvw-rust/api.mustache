@@ -7,14 +7,10 @@
 #![allow(unused_imports)]
 {{/x-rust-function-gated}}
 
-use {{httpCrate}};
+use timvw_rust_runtime;
 use serde::{Deserialize, Serialize{{#x-rust-import-serde-error}}, de::Error as _{{/x-rust-import-serde-error}}};
 use crate::{apis::ResponseContent, models};
 use super::{Error, configuration{{#x-rust-import-content-type}}, ContentType{{/x-rust-import-content-type}}{{#multipartHelperImport}}, multipart_helper{{/multipartHelperImport}}};
-{{#x-rust-import-file-stream}}
-use tokio::fs::File as TokioFile;
-use tokio_util::codec::{BytesCodec, FramedRead};
-{{/x-rust-import-file-stream}}
 
 
 {{#supportMultipleResponses}}

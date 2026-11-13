@@ -2,7 +2,6 @@ package be.timvw.openapi.rust;
 
 import org.openapitools.codegen.CodegenModel;
 import org.openapitools.codegen.CodegenOperation;
-import org.openapitools.codegen.CodegenParameter;
 import org.openapitools.codegen.CodegenProperty;
 import org.openapitools.codegen.model.ModelMap;
 import org.openapitools.codegen.model.ModelsMap;
@@ -24,9 +23,6 @@ import java.util.Map;
  *       ({@code ContentType}).</li>
  *   <li>{@value #SERDE_ERROR} on an API module: an operation builds a {@code serde_json::Error::custom} (response
  *       decoding, or an event stream that got another content type), which needs {@code de::Error as _}.</li>
- *   <li>{@value #FILE_STREAM} on an API module: an operation streams a file from disk ({@code TokioFile},
- *       {@code FramedRead}): a file request body, or a multipart file part when {@code multipartHelper} is off; not with
- *       {@code httpStack=tower}, whose {@code Upload} streams itself.</li>
  * </ul>
  */
 final class Imports {
@@ -37,8 +33,6 @@ final class Imports {
     static final String CONTENT_TYPE = "x-rust-import-content-type";
     /** On an API bundle: import {@code serde::de::Error as _}. */
     static final String SERDE_ERROR = "x-rust-import-serde-error";
-    /** On an API bundle: import {@code TokioFile}, {@code BytesCodec} and {@code FramedRead}. */
-    static final String FILE_STREAM = "x-rust-import-file-stream";
 
     private static final String MODELS = "models::";
 
@@ -95,37 +89,19 @@ final class Imports {
     }
 
     /** Sets the import flags of one API module from its operations. */
-    static void markApi(OperationsMap objs, boolean multipartHelper, boolean multipleResponses) {
-        markApi(objs, multipartHelper, multipleResponses, false);
-    }
-
-    /**
-     * Sets the import flags of one API module from its operations.
-     *
-     * @param uploads files are {@code timvw_rust_runtime::Upload}s (tower), which stream themselves: no file is
-     *     opened in the API module
-     */
-    static void markApi(OperationsMap objs, boolean multipartHelper, boolean multipleResponses, boolean uploads) {
+    static void markApi(OperationsMap objs, boolean multipleResponses) {
         boolean contentType = false;
         boolean serdeError = false;
-        boolean fileStream = false;
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             for (CodegenOperation op : objs.getOperations().getOperation()) {
                 boolean stream = op.vendorExtensions.containsKey(TimvwRustCodegen.EVENT_STREAM);
                 boolean decodes = !stream && !multipleResponses && op.returnType != null && !op.isResponseFile;
                 contentType |= decodes;
                 serdeError |= decodes || stream;
-                fileStream |= !uploads
-                        && (hasFile(op.bodyParams) || (!multipartHelper && op.isMultipart && hasFile(op.formParams)));
             }
         }
         put(objs, CONTENT_TYPE, contentType);
         put(objs, SERDE_ERROR, serdeError);
-        put(objs, FILE_STREAM, fileStream);
-    }
-
-    private static boolean hasFile(List<CodegenParameter> params) {
-        return params != null && params.stream().anyMatch(p -> p.isFile);
     }
 
     private static void put(OperationsMap objs, String key, boolean value) {

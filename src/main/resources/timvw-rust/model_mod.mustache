@@ -13,6 +13,15 @@ pub use self::{{{classFilename}}}::{{{classname}}};
 {{#validateMethods}}
 pub mod validation;
 {{/validateMethods}}
+{{#uploadNoJson}}
+
+/// The `deserialize_with` of a required field holding an upload: an upload has no JSON form, so JSON never decodes to
+/// one.
+#[allow(dead_code)]
+pub(crate) fn upload_has_no_json<'de, D: serde::Deserializer<'de>, T>(_: D) -> Result<T, D::Error> {
+    Err(serde::de::Error::custom("an upload has no JSON form"))
+}
+{{/uploadNoJson}}
 {{#serdeAsDoubleOption}}
 use serde::{Deserialize, Deserializer, Serializer};
 use serde_with::{de::DeserializeAsWrap, ser::SerializeAsWrap, DeserializeAs, SerializeAs};

@@ -88,8 +88,7 @@ whose body says it is permanent (OpenAI's `insufficient_quota`) is not retried w
 headers and authentication layers, and rate limits. Headers and query parameters for one call go on its builder,
 `.options(&options)` with an `apis::RequestOptions`
 ([guide](http-stack.md#headers-and-query-parameters-for-one-call)). The client builds for WebAssembly
-(`wasm32-unknown-unknown`) as it is ([guide](http-stack.md#webassembly)). With
-`httpStack=reqwest-middleware` the client is a `reqwest_middleware::ClientWithMiddleware` instead, as before 0.25.
+(`wasm32-unknown-unknown`) as it is ([guide](http-stack.md#webassembly)).
 
 ## Models
 
@@ -166,10 +165,10 @@ See [validation](validation.md).
 
 | What | Where |
 | --- | --- |
-| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>`, e.g. `0.27.0-og7.27.0`; `<version>` and `latest` point at the newest openapi-generator |
+| Docker | `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator version>` ([tags](https://github.com/timvw/openapi-generator-timvw-rust/pkgs/container/openapi-generator-timvw-rust)); `<version>` and `latest` point at the newest openapi-generator |
 | Maven | `be.timvw:openapi-generator-timvw-rust` on Maven Central |
 | Generator name | `timvw-rust` (`-g timvw-rust`) |
-| openapi-generator | built and tested against 7.27.0, which the image bundles; another minor version logs a warning |
+| openapi-generator | built and tested against the version in the image tag (`-og<version>`), which the image bundles; another minor version logs a warning |
 
 The image is a drop-in for `openapitools/openapi-generator-cli`: same arguments, same `/local` mount, same
 `JAVA_OPTS`. Options go on the command line or, for lists and comma-separated values, in a `-c` config file
@@ -177,12 +176,14 @@ The image is a drop-in for `openapitools/openapi-generator-cli`: same arguments,
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.27.0-og7.27.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:latest generate \
   -g timvw-rust \
   -i /local/openapi.yaml \
   -o /local/my-client \
   -c /local/generator-config.json
 ```
+
+In CI, pin `:<version>-og<openapi-generator version>` from the [list of tags](https://github.com/timvw/openapi-generator-timvw-rust/pkgs/container/openapi-generator-timvw-rust) instead of `:latest`.
 
 ```json
 {
@@ -201,12 +202,14 @@ add the generator as a dependency of the plugin:
 <plugin>
   <groupId>org.openapitools</groupId>
   <artifactId>openapi-generator-maven-plugin</artifactId>
-  <version>7.27.0</version>
+  <!-- the openapi-generator version the timvw-rust release was built against (its image tag's -og<version>) -->
+  <version>A.B.C</version>
   <dependencies>
     <dependency>
       <groupId>be.timvw</groupId>
       <artifactId>openapi-generator-timvw-rust</artifactId>
-      <version>0.27.0</version>
+      <!-- the latest release on Maven Central -->
+      <version>X.Y.Z</version>
     </dependency>
   </dependencies>
   <executions>
@@ -233,19 +236,17 @@ dependencies the generator writes, which depend on the spec and the options:
 | Dependency | When |
 | --- | --- |
 | `serde`, `serde_json`, `serde_repr`, `url` | always |
-| `timvw-rust-runtime` | `httpStack=tower` (the default), `default-features = false`; with its `fs` feature when an operation uploads a file (a file parameter, or a multipart union with a file variant), its `time` feature with `typedEventStreams` and an operation that streams |
-| `reqwest`, `reqwest-middleware` | `httpStack=reqwest-middleware` |
+| `timvw-rust-runtime` | always, `default-features = false`; with its `fs` feature when a file is uploaded (a file parameter, a multipart union with a file variant, or a model with a file field), its `time` feature with `typedEventStreams` and an operation that streams |
 | `bon` | `bonBuilders` (the default) |
 | `serde_with` | a nullable optional property (`Option<Option<T>>`) or a `format: byte` property |
 | `chrono` | a `date` or `date-time` anywhere (model, parameter, union variant), with `useChrono` (the default) |
-| `uuid` | a `format: uuid` anywhere; with `httpStack=tower`, its `js` feature too on `wasm32-unknown-unknown` (a `[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]` table) |
+| `uuid` | a `format: uuid` anywhere; its `js` feature too on `wasm32-unknown-unknown` (a `[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]` table) |
 | `regex` | a `pattern` that `validate()` checks |
-| `futures-core` (and reqwest's `stream` feature with `httpStack=reqwest-middleware`) | `typedEventStreams` with an operation that streams |
-| `tokio` (`fs`), `tokio-util` (`codec`), reqwest's `stream` feature | `httpStack=reqwest-middleware`: a file body, or a multipart file without `multipartHelper` |
+| `futures-core` | `typedEventStreams` with an operation that streams |
 | `serde_path_to_error` | `useSerdePathToError` |
 
-With `apiFeatures`, the HTTP dependencies (`timvw-rust-runtime`, or `reqwest` and `reqwest-middleware` and `tokio`,
-`tokio-util`) are `optional = true`, and the generated `[features]` section lists every group: copy both.
+With `apiFeatures`, the HTTP dependency (`timvw-rust-runtime`) is `optional = true` (unless a model every feature set
+compiles holds an upload), and the generated `[features]` section lists every group: copy both.
 
 The rule: on every upgrade of the generator (and every spec update), generate once into an empty directory and
 compare its `Cargo.toml` with yours.

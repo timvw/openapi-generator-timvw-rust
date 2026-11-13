@@ -30,16 +30,11 @@ class MultipartFileUnionsTest {
     static Path on;
 
     @TempDir
-    static Path middleware;
-
-    @TempDir
     static Path features;
 
     @BeforeAll
     static void generate() {
         generate("multipart_unions.yaml", on);
-        generate("multipart_unions.yaml", middleware,
-                Map.of(TimvwRustCodegen.HTTP_STACK, TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE));
         generate("multipart_unions.yaml", features, Map.of(TimvwRustCodegen.API_FEATURES, "true"));
     }
 
@@ -125,15 +120,6 @@ class MultipartFileUnionsTest {
         String output = cargo(features, 900, "check", "--lib", "--no-default-features", "--features", "videos-types");
         assertNotNull(output, "cargo did not finish");
         assertTrue(output.contains("Finished") && !output.contains("warning:"), output);
-    }
-
-    @Test
-    void reqwestMiddlewareKeepsPaths() throws IOException {
-        String model = model(middleware, "skill_body_files");
-        assertTrue(model.contains("ArrayOfStrings(Vec<std::path::PathBuf>), Text(std::path::PathBuf),"), model);
-        assertFalse(model.contains("serde(skip)"), model);
-        assertFalse(model.contains("Upload"), model);
-        assertFalse(api(middleware, "skills").contains("#[builder(into)]"), api(middleware, "skills"));
     }
 
     private static final String ADD_VIDEO_FILE =
@@ -259,15 +245,6 @@ class MultipartFileUnionsTest {
         Assumptions.assumeTrue(clippy == null || !clippy.contains("no such command"), "no clippy");
         assertNotNull(clippy, "clippy did not finish");
         assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("warning:"), clippy);
-    }
-
-    /** reqwest-middleware's file unions hold paths and compile as before. Needs cargo. */
-    @Test
-    void reqwestMiddlewareCompiles() throws IOException, InterruptedException {
-        Assumptions.assumeTrue(cargo(middleware, 30, "--version") != null, "no cargo");
-        String output = cargo(middleware, 900, "check", "--lib");
-        assertNotNull(output, "cargo did not finish");
-        assertTrue(output.contains("Finished"), output);
     }
 
     /** What cargo printed, or {@code null} when it cannot run or does not finish in time. */

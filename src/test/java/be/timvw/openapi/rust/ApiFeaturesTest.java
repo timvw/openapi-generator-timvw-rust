@@ -5,8 +5,6 @@ import io.swagger.v3.core.util.Yaml;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.openapitools.codegen.DefaultGenerator;
 import org.openapitools.codegen.config.CodegenConfigurator;
 
@@ -250,14 +248,13 @@ class ApiFeaturesTest {
     }
 
     /**
-     * Every feature compiles alone, a {@code -types} feature without the HTTP client, with both stacks. Needs cargo;
-     * without it there is nothing to build.
+     * Every feature compiles alone, a {@code -types} feature without the HTTP client. Needs cargo; without it there is
+     * nothing to build.
      */
-    @ParameterizedTest
-    @ValueSource(strings = {"tower", "reqwest-middleware"})
-    void eachFeatureBuildsAlone(String stack) throws IOException, InterruptedException {
+    @Test
+    void eachFeatureBuildsAlone() throws IOException, InterruptedException {
         Assumptions.assumeTrue(cargo(out, 30, "--version") != null, "no cargo");
-        generate(out, Map.of(TimvwRustCodegen.HTTP_STACK, stack, TimvwRustCodegen.API_FEATURES_FILE,
+        generate(out, Map.of(TimvwRustCodegen.API_FEATURES_FILE,
                 groups("admin: { paths: [/admin] }\nanimals: { tags: [Pets] }\n").toString()));
         List<String> sets = List.of("animals-types", "rustls,animals", "rustls,admin", "rustls,default-api",
                 "store-types", "types", "rustls,full", "");

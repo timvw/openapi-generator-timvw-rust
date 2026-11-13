@@ -30,7 +30,7 @@ Value types:
 | Group | Options |
 | --- | --- |
 | [The crate](#the-crate) | `packageName`, `packageVersion`, `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, `userAgentFromPackage`, `apiLintAllows` |
-| [HTTP stack and runtime](#http-stack-and-runtime) | `httpStack`, `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
+| [HTTP stack and runtime](#http-stack-and-runtime) | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
 | [Cargo features](#cargo-features) | `apiFeatures`, `apiFeaturesFile` |
 | [Types and naming](#types-and-naming) | `useChrono`, `bonBuilders`, `titleNaming`, `typedEnumParameters`, `deprecatedAttributes` |
 | [Functions and modules](#functions-and-modules) | `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `validateMethods` |
@@ -113,44 +113,29 @@ Tests: [`ErrorsAndLintsTest`](../src/test/java/be/timvw/openapi/rust/ErrorsAndLi
 
 ## HTTP stack and runtime
 
-### `httpStack`
+### `runtimeVersion`
 
-`tower` (default) or `reqwest-middleware`. How the client sends requests:
-
-- `tower`: through `timvw_rust_runtime::Client`, a tower service (reqwest unless replaced) from
-  [`timvw-rust-runtime`](../runtime/README.md), with retries by default, `SecretString` credentials, per-call
-  `RequestOptions`, `Upload` file parameters and WebAssembly support.
-- `reqwest-middleware`: through `reqwest` and `reqwest-middleware`, as up to 0.24 (frozen at 0.25's output).
+string, default `0.4` (the runtime release this generator renders for, `DEFAULT_RUNTIME_VERSION`). The version
+requirement of `timvw-rust-runtime` in `Cargo.toml`, written as `^<value>`. Every generated client sends through
+`timvw_rust_runtime::Client`, a tower service (reqwest unless replaced) from
+[`timvw-rust-runtime`](../runtime/README.md), with retries by default, `SecretString` credentials, per-call
+`RequestOptions`, `Upload` files and WebAssembly support ([guide](guides/http-stack.md)). A runtime fix reaches a
+client with `cargo update`; set it only to require a newer patch release.
 
 ```bash
---additional-properties=httpStack=reqwest-middleware
+--additional-properties=runtimeVersion=0.4.1
 ```
 
 ```toml
 # Cargo.toml with the default
-timvw-rust-runtime = { version = "^0.3.1", default-features = false }
-```
-
-Guide: [HTTP stack](guides/http-stack.md). Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java)
-(`towerIsTheDefaultAndSendsThroughTheRuntime`, `reqwestMiddlewareRendersWhat024Rendered`, `anUnknownStackFails`,
-`bothStacksBuild`).
-
-### `runtimeVersion`
-
-string, default `0.3.1` (the runtime release this generator renders for, `DEFAULT_RUNTIME_VERSION`). With
-`httpStack=tower`: the version requirement of `timvw-rust-runtime` in `Cargo.toml`, written as `^<value>`. A runtime
-fix reaches a client with `cargo update`; set it only to require a newer patch release.
-
-```bash
---additional-properties=runtimeVersion=0.3.0
+timvw-rust-runtime = { version = "^0.4", default-features = false }
 ```
 
 Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java) (`theRuntimeVersionAndPathAreOptions`, `theDefaultRuntimeVersionIsTheRuntimeCrates`).
 
 ### `runtimePath`
 
-string, unset by default. With `httpStack=tower`: a path dependency on `timvw-rust-runtime` next to the version, to
-build against an unreleased runtime. The generator's own tests set it to `runtime/` (through the system property
+string, unset by default. A path dependency on `timvw-rust-runtime` next to the version, to build against an unreleased runtime. The generator's own tests set it to `runtime/` (through the system property
 `timvw-rust.runtimePath`).
 
 ```bash
@@ -158,7 +143,7 @@ build against an unreleased runtime. The generator's own tests set it to `runtim
 ```
 
 ```toml
-timvw-rust-runtime = { version = "^0.3.1", default-features = false, path = "../openapi-generator-timvw-rust/runtime" }
+timvw-rust-runtime = { version = "^0.4", default-features = false, path = "../openapi-generator-timvw-rust/runtime" }
 ```
 
 Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java) (`theRuntimeVersionAndPathAreOptions`).
@@ -167,7 +152,7 @@ Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.ja
 
 comma-separated, default `native-tls`. The crate's default features, which choose reqwest's TLS: `native-tls`,
 `rustls`, or empty for none (then `Client::default()` fails every request; set a client with `Client::from_service`).
-With `httpStack=tower` the crate also has the features `retry` (default) and `tracing`, forwarded to the runtime
+The crate also has the features `retry` (default) and `tracing`, forwarded to the runtime
 ([features](guides/http-stack.md#features-of-the-generated-crate)).
 
 ```json
@@ -239,15 +224,15 @@ Rule: [`schema.format.date-time`](mapping/schema.md#schemaformatdate-time). Test
 ### `bonBuilders`
 
 boolean, default `true`. `bon::Builder` on model structs and `#[bon::builder]` on API functions. `false` makes the
-functions take positional arguments, as stock does, and leaves out per-call `RequestOptions` (they need the
-builder).
+functions take positional arguments, as stock does; the last one is the per-call
+`Option<&RequestOptions>` (since 0.29; `None` for none).
 
 <!-- not compiled: calls, with and without the option -->
 ```rust
 // bonBuilders=true (default)
 list_models().configuration(&config).limit(10).order("desc").call().await?;
 // bonBuilders=false
-list_models(&config, Some(10), Some("desc"), None).await?;
+list_models(&config, Some(10), Some("desc"), None, None).await?; // the last: per-call RequestOptions
 ```
 
 Rule: [`operation.operationId`](mapping/operation.md#operationoperationid). Tests:
@@ -361,8 +346,8 @@ Rules: [`requestBody.content`](mapping/request-body.md#requestbodycontent),
 boolean, default `false`. A `text/event-stream` response is a function returning `apis::sse::EventStream<Event, _>`, a
 stream of typed events (each `data:` decoded to the event schema, `[DONE]` ends it), with `idle_timeout` for a stream
 that stalls. It is the operation's own function when the event stream is the first media type, `<operation>_stream`
-otherwise. `src/apis/sse.rs` is written only when an operation streams; the crate then depends on `futures-core` and,
-with `httpStack=tower`, the runtime's `time` feature (openai-client-base sets it).
+otherwise. `src/apis/sse.rs` is written only when an operation streams; the crate then depends on `futures-core` and on
+the runtime's `time` feature (openai-client-base sets it).
 
 <!-- not compiled: a generated signature -->
 ```rust
@@ -533,39 +518,44 @@ schema ([rule](mapping/components.md#componentsschemas)).
 
 ## Not options
 
-`timvw-rust` generates one async client, whose HTTP stack `httpStack` chooses. Setting any of these names fails
-generation, whatever the value, and the error says why, so a configuration taken over from `-g rust` or an older
-release cannot be silently ignored. The [migration guide](guides/migration.md) lists what to change. An operation with
-`x-group-parameters` fails too.
+`timvw-rust` generates one async client, on the tower service of `timvw-rust-runtime`. Setting any of these names fails generation, whatever the value (an empty
+one too), and the error says why, so a configuration taken over from `-g rust` or
+an older release cannot be silently ignored. The [migration guide](guides/migration.md) lists what to change. An
+operation with `x-group-parameters` fails too.
 
-| Name | Why |
-| --- | --- |
-| `library` | only the async reqwest client is rendered: as an additional property it fails whatever the value; `--library reqwest` (the CLI flag) is accepted, another library fails |
-| `supportAsync` | always async |
-| `supportMiddleware` | the client is chosen by `httpStack` |
-| `useSingleRequestParameter` | the functions take their arguments through the bon builder, or positionally |
-| `preferUnsignedInt` | integers are signed, `i64` unless `format: int32` |
-| `bestFitInt` | the same |
-| `enumNameSuffix` | enums are named after their schema |
-| `hideGenerationTimestamp` | no timestamp is written |
-| `avoidBoxedModels` | boxing is only on cycles (always) |
-| `mockall` | not supported: replace the client's service (`Client::from_service`) in tests |
-| `topLevelApiClient` | not supported |
-| `withAWSV4Signature` | not supported: sign with a tower layer |
-| `supportTokenSource` | not supported: fetch a token with a tower layer |
-| `useBonBuilder` | named `bonBuilders` |
-| `templateDir` | the templates are the generator's own (no `-t`) |
-| `boxOnlyCycles` | always applied since 0.21: a reference is boxed only where it closes a cycle |
-| `defaultOnlyWhereValid` | always applied since 0.21: `Default` only where its value is valid |
-| `enumFromStr` | always applied since 0.21: closed enums have `FromStr` and `TryFrom` |
-| `noStructDisplay` | always applied since 0.21: structs have no JSON `Display` |
-| `integersAsI64` | always applied since 0.21: `i64` unless `format: int32` |
-| `qualifiedInlineNames` | always applied since 0.21: inline schemas are named after a unique title or their location |
-| `modelUnions` | always applied since 0.21: unions render from the model |
-| `unionDispatch` | always applied since 0.21: a union with a tag decodes by it |
-| `openEnums` | always applied since 0.21: enums and tagged unions a response can hold have a catch-all |
-| `schemaDefaultDocs` | always applied since 0.21: a schema `default` is noted in the docs |
-| `nullableUnionFields` | always applied since 0.21: a nullable union field is `Option<Option<U>>` |
-| `boxResponseError` | always applied since 0.21: `Error::ResponseError` holds a `Box<ResponseContent<T>>` |
-| `jsonValueSchemas` | removed: unions render as typed enums |
-| `legacyModelRewrites` | removed in 0.17.0: the model-level rules replaced the text rewrites |
+"Since" is the release from which the name fails generation, read from the generator's source at each release tag
+and from [history](history.md). The first eight stock options were pinned from 0.1.0: up to 0.18.x their pinned value
+was accepted and any other value failed; since 0.19.0 any value fails.
+
+| Name | Since | Why |
+| --- | --- | --- |
+| `library` | pinned to `reqwest` in 0.1.0; any value fails since 0.19.0 | only the async client on `timvw-rust-runtime` (reqwest by default) is rendered: as an additional property it fails whatever the value; `--library reqwest` (the CLI flag) is accepted, another library fails |
+| `supportAsync` | pinned to `true` in 0.1.0; any value fails since 0.19.0 | always async |
+| `supportMiddleware` | pinned to `true` in 0.1.0; any value fails since 0.19.0 | the client is the runtime's tower service; middleware are tower layers ([HTTP stack](guides/http-stack.md)) |
+| `useSingleRequestParameter` | pinned to `false` in 0.1.0; any value fails since 0.19.0 | the functions take their arguments through the bon builder, or positionally |
+| `preferUnsignedInt` | pinned to `false` in 0.1.0; any value fails since 0.19.0 | integers are signed, `i64` unless `format: int32` |
+| `bestFitInt` | pinned to `false` in 0.1.0; any value fails since 0.19.0 | the same |
+| `enumNameSuffix` | pinned to empty in 0.1.0; any value fails since 0.19.0 | enums are named after their schema |
+| `hideGenerationTimestamp` | pinned to `true` in 0.1.0; any value fails since 0.19.0 | no timestamp is written |
+| `avoidBoxedModels` | 0.1.0 | boxing is only on cycles (always) |
+| `mockall` | 0.1.0 | not supported: replace the client's service (`Client::from_service`) in tests |
+| `topLevelApiClient` | 0.1.0 | not supported |
+| `withAWSV4Signature` | 0.1.0 | not supported: sign with a tower layer |
+| `supportTokenSource` | 0.1.0 | not supported: fetch a token with a tower layer |
+| `useBonBuilder` | 0.1.0 | named `bonBuilders` |
+| `templateDir` | 0.2.0 | the templates are the generator's own (no `-t`) |
+| `boxOnlyCycles` | always applied since 0.21.0 | a reference is boxed only where it closes a cycle |
+| `defaultOnlyWhereValid` | always applied since 0.21.0 | `Default` only where its value is valid |
+| `enumFromStr` | always applied since 0.21.0 | closed enums have `FromStr` and `TryFrom` |
+| `noStructDisplay` | always applied since 0.21.0 | structs have no JSON `Display` |
+| `integersAsI64` | always applied since 0.21.0 | `i64` unless `format: int32` |
+| `qualifiedInlineNames` | always applied since 0.21.0 | inline schemas are named after a unique title or their location |
+| `modelUnions` | always applied since 0.21.0 | unions render from the model |
+| `unionDispatch` | always applied since 0.21.0 | a union with a tag decodes by it |
+| `openEnums` | always applied since 0.21.0 | enums and tagged unions a response can hold have a catch-all |
+| `schemaDefaultDocs` | always applied since 0.21.0 | a schema `default` is noted in the docs |
+| `nullableUnionFields` | always applied since 0.21.0 | a nullable union field is `Option<Option<U>>` |
+| `boxResponseError` | always applied since 0.21.0 | `Error::ResponseError` holds a `Box<ResponseContent<T>>` |
+| `jsonValueSchemas` | removed in 0.15.0 | unions render as typed enums. Up to 0.28.x an empty value (`jsonValueSchemas=`) was accepted and ignored; since 0.29.0 any value fails |
+| `legacyModelRewrites` | removed in 0.17.0 | the model-level rules replaced the text rewrites |
+| `httpStack` | removed in 0.29.0 | the client always sends through the runtime's tower service; the `reqwest-middleware` stack is gone ([HTTP stack](guides/http-stack.md)) |

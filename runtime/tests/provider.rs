@@ -87,9 +87,13 @@ async fn an_azure_like_provider() {
         .unwrap()
         .map_path(|path| format!("/deployments/gpt-4o{path}"));
     let client = client.layer(provider);
-    // A call that sets api-version itself still sends the provider's, once.
+    assert_eq!(
+        generated_call(&client, &RequestOptions::new()).await,
+        StatusCode::OK
+    );
+    // A call that sets api-version itself sends its own, once: per-call options win.
     let options = RequestOptions::new()
-        .query(&[("api-version", "1999-01-01")])
+        .query(&[("api-version", "2025-01-01-preview")])
         .unwrap();
     assert_eq!(generated_call(&client, &options).await, StatusCode::OK);
 
@@ -98,6 +102,10 @@ async fn an_azure_like_provider() {
     assert_eq!(
         url,
         "https://my-resource.example.com/openai/deployments/gpt-4o/chat/completions?stream=false&note=a+b%26c&api-version=2024-10-21"
+    );
+    assert_eq!(
+        seen[1].1,
+        "https://my-resource.example.com/openai/deployments/gpt-4o/chat/completions?stream=false&note=a+b%26c&api-version=2025-01-01-preview"
     );
     assert_eq!(headers["api-key"], "azure-secret");
     assert!(headers["api-key"].is_sensitive());
@@ -222,4 +230,122 @@ async fn on_a_reqwest_client_it_rewrites_once_before_the_retries() {
             Some("stream=false&note=a+b%26c&api-version=2024-10-21")
         );
     }
+}
+
+/// An Azure-like provider for the tests of per-call options.
+fn azure_like() -> ProviderLayer {
+    ProviderLayer::new("https://my-resource.example.com/openai")
+        .unwrap()
+        .rewrite_from(GENERATED_BASE)
+        .unwrap()
+        .sensitive_header("api-key", "azure-secret")
+        .unwrap()
+        .header("x-title", "provider")
+        .unwrap()
+        .query(&[("api-version", "2024-10-21")])
+        .unwrap()
+        .map_path(|path| format!("/deployments/gpt-4o{path}"))
+}
+
+/// Sends a request the way a generated operation does with its base path declared.
+async fn generated_call_with_base(client: &Client, options: &RequestOptions) {
+    client
+        .request(Method::GET, &format!("{GENERATED_BASE}/models?limit=2"))
+        .base(GENERATED_BASE)
+        .header("x-title", "generated")
+        .options(options)
+        .send()
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn options_headers_win_over_the_provider() {
+    let (client, seen) = recording();
+    let client = client.layer(azure_like());
+    let options = RequestOptions::new()
+        .header("api-key", "per-call-key")
+        .unwrap()
+        .header("x-title", "per-call")
+        .unwrap();
+    generated_call_with_base(&client, &options).await;
+    let seen = seen.lock().unwrap();
+    let (_, url, headers) = &seen[0];
+    assert_eq!(
+        url,
+        "https://my-resource.example.com/openai/deployments/gpt-4o/models?limit=2&api-version=2024-10-21"
+    );
+    assert_eq!(
+        headers.get_all("api-key").iter().collect::<Vec<_>>(),
+        ["per-call-key"]
+    );
+    assert_eq!(
+        headers.get_all("x-title").iter().collect::<Vec<_>>(),
+        ["per-call"]
+    );
+}
+
+#[tokio::test]
+async fn a_per_call_base_url_is_not_moved_and_gets_no_credentials() {
+    let (client, seen) = recording();
+    let client = client.layer(azure_like());
+    // Another host: nothing from the provider.
+    let elsewhere = RequestOptions::new()
+        .base_url("https://eu.example.com/v1")
+        .unwrap();
+    generated_call_with_base(&client, &elsewhere).await;
+    // The generated base itself: rewrite_from does not move a call with a base of its own.
+    let generated = RequestOptions::new().base_url(GENERATED_BASE).unwrap();
+    generated_call_with_base(&client, &generated).await;
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen[0].1, "https://eu.example.com/v1/models?limit=2");
+    assert_eq!(seen[1].1, "https://api.openai.com/v1/models?limit=2");
+    for (_, _, headers) in seen.iter() {
+        assert!(headers.get("api-key").is_none());
+        assert_eq!(headers["x-title"], "generated");
+    }
+}
+
+#[tokio::test]
+async fn a_per_call_base_url_at_the_provider_gets_its_paths_headers_and_query() {
+    let (client, seen) = recording();
+    let client = client.layer(azure_like());
+    let options = RequestOptions::new()
+        .base_url("https://my-resource.example.com/openai")
+        .unwrap()
+        .query(&[("trace", "1")])
+        .unwrap();
+    generated_call_with_base(&client, &options).await;
+    let seen = seen.lock().unwrap();
+    let (_, url, headers) = &seen[0];
+    assert_eq!(
+        url,
+        "https://my-resource.example.com/openai/deployments/gpt-4o/models?limit=2&trace=1&api-version=2024-10-21"
+    );
+    assert_eq!(headers["api-key"], "azure-secret");
+    assert_eq!(headers["x-title"], "provider");
+}
+
+#[tokio::test]
+async fn a_per_call_base_url_composes_with_the_base_path() {
+    let (client, seen) = recording();
+    // configuration.base_path is a local proxy; one call goes elsewhere, with its path and query.
+    client
+        .request(
+            Method::GET,
+            "http://localhost:8080/proxy/v1/items/a%20b?x=1",
+        )
+        .base("http://localhost:8080/proxy/v1")
+        .options(
+            &RequestOptions::new()
+                .base_url("https://api.example.com/v2/")
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        seen.lock().unwrap()[0].1,
+        "https://api.example.com/v2/items/a%20b?x=1"
+    );
 }

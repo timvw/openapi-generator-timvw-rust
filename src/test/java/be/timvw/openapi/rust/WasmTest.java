@@ -26,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * and its timers are the JavaScript host's. Typed event streams take a {@code MaybeSend} body and have an idle timeout,
  * file parameters are {@code Upload}s (bytes and streams; a path fails when sent), and uuid draws randomness from the
  * host. Building needs cargo and the {@code wasm32-unknown-unknown} target; without them only the files are checked.
+ * With the minimum supported Rust version's toolchain ({@link TimvwRustCodegen#RUST_VERSION}, through rustup) and its
+ * {@code wasm32-unknown-unknown} target, it builds there too, with dependency versions that support it.
  */
 class WasmTest {
 
@@ -60,6 +62,8 @@ class WasmTest {
         "src/test/resources/multipart.yaml, wasm_multipart, false",
         "src/test/resources/multipart.yaml, wasm_multipart_features, true",
         "src/test/resources/multipart_unions.yaml, wasm_multipart_unions, false",
+        "src/test/resources/upload_models.yaml, wasm_upload_models, false",
+        "src/test/resources/upload_models.yaml, wasm_upload_models_features, true",
     })
     void buildsForWasm32(String spec, String packageName, boolean apiFeatures) throws IOException, InterruptedException {
         generate(spec, packageName, apiFeatures);
@@ -84,6 +88,22 @@ class WasmTest {
         assertNotNull(output, "cargo did not finish");
         assertTrue(output.contains("Finished"), output);
         assertFalse(output.contains("warning:"), output);
+
+        // The minimum supported Rust version, with the newest dependency versions that support it.
+        assertTrue(cargoToml.contains("\nrust-version = \"" + TimvwRustCodegen.RUST_VERSION + "\"\n"), cargoToml);
+        String msrv = TimvwRustCodegen.RUST_VERSION;
+        String msrvSysroot = command(60, Map.of(), "rustup", "run", msrv, "rustc", "--print", "sysroot");
+        Assumptions.assumeTrue(msrvSysroot != null && !msrvSysroot.contains("error")
+                && Files.isDirectory(Path.of(msrvSysroot.trim(), "lib", "rustlib", "wasm32-unknown-unknown")),
+                "no " + msrv + " toolchain with the wasm32-unknown-unknown target (rustup target add "
+                        + "wasm32-unknown-unknown --toolchain " + msrv + ")");
+        String lock = command(300, Map.of("CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS", "fallback"), "cargo",
+                "+" + msrv, "generate-lockfile");
+        assertNotNull(lock, "cargo generate-lockfile did not finish");
+        String onMsrv = command(900, Map.of(), "cargo", "+" + msrv, "check", "--target", "wasm32-unknown-unknown");
+        assertNotNull(onMsrv, "cargo did not finish");
+        assertTrue(onMsrv.contains("Finished"), onMsrv);
+        assertFalse(onMsrv.contains("warning:"), onMsrv);
     }
 
     private String cargo(long seconds, String... arguments) throws IOException, InterruptedException {
@@ -93,11 +113,18 @@ class WasmTest {
     }
 
     private String command(long seconds, String... command) throws IOException, InterruptedException {
+        return command(seconds, Map.of(), command);
+    }
+
+    private String command(long seconds, Map<String, String> env, String... command)
+            throws IOException, InterruptedException {
         Path log = Files.createTempFile("cargo", ".log");
         Process process;
         try {
-            process = new ProcessBuilder(command).directory(out.toFile()).redirectErrorStream(true)
-                    .redirectOutput(log.toFile()).start();
+            ProcessBuilder builder = new ProcessBuilder(command).directory(out.toFile()).redirectErrorStream(true)
+                    .redirectOutput(log.toFile());
+            builder.environment().putAll(env);
+            process = builder.start();
         } catch (IOException e) {
             return null;
         }

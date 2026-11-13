@@ -108,7 +108,7 @@ class ImportsTest {
 
     @Test
     void theRemovedLegacyOptionFails() {
-        for (String value : List.of("true", "false")) {
+        for (String value : List.of("true", "false", "")) {
             TimvwRustCodegen c = new TimvwRustCodegen();
             c.additionalProperties().put(TimvwRustCodegen.LEGACY_MODEL_REWRITES, value);
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);

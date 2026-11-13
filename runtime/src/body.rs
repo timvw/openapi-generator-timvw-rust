@@ -1,5 +1,6 @@
 use std::fmt;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
@@ -12,17 +13,30 @@ use sync_wrapper::SyncStream;
 
 use crate::BoxError;
 
-/// The body of a request or a response: bytes held in memory, or a stream.
+/// The body of a request or a response: bytes held in memory, a stream, or a stream that can be made again.
 ///
 /// A body held in memory can be cloned ([`Body::try_clone`]), which is what lets a retry layer send a request again.
-/// A stream can be read once.
+/// So can a body made from a replayable [`Upload`](crate::Upload), such as a file, which is opened again for each
+/// attempt. Any other stream can be read once.
 pub struct Body {
     kind: Kind,
 }
 
 enum Kind {
     Full(Option<Bytes>),
-    Stream(BoxBody<Bytes, BoxError>),
+    Stream {
+        body: BoxBody<Bytes, BoxError>,
+        /// The length, when known and the body cannot tell (a stream of chunks).
+        len: Option<u64>,
+    },
+    Replay(Replay),
+}
+
+/// A body made again for each attempt: `make` starts a fresh stream, `current` is the one being read.
+struct Replay {
+    make: Arc<dyn Fn() -> Body + Send + Sync>,
+    len: Option<u64>,
+    current: Option<Box<Body>>,
 }
 
 impl Body {
@@ -41,16 +55,28 @@ impl Body {
         B::Error: Into<BoxError>,
     {
         Self {
-            kind: Kind::Stream(
-                body.map_frame(|frame| frame.map_data(Into::into))
+            kind: Kind::Stream {
+                body: body
+                    .map_frame(|frame| frame.map_data(Into::into))
                     .map_err(Into::into)
                     .boxed(),
-            ),
+                len: None,
+            },
         }
     }
 
     /// A body that reads the chunks of a stream, such as a file read with `tokio_util::io::ReaderStream`.
     pub fn wrap_stream<S>(stream: S) -> Self
+    where
+        S: TryStream + Send + 'static,
+        S::Ok: Into<Bytes>,
+        S::Error: Into<BoxError>,
+    {
+        Self::sized_stream(stream, None)
+    }
+
+    /// A stream of chunks whose total length, when known, is `len` (sent as `Content-Length`).
+    pub(crate) fn sized_stream<S>(stream: S, len: Option<u64>) -> Self
     where
         S: TryStream + Send + 'static,
         S::Ok: Into<Bytes>,
@@ -63,17 +89,42 @@ impl Body {
                 .map_err(Into::into),
         );
         Self {
-            kind: Kind::Stream(StreamBody::new(frames).boxed()),
+            kind: Kind::Stream {
+                body: StreamBody::new(frames).boxed(),
+                len,
+            },
         }
     }
 
-    /// A copy of a body held in memory; `None` for a stream.
+    /// A body that `make` starts afresh for each attempt, so it can be cloned; `len` is the length of every body
+    /// `make` returns, when known.
+    pub(crate) fn replay(make: Arc<dyn Fn() -> Body + Send + Sync>, len: Option<u64>) -> Self {
+        Self {
+            kind: Kind::Replay(Replay {
+                make,
+                len,
+                current: None,
+            }),
+        }
+    }
+
+    /// A copy of the body: a body held in memory, or a fresh start of one that can be made again (a file
+    /// [`Upload`](crate::Upload), say); `None` for a stream that can be read once.
     pub fn try_clone(&self) -> Option<Self> {
         match &self.kind {
             Kind::Full(bytes) => Some(Self {
                 kind: Kind::Full(bytes.clone()),
             }),
-            Kind::Stream(_) => None,
+            Kind::Stream { .. } => None,
+            Kind::Replay(replay) => Some(Self::replay(replay.make.clone(), replay.len)),
+        }
+    }
+
+    /// The bytes of a body held in memory, or the body itself for a stream.
+    pub(crate) fn into_bytes(self) -> Result<Bytes, Self> {
+        match self.kind {
+            Kind::Full(bytes) => Ok(bytes.unwrap_or_default()),
+            kind => Err(Self { kind }),
         }
     }
 
@@ -81,7 +132,7 @@ impl Body {
     pub fn as_bytes(&self) -> Option<&[u8]> {
         match &self.kind {
             Kind::Full(bytes) => Some(bytes.as_deref().unwrap_or_default()),
-            Kind::Stream(_) => None,
+            Kind::Stream { .. } | Kind::Replay(_) => None,
         }
     }
 
@@ -89,7 +140,8 @@ impl Body {
     pub async fn collect_bytes(self) -> Result<Bytes, BoxError> {
         match self.kind {
             Kind::Full(bytes) => Ok(bytes.unwrap_or_default()),
-            Kind::Stream(body) => Ok(body.collect().await?.to_bytes()),
+            Kind::Stream { body, .. } => Ok(body.collect().await?.to_bytes()),
+            kind @ Kind::Replay(_) => Ok(BodyExt::collect(Self { kind }).await?.to_bytes()),
         }
     }
 }
@@ -107,7 +159,16 @@ impl fmt::Debug for Body {
                 .debug_struct("Body")
                 .field("len", &bytes.as_ref().map_or(0, Bytes::len))
                 .finish(),
-            Kind::Stream(_) => f.debug_struct("Body").field("stream", &true).finish(),
+            Kind::Stream { len, .. } => f
+                .debug_struct("Body")
+                .field("stream", &true)
+                .field("len", len)
+                .finish(),
+            Kind::Replay(replay) => f
+                .debug_struct("Body")
+                .field("replayable", &true)
+                .field("len", &replay.len)
+                .finish(),
         }
     }
 }
@@ -127,21 +188,36 @@ impl http_body::Body for Body {
                     .filter(|b| !b.is_empty())
                     .map(|b| Ok(Frame::data(b))),
             ),
-            Kind::Stream(body) => Pin::new(body).poll_frame(cx),
+            Kind::Stream { body, .. } => Pin::new(body).poll_frame(cx),
+            Kind::Replay(replay) => {
+                let current = replay
+                    .current
+                    .get_or_insert_with(|| Box::new((replay.make)()));
+                Pin::new(&mut **current).poll_frame(cx)
+            }
         }
     }
 
     fn is_end_stream(&self) -> bool {
         match &self.kind {
             Kind::Full(bytes) => bytes.as_ref().is_none_or(Bytes::is_empty),
-            Kind::Stream(body) => body.is_end_stream(),
+            Kind::Stream { body, .. } => body.is_end_stream(),
+            Kind::Replay(replay) => match &replay.current {
+                Some(current) => current.is_end_stream(),
+                None => replay.len == Some(0),
+            },
         }
     }
 
     fn size_hint(&self) -> SizeHint {
         match &self.kind {
             Kind::Full(bytes) => SizeHint::with_exact(bytes.as_ref().map_or(0, |b| b.len() as u64)),
-            Kind::Stream(body) => body.size_hint(),
+            Kind::Stream { body, len } => {
+                len.map_or_else(|| body.size_hint(), SizeHint::with_exact)
+            }
+            Kind::Replay(replay) => replay
+                .len
+                .map_or_else(SizeHint::default, SizeHint::with_exact),
         }
     }
 }

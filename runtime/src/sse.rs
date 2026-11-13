@@ -28,6 +28,8 @@
 
 use std::collections::VecDeque;
 use std::fmt;
+#[cfg(feature = "time")]
+use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -180,6 +182,16 @@ pub struct Events {
     bytes: Option<Body>,
     decoder: Decoder,
     ready: VecDeque<Event>,
+    #[cfg(feature = "time")]
+    idle: Option<Idle>,
+}
+
+/// The idle timeout of [`Events`]: its limit, and the timer started at the first read (so that `Events` can be made
+/// outside a tokio runtime).
+#[cfg(feature = "time")]
+struct Idle {
+    limit: std::time::Duration,
+    timer: Option<Pin<Box<tokio::time::Sleep>>>,
 }
 
 type Chunk = Box<dyn AsRef<[u8]> + Send>;
@@ -201,6 +213,49 @@ impl Events {
             bytes: Some(Box::pin(Chunks(Box::pin(bytes)))),
             decoder: Decoder::new(),
             ready: VecDeque::new(),
+            #[cfg(feature = "time")]
+            idle: None,
+        }
+    }
+
+    /// Ends the stream with an error when no bytes arrive for `limit`: a server or a proxy that keeps the connection
+    /// open but stopped sending. The error ([`Error::is_timeout`] and [`Error::is_body`]) is the last item, and the
+    /// body is dropped. Every chunk restarts the clock, comments (`: keep-alive`) too; there is no limit on the whole
+    /// stream. Feature `time`; the timer is tokio's.
+    ///
+    /// ```no_run
+    /// # async fn demo(response: timvw_rust_runtime::Response) {
+    /// use std::time::Duration;
+    ///
+    /// let events = response.events().idle_timeout(Duration::from_secs(300));
+    /// # }
+    /// ```
+    #[cfg(feature = "time")]
+    pub fn idle_timeout(mut self, limit: std::time::Duration) -> Self {
+        self.idle = Some(Idle { limit, timer: None });
+        self
+    }
+
+    /// Whether the idle timeout ran out while waiting for bytes; restarts it when `reset`.
+    #[cfg(feature = "time")]
+    fn idle(&mut self, cx: &mut Context<'_>, reset: bool) -> Option<Error> {
+        let idle = self.idle.as_mut()?;
+        let deadline = tokio::time::Instant::now() + idle.limit;
+        match &mut idle.timer {
+            Some(timer) if reset => timer.as_mut().reset(deadline),
+            Some(_) => {}
+            None => idle.timer = Some(Box::pin(tokio::time::sleep_until(deadline))),
+        }
+        if reset {
+            return None;
+        }
+        let timer = idle.timer.as_mut()?;
+        match timer.as_mut().poll(cx) {
+            Poll::Ready(()) => Some(Error::body(crate::error::TimedOut(format!(
+                "no server-sent event data for {:?}",
+                idle.limit
+            )))),
+            Poll::Pending => None,
         }
     }
 }
@@ -223,8 +278,19 @@ impl Stream for Events {
                 return Poll::Ready(None);
             };
             match bytes.as_mut().poll_next(cx) {
-                Poll::Pending => return Poll::Pending,
+                Poll::Pending => {
+                    #[cfg(feature = "time")]
+                    if let Some(error) = this.idle(cx, false) {
+                        this.bytes = None;
+                        this.decoder.finish();
+                        this.ready.clear();
+                        return Poll::Ready(Some(Err(error)));
+                    }
+                    return Poll::Pending;
+                }
                 Poll::Ready(Some(Ok(chunk))) => {
+                    #[cfg(feature = "time")]
+                    this.idle(cx, true);
                     this.decoder.feed((*chunk).as_ref(), &mut this.ready)
                 }
                 Poll::Ready(Some(Err(error))) => {
@@ -243,7 +309,10 @@ impl Stream for Events {
 
 impl fmt::Debug for Events {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Events")
+        let mut debug = f.debug_struct("Events");
+        #[cfg(feature = "time")]
+        debug.field("idle_timeout", &self.idle.as_ref().map(|idle| idle.limit));
+        debug
             .field("open", &self.bytes.is_some())
             .field("ready", &self.ready)
             .finish_non_exhaustive()
@@ -359,6 +428,29 @@ mod tests {
             .collect()
             .await;
         assert_eq!(data, vec!["1"]);
+    }
+
+    #[cfg(feature = "time")]
+    #[tokio::test(start_paused = true)]
+    async fn an_idle_stream_times_out() {
+        use std::time::Duration;
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Result<&'static [u8], Error>>();
+        let rx = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
+        let mut events = Events::from_bytes(rx).idle_timeout(Duration::from_secs(10));
+        tx.send(Ok(b"data: 1\n\n".as_slice())).unwrap();
+        assert_eq!(events.next().await.unwrap().unwrap().data, "1");
+        tokio::time::sleep(Duration::from_secs(8)).await;
+        // a keep-alive comment restarts the clock
+        tx.send(Ok(b": ping\n".as_slice())).unwrap();
+        tokio::time::sleep(Duration::from_secs(8)).await;
+        tx.send(Ok(b"data: 2\n\n".as_slice())).unwrap();
+        assert_eq!(events.next().await.unwrap().unwrap().data, "2");
+        let started = tokio::time::Instant::now();
+        let error = events.next().await.unwrap().unwrap_err();
+        assert!(error.is_timeout() && error.is_body(), "{error:?}");
+        assert_eq!(started.elapsed(), Duration::from_secs(10));
+        assert!(events.next().await.is_none());
+        drop(tx);
     }
 
     #[tokio::test]

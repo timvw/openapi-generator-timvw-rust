@@ -124,7 +124,8 @@ impl RequestBuilder {
         })
     }
 
-    /// Sets the body.
+    /// Sets the body: bytes, a [`Body`], or an [`Upload`](crate::Upload) (a file, say, streamed and sent again by a
+    /// retry).
     pub fn body<T: Into<Body>>(self, body: T) -> Self {
         self.with(|parts| {
             parts.body = Some(body.into());
@@ -158,7 +159,7 @@ impl RequestBuilder {
         })
     }
 
-    /// Sets a `multipart/form-data` body.
+    /// Sets a `multipart/form-data` body, with a `Content-Length` when the length of every part is known.
     pub fn multipart(self, form: Form) -> Self {
         self.with(|parts| {
             let content_type =
@@ -166,10 +167,8 @@ impl RequestBuilder {
                     .map_err(Error::builder)?;
             parts.headers.insert(CONTENT_TYPE, content_type);
             let body = form.into_body();
-            if let Some(bytes) = body.as_bytes() {
-                parts
-                    .headers
-                    .insert(CONTENT_LENGTH, HeaderValue::from(bytes.len()));
+            if let Some(len) = http_body::Body::size_hint(&body).exact() {
+                parts.headers.insert(CONTENT_LENGTH, HeaderValue::from(len));
             }
             parts.body = Some(body);
             Ok(())

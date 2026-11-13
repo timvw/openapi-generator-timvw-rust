@@ -28,7 +28,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | `format: date`, `date-time` | `chrono::NaiveDate`, `chrono::DateTime<chrono::FixedOffset>`; a path, query or header parameter or a form field is sent as `YYYY-MM-DD` and RFC 3339 (`to_rfc3339()`) | `useChrono` (default `true`); `useChrono=false` gives `String` and no `chrono` dependency (openai-client-base sets it) |
 | `format: uuid` | `uuid::Uuid` in a model, a parameter and a form field, sent hyphenated | |
 | `format: byte` | `Vec<u8>`, base64 through `#[serde_as(as = "serde_with::base64::Base64")]` | |
-| `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response | |
+| `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response. With `httpStack=tower` a parameter or body is a `timvw_rust_runtime::Upload`: a path, bytes or a stream (a `PathBuf` converts), streamed with a `Content-Length` | |
 | `format: email`, `uri`, any other | `String` | |
 | `type: number` | `f64`; `format: float` gives `f32` | |
 | `type: integer` | `i64`; `format: int32` gives `i32` | always (stock: `i32` unless `format: int64`) |
@@ -147,9 +147,9 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | Media type | Rust | Option |
 | --- | --- | --- |
 | `application/json` | a reference to the schema's type (`&models::Item`, `&[T]`, `Option<&T>`; a number or boolean by value), serialized with `.json(..)` | |
-| `multipart/form-data` *(reqwest)* | an argument per property; files as `std::path::PathBuf`, text as `&str` or the type | `multipartHelper`: files through `apis::multipart_helper`, arrays as a part per item, objects as JSON parts, `encoding.contentType` honoured; `fileProperties` turns listed properties into files |
+| `multipart/form-data` *(reqwest)* | an argument per property; files as `std::path::PathBuf` (`httpStack=tower`: `timvw_rust_runtime::Upload`), text as `&str` or the type | `multipartHelper`: files through `apis::multipart_helper`, arrays as a part per item, objects as JSON parts, `encoding.contentType` honoured; `fileProperties` turns listed properties into files |
 | `application/x-www-form-urlencoded` | an argument per property, sent with `.form(..)` | |
-| `application/octet-stream` *(reqwest)* | `std::path::PathBuf`, streamed | |
+| `application/octet-stream` *(reqwest)* | `std::path::PathBuf`, streamed (`httpStack=tower`: `timvw_rust_runtime::Upload`) | |
 | `text/plain`, other | the operation's own method sends the first media type | `contentTypeMethods`: one method per media type (`_json`, `_multipart`, `_form`, `_text`, `_bytes`, `_<subtype>`) |
 
 ### Responses

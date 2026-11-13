@@ -73,7 +73,7 @@ has a **Library** row that names it. These are:
 | Where | Type from the HTTP library |
 | --- | --- |
 | a binary response (`format: binary`, `application/octet-stream`) | `timvw_rust_runtime::Response`, read as bytes or a stream |
-| a binary request body or file part | `std::path::PathBuf`; the file is opened with tokio and streamed as a `timvw_rust_runtime::Body` or a `timvw_rust_runtime::multipart::Part` |
+| a binary request body or file part | `timvw_rust_runtime::Upload` (a `PathBuf` converts); a file is streamed with tokio as a `timvw_rust_runtime::Body` or a `timvw_rust_runtime::multipart::Part`, and opened again by a retry |
 | a `multipart/form-data` body | built as a `timvw_rust_runtime::multipart::Form` |
 | a `text/event-stream` response (`typedEventStreams`) | a stream over the response's bytes |
 | the client | `timvw_rust_runtime::Client` in `Configuration` (`reqwest_middleware::ClientWithMiddleware` with `httpStack=reqwest-middleware`) |

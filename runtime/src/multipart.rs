@@ -1,19 +1,22 @@
 //! `multipart/form-data` bodies, with the API of reqwest's `multipart` module that generated clients use.
 //!
 //! A form whose parts are all held in memory encodes to a body held in memory, so a retry layer can send it again.
-//! A form with a streamed part encodes to a stream.
+//! A form with a streamed part encodes to a stream; when every part can be sent again (bytes, a file
+//! [`Upload`]), a retry makes that stream again, opening the files afresh. When the length of every part is known
+//! (bytes, a resolved file), the form is sent with a `Content-Length` instead of chunked.
 
 use std::borrow::Cow;
 use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::hash::{BuildHasher, Hasher};
+use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
-use futures_util::{future, stream, StreamExt, TryStreamExt};
+use futures_util::{future, stream, StreamExt};
 use http::HeaderValue;
 use http_body_util::BodyDataStream;
 
-use crate::{Body, BoxError, Error};
+use crate::{Body, BoxError, Error, Upload};
 
 /// A `multipart/form-data` form.
 pub struct Form {
@@ -63,6 +66,9 @@ impl Form {
     }
 
     /// Encodes the form.
+    ///
+    /// Parts held in memory encode to bytes. Otherwise the form is a stream, with a known length when every part has
+    /// one, and sent again by a retry when every part can be (see [`Body::try_clone`]).
     pub fn into_body(self) -> Body {
         let closing = Bytes::from(format!("--{}--\r\n", self.boundary));
         if self
@@ -81,22 +87,78 @@ impl Form {
             out.extend_from_slice(&closing);
             return Body::from(out.freeze());
         }
-        let boundary = self.boundary;
-        let chunks = stream::iter(self.parts)
-            .map(move |(name, part)| {
-                let head = stream::once(future::ready(Ok::<_, BoxError>(
-                    part.head(&boundary, &name),
-                )));
-                let content = match part.content {
-                    Content::Bytes(bytes) => stream::once(future::ready(Ok(bytes))).boxed(),
-                    Content::Stream(body) => BodyDataStream::new(body).boxed(),
-                };
-                let tail = stream::once(future::ready(Ok(Bytes::from_static(b"\r\n"))));
-                head.chain(content).chain(tail)
-            })
-            .flatten()
-            .chain(stream::once(future::ready(Ok(closing))));
-        Body::wrap_stream(chunks.into_stream())
+        let pieces: Vec<(Bytes, Content)> = self
+            .parts
+            .into_iter()
+            .map(|(name, part)| (part.head(&self.boundary, &name), part.content))
+            .collect();
+        let len = pieces
+            .iter()
+            .try_fold(closing.len() as u64, |len, (head, content)| {
+                Some(len + head.len() as u64 + content.len()? + 2)
+            });
+        if pieces
+            .iter()
+            .all(|(_, content)| content.try_clone().is_some())
+        {
+            let pieces = Arc::new(pieces);
+            return Body::replay(
+                Arc::new(move || {
+                    let fresh = pieces
+                        .iter()
+                        .map(|(head, content)| {
+                            let content = content
+                                .try_clone()
+                                .expect("every part was checked to clone");
+                            (head.clone(), content)
+                        })
+                        .collect();
+                    encode(fresh, closing.clone(), len)
+                }),
+                len,
+            );
+        }
+        encode(pieces, closing, len)
+    }
+}
+
+/// The stream of a form's parts, each a head, its content and a line break, then the closing boundary.
+fn encode(pieces: Vec<(Bytes, Content)>, closing: Bytes, len: Option<u64>) -> Body {
+    let chunks = stream::iter(pieces)
+        .map(|(head, content)| {
+            let head = stream::once(future::ready(Ok::<_, BoxError>(head)));
+            let content = match content {
+                Content::Bytes(bytes) => stream::once(future::ready(Ok(bytes))).boxed(),
+                Content::Stream(body) => BodyDataStream::new(body).boxed(),
+            };
+            let tail = stream::once(future::ready(Ok(Bytes::from_static(b"\r\n"))));
+            head.chain(content).chain(tail)
+        })
+        .flatten()
+        .chain(stream::once(future::ready(Ok(closing))));
+    Body::sized_stream(chunks, len)
+}
+
+impl Content {
+    fn len(&self) -> Option<u64> {
+        match self {
+            Content::Bytes(bytes) => Some(bytes.len() as u64),
+            Content::Stream(body) => http_body::Body::size_hint(body).exact(),
+        }
+    }
+
+    fn try_clone(&self) -> Option<Self> {
+        match self {
+            Content::Bytes(bytes) => Some(Content::Bytes(bytes.clone())),
+            Content::Stream(body) => body.try_clone().map(Content::Stream),
+        }
+    }
+
+    fn from_body(body: Body) -> Self {
+        match body.into_bytes() {
+            Ok(bytes) => Content::Bytes(bytes),
+            Err(body) => Content::Stream(body),
+        }
     }
 }
 
@@ -136,11 +198,21 @@ impl Part {
 
     /// A part read from a body, such as a file stream; a body held in memory stays in memory.
     pub fn stream<T: Into<Body>>(value: T) -> Self {
-        let body = value.into();
-        match body.as_bytes() {
-            Some(bytes) => Self::new(Content::Bytes(Bytes::copy_from_slice(bytes))),
-            None => Self::new(Content::Stream(body)),
-        }
+        Self::new(Content::from_body(value.into()))
+    }
+
+    /// A file part: the content of an [`Upload`], its file name (`file` when it has none) and its media type (none
+    /// when it has none). A file upload is streamed from disk, and opened again when a retry sends the form again.
+    pub fn upload(upload: Upload) -> Self {
+        let file_name = upload.file_name.clone().unwrap_or(Cow::Borrowed("file"));
+        let mime = upload.mime.as_deref().map(|mime| {
+            HeaderValue::try_from(mime)
+                .unwrap_or(HeaderValue::from_static("application/octet-stream"))
+        });
+        let mut part = Self::new(Content::from_body(Body::from(upload)));
+        part.file_name = Some(file_name);
+        part.mime = mime;
+        part
     }
 
     fn new(content: Content) -> Self {
@@ -218,18 +290,20 @@ fn escape(value: &str) -> Cow<'_, str> {
     }
 }
 
+/// A random number, from the random keys of the standard library's hasher.
+pub(crate) fn random_u64(salt: u64) -> u64 {
+    let mut hasher = RandomState::new().build_hasher();
+    hasher.write_u64(salt);
+    hasher.finish()
+}
+
 fn random_boundary() -> String {
-    let random = |salt: u64| {
-        let mut hasher = RandomState::new().build_hasher();
-        hasher.write_u64(salt);
-        hasher.finish()
-    };
     format!(
         "{:016x}-{:016x}-{:016x}-{:016x}",
-        random(1),
-        random(2),
-        random(3),
-        random(4)
+        random_u64(1),
+        random_u64(2),
+        random_u64(3),
+        random_u64(4)
     )
 }
 
@@ -278,6 +352,44 @@ mod tests {
         assert!(body.try_clone().is_none());
         let expected = "--B\r\nContent-Disposition: form-data; name=\"file\"; filename=\"f\"\r\n\r\nab\r\n--B--\r\n";
         assert_eq!(body.collect_bytes().await.unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn replayable_uploads_encode_to_a_replayable_body_of_known_length() {
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let made = counter.clone();
+        let upload = Upload::from_fn(move || {
+            made.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            stream::iter([Ok::<_, std::io::Error>(Bytes::from("ab"))])
+        })
+        .len(2)
+        .mime("text/plain");
+        let body = form()
+            .text("n", "v")
+            .part("f", Part::upload(upload))
+            .into_body();
+        let expected = "--B\r\nContent-Disposition: form-data; name=\"n\"\r\n\r\nv\r\n\
+                        --B\r\nContent-Disposition: form-data; name=\"f\"; filename=\"file\"\r\n\
+                        Content-Type: text/plain\r\n\r\nab\r\n--B--\r\n";
+        assert_eq!(
+            http_body::Body::size_hint(&body).exact(),
+            Some(expected.len() as u64)
+        );
+        let copy = body.try_clone().expect("every part can be made again");
+        assert_eq!(body.collect_bytes().await.unwrap(), expected);
+        assert_eq!(copy.collect_bytes().await.unwrap(), expected);
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn a_part_of_unknown_length_leaves_the_form_length_unknown() {
+        let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from("a"))]);
+        let body = form()
+            .text("n", "v")
+            .part("f", Part::upload(Upload::stream(chunks)))
+            .into_body();
+        assert_eq!(http_body::Body::size_hint(&body).exact(), None);
+        assert!(body.try_clone().is_none());
     }
 
     #[test]

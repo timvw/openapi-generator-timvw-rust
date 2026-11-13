@@ -64,6 +64,24 @@ impl Response {
         crate::sse::Events::from_response(self)
     }
 
+    /// Streams the body to the file at `path`, and returns the number of bytes written.
+    ///
+    /// The body goes to a temporary file in the same directory, which is flushed to disk (`fsync`) and then renamed
+    /// to `path`, replacing any file there: `path` never holds part of a body. When reading the body or writing the
+    /// file fails, the temporary file is removed and `path` is left as it was. The status is not checked.
+    #[cfg(feature = "fs")]
+    pub async fn save_to(self, path: impl AsRef<std::path::Path>) -> Result<u64, Error> {
+        crate::download::save_to(self.bytes_stream(), path.as_ref()).await
+    }
+
+    /// The body as a tokio [`AsyncRead`](tokio::io::AsyncRead), read as it arrives: to copy it somewhere with
+    /// `tokio::io::copy`, or to decode it with a reader. A failure reading the body is an `std::io::Error` whose
+    /// source is the [`Error`].
+    #[cfg(feature = "fs")]
+    pub fn into_async_read(self) -> impl tokio::io::AsyncRead + Send + Unpin + 'static {
+        crate::download::BodyReader::new(self.bytes_stream())
+    }
+
     /// The underlying `http::Response`.
     pub fn into_http(self) -> http::Response<Body> {
         self.inner

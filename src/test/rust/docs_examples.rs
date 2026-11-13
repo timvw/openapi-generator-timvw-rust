@@ -558,9 +558,56 @@ mod http_stack_options {
     }
 }
 
+/// docs/guides/http-stack.md
+mod http_stack_uploads {
+    use super::*;
+
+    async fn uploads_and_downloads() -> Result<(), BoxError> {
+        let configuration = configuration();
+
+        use std::path::PathBuf;
+        use timvw_rust_runtime::Upload;
+
+        // A path: streamed from disk, opened again if the request is retried.
+        items_api::upload_item_image()
+            .configuration(&configuration)
+            .id("1")
+            .image(PathBuf::from("lamp.png"))
+            .call()
+            .await?;
+
+        // Bytes held in memory, with a file name and a media type of your own.
+        let png: Vec<u8> = std::fs::read("lamp.png")?;
+        items_api::upload_item_image()
+            .configuration(&configuration)
+            .id("1")
+            .image(Upload::bytes(png).file_name("lamp.png").mime("image/png"))
+            .call()
+            .await?;
+
+        // A binary response, written to a file as it arrives.
+        let response = items_api::get_item_image().configuration(&configuration).id("1").call().await?;
+        response.save_to("lamp-copy.png").await?;
+        Ok(())
+    }
+}
+
 /// docs/guides/migration.md
 mod migration {
     use super::*;
+
+    async fn file_parameters() -> Result<(), BoxError> {
+        use std::path::PathBuf;
+        let configuration = configuration();
+
+        items_api::upload_item_image()
+            .configuration(&configuration)
+            .id("1")
+            .image(PathBuf::from("lamp.png"))
+            .call()
+            .await?;
+        Ok(())
+    }
 
     fn secret_credentials() {
         use my_client::apis::configuration::{ApiKey, SecretString};

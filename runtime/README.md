@@ -16,6 +16,7 @@ crate ships, any layer from the tower ecosystem, or write your own.
 - [Concurrency and rate limits](#concurrency-and-rate-limits)
 - [Choosing the HTTP client, and tests without a network](#choosing-the-http-client)
 - [Your own types, and streams of server-sent events](#your-own-types-and-server-sent-events)
+- [Uploads and downloads](#uploads-and-downloads)
 - [Credentials](#credentials)
 - [Headers and query parameters for one call](#headers-and-query-parameters-for-one-call)
 - [Errors](#errors)
@@ -78,8 +79,9 @@ A `Client` is cheap to clone, and clones share their layers' state (a rate limit
   jittered, picked at random between half and all of it, so that clients that failed together do not retry together;
   `.jitter(false)` turns that off. A server's `Retry-After` is not jittered, nor capped by `max_delay`.
 - It retries at most 3 times by default.
-- It does not retry a request whose body is a stream (a streamed file upload), since that cannot be sent twice. JSON,
-  form, text and in-memory multipart bodies are sent again.
+- It retries a request only when its body can be sent again: JSON, form and text bodies, bytes, and a file
+  [`Upload`](#uploads-and-downloads), which is opened again for each attempt (so is a multipart form of such parts).
+  A body that can be read once (a stream, a reader) is not retried.
 
 ```rust,no_run
 use std::time::Duration;
@@ -169,7 +171,8 @@ let client = Client::default().layer(tower::timeout::TimeoutLayer::new(Duration:
 
 reqwest's own timeouts (connect timeout, read timeout) are set on a `reqwest::Client`, see
 [Choosing the HTTP client](#choosing-the-http-client). For a response streamed for minutes (server-sent events), a
-total timeout ends the stream; use a connect timeout instead, or none.
+total timeout ends the stream; use a connect timeout instead, or none, and bound the silence between events with
+[`Events::idle_timeout`](#your-own-types-and-server-sent-events).
 
 ## Logging
 
@@ -487,6 +490,95 @@ async fn run(client: &Client, api_key: &SecretString) -> Result<(), timvw_rust_r
 `id:`), and `sse::Decoder` is the parser, for a body read some other way. A generated client's typed event streams use
 the same parser.
 
+A stream can stall without closing: the server or a proxy keeps the connection open and sends nothing.
+`events().idle_timeout(duration)` ends it with an error (`is_timeout()` is true) when no bytes arrive for `duration`;
+every chunk, a `: keep-alive` comment too, restarts the clock, and the whole stream has no limit (feature `time`, part
+of `retry`):
+
+```rust,no_run
+use std::time::Duration;
+use futures_util::StreamExt;
+
+async fn run(response: timvw_rust_runtime::Response) -> Result<(), timvw_rust_runtime::Error> {
+    let mut events = response.events().idle_timeout(Duration::from_secs(120));
+    while let Some(event) = events.next().await {
+        match event {
+            Err(error) if error.is_timeout() => eprintln!("the stream stalled"),
+            event => println!("{}", event?.data),
+        }
+    }
+    Ok(())
+}
+```
+
+## Uploads and downloads
+
+An `Upload` is something to send: a request body (`.body(upload)`) or a multipart part (`multipart::Part::upload`).
+A generated client takes one for every file parameter, and a `PathBuf`, a `&Path`, a `Vec<u8>` or `Bytes` converts
+into one.
+
+| Made with | Length | Sent again by a retry |
+| --- | --- | --- |
+| `Upload::bytes(..)`, `Vec<u8>`, `Bytes`, `&'static [u8]` | known | yes, without a copy |
+| `Upload::path(path)`, `Upload::file(path).await`, `PathBuf`, `&Path` | from the file's metadata | yes: the file is opened again |
+| `Upload::from_fn(\|\| stream)` | `.len(n)` | yes: a fresh stream per attempt |
+| `Upload::reader(reader)`, `Upload::stream(stream)` | `.len(n)` | no, unless `.buffer_for_retry(limit)` holds it |
+
+- A file is streamed from disk with tokio, in chunks, never read into memory. Its part is named after the file and
+  typed from its extension (`photo.png`, `image/png`); `.file_name(..)` and `.mime(..)` set others, and a part of an
+  upload without a name is named `file`.
+- When the length of the body is known, which for a multipart form means the length of every part, it is sent with a
+  `Content-Length`, not chunked: some servers refuse chunked uploads. `Upload::resolve().await` reads a path's length
+  (`Upload::file` is `Upload::path(..).resolve()`, and fails at once on a missing file); generated clients resolve
+  every upload.
+- `.slice(range)` sends part of a file (a seek, no copy), of bytes or of a stream: for APIs that take a large file in
+  parts.
+- `.buffer_for_retry(limit)` lets `resolve` read a stream or a reader into memory when it is no longer than `limit`,
+  so that a retry can send it again; a longer one is sent once.
+
+```rust,no_run
+use timvw_rust_runtime::multipart::{Form, Part};
+use timvw_rust_runtime::{Client, Method, Upload};
+
+async fn upload(client: &Client) -> Result<(), timvw_rust_runtime::Error> {
+    let form = Form::new()
+        .text("purpose", "fine-tune")
+        .part("file", Part::upload(Upload::file("train.jsonl").await?));
+    client
+        .request(Method::POST, "https://api.example.com/v1/files")
+        .multipart(form) // with a Content-Length; a retry opens train.jsonl again
+        .send()
+        .await?;
+
+    // The second 8 MiB of a large file, as the whole body.
+    let chunk = Upload::path("video.mp4").slice(8 << 20..16 << 20).resolve().await?;
+    client.request(Method::PUT, "https://api.example.com/v1/uploads/1/parts/2").body(chunk).send().await?;
+    Ok(())
+}
+```
+
+A response body can go to a file, or be read as a tokio `AsyncRead`. `Response::save_to(path)` streams it into a
+temporary file in the directory of `path`, flushes it to disk and renames it to `path`: `path` holds the whole body or
+is left as it was, never half a download. It returns the number of bytes written; a failure to write is an `Error`
+whose `is_io()` is true:
+
+```rust,no_run
+use timvw_rust_runtime::{Client, Method};
+
+async fn download(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+    let response = client.request(Method::GET, "https://api.example.com/v1/files/1/content").send().await?;
+    let written = response.save_to("data/file-1.jsonl").await?;
+
+    let response = client.request(Method::GET, "https://api.example.com/v1/files/2/content").send().await?;
+    let mut reader = response.into_async_read();
+    let mut file = tokio::fs::File::create("data/file-2.jsonl").await?;
+    tokio::io::copy(&mut reader, &mut file).await?; // an error reading the body is an io::Error here
+    Ok(())
+}
+```
+
+Files, readers and downloads are feature `fs` (on by default; a generated crate with a file parameter turns it on).
+
 ## Credentials
 
 A generated `Configuration` keeps its tokens, basic-auth password and api key in
@@ -554,6 +646,7 @@ A request that fails to send is an `Error`:
 | `is_request()` | the service failed; `is_timeout()` and `is_connect()` narrow it down |
 | `is_body()` | reading the response body failed |
 | `is_decode()` | the response could not be decoded (JSON) |
+| `is_io()` | a file could not be read or written: a missing [upload](#uploads-and-downloads), a failed `save_to` |
 
 `source()` is the error of the service or layer that failed: a `reqwest::Error`, tower's `Elapsed`, or your own. A
 generated client wraps it as `apis::Error::Http(error)`. A response with an error status is not an `Error` here; the
@@ -566,16 +659,20 @@ generated client turns it into `apis::Error::ResponseError`.
 | `rustls` | yes | reqwest with rustls, as `Client::default()` |
 | `native-tls` | no | reqwest with the platform's TLS |
 | `reqwest` | via `rustls` or `native-tls` | `ReqwestService`, `Client::from_reqwest` |
-| `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with tokio, read `Retry-After` dates with `httpdate`), and retries in `Client::default()` |
+| `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with tokio, read `Retry-After` dates with `httpdate`), and retries in `Client::default()`; turns on `time` |
+| `time` | via `retry` | `sse::Events::idle_timeout` (tokio's timer) |
+| `fs` | yes | file and reader [uploads](#uploads-and-downloads) (`Upload::path`, `Upload::file`, `Upload::reader`), `Response::save_to` and `Response::into_async_read` (tokio) |
 | `tracing` | no | `trace::TraceLayer`, and a log event per retry |
 
-A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names.
+A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names, and turns on `fs` when it
+has a file parameter.
 
 ## What the generated code uses
 
 The generated functions build requests with `RequestBuilder` (`query`, `header`, `sensitive_header`, `bearer_auth`,
 `basic_auth`, `json`, `form`, `body`, `multipart`, `options`, `build`) and read responses with `Response` (`status`, `headers`, `text`, `bytes`,
-`bytes_stream`): the methods of reqwest's types of the same names. `multipart::Form` encodes multipart bodies.
+`bytes_stream`): the methods of reqwest's types of the same names. `multipart::Form` encodes multipart bodies, and
+`Upload` (`resolve`, `multipart::Part::upload`) carries file parameters.
 
 ## License
 

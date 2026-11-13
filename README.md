@@ -310,7 +310,7 @@ dependencies the generator writes, which depend on the spec and the options:
 | Dependency | When |
 | --- | --- |
 | `serde`, `serde_json`, `serde_repr`, `url` | always |
-| `timvw-rust-runtime` | `httpStack=tower` (the default) |
+| `timvw-rust-runtime` | `httpStack=tower` (the default); with its `fs` feature when a parameter is a file (`Upload`) |
 | `reqwest`, `reqwest-middleware` | `httpStack=reqwest-middleware` |
 | `bon` | `bonBuilders` (the default) |
 | `serde_with` | a nullable optional property (`Option<Option<T>>`) or a `format: byte` property |
@@ -318,10 +318,10 @@ dependencies the generator writes, which depend on the spec and the options:
 | `uuid` | a `format: uuid` anywhere |
 | `regex` | a `pattern` that `validate()` checks |
 | `futures-core` (and reqwest's `stream` feature with `httpStack=reqwest-middleware`) | `typedEventStreams` with an operation that streams |
-| `tokio` (`fs`), `tokio-util` (`codec`) (and reqwest's `stream` feature with `httpStack=reqwest-middleware`) | a file body, or a multipart file without `multipartHelper` |
+| `tokio` (`fs`), `tokio-util` (`codec`), reqwest's `stream` feature | `httpStack=reqwest-middleware`: a file body, or a multipart file without `multipartHelper` |
 | `serde_path_to_error` | `useSerdePathToError` |
 
-With `apiFeatures`, the HTTP dependencies (`timvw-rust-runtime`, or `reqwest` and `reqwest-middleware`, and `tokio`,
+With `apiFeatures`, the HTTP dependencies (`timvw-rust-runtime`, or `reqwest` and `reqwest-middleware` and `tokio`,
 `tokio-util`) are `optional = true`, and the generated `[features]` section lists every group: copy both.
 
 The rule: on every upgrade of the generator (and every spec update), generate once into an empty directory and

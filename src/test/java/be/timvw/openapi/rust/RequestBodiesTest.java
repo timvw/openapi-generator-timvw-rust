@@ -121,7 +121,7 @@ class RequestBodiesTest {
         assertContains(function("set_count"), "body: i64, options: Option<&timvw_rust_runtime::RequestOptions>)");
         assertContains(function("set_count"), "req_builder = req_builder.json(&p_body_body);");
         assertContains(function("set_name"), "body: &str, options: Option<&timvw_rust_runtime::RequestOptions>)");
-        assertContains(function("upload"), "body: std::path::PathBuf, options: Option<&timvw_rust_runtime::RequestOptions>)");
+        assertContains(function("upload"), "#[builder(into)] body: timvw_rust_runtime::Upload, options: Option<&timvw_rust_runtime::RequestOptions>)");
     }
 
     /** Runs src/test/rust/request_bodies.rs and clippy on the generated crate. Needs cargo. */

@@ -10,6 +10,8 @@
 
 mod body;
 mod client;
+#[cfg(feature = "fs")]
+mod download;
 mod error;
 pub mod multipart;
 pub mod provider;
@@ -23,6 +25,7 @@ pub mod retry;
 pub mod sse;
 #[cfg(feature = "tracing")]
 pub mod trace;
+mod upload;
 
 pub use body::Body;
 pub use client::{Client, HttpService};
@@ -33,6 +36,7 @@ pub use request_options::RequestOptions;
 #[cfg(feature = "reqwest")]
 pub use reqwest_service::ReqwestService;
 pub use response::Response;
+pub use upload::Upload;
 
 pub use http;
 pub use http::{header, HeaderMap, Method, StatusCode};

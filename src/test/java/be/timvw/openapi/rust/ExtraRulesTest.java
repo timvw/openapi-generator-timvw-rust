@@ -178,15 +178,27 @@ class ExtraRulesTest {
             assertFalse(dispatch.contains("type Attempt"), dispatch);
             assertContains(dispatch, "pub(crate) fn decode");
             String helper = read(out, "src/apis/multipart_helper.rs");
-            assertContains(helper, "pub fn add_file_to_form");
-            // kept on purpose
-            assertContains(helper, "pub fn file_part_from_bytes");
+            // an async fn is an item too
+            assertContains(helper, "pub async fn add_file_to_form");
+            assertContains(helper, "use timvw_rust_runtime::Upload;");
         }
+    }
+
+    @Test
+    void helpersKeptOnPurposeStay(@TempDir Path out) throws IOException {
+        Map<String, Object> options = new LinkedHashMap<>(BASE);
+        // the reqwest-middleware helper keeps more than it calls (the tower one has nothing of the kind)
+        options.put(TimvwRustCodegen.HTTP_STACK, TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE);
+        generate(out, options, "src/test/resources/extras.yaml");
+        String helper = read(out, "src/apis/multipart_helper.rs");
+        assertContains(helper, "pub fn add_file_to_form");
+        assertContains(helper, "pub fn file_part_from_bytes");
     }
 
     @Test
     void pruneAllHelpersAlsoDropsHelpersKeptOnPurpose(@TempDir Path out) throws IOException {
         Map<String, Object> options = new LinkedHashMap<>(BASE);
+        options.put(TimvwRustCodegen.HTTP_STACK, TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE);
         options.put(TimvwRustCodegen.PRUNE_ALL_HELPERS, "true");
         generate(out, options, "src/test/resources/extras.yaml");
         String helper = read(out, "src/apis/multipart_helper.rs");

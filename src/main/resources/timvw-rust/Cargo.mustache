@@ -57,15 +57,21 @@ uuid = { version = "^1.8", features = ["serde", "v4"] }
 {{#usesChronoTypes}}
 chrono = { version = "^0.4",  features = ["serde"] }
 {{/usesChronoTypes}}
+{{^httpStackTower}}
 {{#useAsyncFileStream}}
 tokio = { version = "^1.46.0", features = ["fs"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
 tokio-util = { version = "^0.7", features = ["codec"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
-{{^httpStackTower}}
 reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart", "stream", "query", "form"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
-{{/httpStackTower}}
 {{/useAsyncFileStream}}
+{{/httpStackTower}}
 {{#httpStackTower}}
-timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#apiFeatures}}, optional = true{{/apiFeatures}} }
+timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFeatures}}, features = [{{{runtimeFeatures}}}]{{/runtimeFeatures}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#apiFeatures}}, optional = true{{/apiFeatures}} }
+{{#hasUUIDs}}
+
+# WebAssembly in a JavaScript host (wasm32-unknown-unknown): uuid's `v4` draws from `crypto.getRandomValues`.
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+uuid = { version = "^1.8", features = ["js"] }
+{{/hasUUIDs}}
 
 [features]
 default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry"{{#apiFeatures}}, "full"{{/apiFeatures}}]
@@ -98,7 +104,7 @@ types = [
     "{{{.}}}",
 {{/apiFeaturesTypes}}
 ]
-_api = [{{#httpStackTower}}"dep:timvw-rust-runtime"{{/httpStackTower}}{{^httpStackTower}}"dep:reqwest", "dep:reqwest-middleware"{{/httpStackTower}}{{#useAsyncFileStream}}, "dep:tokio", "dep:tokio-util"{{/useAsyncFileStream}}]
+_api = [{{#httpStackTower}}"dep:timvw-rust-runtime"{{/httpStackTower}}{{^httpStackTower}}"dep:reqwest", "dep:reqwest-middleware"{{#useAsyncFileStream}}, "dep:tokio", "dep:tokio-util"{{/useAsyncFileStream}}{{/httpStackTower}}]
 {{#apiFeatureGroups}}
 # {{{selects}}}
 {{{name}}} = ["{{{name}}}-types", "_api"]

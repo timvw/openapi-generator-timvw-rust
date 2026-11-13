@@ -127,7 +127,7 @@ class HttpStackTest {
     void theRuntimeVersionAndPathAreOptions() throws IOException {
         generate(out, Map.of(TimvwRustCodegen.RUNTIME_VERSION, "0.3.1", TimvwRustCodegen.RUNTIME_PATH, "../runtime"));
         assertTrue(read(out, "Cargo.toml").contains(
-                "timvw-rust-runtime = { version = \"^0.3.1\", default-features = false, path = \"../runtime\" }"));
+                "timvw-rust-runtime = { version = \"^0.3.1\", default-features = false, features = [\"fs\", \"time\"], path = \"../runtime\" }"));
     }
 
     @Test

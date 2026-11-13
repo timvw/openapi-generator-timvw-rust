@@ -25,7 +25,8 @@ import java.util.Map;
  *   <li>{@value #SERDE_ERROR} on an API module: an operation builds a {@code serde_json::Error::custom} (response
  *       decoding, or an event stream that got another content type), which needs {@code de::Error as _}.</li>
  *   <li>{@value #FILE_STREAM} on an API module: an operation streams a file from disk ({@code TokioFile},
- *       {@code FramedRead}): a file request body, or a multipart file part when {@code multipartHelper} is off.</li>
+ *       {@code FramedRead}): a file request body, or a multipart file part when {@code multipartHelper} is off; not with
+ *       {@code httpStack=tower}, whose {@code Upload} streams itself.</li>
  * </ul>
  */
 final class Imports {
@@ -95,6 +96,16 @@ final class Imports {
 
     /** Sets the import flags of one API module from its operations. */
     static void markApi(OperationsMap objs, boolean multipartHelper, boolean multipleResponses) {
+        markApi(objs, multipartHelper, multipleResponses, false);
+    }
+
+    /**
+     * Sets the import flags of one API module from its operations.
+     *
+     * @param uploads files are {@code timvw_rust_runtime::Upload}s (tower), which stream themselves: no file is
+     *     opened in the API module
+     */
+    static void markApi(OperationsMap objs, boolean multipartHelper, boolean multipleResponses, boolean uploads) {
         boolean contentType = false;
         boolean serdeError = false;
         boolean fileStream = false;
@@ -104,7 +115,8 @@ final class Imports {
                 boolean decodes = !stream && !multipleResponses && op.returnType != null && !op.isResponseFile;
                 contentType |= decodes;
                 serdeError |= decodes || stream;
-                fileStream |= hasFile(op.bodyParams) || (!multipartHelper && op.isMultipart && hasFile(op.formParams));
+                fileStream |= !uploads
+                        && (hasFile(op.bodyParams) || (!multipartHelper && op.isMultipart && hasFile(op.formParams)));
             }
         }
         put(objs, CONTENT_TYPE, contentType);

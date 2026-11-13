@@ -109,8 +109,8 @@ class NullShapesTest {
                     + "Option<&serde_json::Value>, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<serde_json::Value, ");
             assertContains(api, "post_form(configuration: &configuration::Configuration, anything: "
                     + "Option<serde_json::Value>, count: Option<i64>, options: Option<&timvw_rust_runtime::RequestOptions>)");
-            assertContains(api, "upload(configuration: &configuration::Configuration, file: "
-                    + "Option<std::path::PathBuf>, meta: Option<serde_json::Value>, options: Option<&timvw_rust_runtime::RequestOptions>)");
+            assertContains(api, "upload(configuration: &configuration::Configuration, #[builder(into)] file: "
+                    + "Option<timvw_rust_runtime::Upload>, meta: Option<serde_json::Value>, options: Option<&timvw_rust_runtime::RequestOptions>)");
             assertFalse(api.contains("models::Null") || api.contains("LessThanGreaterThan")
                     || api.contains("models::serde_json"), api);
         }

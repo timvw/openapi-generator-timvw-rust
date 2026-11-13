@@ -171,6 +171,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * each {@code data:} payload (Milestone 3.6, see {@link ContentTypeMethods}).
      */
     public static final String TYPED_EVENT_STREAMS = "typedEventStreams";
+    /** Tower stack: the features of the runtime dependency in Cargo.toml (see {@link #runtimeFeatures}). */
+    static final String RUNTIME_FEATURES = "runtimeFeatures";
     /**
      * One method per request body media type and per success response shape, named with a suffix (Milestone 3.6, see
      * {@link ContentTypeMethods}).
@@ -194,7 +196,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /** The version requirement of {@code timvw-rust-runtime} in the generated Cargo.toml (with {@code httpStack=tower}). */
     public static final String RUNTIME_VERSION = "runtimeVersion";
     /** The {@code timvw-rust-runtime} release this generator renders for: the default of {@link #RUNTIME_VERSION}. */
-    public static final String DEFAULT_RUNTIME_VERSION = "0.2";
+    public static final String DEFAULT_RUNTIME_VERSION = "0.3";
     /**
      * A path dependency on {@code timvw-rust-runtime} next to the version (with {@code httpStack=tower}), for testing
      * against an unreleased runtime; defaults to the system property {@code timvw-rust.runtimePath}.
@@ -363,6 +365,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private String preprocessedSpecFile;
     private boolean resetQueryParameterStyle;
     private boolean multipartHelper;
+    /** {@code httpStack=tower}: file parameters are {@code timvw_rust_runtime::Upload}s. */
+    private boolean httpStackTower;
+    private boolean bonBuilders;
     private String preprocessedSpecJson;
     private List<String> fileProperties = new ArrayList<>();
     private final Set<String> structJsonModels = new java.util.TreeSet<>();
@@ -458,7 +463,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 "Give every query parameter not listed in deepObjectQueryParameters the default style (form, "
                         + "exploded), so arrays are sent as repeated parameters whatever the spec says", false));
         cliOptions.add(CliOption.newBoolean(MULTIPART_HELPER,
-                "Send multipart bodies through a generated src/apis/multipart_helper.rs: files are read into a part "
+                "Send multipart bodies through a generated src/apis/multipart_helper.rs: a file is a part "
                         + "named after the file, optional arrays send one part per item and optional objects one JSON "
                         + "part, and an encoding contentType of a scalar part is applied", false));
         cliOptions.add(CliOption.newString(FILE_PROPERTIES,
@@ -794,6 +799,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         boolean bonBuilders = !additionalProperties.containsKey(BON_BUILDERS)
                 || convertPropertyToBooleanAndWriteBack(BON_BUILDERS);
         additionalProperties.put(BON_BUILDERS, bonBuilders);
+        this.bonBuilders = bonBuilders;
 
         validateMethods = !additionalProperties.containsKey(VALIDATE_METHODS)
                 || convertPropertyToBooleanAndWriteBack(VALIDATE_METHODS);
@@ -868,6 +874,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         boolean tower = HTTP_STACK_TOWER.equals(httpStack);
         additionalProperties.put(HTTP_STACK, httpStack);
         additionalProperties.put("httpStackTower", tower);
+        httpStackTower = tower;
         additionalProperties.put("httpCrate", tower ? "timvw_rust_runtime" : "reqwest");
         additionalProperties.put("httpErrorVariant", tower ? "Http" : "Reqwest");
         Object runtimeVersion = additionalProperties.get(RUNTIME_VERSION);
@@ -1168,7 +1175,26 @@ public class TimvwRustCodegen extends RustCodegenBase {
             LOGGER.info("{}: {}: no operation has a text/event-stream response, so sse.rs is not written",
                     GENERATOR_NAME, TYPED_EVENT_STREAMS);
         }
+        if (httpStackTower) {
+            objs.put(RUNTIME_FEATURES, runtimeFeatures(objs));
+        }
         return objs;
+    }
+
+    /**
+     * The features of the runtime dependency (tower stack), quoted and comma-separated for Cargo.toml, or {@code null}
+     * for none: {@code fs} when a file parameter takes a path ({@code Upload::path}; the runtime leaves it out on
+     * WebAssembly), {@code time} for the idle timeout of typed event streams.
+     */
+    private static String runtimeFeatures(Map<String, Object> objs) {
+        List<String> features = new ArrayList<>();
+        if (Boolean.TRUE.equals(objs.get(UploadParams.RUNTIME_FS))) {
+            features.add("\"fs\"");
+        }
+        if (Boolean.TRUE.equals(objs.get(TYPED_EVENT_STREAMS))) {
+            features.add("\"time\"");
+        }
+        return features.isEmpty() ? null : String.join(", ", features);
     }
 
     /** The features of the operations and models, planned on first use: the spec no longer changes by then. */
@@ -1196,6 +1222,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
             String own = plan.operationCfg(classname, op.path, op.httpMethod);
             if (own != null) {
                 op.vendorExtensions.put(ApiFeatures.OPERATION_CFG, own);
+                if (httpStackTower) {
+                    // Some feature sets compile none of the functions that use an import: the module allows it, so
+                    // a crate's own lib.rs needs no `allow(unused_imports)`.
+                    module.put(ApiFeatures.FUNCTION_GATED, true);
+                }
             }
         }
     }
@@ -1946,7 +1977,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (!imports.isEmpty()) {
             combined.put("hasImport", true);
         }
-        Imports.markApi(combined, multipartHelper, isSupportMultipleResponses());
+        Imports.markApi(combined, multipartHelper, isSupportMultipleResponses(), httpStackTower);
         objs.clear();
         objs.putAll(combined);
         LOGGER.info("{}: {} webhook operations written into {} next to its {} path operations (set {} to generate "
@@ -2016,6 +2047,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
                             p.vendorExtensions.put(DISPLAY_ITEMS, true);
                         }
                         markText(p);
+                        if (httpStackTower) {
+                            UploadParams.mark(p, bonBuilders);
+                        }
                     }
                 }
                 if (multipartHelper && op.isMultipart && op.formParams != null && !op.formParams.isEmpty()) {
@@ -2027,6 +2061,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         }
                     }
                 }
+                if (httpStackTower && UploadParams.uploads(op)) {
+                    additionalProperties.put(UploadParams.RUNTIME_FS, true);
+                }
             }
         }
         if (helperUsed) {
@@ -2035,7 +2072,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (responseFunctions && objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             addResponseFunctions(objs.getOperations().getOperation());
         }
-        Imports.markApi(objs, multipartHelper, isSupportMultipleResponses());
+        Imports.markApi(objs, multipartHelper, isSupportMultipleResponses(), httpStackTower);
         if (objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             // the webhooks' operations are not given the models: the ones documented with the models count too
             Set<String> documented = new HashSet<>(documentedModels);

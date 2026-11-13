@@ -15,6 +15,7 @@ enum Kind {
     Request,
     Body,
     Decode,
+    Io,
 }
 
 impl Error {
@@ -46,6 +47,13 @@ impl Error {
         }
     }
 
+    pub(crate) fn io(source: impl Into<BoxError>) -> Self {
+        Self {
+            kind: Kind::Io,
+            source: Some(source.into()),
+        }
+    }
+
     /// The request could not be built: an invalid URL, header, or body.
     pub fn is_builder(&self) -> bool {
         self.kind == Kind::Builder
@@ -67,11 +75,19 @@ impl Error {
         self.kind == Kind::Decode
     }
 
-    /// Whether the request timed out: a reqwest timeout or tower's `timeout` layer.
+    /// A file could not be read or written: an [`Upload`](crate::Upload) whose file is missing, or
+    /// [`Response::save_to`](crate::Response::save_to) failing to write. [`Error::source`](std::error::Error::source)
+    /// is the `std::io::Error`.
+    pub fn is_io(&self) -> bool {
+        self.kind == Kind::Io
+    }
+
+    /// Whether the request timed out: a reqwest timeout, tower's `timeout` layer, or an
+    /// [`idle_timeout`](crate::sse::Events::idle_timeout) of server-sent events.
     pub fn is_timeout(&self) -> bool {
         let mut source: Option<&(dyn StdError + 'static)> = self.source.as_deref().map(|e| e as _);
         while let Some(error) = source {
-            if error.to_string() == "request timed out" {
+            if error.to_string() == "request timed out" || error.is::<TimedOut>() {
                 return true;
             }
             #[cfg(feature = "reqwest")]
@@ -85,9 +101,10 @@ impl Error {
         false
     }
 
-    /// Whether connecting to the server failed (only known for reqwest).
+    /// Whether connecting to the server failed (only known for reqwest, and not on WebAssembly, where `fetch` does not
+    /// tell).
     pub fn is_connect(&self) -> bool {
-        #[cfg(feature = "reqwest")]
+        #[cfg(all(feature = "reqwest", not(target_family = "wasm")))]
         {
             let mut source: Option<&(dyn StdError + 'static)> =
                 self.source.as_deref().map(|e| e as _);
@@ -120,6 +137,7 @@ impl fmt::Display for Error {
             Kind::Request => "error sending the request",
             Kind::Body => "error reading the response body",
             Kind::Decode => "error decoding the response body",
+            Kind::Io => "I/O error",
         };
         match &self.source {
             Some(source) => write!(f, "{what}: {source}"),
@@ -133,3 +151,16 @@ impl StdError for Error {
         self.source.as_deref().map(|e| e as _)
     }
 }
+
+/// Nothing arrived within a time limit, such as an [`idle_timeout`](crate::sse::Events::idle_timeout).
+#[derive(Debug)]
+#[cfg_attr(not(feature = "time"), allow(dead_code))]
+pub(crate) struct TimedOut(pub(crate) String);
+
+impl fmt::Display for TimedOut {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl StdError for TimedOut {}

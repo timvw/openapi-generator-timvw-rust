@@ -2,6 +2,10 @@
 {{#apiLintAllows}}
 #![allow({{{.}}})]
 {{/apiLintAllows}}
+{{#x-rust-function-gated}}
+// Functions are gated one by one (apiFeatures): a feature set may use none of an import.
+#![allow(unused_imports)]
+{{/x-rust-function-gated}}
 
 use {{httpCrate}};
 use serde::{Deserialize, Serialize{{#x-rust-import-serde-error}}, de::Error as _{{/x-rust-import-serde-error}}};

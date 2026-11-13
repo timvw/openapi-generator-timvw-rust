@@ -29,12 +29,13 @@ repository next to the generator. Its `Client` is a tower service from `http::Re
 
 Retries are on by default (feature `retry`): `Client::default()`, and so `Configuration::new()`, retries with
 `RetryPolicy::default()`. `RetryPolicy` retries `429`, `408` and `5xx` responses
-and failed connections, waits as long as `Retry-After` (or `retry-after-ms`) asks, up to 60 s, or else backs off
-exponentially with jitter, and does not retry a request with a streamed body (it cannot be sent twice). A `429` that
+and failed connections, waits until the time `Retry-After` (seconds or an HTTP date) or `retry-after-ms` gives, up to
+60 s, or else backs off exponentially with jitter (`RetryPolicy::server_directed_429(true)` retries a `429` only when
+the server gives a time), and does not retry a request with a body that can be read only once (a stream). A `429` that
 will not pass by waiting, such as OpenAI's `insufficient_quota`, is not retried once you turn on
 `timvw_rust_runtime::retry::RetryLayer::permanent_429` (opt-in, since what makes a `429` permanent differs between
-APIs; see [permanent `429`s](../../runtime/README.md#permanent-429s-an-exhausted-quota)). A body held in memory, which is every JSON, form and text body and every
-multipart body without a streamed file, is sent again. Layers added to `Client::default()` wrap its retries; for
+APIs; see [permanent `429`s](../../runtime/README.md#permanent-429s-an-exhausted-quota)). A body held in memory, which is every JSON, form and text body, is sent again, and
+so is a file: it is opened again for each attempt (see [uploads and downloads](#uploads-and-downloads)). Layers added to `Client::default()` wrap its retries; for
 another policy, or none, start from `Client::from_service(ReqwestService::default())`:
 
 ```rust
@@ -54,6 +55,12 @@ Logging (feature `tracing`), headers, authentication, timeouts and rate limits a
 [logging](../../runtime/README.md#logging), [middleware](../../runtime/README.md#middleware) (a header on every
 request, a layer of your own that fetches a token),
 [concurrency and rate limits](../../runtime/README.md#concurrency-and-rate-limits).
+
+To send the same API to another provider (an OpenAI-compatible service, a proxy, a cloud deployment), add a
+`timvw_rust_runtime::ProviderLayer` to `configuration.client`: it moves requests from the generated `base_path` (declared
+with `rewrite_from`) to the provider's base URL, and sets the provider's headers, query parameters (an `api-version`)
+and path (a deployment). Or set `configuration.base_path` to the provider and use the layer for the rest only. See
+[providers](../../runtime/README.md#providers).
 
 A service of your own answers without a network, for tests:
 
@@ -136,6 +143,76 @@ The generated code exposes a secret only where it builds the request, and sends 
 compression leave it out. An api key in a query parameter is part of the URL. With `httpStack=reqwest-middleware` the
 credentials are `String`s, as before 0.26.
 
+### Uploads and downloads
+
+A file parameter (`format: binary`, as a multipart part or as the whole body) is a `timvw_rust_runtime::Upload`, and
+its builder setter takes anything that converts into one: a `PathBuf` or a `&Path` (a file, streamed from disk with
+tokio), a `Vec<u8>` or `Bytes` (held in memory), or an `Upload` made from a reader or a stream. A file is sent with a
+`Content-Length` (its length is read from its metadata before the request is built; a missing file fails then, with
+`Error::Http` whose `is_io()` is true), its multipart part is named after the file and typed from its extension
+(`image/png`), and a retry opens it again. `Upload::bytes(..).file_name(..).mime(..)` names and types bytes; a part
+without a name is named `file`:
+
+```rust
+use std::path::PathBuf;
+use timvw_rust_runtime::Upload;
+
+// A path: streamed from disk, opened again if the request is retried.
+items_api::upload_item_image()
+    .configuration(&configuration)
+    .id("1")
+    .image(PathBuf::from("lamp.png"))
+    .call()
+    .await?;
+
+// Bytes held in memory, with a file name and a media type of your own.
+let png: Vec<u8> = std::fs::read("lamp.png")?;
+items_api::upload_item_image()
+    .configuration(&configuration)
+    .id("1")
+    .image(Upload::bytes(png).file_name("lamp.png").mime("image/png"))
+    .call()
+    .await?;
+
+// A binary response, written to a file as it arrives.
+let response = items_api::get_item_image().configuration(&configuration).id("1").call().await?;
+response.save_to("lamp-copy.png").await?;
+```
+
+`Upload::reader` and `Upload::stream` are read once: a request with one is not retried, unless
+`.buffer_for_retry(limit)` lets it be held in memory when it is no longer than `limit`. `Upload::from_fn` makes a
+fresh stream for every attempt. `Upload::path(..).slice(range)` sends a part of a file, for APIs that take a large file
+in parts. A binary response is a `timvw_rust_runtime::Response`: `save_to(path)` streams it into a temporary file next
+to `path` and renames it once complete, so `path` never holds half a download; `into_async_read()` reads it as a
+tokio `AsyncRead`. The runtime's guide has [the details](../../runtime/README.md#uploads-and-downloads).
+
+With `httpStack=reqwest-middleware` file parameters stay `std::path::PathBuf`s.
+
+### Typed event streams
+
+With `typedEventStreams`, a `text/event-stream` response is an `apis::sse::EventStream<T, E>`, whose
+`idle_timeout(duration)` ends a stream that stalls (no bytes, not even a `: keep-alive` comment, for `duration`) with
+an `Error::Http` whose `is_timeout()` is true. There is no limit by default. The crate depends on the runtime's `time`
+feature for it (tokio's timer natively, the host's `setTimeout` on WebAssembly).
+
+### WebAssembly
+
+A tower client builds for `wasm32-unknown-unknown` (a browser, a worker, Node.js) as it is, with its default features:
+
+```sh
+cargo build --target wasm32-unknown-unknown
+```
+
+The runtime does what differs, behind `#[cfg(target_family = "wasm")]`: reqwest sends with the host's `fetch`, retries
+back off and honour `Retry-After` with the host's timer, nothing needs to be `Send` (the bounds are the runtime's
+`MaybeSend` and `MaybeSync`, and `EventStream::from_bytes` takes them too), and tokio is not a dependency. TLS is the
+host's: `native-tls` and `rustls` select nothing there. There is no file system: give a file parameter bytes
+(`Upload::bytes`, a `Vec<u8>`) or a stream (`Upload::stream`, `Upload::from_fn`); a `PathBuf`, which a multipart union
+with a file variant still holds, compiles but fails when the request is built, with an `Error::Http` whose `is_io()` is
+true. A streamed upload is read into memory before `fetch` sends it. A crate with `uuid`s depends on uuid's `js`
+feature there (randomness from `crypto.getRandomValues`). The runtime's guide has
+[the details](../../runtime/README.md#webassembly).
+
 ### The runtime version
 
 The generated `Cargo.toml` asks for `timvw-rust-runtime = "^<runtimeVersion>"` (default: the release this generator
@@ -150,6 +227,14 @@ with the `runtime/` directory of the same commit.
 | `native-tls` or `rustls` | `native-tls` (`reqwestDefaultFeatures`) | reqwest, with that TLS, as `Client::default()` |
 | `retry` | yes | `timvw_rust_runtime::retry` |
 | `tracing` | no | `timvw_rust_runtime::trace::TraceLayer`: logs each request and retry with `tracing` |
+
+A crate with a file parameter depends on the runtime with its `fs` feature (files read with tokio, `Response::save_to`),
+one with typed event streams with its `time` feature (`EventStream::idle_timeout`). Neither brings tokio or files to
+a [WebAssembly](#webassembly) build.
+
+With `apiFeatures`, an API module whose functions are gated one by one (a group that takes part of a tag) allows unused
+imports itself, as a feature set may compile none of the functions that use one: a crate that keeps a `lib.rs` of its
+own needs no `allow(unused_imports)`.
 
 Without `native-tls` and `rustls`, `Client::default()` fails every request; set a client with `Client::from_service`.
 

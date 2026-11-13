@@ -12,12 +12,15 @@ crate ships, any layer from the tower ecosystem, or write your own.
 - [Timeouts](#timeouts)
 - [Logging](#logging)
 - [Middleware: headers, authentication, layers of your own](#middleware)
+- [Providers: the same API at another base URL](#providers)
 - [Concurrency and rate limits](#concurrency-and-rate-limits)
 - [Choosing the HTTP client, and tests without a network](#choosing-the-http-client)
 - [Your own types, and streams of server-sent events](#your-own-types-and-server-sent-events)
+- [Uploads and downloads](#uploads-and-downloads)
 - [Credentials](#credentials)
 - [Headers and query parameters for one call](#headers-and-query-parameters-for-one-call)
 - [Errors](#errors)
+- [WebAssembly](#webassembly)
 - [Features](#features)
 
 ## Quick start
@@ -68,15 +71,18 @@ A `Client` is cheap to clone, and clones share their layers' state (a rate limit
 - It retries `429 Too Many Requests`, `408 Request Timeout`, every `5xx` and failures to connect. Any other response
   or error is returned at once.
 - It waits as long as the server asks, with `retry-after-ms` (milliseconds, as OpenAI sends) or `Retry-After`
-  (seconds), up to `max_retry_after` (60 s by default). A response that asks for longer is returned at once instead
-  of retried: waiting less than asked would likely fail again, and an hour-long wait is rarely what a caller wants.
-  (`Retry-After` as an HTTP date is ignored, and the policy backs off.)
+  (seconds, or an HTTP date such as `Wed, 21 Oct 2015 07:28:00 GMT`), up to `max_retry_after` (60 s by default). A
+  response that asks for longer is returned at once instead of retried: waiting less than asked would likely fail
+  again, and an hour-long wait is rarely what a caller wants. The wait is read once into a deadline, counted from when
+  the response arrived (a date in the past means now), and the policy sleeps until that deadline: reading a `429`'s
+  body for `permanent_429` does not make it wait longer than asked.
 - Otherwise it backs off exponentially: 200 ms, 400 ms, 800 ms, ..., capped at `max_delay` (8 s). Each delay is
   jittered, picked at random between half and all of it, so that clients that failed together do not retry together;
   `.jitter(false)` turns that off. A server's `Retry-After` is not jittered, nor capped by `max_delay`.
 - It retries at most 3 times by default.
-- It does not retry a request whose body is a stream (a streamed file upload), since that cannot be sent twice. JSON,
-  form, text and in-memory multipart bodies are sent again.
+- It retries a request only when its body can be sent again: JSON, form and text bodies, bytes, and a file
+  [`Upload`](#uploads-and-downloads), which is opened again for each attempt (so is a multipart form of such parts).
+  A body that can be read once (a stream, a reader) is not retried.
 
 ```rust,no_run
 use std::time::Duration;
@@ -91,6 +97,21 @@ let client = Client::from_service(ReqwestService::default()).layer(RetryLayer::n
 ```
 
 `retry::RetryLayer::new(policy)` retries just like `tower::retry::RetryLayer::new(policy)`, which works too.
+
+### `429`s retried only when the server says when
+
+Some APIs send `Retry-After` with a `429` that passes by waiting, and leave it out when waiting will not help. With
+`RetryPolicy::server_directed_429(true)`, a `429` without `Retry-After` or `retry-after-ms` (or with one that does not
+parse) is returned at once, and one with them is retried at the time the server gave. `408`, `5xx` and failed
+connections still back off without advice. The default retries every `429`.
+
+```rust,no_run
+use timvw_rust_runtime::retry::{RetryLayer, RetryPolicy};
+use timvw_rust_runtime::{Client, ReqwestService};
+
+let client = Client::from_service(ReqwestService::default())
+    .layer(RetryLayer::new(RetryPolicy::default().server_directed_429(true)));
+```
 
 ### Permanent `429`s: an exhausted quota
 
@@ -151,7 +172,8 @@ let client = Client::default().layer(tower::timeout::TimeoutLayer::new(Duration:
 
 reqwest's own timeouts (connect timeout, read timeout) are set on a `reqwest::Client`, see
 [Choosing the HTTP client](#choosing-the-http-client). For a response streamed for minutes (server-sent events), a
-total timeout ends the stream; use a connect timeout instead, or none.
+total timeout ends the stream; use a connect timeout instead, or none, and bound the silence between events with
+[`Events::idle_timeout`](#your-own-types-and-server-sent-events).
 
 ## Logging
 
@@ -299,7 +321,81 @@ async fn fetch_token() -> String {
 let client = Client::default().layer(AccessToken { cached: Arc::default() });
 ```
 
-A layer's service must be `Clone + Send`; it need not be `Sync`. Its response body can be any `http_body::Body`.
+A layer's service must be `Clone + Send`; it need not be `Sync` (on [WebAssembly](#webassembly), not `Send` either:
+`MaybeSend`). Its response body can be any `http_body::Body`.
+
+## Providers
+
+Several services serve one API under different base URLs: OpenAI-compatible providers, a proxy, a local server, a
+cloud's deployment of it. `ProviderLayer` (or `provider::ProviderLayer`) sends the requests of a generated client to
+one of them. To each request for the provider, it:
+
+1. replaces the base URL (scheme, host, port and path prefix) with the provider's, keeping the rest of the path and the
+   query;
+2. rewrites the rest of the path with `map_path`, if set (a deployment in the path, say);
+3. sets the headers of `header`, `sensitive_header` and `headers`, each replacing the request's values of that name
+   (the generated authentication included); `sensitive_header` marks the value sensitive, for an API key;
+4. sets the query parameters of `query` (an `api-version`, say), each replacing the request's parameters of that name.
+
+A request is the provider's when its URL is under the provider's base URL, or under the base declared with
+`rewrite_from`: the same scheme, host and port, and a path that starts with the base's at a segment boundary (`/v1`
+holds `/v1/models`, not `/v10`). Any other request (a download from another host) goes on unchanged, without the
+provider's headers. A generated `Configuration.base_path` works with it in either of two ways:
+
+- **`base_path` set to the provider**: set `configuration.base_path` to the provider's base URL and use
+  `ProviderLayer::new(provider_base)` for headers, query parameters and paths.
+- **`base_path` left as generated**: declare it with `.rewrite_from(generated_base)`, and the layer moves every request
+  under it. This suits a `Client` shared by several `Configuration`s, or a crate that hands out a client for a
+  provider.
+
+An OpenAI-compatible provider under another base URL, with its own key and headers:
+
+```rust
+use timvw_rust_runtime::http::header::AUTHORIZATION;
+use timvw_rust_runtime::{Client, ExposeSecret, Method, ProviderLayer, SecretString};
+
+let key = SecretString::from("sk-or-123");
+let provider = ProviderLayer::new("https://openrouter.example/api/v1")?
+    .rewrite_from("https://api.openai.com/v1")? // the generated client's base_path
+    .sensitive_header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()))?
+    .header("x-title", "my app")?;
+let client = Client::default().layer(provider.clone());
+// configuration.client = client;
+
+let uri = "https://api.openai.com/v1/chat/completions?stream=true".parse()?;
+assert_eq!(
+    provider.rewrite_uri(&uri)?.to_string(),
+    "https://openrouter.example/api/v1/chat/completions?stream=true"
+);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+A provider that puts a deployment in the path, takes an `api-version` query parameter and an `api-key` header:
+
+```rust
+use timvw_rust_runtime::{Client, ProviderLayer};
+
+let deployment = "gpt-4o";
+let provider = ProviderLayer::new("https://my-resource.example.com/openai")?
+    .rewrite_from("https://api.openai.com/v1")?
+    .sensitive_header("api-key", "secret")?
+    .query(&[("api-version", "2024-10-21")])?
+    .map_path(move |path| format!("/deployments/{deployment}{path}"));
+let client = Client::default().layer(provider.clone());
+
+let uri = "https://api.openai.com/v1/chat/completions".parse()?;
+assert_eq!(
+    provider.rewrite_uri(&uri)?.to_string(),
+    "https://my-resource.example.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21"
+);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+`map_path` gets the path after the base (`/chat/completions`), percent-encoded, and returns the one to put after the
+provider's base. `rewrite_uri` shows where a URL goes, without sending. Added last, the layer sees each request first,
+so it rewrites once, before the retries. The provider's headers and query parameters win over a call's
+[`RequestOptions`](#headers-and-query-parameters-for-one-call) of the same name; for another value per call, use
+another client. The layer knows no provider by name: presets for one API belong in a crate for that API.
 
 ## Concurrency and rate limits
 
@@ -396,6 +492,95 @@ async fn run(client: &Client, api_key: &SecretString) -> Result<(), timvw_rust_r
 `id:`), and `sse::Decoder` is the parser, for a body read some other way. A generated client's typed event streams use
 the same parser.
 
+A stream can stall without closing: the server or a proxy keeps the connection open and sends nothing.
+`events().idle_timeout(duration)` ends it with an error (`is_timeout()` is true) when no bytes arrive for `duration`;
+every chunk, a `: keep-alive` comment too, restarts the clock, and the whole stream has no limit (feature `time`, part
+of `retry`):
+
+```rust,no_run
+use std::time::Duration;
+use futures_util::StreamExt;
+
+async fn run(response: timvw_rust_runtime::Response) -> Result<(), timvw_rust_runtime::Error> {
+    let mut events = response.events().idle_timeout(Duration::from_secs(120));
+    while let Some(event) = events.next().await {
+        match event {
+            Err(error) if error.is_timeout() => eprintln!("the stream stalled"),
+            event => println!("{}", event?.data),
+        }
+    }
+    Ok(())
+}
+```
+
+## Uploads and downloads
+
+An `Upload` is something to send: a request body (`.body(upload)`) or a multipart part (`multipart::Part::upload`).
+A generated client takes one for every file parameter, and a `PathBuf`, a `&Path`, a `Vec<u8>` or `Bytes` converts
+into one.
+
+| Made with | Length | Sent again by a retry |
+| --- | --- | --- |
+| `Upload::bytes(..)`, `Vec<u8>`, `Bytes`, `&'static [u8]` | known | yes, without a copy |
+| `Upload::path(path)`, `Upload::file(path).await`, `PathBuf`, `&Path` | from the file's metadata | yes: the file is opened again |
+| `Upload::from_fn(\|\| stream)` | `.len(n)` | yes: a fresh stream per attempt |
+| `Upload::reader(reader)`, `Upload::stream(stream)` | `.len(n)` | no, unless `.buffer_for_retry(limit)` holds it |
+
+- A file is streamed from disk with tokio, in chunks, never read into memory. Its part is named after the file and
+  typed from its extension (`photo.png`, `image/png`); `.file_name(..)` and `.mime(..)` set others, and a part of an
+  upload without a name is named `file`.
+- When the length of the body is known, which for a multipart form means the length of every part, it is sent with a
+  `Content-Length`, not chunked: some servers refuse chunked uploads. `Upload::resolve().await` reads a path's length
+  (`Upload::file` is `Upload::path(..).resolve()`, and fails at once on a missing file); generated clients resolve
+  every upload.
+- `.slice(range)` sends part of a file (a seek, no copy), of bytes or of a stream: for APIs that take a large file in
+  parts.
+- `.buffer_for_retry(limit)` lets `resolve` read a stream or a reader into memory when it is no longer than `limit`,
+  so that a retry can send it again; a longer one is sent once.
+
+```rust,no_run
+use timvw_rust_runtime::multipart::{Form, Part};
+use timvw_rust_runtime::{Client, Method, Upload};
+
+async fn upload(client: &Client) -> Result<(), timvw_rust_runtime::Error> {
+    let form = Form::new()
+        .text("purpose", "fine-tune")
+        .part("file", Part::upload(Upload::file("train.jsonl").await?));
+    client
+        .request(Method::POST, "https://api.example.com/v1/files")
+        .multipart(form) // with a Content-Length; a retry opens train.jsonl again
+        .send()
+        .await?;
+
+    // The second 8 MiB of a large file, as the whole body.
+    let chunk = Upload::path("video.mp4").slice(8 << 20..16 << 20).resolve().await?;
+    client.request(Method::PUT, "https://api.example.com/v1/uploads/1/parts/2").body(chunk).send().await?;
+    Ok(())
+}
+```
+
+A response body can go to a file, or be read as a tokio `AsyncRead`. `Response::save_to(path)` streams it into a
+temporary file in the directory of `path`, flushes it to disk and renames it to `path`: `path` holds the whole body or
+is left as it was, never half a download. It returns the number of bytes written; a failure to write is an `Error`
+whose `is_io()` is true:
+
+```rust,no_run
+use timvw_rust_runtime::{Client, Method};
+
+async fn download(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+    let response = client.request(Method::GET, "https://api.example.com/v1/files/1/content").send().await?;
+    let written = response.save_to("data/file-1.jsonl").await?;
+
+    let response = client.request(Method::GET, "https://api.example.com/v1/files/2/content").send().await?;
+    let mut reader = response.into_async_read();
+    let mut file = tokio::fs::File::create("data/file-2.jsonl").await?;
+    tokio::io::copy(&mut reader, &mut file).await?; // an error reading the body is an io::Error here
+    Ok(())
+}
+```
+
+Files, readers and downloads are feature `fs` (on by default; a generated crate with a file parameter turns it on).
+
 ## Credentials
 
 A generated `Configuration` keeps its tokens, basic-auth password and api key in
@@ -463,28 +648,76 @@ A request that fails to send is an `Error`:
 | `is_request()` | the service failed; `is_timeout()` and `is_connect()` narrow it down |
 | `is_body()` | reading the response body failed |
 | `is_decode()` | the response could not be decoded (JSON) |
+| `is_io()` | a file could not be read or written: a missing [upload](#uploads-and-downloads), a failed `save_to` |
 
 `source()` is the error of the service or layer that failed: a `reqwest::Error`, tower's `Elapsed`, or your own. A
 generated client wraps it as `apis::Error::Http(error)`. A response with an error status is not an `Error` here; the
 generated client turns it into `apis::Error::ResponseError`.
 
+## WebAssembly
+
+The crate, and the clients generated with it, build for `wasm32-unknown-unknown` (a browser, a web worker, Node.js,
+Cloudflare Workers: any JavaScript host). Everything that differs is behind `#[cfg(target_family = "wasm")]`, so the
+same `Cargo.toml` works for both:
+
+```toml
+# Natively and on WebAssembly. On WebAssembly `rustls`/`native-tls` add nothing (the host does TLS), and `fs` adds only
+# `Upload::path` and `From<PathBuf>`, which fail when sent.
+timvw-rust-runtime = { version = "0.3", default-features = false, features = ["reqwest", "retry"] }
+```
+
+`default-features = true` builds too. On WebAssembly:
+
+- **Sending.** reqwest sends with the host's `fetch`. `fetch` takes a request body whole, so a streamed body (an
+  `Upload::stream`, a multipart form with one) is read into memory first; responses still stream as they arrive.
+  Connect and read timeouts, proxies and TLS settings belong to the host: `tower::timeout::TimeoutLayer` still works,
+  as does any other layer.
+- **Retries** wait as natively: exponential backoff with jitter, `Retry-After` and `retry-after-ms` (an HTTP date is
+  read against the host's clock, `Date.now()`). The timer is the host's `setTimeout` (`gloo-timers`) and deadlines use
+  `performance.now()` (`web-time`), as `std::time::Instant::now()` panics there. A failure to `fetch` is not retried:
+  `fetch` does not tell a failure to connect from one after the request was sent (or a CORS refusal), so
+  `Error::is_connect()` is always `false`.
+- **Server-sent events** work, `Events::idle_timeout` with the host's timer; `TraceLayer` measures with
+  `performance.now()`.
+- **`Send` and `Sync`.** The host's futures and streams cannot leave its thread, so on WebAssembly nothing here needs
+  to be `Send` or `Sync`: the bounds of `Client::from_service`, `Client::layer`, `Body::wrap`, `Body::wrap_stream`,
+  `Upload::stream`, `Upload::from_fn`, `Events::from_bytes` and the layers are [`MaybeSend`] and [`MaybeSync`]:
+  `Send` and `Sync` natively, nothing on WebAssembly. Use them in your own bounds to write code that builds for both.
+  `HttpService` is a `LocalBoxCloneService` there (tower's `BoxCloneSyncService` natively), and `Client`, `Body`,
+  `Response` and the futures of `send` are not `Send`: run them with `wasm_bindgen_futures::spawn_local`, not on
+  another thread.
+- **No files.** There is no file system: `Upload::file`, `Upload::reader`, `Response::save_to` and
+  `Response::into_async_read` are not there, and an `Upload::path` (or a `PathBuf` given to a generated client) fails
+  with an I/O error of kind `Unsupported` when it is resolved or sent. Send `Upload::bytes`, `Upload::stream` or
+  `Upload::from_fn`; read a response with `bytes`, `bytes_stream` or `events`.
+
+`tests/wasm.rs` runs in Node.js with `wasm-bindgen-test-runner` (see the CI workflow).
+
+[`MaybeSend`]: https://docs.rs/timvw-rust-runtime/latest/timvw_rust_runtime/trait.MaybeSend.html
+[`MaybeSync`]: https://docs.rs/timvw-rust-runtime/latest/timvw_rust_runtime/trait.MaybeSync.html
+
 ## Features
 
 | Feature | Default | What it adds |
 | --- | --- | --- |
-| `rustls` | yes | reqwest with rustls, as `Client::default()` |
-| `native-tls` | no | reqwest with the platform's TLS |
+| `rustls` | yes | reqwest with rustls, as `Client::default()` (on WebAssembly: reqwest, the host does TLS) |
+| `native-tls` | no | reqwest with the platform's TLS (on WebAssembly: reqwest, the host does TLS) |
 | `reqwest` | via `rustls` or `native-tls` | `ReqwestService`, `Client::from_reqwest` |
-| `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with tokio), and retries in `Client::default()` |
+| `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with the `time` timer, read `Retry-After` dates with `httpdate`), and retries in `Client::default()`; turns on `time` |
+| `time` | via `retry` | `sse::Events::idle_timeout` and the sleeps of retries: tokio's timer, the host's `setTimeout` on [WebAssembly](#webassembly) |
+| `fs` | yes | file and reader [uploads](#uploads-and-downloads) (`Upload::path`, `Upload::file`, `Upload::reader`), `Response::save_to` and `Response::into_async_read` (tokio); on WebAssembly only `Upload::path` and `From<PathBuf>`, which fail when sent |
 | `tracing` | no | `trace::TraceLayer`, and a log event per retry |
 
-A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names.
+A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names, turns on `fs` when it
+has a file parameter and `time` when it has typed event streams (their `idle_timeout`), and builds for WebAssembly as
+it is.
 
 ## What the generated code uses
 
 The generated functions build requests with `RequestBuilder` (`query`, `header`, `sensitive_header`, `bearer_auth`,
 `basic_auth`, `json`, `form`, `body`, `multipart`, `options`, `build`) and read responses with `Response` (`status`, `headers`, `text`, `bytes`,
-`bytes_stream`): the methods of reqwest's types of the same names. `multipart::Form` encodes multipart bodies.
+`bytes_stream`): the methods of reqwest's types of the same names. `multipart::Form` encodes multipart bodies, and
+`Upload` (`resolve`, `multipart::Part::upload`) carries file parameters.
 
 ## License
 

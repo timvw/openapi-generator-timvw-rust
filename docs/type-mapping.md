@@ -6,13 +6,12 @@ How `timvw-rust` renders each OpenAPI construct. The **Rust** column is the rend
 rust` renders something else, what. The former baseline options (`boxOnlyCycles`, `defaultOnlyWhereValid`,
 `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`, `unionDispatch`, `openEnums`,
 `schemaDefaultDocs`, `nullableUnionFields`) are always applied and cannot be set, and so is the former
-`boxResponseError`. The [README](../README.md#options) explains each option; the [generator
+`boxResponseError`. The [options](options.md) page explains each option; the [generator
 comparison](comparison/README.md) holds the same constructs against stock `-g rust` and progenitor.
 
-Rows marked *(reqwest)* render types that come from the HTTP stack: `timvw-rust-runtime`'s with the default
-`httpStack=tower` (`timvw_rust_runtime::Response` where a row names `reqwest::Response`), reqwest's with
-`httpStack=reqwest-middleware`. The others do not depend on it
-([mapping: HTTP library](mapping/README.md#http-library)).
+Rows marked *(HTTP stack)* render types that come from the HTTP stack: `timvw-rust-runtime`'s with the default
+`httpStack=tower`, which the **Rust** column names, and reqwest's with `httpStack=reqwest-middleware`, which the
+**Option** column names. The others do not depend on it ([mapping: HTTP library](mapping/README.md#http-library)).
 
 Every example here was generated from [`comparison/spec.yaml`](comparison/spec.yaml) or a spec like it.
 
@@ -26,12 +25,12 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | --- | --- | --- |
 | `type: string` | `String` | |
 | `format: date`, `date-time` | `chrono::NaiveDate`, `chrono::DateTime<chrono::FixedOffset>`; a path, query or header parameter or a form field is sent as `YYYY-MM-DD` and RFC 3339 (`to_rfc3339()`) | `useChrono` (default `true`); `useChrono=false` gives `String` and no `chrono` dependency (openai-client-base sets it) |
-| `format: uuid` | `uuid::Uuid` in a model, a parameter and a form field, sent hyphenated | |
+| `format: uuid` | `uuid::Uuid` in a model, a parameter and a form field, sent hyphenated (with uuid's `js` feature on `wasm32-unknown-unknown`, tower) | |
 | `format: byte` | `Vec<u8>`, base64 through `#[serde_as(as = "serde_with::base64::Base64")]` | |
-| `format: binary` *(reqwest)* | `std::path::PathBuf` as a parameter or body (the file is read or streamed); `reqwest::Response` as a response. With `httpStack=tower` a parameter or body is a `timvw_rust_runtime::Upload`: a path, bytes or a stream (a `PathBuf` converts), streamed with a `Content-Length` | |
+| `format: binary` *(HTTP stack)* | as a parameter or body, `timvw_rust_runtime::Upload`: a path, bytes, a reader or a stream (the builder takes `impl Into<Upload>`, a `PathBuf` too), sent with a `Content-Length` and again on a retry; the file variant of a multipart union is `std::path::PathBuf` in its model. As a response, `timvw_rust_runtime::Response`, to read as bytes or a stream, or `save_to` a file | `httpStack=reqwest-middleware`: `std::path::PathBuf` (the file is read or streamed) and `reqwest::Response`; `fileProperties` makes listed string properties files |
 | `format: email`, `uri`, any other | `String` | |
 | `type: number` | `f64`; `format: float` gives `f32` | |
-| `type: integer` | `i64`; `format: int32` gives `i32` | always (stock: `i32` unless `format: int64`) |
+| `type: integer` | `i64`; `format: int32` gives `i32` | always (stock: `i32` unless `format: int64`); `preferUnsignedInt` and `bestFitInt` are [rejected](options.md#not-options) |
 | `type: integer` with `format: float`/`double` | read as `type: number` (logged) | |
 | `type: boolean` | `bool` | |
 | `minLength`, `maximum`, `pattern`, ... | the type stays as above; the generated `validate()` of the model checks them and the field's docs list them (`Validation: ...`) | `validateMethods` (default `true`): `false` generates no `Validate` trait |
@@ -123,6 +122,7 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | --- | --- | --- |
 | `tags` | a module per tag, `src/apis/<tag>_api.rs`; untagged operations in `default_api` | |
 | `operationId` | `pub async fn <snake_case>(configuration: &configuration::Configuration, <parameters...>)` with `#[bon::builder]`, so it is called as a builder: `list_models().configuration(&c).limit(10).call()` | `bonBuilders=false`: called with positional arguments, `list_models(&c, Some(10), None, None)` |
+| any operation *(HTTP stack)* | a last optional argument `options: Option<&timvw_rust_runtime::RequestOptions>`, `.options(&options)` on the builder: extra headers and query parameters for one call ([guide](guides/http-stack.md#headers-and-query-parameters-for-one-call)); `.request_options(..)` when a parameter is named `options` | none with `bonBuilders=false` or `httpStack=reqwest-middleware` |
 | parameters | one argument each, in spec order: required as `T`/`&str`, optional as `Option<..>` | |
 | `deprecated` operation | `#[deprecated]` | |
 | `webhooks` | in the module of their tag, after its path operations (untagged: `default_api`); a tag only webhooks carry gets a module of its own | `webhookModule`: a module of their own; `webhookModuleReexport` |
@@ -147,9 +147,9 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | Media type | Rust | Option |
 | --- | --- | --- |
 | `application/json` | a reference to the schema's type (`&models::Item`, `&[T]`, `Option<&T>`; a number or boolean by value), serialized with `.json(..)` | |
-| `multipart/form-data` *(reqwest)* | an argument per property; files as `std::path::PathBuf` (`httpStack=tower`: `timvw_rust_runtime::Upload`), text as `&str` or the type | `multipartHelper`: files through `apis::multipart_helper`, arrays as a part per item, objects as JSON parts, `encoding.contentType` honoured; `fileProperties` turns listed properties into files |
+| `multipart/form-data` *(HTTP stack)* | an argument per property; files as `std::path::PathBuf` (`httpStack=tower`: `timvw_rust_runtime::Upload`), text as `&str` or the type | `multipartHelper`: files through `apis::multipart_helper`, arrays as a part per item, objects as JSON parts, `encoding.contentType` honoured; `fileProperties` turns listed properties into files |
 | `application/x-www-form-urlencoded` | an argument per property, sent with `.form(..)` | |
-| `application/octet-stream` *(reqwest)* | `std::path::PathBuf`, streamed (`httpStack=tower`: `timvw_rust_runtime::Upload`) | |
+| `application/octet-stream` *(HTTP stack)* | `timvw_rust_runtime::Upload`, streamed with a `Content-Length` | `httpStack=reqwest-middleware`: `std::path::PathBuf`, streamed |
 | `text/plain`, other | the operation's own method sends the first media type | `contentTypeMethods`: one method per media type (`_json`, `_multipart`, `_form`, `_text`, `_bytes`, `_<subtype>`) |
 
 ### Responses
@@ -159,28 +159,30 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | success with a JSON schema | `Result<T, Error<<Op>Error>>`, the body decoded as `T` | `responseFunctions`: also `<op>_response`, returning `ApiResponse<T>` with the status, headers and undecoded body ([guide](guides/response-functions.md)) |
 | success without a body | `Result<(), ..>` | |
 | `text/plain` success | `String` | |
-| `application/octet-stream` success *(reqwest)* | `reqwest::Response`, to read as bytes or a stream | |
+| `application/octet-stream` success *(HTTP stack)* | `timvw_rust_runtime::Response`: `bytes()`, `bytes_stream()`, `save_to(path)`, `into_async_read()` | `httpStack=reqwest-middleware`: `reqwest::Response` |
 | `headers` of a success | not typed; read from `ApiResponse.headers` | `responseFunctions`: `<Op>ResponseHeaders` with an `Option` per declared header, typed as a parameter is, read leniently (`response.typed_headers::<<Op>ResponseHeaders>()`, [`header.schema.typed`](mapping/header.md#headerschematyped)) |
 | `headers` of an error response | not typed; read from `ResponseContent.headers` | `responseFunctions`: `<Op>ErrorHeaders`, the same for the headers of every error status (`content.typed_headers::<<Op>ErrorHeaders>()`, [`header.schema.typed-error`](mapping/header.md#headerschematyped-error)) |
-| `text/event-stream` success *(reqwest)* | decoded as JSON, which fails | `typedEventStreams`: `apis::sse::EventStream<Event, <Op>Error>`, each `data:` decoded to the event schema, `[DONE]` ends it |
+| `text/event-stream` success *(HTTP stack)* | decoded as JSON, which fails | `typedEventStreams`: `apis::sse::EventStream<Event, <Op>Error>`, each `data:` decoded to the event schema, `[DONE]` ends it; `idle_timeout(duration)` ends a stream that stalls (tower) |
 | several success media types | the first | `contentTypeMethods`: `_json`, `_text`, `_bytes`, `_stream` methods |
-| error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content`, `entity: Option<<Op>Error>` and `headers: reqwest::header::HeaderMap`; the error enum has a variant per response (`Status404(T)`, `Status5XX(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The status picks the variant (the exact code, then its `4XX` range, then `default`) and the body decodes as that response's type; a body that does not decode is `UnknownValue`, a `text/plain` string response holds the text. `ResponseContent` is boxed ([guide](guides/errors.md)) | |
-| transport and decoding errors *(reqwest)* | `Error::Reqwest`, `Error::ReqwestMiddleware`, `Error::Serde`, `Error::Io` | |
+| error responses (`4XX`, `404`, `default`) | `Error::ResponseError` with `status`, the raw `content`, `entity: Option<<Op>Error>` and `headers: timvw_rust_runtime::header::HeaderMap` (the `http` crate's, as reqwest's); the error enum has a variant per response (`Status404(T)`, `Status5XX(T)`, `DefaultResponse(T)`) and `UnknownValue(serde_json::Value)`. The status picks the variant (the exact code, then its `4XX` range, then `default`) and the body decodes as that response's type; a body that does not decode is `UnknownValue`, a `text/plain` string response holds the text. `ResponseContent` is boxed ([guide](guides/errors.md)) | |
+| transport and decoding errors *(HTTP stack)* | `Error::Http(timvw_rust_runtime::Error)` (building or sending the request, reading the response or a file to upload: `is_builder()`, `is_request()`, `is_timeout()`, `is_connect()`, `is_body()`, `is_io()`), `Error::Serde` | `httpStack=reqwest-middleware`: `Error::Reqwest`, `Error::ReqwestMiddleware`, `Error::Io`; `useSerdePathToError` adds `Error::SerdePathToError` |
 
 ### Configuration and authentication
 
 | OpenAPI | Rust |
 | --- | --- |
 | `servers[0].url` | `Configuration::default().base_path` |
-| `http` `bearer` | `configuration.bearer_access_token: Option<SecretString>`, sent as `Authorization: Bearer` |
+| `http` `bearer` | `configuration.bearer_access_token: Option<SecretString>` (`secrecy`'s, re-exported as `configuration::SecretString`; `String` with `httpStack=reqwest-middleware`, as are the other secrets), sent as `Authorization: Bearer`, marked sensitive |
 | `http` `basic` | `configuration.basic_auth: Option<(String, Option<SecretString>)>` |
 | `apiKey` | `configuration.api_key: Option<ApiKey { prefix, key: SecretString }>`, sent in the header, query parameter or cookie the scheme names |
 | `oauth2` | `configuration.oauth_access_token: Option<SecretString>` |
 | which scheme an operation uses | the operation's `security`, or the spec's |
 | user agent | `OpenAPI-Generator/<spec version>/rust`; `userAgentFromPackage` gives `<package>/<crate version>` |
-| HTTP client *(reqwest)* | `reqwest_middleware::ClientWithMiddleware`, so retries and tracing plug in as middleware |
+| HTTP client *(HTTP stack)* | `configuration.client: timvw_rust_runtime::Client`, a tower service (reqwest by default) that retries `429`, `408`, `5xx` and failed connections (feature `retry`); timeouts, tracing, providers and middleware plug in as tower layers ([guide](guides/http-stack.md)). `httpStack=reqwest-middleware`: `reqwest_middleware::ClientWithMiddleware`, without retries |
 
 ## Known gaps
+
+What the generator and the runtime do not do yet beyond the mapping is in [limitations.md](limitations.md).
 
 - The headers of a JSON or text success can be read only through `responseFunctions` or `supportMultipleResponses`
   (an error always has them). The headers a response declares are typed only with `responseFunctions`

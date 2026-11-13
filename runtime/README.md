@@ -697,8 +697,8 @@ same `Cargo.toml` works for both:
 
 ```toml
 # Natively and on WebAssembly. On WebAssembly `rustls`/`native-tls` add nothing (the host does TLS), and `fs` adds only
-# `Upload::path` and `From<PathBuf>`, which fail when sent.
-timvw-rust-runtime = { version = "0.4", default-features = false, features = ["reqwest", "retry"] }
+# `Upload::path` and `From<PathBuf>`, which fail when sent. <version>: the current release (see crates.io).
+timvw-rust-runtime = { version = "<version>", default-features = false, features = ["reqwest", "retry"] }
 ```
 
 `default-features = true` builds too. On WebAssembly:

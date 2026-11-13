@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * File parameters with {@code httpStack=tower}: a {@code timvw_rust_runtime::Upload} (a file streamed from disk and
+ * File parameters: a {@code timvw_rust_runtime::Upload} (a file streamed from disk and
  * opened again by a retry, bytes, a reader or a stream) instead of a {@code std::path::PathBuf}. With
  * {@code bonBuilders} the builder's setter takes anything that converts into one, so a caller that passes a
  * {@code PathBuf} keeps compiling: {@code #[builder(into)]} for one file, and a conversion of each item for an array.

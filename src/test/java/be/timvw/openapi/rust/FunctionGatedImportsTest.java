@@ -21,9 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@code apiFeatures} with a group that takes part of a tag: the tag's module gates its functions one by one, so a
- * feature set can compile none of the functions that use an import. The module allows unused imports itself (tower
- * stack), so a crate that keeps a lib.rs of its own, without {@code #![allow(unused_imports)]}, builds without
- * warnings. The reqwest-middleware stack renders what it rendered before.
+ * feature set can compile none of the functions that use an import. The module allows unused imports itself, so a crate that keeps a lib.rs of its own, without {@code #![allow(unused_imports)]}, builds without
+ * warnings.
  */
 class FunctionGatedImportsTest {
 
@@ -33,11 +32,10 @@ class FunctionGatedImportsTest {
     @TempDir
     Path out;
 
-    private void generate(String stack) throws IOException {
+    private void generate() throws IOException {
         Path groups = Files.writeString(Files.createTempFile("groups", ".yaml"), "admin: { paths: [/admin] }\n");
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "function_gated_fixture");
-        props.put(TimvwRustCodegen.HTTP_STACK, stack);
         props.put(TimvwRustCodegen.API_FEATURES_FILE, groups.toString());
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
@@ -49,14 +47,8 @@ class FunctionGatedImportsTest {
     }
 
     @Test
-    void reqwestMiddlewareModulesAreUnchanged() throws IOException {
-        generate("reqwest-middleware");
-        assertFalse(Files.readString(out.resolve("src/apis/items_api.rs")).contains(ALLOW));
-    }
-
-    @Test
     void aHandWrittenLibRsNeedsNoAllow() throws IOException, InterruptedException {
-        generate("tower");
+        generate();
         String items = Files.readString(out.resolve("src/apis/items_api.rs"));
         assertTrue(items.contains("#[cfg(feature = \"admin\")]"), items);
         assertTrue(items.contains("\n// Functions are gated one by one (apiFeatures): a feature set may use none of an "

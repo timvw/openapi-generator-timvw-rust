@@ -21,7 +21,7 @@ pub struct {{{name}}} {
 impl {{{name}}} {
     /// Reads the declared headers from `headers`. Header names are matched ignoring case; a header that is missing or
     /// does not parse is `None`, never an error.
-    pub fn from_headers(headers: &{{httpCrate}}::header::HeaderMap) -> Self {
+    pub fn from_headers(headers: &timvw_rust_runtime::header::HeaderMap) -> Self {
         {{{name}}} {
             {{#fields}}
             {{{field}}}: super::api_response::{{#list}}header_list{{/list}}{{^list}}header_value{{/list}}(headers, "{{{literal}}}", |v| {{{parse}}}),
@@ -30,8 +30,8 @@ impl {{{name}}} {
     }
 }
 
-impl From<&{{httpCrate}}::header::HeaderMap> for {{{name}}} {
-    fn from(headers: &{{httpCrate}}::header::HeaderMap) -> Self {
+impl From<&timvw_rust_runtime::header::HeaderMap> for {{{name}}} {
+    fn from(headers: &timvw_rust_runtime::header::HeaderMap) -> Self {
         Self::from_headers(headers)
     }
 }

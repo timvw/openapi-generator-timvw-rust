@@ -68,28 +68,24 @@ jobs:
       - name: Docker build
         run: docker build --build-arg OPENAPI_GENERATOR_VERSION="$OPENAPI_GENERATOR_VERSION" -t timvw-rust:ci .
 
-      - name: Generate petstore (httpStack tower and reqwest-middleware)
+      - name: Generate petstore
         run: |
-          # The tower client builds against this commit's runtime (runtime/), not the released one.
-          for stack in tower reqwest-middleware; do
-            docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" timvw-rust:ci generate \
-              -g timvw-rust \
-              -i /local/test-specs/petstore.yaml \
-              -o "/local/target/petstore-$stack" \
-              --additional-properties=packageName=petstore,httpStack=$stack,runtimePath=../../runtime
-          done
+          # The client builds against this commit's runtime (runtime/), not the released one.
+          docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" timvw-rust:ci generate \
+            -g timvw-rust \
+            -i /local/test-specs/petstore.yaml \
+            -o /local/target/petstore \
+            --additional-properties=packageName=petstore,runtimePath=../../runtime
 
       - name: cargo build generated petstore
         env:
           CARGO_TARGET_DIR: target/cargo-target
-        run: |
-          cargo build --manifest-path target/petstore-tower/Cargo.toml
-          cargo build --manifest-path target/petstore-reqwest-middleware/Cargo.toml
+        run: cargo build --manifest-path target/petstore/Cargo.toml
 
-      - name: cargo check generated petstore for WebAssembly (tower)
+      - name: cargo check generated petstore for WebAssembly
         env:
           CARGO_TARGET_DIR: target/cargo-target
-        run: cargo check --target wasm32-unknown-unknown --manifest-path target/petstore-tower/Cargo.toml
+        run: cargo check --target wasm32-unknown-unknown --manifest-path target/petstore/Cargo.toml
 
   runtime:
     name: timvw-rust-runtime

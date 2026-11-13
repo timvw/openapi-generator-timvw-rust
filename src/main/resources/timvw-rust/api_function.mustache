@@ -42,11 +42,11 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
 ### Comma for next arguement
 }}{{^-last}}, {{/-last}}{{/allParams}}{{!
 ### Per-call headers and query parameters (tower, builders)
-}}{{#httpStackTower}}{{#bonBuilders}}{{#allParams.0}}, {{/allParams.0}}{{{vendorExtensions.x-rust-options-param}}}: Option<&timvw_rust_runtime::RequestOptions>{{/bonBuilders}}{{/httpStackTower}}{{!
+}}{{#bonBuilders}}{{#allParams.0}}, {{/allParams.0}}{{{vendorExtensions.x-rust-options-param}}}: Option<&timvw_rust_runtime::RequestOptions>{{/bonBuilders}}{{!
 ### Function return type
 }}) -> Result<{{#x-rust-as-response}}super::ApiResponse<{{{x-rust-response-type}}}>{{/x-rust-as-response}}{{^x-rust-as-response}}{{!
 ### Response File Support
-}}{{#isResponseFile}}{{httpCrate}}::Response{{/isResponseFile}}{{!
+}}{{#isResponseFile}}timvw_rust_runtime::Response{{/isResponseFile}}{{!
 ### Regular Responses
 }}{{^isResponseFile}}{{!
 ### Multi response support
@@ -65,7 +65,7 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{/allParams}}
 
     let uri_str = format!("{}{{{path}}}", configuration.base_path{{#pathParams}}, {{{baseName}}}={{#vendorExtensions.x-rust-rfc3339}}{{^isArray}}crate::apis::urlencode({{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}.to_rfc3339()){{/isArray}}{{#isArray}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}.iter().map(|p| crate::apis::urlencode(p.to_rfc3339())).collect::<Vec<String>>().join(","){{/isArray}}{{/vendorExtensions.x-rust-rfc3339}}{{^vendorExtensions.x-rust-rfc3339}}{{#isString}}{{^isUuid}}crate::apis::urlencode({{/isUuid}}{{/isString}}{{#vendorExtensions.x-rust-struct-json}}crate::apis::urlencode(serde_json::to_string(&{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}})?){{/vendorExtensions.x-rust-struct-json}}{{^vendorExtensions.x-rust-struct-json}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}crate::apis::urlencode({{/isContainer}}{{/isPrimitiveType}}{{/isUuid}}{{/isString}}{{{vendorExtensions.x-rust-param-identifier}}}{{^required}}.unwrap(){{/required}}{{#required}}{{#isNullable}}.unwrap(){{/isNullable}}{{/required}}{{#isArray}}{{#vendorExtensions.x-rust-struct-json-items}}.iter().map(|p| serde_json::to_string(p).map(crate::apis::urlencode)).collect::<Result<Vec<String>, _>>()?{{/vendorExtensions.x-rust-struct-json-items}}{{^vendorExtensions.x-rust-struct-json-items}}{{#vendorExtensions.x-rust-str-items}}.iter().map(crate::apis::urlencode){{/vendorExtensions.x-rust-str-items}}{{^vendorExtensions.x-rust-str-items}}.iter().map(|p| crate::apis::urlencode(p.{{{vendorExtensions.x-rust-to-text}}}())){{/vendorExtensions.x-rust-str-items}}.collect::<Vec<String>>(){{/vendorExtensions.x-rust-struct-json-items}}.join(","){{/isArray}}{{^isString}}{{^isUuid}}{{^isPrimitiveType}}{{^isContainer}}.to_string()){{/isContainer}}{{/isPrimitiveType}}{{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-struct-json}}{{#isString}}{{^isUuid}}){{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-rfc3339}}{{/pathParams}});
-    let mut req_builder = configuration.client.request({{httpCrate}}::Method::{{{httpMethod}}}, &uri_str);
+    let mut req_builder = configuration.client.request(timvw_rust_runtime::Method::{{{httpMethod}}}, &uri_str);
 
     {{#queryParams}}
     {{#isArray}}
@@ -216,12 +216,7 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#isApiKey}}
     {{#isKeyInQuery}}
     if let Some(ref apikey) = configuration.api_key {
-        {{#httpStackTower}}
-        let key = {{httpCrate}}::ExposeSecret::expose_secret(&apikey.key).to_owned();
-        {{/httpStackTower}}
-        {{^httpStackTower}}
-        let key = apikey.key.clone();
-        {{/httpStackTower}}
+        let key = timvw_rust_runtime::ExposeSecret::expose_secret(&apikey.key).to_owned();
         let value = match apikey.prefix {
             Some(ref prefix) => format!("{} {}", prefix, key),
             None => key,
@@ -235,7 +230,7 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#hasAuthMethods}}
     {{/hasAuthMethods}}
     if let Some(ref user_agent) = configuration.user_agent {
-        req_builder = req_builder.header({{httpCrate}}::header::USER_AGENT, user_agent.clone());
+        req_builder = req_builder.header(timvw_rust_runtime::header::USER_AGENT, user_agent.clone());
     }
     {{#hasHeaderParams}}
     {{#headerParams}}
@@ -261,55 +256,30 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#isApiKey}}
     {{#isKeyInHeader}}
     if let Some(ref apikey) = configuration.api_key {
-        {{#httpStackTower}}
-        let key = {{httpCrate}}::ExposeSecret::expose_secret(&apikey.key).to_owned();
-        {{/httpStackTower}}
-        {{^httpStackTower}}
-        let key = apikey.key.clone();
-        {{/httpStackTower}}
+        let key = timvw_rust_runtime::ExposeSecret::expose_secret(&apikey.key).to_owned();
         let value = match apikey.prefix {
             Some(ref prefix) => format!("{} {}", prefix, key),
             None => key,
         };
-        {{#httpStackTower}}
         req_builder = req_builder.sensitive_header("{{{keyParamName}}}", value);
-        {{/httpStackTower}}
-        {{^httpStackTower}}
-        req_builder = req_builder.header("{{{keyParamName}}}", value);
-        {{/httpStackTower}}
     };
     {{/isKeyInHeader}}
     {{/isApiKey}}
     {{#isBasic}}
     {{#isBasicBasic}}
     if let Some(ref auth_conf) = configuration.basic_auth {
-        {{#httpStackTower}}
-        req_builder = req_builder.basic_auth(&auth_conf.0, auth_conf.1.as_ref().map({{httpCrate}}::ExposeSecret::expose_secret));
-        {{/httpStackTower}}
-        {{^httpStackTower}}
-        req_builder = req_builder.basic_auth(auth_conf.0.to_owned(), auth_conf.1.to_owned());
-        {{/httpStackTower}}
+        req_builder = req_builder.basic_auth(&auth_conf.0, auth_conf.1.as_ref().map(timvw_rust_runtime::ExposeSecret::expose_secret));
     };
     {{/isBasicBasic}}
     {{#isBasicBearer}}
     if let Some(ref token) = configuration.bearer_access_token {
-        {{#httpStackTower}}
-        req_builder = req_builder.bearer_auth({{httpCrate}}::ExposeSecret::expose_secret(token));
-        {{/httpStackTower}}
-        {{^httpStackTower}}
-        req_builder = req_builder.bearer_auth(token.to_owned());
-        {{/httpStackTower}}
+        req_builder = req_builder.bearer_auth(timvw_rust_runtime::ExposeSecret::expose_secret(token));
     };
     {{/isBasicBearer}}
     {{/isBasic}}
     {{#isOAuth}}
     if let Some(ref token) = configuration.oauth_access_token {
-        {{#httpStackTower}}
-        req_builder = req_builder.bearer_auth({{httpCrate}}::ExposeSecret::expose_secret(token));
-        {{/httpStackTower}}
-        {{^httpStackTower}}
-        req_builder = req_builder.bearer_auth(token.to_owned());
-        {{/httpStackTower}}
+        req_builder = req_builder.bearer_auth(timvw_rust_runtime::ExposeSecret::expose_secret(token));
     };
     {{/isOAuth}}
     {{/authMethods}}
@@ -351,19 +321,11 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#isApiKey}}
     {{#isKeyInCookie}}
     if let Some(ref apikey) = configuration.api_key {
-        {{#httpStackTower}}
-        let key = {{httpCrate}}::ExposeSecret::expose_secret(&apikey.key);
+        let key = timvw_rust_runtime::ExposeSecret::expose_secret(&apikey.key);
         let value = match apikey.prefix {
             Some(ref prefix) => format!("{} {}", prefix, key),
             None => key.to_owned(),
         };
-        {{/httpStackTower}}
-        {{^httpStackTower}}
-        let value = match apikey.prefix {
-            Some(ref prefix) => format!("{} {}", prefix, apikey.key),
-            None => apikey.key.clone(),
-        };
-        {{/httpStackTower}}
         cookies.push(format!("{{{keyParamName}}}={}", crate::apis::cookie_encode(value)));
     }
     {{/isKeyInCookie}}
@@ -371,41 +333,36 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{/authMethods}}
     {{/hasAuthMethods}}
     if !cookies.is_empty() {
-        {{#httpStackTower}}
-        req_builder = req_builder.sensitive_header({{httpCrate}}::header::COOKIE, cookies.join("; "));
-        {{/httpStackTower}}
-        {{^httpStackTower}}
-        req_builder = req_builder.header({{httpCrate}}::header::COOKIE, cookies.join("; "));
-        {{/httpStackTower}}
+        req_builder = req_builder.sensitive_header(timvw_rust_runtime::header::COOKIE, cookies.join("; "));
     }
     {{/vendorExtensions.x-rust-cookies}}
 {{#multipartHelper}}
     {{#isMultipart}}
     {{#hasFormParams}}
-    let mut multipart_form = {{httpCrate}}::multipart::Form::new();
+    let mut multipart_form = timvw_rust_runtime::multipart::Form::new();
     {{#formParams}}
     {{#isFile}}
     {{#required}}
     {{#isArray}}
     for value in &{{{vendorExtensions.x-rust-param-identifier}}} {
-        multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+        multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}").await?;
     }
     {{/isArray}}
     {{^isArray}}
     // Add file to multipart form
-    multipart_form = multipart_helper::add_file_to_form(multipart_form, &{{{vendorExtensions.x-rust-param-identifier}}}, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+    multipart_form = multipart_helper::add_file_to_form(multipart_form, &{{{vendorExtensions.x-rust-param-identifier}}}, "{{{baseName}}}").await?;
     {{/isArray}}
     {{/required}}
     {{^required}}
     if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
         {{#isArray}}
         for value in param_value {
-            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}").await?;
         }
         {{/isArray}}
         {{^isArray}}
         // Add file to multipart form
-        multipart_form = multipart_helper::add_file_to_form(multipart_form, param_value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+        multipart_form = multipart_helper::add_file_to_form(multipart_form, param_value, "{{{baseName}}}").await?;
         {{/isArray}}
     }
     {{/required}}
@@ -458,11 +415,11 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#vendorExtensions.x-multipart-file-union}}
         {{{pattern}}}(value) => {
             {{#isFilePart}}
-            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}").await?;
             {{/isFilePart}}
             {{#isFileParts}}
             for path in value {
-                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}").await?;
             }
             {{/isFileParts}}
             {{#isValuePart}}
@@ -484,11 +441,11 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#vendorExtensions.x-multipart-file-union}}
         {{{pattern}}}(value) => {
             {{#isFilePart}}
-            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}").await?;
             {{/isFilePart}}
             {{#isFileParts}}
             for path in value {
-                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}").await?;
             }
             {{/isFileParts}}
             {{#isValuePart}}
@@ -510,11 +467,11 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#vendorExtensions.x-multipart-file-union}}
         {{{pattern}}}(value) => {
             {{#isFilePart}}
-            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+            multipart_form = multipart_helper::add_file_to_form(multipart_form, value, "{{{baseName}}}").await?;
             {{/isFilePart}}
             {{#isFileParts}}
             for path in value {
-                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}"){{#httpStackTower}}.await{{/httpStackTower}}?;
+                multipart_form = multipart_helper::add_file_to_form(multipart_form, path, "{{{partName}}}").await?;
             }
             {{/isFileParts}}
             {{#isValuePart}}
@@ -572,73 +529,31 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
 {{^multipartHelper}}
     {{#isMultipart}}
     {{#hasFormParams}}
-    let mut multipart_form = {{httpCrate}}::multipart::Form::new();
+    let mut multipart_form = timvw_rust_runtime::multipart::Form::new();
     {{#formParams}}
     {{#isFile}}
-    {{#httpStackTower}}
     {{^required}}
     if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
         {{#isArray}}
         for value in param_value {
-            multipart_form = multipart_form.part("{{{baseName}}}", {{httpCrate}}::multipart::Part::upload(value.resolve().await?));
+            multipart_form = multipart_form.part("{{{baseName}}}", timvw_rust_runtime::multipart::Part::upload(value.resolve().await?));
         }
         {{/isArray}}
         {{^isArray}}
-        multipart_form = multipart_form.part("{{{baseName}}}", {{httpCrate}}::multipart::Part::upload(param_value.resolve().await?));
+        multipart_form = multipart_form.part("{{{baseName}}}", timvw_rust_runtime::multipart::Part::upload(param_value.resolve().await?));
         {{/isArray}}
     }
     {{/required}}
     {{#required}}
     {{#isArray}}
     for value in {{{vendorExtensions.x-rust-param-identifier}}} {
-        multipart_form = multipart_form.part("{{{baseName}}}", {{httpCrate}}::multipart::Part::upload(value.resolve().await?));
+        multipart_form = multipart_form.part("{{{baseName}}}", timvw_rust_runtime::multipart::Part::upload(value.resolve().await?));
     }
     {{/isArray}}
     {{^isArray}}
-    multipart_form = multipart_form.part("{{{baseName}}}", {{httpCrate}}::multipart::Part::upload({{{vendorExtensions.x-rust-param-identifier}}}.resolve().await?));
+    multipart_form = multipart_form.part("{{{baseName}}}", timvw_rust_runtime::multipart::Part::upload({{{vendorExtensions.x-rust-param-identifier}}}.resolve().await?));
     {{/isArray}}
     {{/required}}
-    {{/httpStackTower}}
-    {{^httpStackTower}}
-    {{^required}}
-    if let Some(ref param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        {{#isArray}}
-                for value in param_value {
-                let file = TokioFile::open(value).await?;
-                let stream = FramedRead::new(file, BytesCodec::new());
-                let file_name = value.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                let file_part = {{httpCrate}}::multipart::Part::stream({{httpCrate}}::Body::wrap_stream(stream)).file_name(file_name);
-                multipart_form = multipart_form.part("{{{baseName}}}", file_part);
-                }
-        {{/isArray}}
-        {{^isArray}}
-                let file = TokioFile::open(param_value).await?;
-                let stream = FramedRead::new(file, BytesCodec::new());
-                let file_name = param_value.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                let file_part = {{httpCrate}}::multipart::Part::stream({{httpCrate}}::Body::wrap_stream(stream)).file_name(file_name);
-                multipart_form = multipart_form.part("{{{baseName}}}", file_part);
-        {{/isArray}}
-    }
-    {{/required}}
-    {{#required}}
-    {{#isArray}}
-    for value in &{{{vendorExtensions.x-rust-param-identifier}}} {
-        let file = TokioFile::open(value).await?;
-        let stream = FramedRead::new(file, BytesCodec::new());
-        let file_name = value.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let file_part = {{httpCrate}}::multipart::Part::stream({{httpCrate}}::Body::wrap_stream(stream)).file_name(file_name);
-        multipart_form = multipart_form.part("{{{baseName}}}", file_part);
-    }
-    {{/isArray}}
-    {{^isArray}}
-    let file = TokioFile::open(&{{{vendorExtensions.x-rust-param-identifier}}}).await?;
-    let stream = FramedRead::new(file, BytesCodec::new());
-    let file_name = {{{vendorExtensions.x-rust-param-identifier}}}.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let file_part = {{httpCrate}}::multipart::Part::stream({{httpCrate}}::Body::wrap_stream(stream)).file_name(file_name);
-    multipart_form = multipart_form.part("{{{baseName}}}", file_part);
-    {{/isArray}}
-    {{/required}}
-    {{/httpStackTower}}
     {{/isFile}}
     {{^isFile}}
     {{#required}}
@@ -743,7 +658,6 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#hasBodyParam}}
     {{#bodyParams}}
     {{#isFile}}
-    {{#httpStackTower}}
     {{#required}}
     req_builder = req_builder.body({{{vendorExtensions.x-rust-param-identifier}}}.resolve().await?);
     {{/required}}
@@ -752,30 +666,15 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
         req_builder = req_builder.body(param_value.resolve().await?);
     }
     {{/required}}
-    {{/httpStackTower}}
-    {{^httpStackTower}}
-    {{#required}}
-    let file = TokioFile::open({{{vendorExtensions.x-rust-param-identifier}}}).await?;
-    let stream = FramedRead::new(file, BytesCodec::new());
-    req_builder = req_builder.body({{httpCrate}}::Body::wrap_stream(stream));
-    {{/required}}
-    {{^required}}
-    if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        let file = TokioFile::open(param_value).await?;
-        let stream = FramedRead::new(file, BytesCodec::new());
-        req_builder = req_builder.body({{httpCrate}}::Body::wrap_stream(stream));
-    }
-    {{/required}}
-    {{/httpStackTower}}
     {{/isFile}}
     {{^isFile}}
     {{#vendorExtensions.x-rust-text-body}}
     {{#required}}
-    req_builder = req_builder.header({{httpCrate}}::header::CONTENT_TYPE, "{{{.}}}").body({{{vendorExtensions.x-rust-param-identifier}}}.to_owned());
+    req_builder = req_builder.header(timvw_rust_runtime::header::CONTENT_TYPE, "{{{.}}}").body({{{vendorExtensions.x-rust-param-identifier}}}.to_owned());
     {{/required}}
     {{^required}}
     if let Some(param_value) = {{{vendorExtensions.x-rust-param-identifier}}} {
-        req_builder = req_builder.header({{httpCrate}}::header::CONTENT_TYPE, "{{{.}}}").body(param_value.to_owned());
+        req_builder = req_builder.header(timvw_rust_runtime::header::CONTENT_TYPE, "{{{.}}}").body(param_value.to_owned());
     }
     {{/required}}
     {{/vendorExtensions.x-rust-text-body}}
@@ -787,16 +686,14 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{/hasBodyParam}}
 
     {{#vendorExtensions.x-rust-event-stream}}
-    req_builder = req_builder.header({{httpCrate}}::header::ACCEPT, "text/event-stream");
+    req_builder = req_builder.header(timvw_rust_runtime::header::ACCEPT, "text/event-stream");
     {{/vendorExtensions.x-rust-event-stream}}
-    {{#httpStackTower}}
     {{#bonBuilders}}
     // last, so its headers replace the generated ones
     if let Some(options) = {{{vendorExtensions.x-rust-options-param}}} {
         req_builder = req_builder.options(options);
     }
     {{/bonBuilders}}
-    {{/httpStackTower}}
     let req = req_builder.build()?;
     let resp = configuration.client.execute(req).await?;
 

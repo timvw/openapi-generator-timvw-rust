@@ -26,10 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code httpStack}: {@code tower} (the default) sends through {@code timvw_rust_runtime::Client};
- * {@code reqwest-middleware} renders what 0.24 rendered. The spec has event streams, a streamed binary response,
- * multipart bodies with files and JSON bodies, so every template path that names the HTTP library is rendered; both
- * stacks build with cargo, with and without {@code multipartHelper}.
+ * The client sends through {@code timvw_rust_runtime::Client} (tower); {@code httpStack} was removed in 0.29.0 with
+ * the reqwest-middleware stack. The spec has event streams, a streamed binary response, multipart bodies with files
+ * and JSON bodies, so every template path that names the HTTP library is rendered; it builds with cargo, with and
+ * without {@code multipartHelper}.
  */
 class HttpStackTest {
 
@@ -67,7 +67,7 @@ class HttpStackTest {
     }
 
     @Test
-    void towerIsTheDefaultAndSendsThroughTheRuntime() throws IOException {
+    void theClientSendsThroughTheRuntime() throws IOException {
         generate(out, Map.of());
         String cargo = read(out, "Cargo.toml");
         assertTrue(cargo.contains("timvw-rust-runtime = { version = \"^" + TimvwRustCodegen.DEFAULT_RUNTIME_VERSION
@@ -99,42 +99,22 @@ class HttpStackTest {
     }
 
     @Test
-    void reqwestMiddlewareRendersWhat024Rendered() throws IOException {
-        generate(out, Map.of(TimvwRustCodegen.HTTP_STACK, TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE));
-        String cargo = read(out, "Cargo.toml");
-        assertTrue(cargo.contains("reqwest-middleware = { version = \"^0.5\""), cargo);
-        assertTrue(cargo.contains("default = [\"native-tls\"]\nnative-tls = [\"reqwest/native-tls\"]\n"
-                + "rustls = [\"reqwest/rustls\"]"), cargo);
-        assertFalse(cargo.contains("timvw-rust-runtime"), cargo);
-
-        String configuration = read(out, "src/apis/configuration.rs");
-        assertTrue(configuration.contains("pub use reqwest_middleware::ClientWithMiddleware;"), configuration);
-        assertTrue(configuration.contains("pub client: reqwest_middleware::ClientWithMiddleware,"), configuration);
-
-        String mod = read(out, "src/apis/mod.rs");
-        assertTrue(mod.contains("    Reqwest(reqwest::Error),\n    ReqwestMiddleware(reqwest_middleware::Error),\n"
-                + "    Serde(serde_json::Error),"), mod);
-        assertTrue(mod.contains("    pub status: reqwest::StatusCode,"), mod);
-        assertTrue(read(out, "src/lib.rs").contains("extern crate reqwest;"));
-
-        String apis = allApis(out);
-        assertTrue(apis.contains("configuration.client.request(reqwest::Method::POST, &uri_str);"), apis);
-        assertTrue(apis.contains("reqwest::multipart::Form::new()"), apis);
-        assertFalse(apis.contains("timvw_rust_runtime"), apis);
-    }
-
-    @Test
     void theRuntimeVersionAndPathAreOptions() throws IOException {
         generate(out, Map.of(TimvwRustCodegen.RUNTIME_VERSION, "0.3.1", TimvwRustCodegen.RUNTIME_PATH, "../runtime"));
         assertTrue(read(out, "Cargo.toml").contains(
                 "timvw-rust-runtime = { version = \"^0.3.1\", default-features = false, features = [\"fs\", \"time\"], path = \"../runtime\" }"));
     }
 
-    @Test
-    void anUnknownStackFails() {
+    /** Setting {@code httpStack}, to any value, fails and points to the migration guide. */
+    @ParameterizedTest
+    @CsvSource({"httpStack,tower", "httpStack,reqwest-middleware", "HttpStack,hyper"})
+    void httpStackWasRemoved(String key, String value) {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> generate(out, Map.of(TimvwRustCodegen.HTTP_STACK, "hyper")));
-        assertTrue(e.getMessage().contains("'tower' or 'reqwest-middleware'"), e.getMessage());
+                () -> generate(out, Map.of(key, value)));
+        assertTrue(e.getMessage().contains("option '" + key + "' was removed in 0.29.0: the client always sends "
+                + "through timvw-rust-runtime (tower)"), e.getMessage());
+        assertTrue(e.getMessage().contains("it was set to '" + value + "'"), e.getMessage());
+        assertTrue(e.getMessage().contains("docs/guides/migration.md"), e.getMessage());
     }
 
     /**
@@ -155,13 +135,12 @@ class HttpStackTest {
         }
     }
 
-    /** Both stacks build, with and without multipartHelper. Needs cargo; without it there is nothing to build. */
+    /** It builds, with and without multipartHelper. Needs cargo; without it there is nothing to build. */
     @ParameterizedTest
-    @CsvSource({"tower,true", "tower,false", "reqwest-middleware,true", "reqwest-middleware,false"})
-    void bothStacksBuild(String stack, boolean multipartHelper) throws IOException, InterruptedException {
+    @CsvSource({"true", "false"})
+    void itBuilds(boolean multipartHelper) throws IOException, InterruptedException {
         Assumptions.assumeTrue(cargo(out, 30, "--version") != null, "no cargo");
-        generate(out, Map.of(TimvwRustCodegen.HTTP_STACK, stack,
-                TimvwRustCodegen.MULTIPART_HELPER, String.valueOf(multipartHelper)));
+        generate(out, Map.of(TimvwRustCodegen.MULTIPART_HELPER, String.valueOf(multipartHelper)));
         String output = cargo(out, 900, "build");
         assertNotNull(output, "cargo did not finish");
         assertTrue(output.contains("Finished"), output);

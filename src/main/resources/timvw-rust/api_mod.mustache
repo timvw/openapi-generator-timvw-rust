@@ -1,18 +1,16 @@
 use std::error;
 use std::fmt;
-{{#httpStackTower}}
 
 /// Extra headers and query parameters for one call: `.options(&options)` on an operation's builder.
 pub use timvw_rust_runtime::RequestOptions;
-{{/httpStackTower}}
 
 #[derive(Debug, Clone)]
 pub struct ResponseContent<T> {
-    pub status: {{httpCrate}}::StatusCode,
+    pub status: timvw_rust_runtime::StatusCode,
     pub content: String,
     pub entity: Option<T>,
     /// The response's headers (`retry-after`, `x-request-id`, rate limits, ...).
-    pub headers: {{httpCrate}}::header::HeaderMap,
+    pub headers: timvw_rust_runtime::header::HeaderMap,
 }
 {{#x-rust-typed-error-headers}}
 
@@ -23,7 +21,7 @@ impl<T> ResponseContent<T> {
     /// `H::from(&content.headers)`.
     pub fn typed_headers<H>(&self) -> H
     where
-        H: for<'h> From<&'h {{httpCrate}}::header::HeaderMap>,
+        H: for<'h> From<&'h timvw_rust_runtime::header::HeaderMap>,
     {
         H::from(&self.headers)
     }
@@ -32,14 +30,8 @@ impl<T> ResponseContent<T> {
 
 #[derive(Debug)]
 pub enum Error<T> {
-    {{#httpStackTower}}
     /// Building the request, sending it through the client's service, or reading the response body failed.
     Http(timvw_rust_runtime::Error),
-    {{/httpStackTower}}
-    {{^httpStackTower}}
-    Reqwest(reqwest::Error),
-    ReqwestMiddleware(reqwest_middleware::Error),
-    {{/httpStackTower}}
     Serde(serde_json::Error),
     {{#useSerdePathToError}}
     SerdePathToError(serde_path_to_error::Error<serde_json::Error>),
@@ -51,13 +43,7 @@ pub enum Error<T> {
 impl <T> fmt::Display for Error<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (module, e) = match self {
-            {{#httpStackTower}}
             Error::Http(e) => ("http", e.to_string()),
-            {{/httpStackTower}}
-            {{^httpStackTower}}
-            Error::Reqwest(e) => ("reqwest", e.to_string()),
-            Error::ReqwestMiddleware(e) => ("reqwest-middleware", e.to_string()),
-            {{/httpStackTower}}
             Error::Serde(e) => ("serde", e.to_string()),
             {{#useSerdePathToError}}
             Error::SerdePathToError(e) => ("serde", format!("{}: {}", e.path(), e.inner())),
@@ -72,13 +58,7 @@ impl <T> fmt::Display for Error<T> {
 impl <T: fmt::Debug> error::Error for Error<T> {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         Some(match self {
-            {{#httpStackTower}}
             Error::Http(e) => e,
-            {{/httpStackTower}}
-            {{^httpStackTower}}
-            Error::Reqwest(e) => e,
-            Error::ReqwestMiddleware(e) => e,
-            {{/httpStackTower}}
             Error::Serde(e) => e,
             {{#useSerdePathToError}}
             Error::SerdePathToError(e) => e,
@@ -89,26 +69,11 @@ impl <T: fmt::Debug> error::Error for Error<T> {
     }
 }
 
-{{#httpStackTower}}
 impl <T> From<timvw_rust_runtime::Error> for Error<T> {
     fn from(e: timvw_rust_runtime::Error) -> Self {
         Error::Http(e)
     }
 }
-{{/httpStackTower}}
-{{^httpStackTower}}
-impl <T> From<reqwest::Error> for Error<T> {
-    fn from(e: reqwest::Error) -> Self {
-        Error::Reqwest(e)
-    }
-}
-
-impl<T> From<reqwest_middleware::Error> for Error<T> {
-    fn from(e: reqwest_middleware::Error) -> Self {
-        Error::ReqwestMiddleware(e)
-    }
-}
-{{/httpStackTower}}
 
 impl <T> From<serde_json::Error> for Error<T> {
     fn from(e: serde_json::Error) -> Self {

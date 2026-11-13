@@ -59,7 +59,7 @@ final class MultipartRules {
 
     private static final String FILE_TYPE = UploadParams.PATH;
     private static final String FILES_TYPE = "Vec<" + FILE_TYPE + ">";
-    /** A file variant with {@code httpStack=tower} ({@link UploadParams#markUnions}). */
+    /** A file variant ({@link UploadParams#markUnions}). */
     private static final String UPLOAD_TYPE = UploadParams.UPLOAD;
     private static final String UPLOADS_TYPE = UploadParams.UPLOADS;
     private static final Pattern MODEL_REFERENCE = Pattern.compile("models::(\\w+)");

@@ -22,9 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The credentials of a {@code Configuration} on src/test/resources/credentials.yaml. With {@code httpStack=tower} the
- * tokens, the basic-auth password and the api key are {@code SecretString}s, exposed only where the header (or query
- * parameter) is built and sent in headers marked sensitive; with {@code reqwest-middleware} they stay {@code String}s.
+ * The credentials of a {@code Configuration} on src/test/resources/credentials.yaml. The tokens, the basic-auth
+ * password and the api key are {@code SecretString}s, exposed only where the header (or query parameter) is built and
+ * sent in headers marked sensitive.
  * What goes on the wire is in src/test/rust/credentials.rs, which {@link #whatItDoesAtRunTime} runs with cargo against
  * a local server.
  */
@@ -36,14 +36,11 @@ class CredentialsTest {
     static Path root;
 
     private static Path out;
-    private static Path legacy;
 
     @BeforeAll
     static void generate() {
         out = root.resolve("tower");
-        legacy = root.resolve("reqwest-middleware");
         generate(out, Map.of());
-        generate(legacy, Map.of(TimvwRustCodegen.HTTP_STACK, TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE));
     }
 
     private static void generate(Path dir, Map<String, Object> extra) {
@@ -82,19 +79,6 @@ class CredentialsTest {
         assertContains(api, "req_builder.sensitive_header(timvw_rust_runtime::header::COOKIE, cookies.join(\"; \"));");
         assertFalse(api.contains("apikey.key.clone()"), api);
         assertFalse(api.contains("token.to_owned()"), api);
-    }
-
-    @Test
-    void reqwestMiddlewareKeepsStrings() throws IOException {
-        String configuration = Files.readString(legacy.resolve("src/apis/configuration.rs"));
-        assertContains(configuration, "pub bearer_access_token: Option<String>,");
-        assertContains(configuration, "pub type BasicAuth = (String, Option<String>);");
-        assertContains(configuration, "    pub key: String,\n");
-        assertFalse(configuration.contains("SecretString"), configuration);
-        String api = Files.readString(legacy.resolve("src/apis/default_api.rs"));
-        assertContains(api, "req_builder = req_builder.bearer_auth(token.to_owned());");
-        assertContains(api, "req_builder = req_builder.header(\"X-Api-Key\", value);");
-        assertFalse(api.contains("expose_secret") || api.contains("sensitive_header"), api);
     }
 
     /** Runs src/test/rust/credentials.rs on the generated crate. Needs cargo; without it there is nothing to run. */

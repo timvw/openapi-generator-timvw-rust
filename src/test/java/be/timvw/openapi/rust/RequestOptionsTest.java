@@ -23,8 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Per-call {@code RequestOptions} (extra headers and query parameters) on every operation's builder with
- * {@code httpStack=tower}, on src/test/resources/request_options.yaml. src/test/rust/request_options.rs checks against a
+ * Per-call {@code RequestOptions} (extra headers and query parameters) on every operation's builder, on src/test/resources/request_options.yaml. src/test/rust/request_options.rs checks against a
  * local server that they arrive and override generated headers; {@link #whatArrivesAtRunTime} runs it and clippy.
  */
 class RequestOptionsTest {
@@ -35,9 +34,6 @@ class RequestOptionsTest {
     static Path tower;
 
     @TempDir
-    static Path middleware;
-
-    @TempDir
     static Path positional;
 
     @BeforeAll
@@ -45,9 +41,6 @@ class RequestOptionsTest {
         Map<String, Object> all = Map.of(TimvwRustCodegen.TYPED_EVENT_STREAMS, "true",
                 TimvwRustCodegen.CONTENT_TYPE_METHODS, "true", TimvwRustCodegen.RESPONSE_FUNCTIONS, "true");
         generate(tower, all);
-        Map<String, Object> legacy = new LinkedHashMap<>(all);
-        legacy.put(TimvwRustCodegen.HTTP_STACK, TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE);
-        generate(middleware, legacy);
         generate(positional, Map.of(TimvwRustCodegen.BON_BUILDERS, "false"));
     }
 
@@ -111,12 +104,9 @@ class RequestOptionsTest {
     }
 
     @Test
-    void notWithReqwestMiddlewareOrPositionalArguments() throws IOException {
-        for (Path dir : new Path[] {middleware, positional}) {
-            assertFalse(api(dir).contains("options("), api(dir));
-            assertFalse(api(dir).contains("RequestOptions"), api(dir));
-        }
-        assertFalse(Files.readString(middleware.resolve("src/apis/mod.rs")).contains("RequestOptions"));
+    void notWithPositionalArguments() throws IOException {
+        assertFalse(api(positional).contains("options("), api(positional));
+        assertFalse(api(positional).contains("RequestOptions"), api(positional));
         assertContains(api(positional), "pub async fn create_item(configuration: &configuration::Configuration, "
                 + "item: &models::Item, x_trace: Option<&str>, limit: Option<i64>) ->");
     }

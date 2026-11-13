@@ -1,5 +1,5 @@
 //! File parameters as `timvw_rust_runtime::Upload` at run time, on the crate generated from
-//! src/test/resources/uploads.yaml (`httpStack=tower`). `UploadsTest` copies this file into that crate's tests/ (with
+//! src/test/resources/uploads.yaml. `UploadsTest` copies this file into that crate's tests/ (with
 //! and without `multipartHelper`) and runs cargo. A local HTTP server answers each request with the next status of a
 //! list and hands back the requests it read.
 

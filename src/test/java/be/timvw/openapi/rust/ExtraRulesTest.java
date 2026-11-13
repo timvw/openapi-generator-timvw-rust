@@ -186,27 +186,20 @@ class ExtraRulesTest {
 
     @Test
     void helpersKeptOnPurposeStay(@TempDir Path out) throws IOException {
-        Map<String, Object> options = new LinkedHashMap<>(BASE);
-        // the reqwest-middleware helper keeps more than it calls (the tower one has nothing of the kind)
-        options.put(TimvwRustCodegen.HTTP_STACK, TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE);
-        generate(out, options, "src/test/resources/extras.yaml");
-        String helper = read(out, "src/apis/multipart_helper.rs");
-        assertContains(helper, "pub fn add_file_to_form");
-        assertContains(helper, "pub fn file_part_from_bytes");
+        generate(out, new LinkedHashMap<>(BASE), "src/test/resources/extras.yaml");
+        String dispatch = read(out, "src/models/union_dispatch.rs");
+        // nothing calls it: it is kept as part of the helper's API
+        assertContains(dispatch, "#[allow(dead_code)]\npub(crate) fn unknown_tag(");
     }
 
     @Test
     void pruneAllHelpersAlsoDropsHelpersKeptOnPurpose(@TempDir Path out) throws IOException {
         Map<String, Object> options = new LinkedHashMap<>(BASE);
-        options.put(TimvwRustCodegen.HTTP_STACK, TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE);
         options.put(TimvwRustCodegen.PRUNE_ALL_HELPERS, "true");
         generate(out, options, "src/test/resources/extras.yaml");
-        String helper = read(out, "src/apis/multipart_helper.rs");
-        assertContains(helper, "pub fn add_file_to_form");
-        assertFalse(helper.contains("file_part_from_bytes"), helper);
-        assertFalse(helper.contains("add_pathbuf_to_form"), helper);
-        assertContains(helper, "use std::path::Path;");
-        assertFalse(helper.contains("PathBuf"), helper);
+        String dispatch = read(out, "src/models/union_dispatch.rs");
+        assertFalse(dispatch.contains("fn unknown_tag("), dispatch);
+        assertContains(dispatch, "pub(crate) fn decode<");
     }
 
     @Test

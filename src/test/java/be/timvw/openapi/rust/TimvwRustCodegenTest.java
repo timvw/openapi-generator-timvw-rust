@@ -13,6 +13,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -205,9 +206,30 @@ class TimvwRustCodegenTest {
         c.additionalProperties().put(TimvwRustCodegen.JSON_VALUE_SCHEMAS, List.of("ResponseStreamEvent"));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
         assertTrue(e.getMessage().contains("jsonValueSchemas was removed"), e.getMessage());
-        TimvwRustCodegen empty = codegen();
-        empty.additionalProperties().put(TimvwRustCodegen.JSON_VALUE_SCHEMAS, List.of());
-        empty.processOpts();
+        // An empty value fails too: it is no less a configuration that still names the option.
+        for (Object value : List.of(List.of(), "")) {
+            TimvwRustCodegen empty = codegen();
+            empty.additionalProperties().put(TimvwRustCodegen.JSON_VALUE_SCHEMAS, value);
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, empty::processOpts);
+            assertTrue(failure.getMessage().contains("jsonValueSchemas was removed"), failure.getMessage());
+        }
+    }
+
+    /** Every rejected, fixed, always-on or removed name fails whatever its value, an empty one too. */
+    @Test
+    void everyRejectedNameFailsEvenWhenEmpty() {
+        java.util.Set<String> names = new java.util.TreeSet<>(OptionsDocsTest.rejected());
+        assertTrue(names.contains(TimvwRustCodegen.HTTP_STACK), names.toString());
+        for (String name : names) {
+            for (String value : List.of("", "true", "false")) {
+                TimvwRustCodegen c = codegen();
+                c.additionalProperties().put(name, value);
+                IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts,
+                        name + "=" + value);
+                assertTrue(e.getMessage().contains(name), e.getMessage());
+                assertFalse(e.getMessage().contains("unknown option"), e.getMessage());
+            }
+        }
     }
 
     @Test

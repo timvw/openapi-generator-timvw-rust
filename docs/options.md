@@ -30,7 +30,7 @@ Value types:
 | Group | Options |
 | --- | --- |
 | [The crate](#the-crate) | `packageName`, `packageVersion`, `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, `userAgentFromPackage`, `apiLintAllows` |
-| [HTTP stack and runtime](#http-stack-and-runtime) | `httpStack`, `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
+| [HTTP stack and runtime](#http-stack-and-runtime) | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
 | [Cargo features](#cargo-features) | `apiFeatures`, `apiFeaturesFile` |
 | [Types and naming](#types-and-naming) | `useChrono`, `bonBuilders`, `titleNaming`, `typedEnumParameters`, `deprecatedAttributes` |
 | [Functions and modules](#functions-and-modules) | `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `validateMethods` |
@@ -113,44 +113,29 @@ Tests: [`ErrorsAndLintsTest`](../src/test/java/be/timvw/openapi/rust/ErrorsAndLi
 
 ## HTTP stack and runtime
 
-### `httpStack`
+### `runtimeVersion`
 
-`tower` (default) or `reqwest-middleware`. How the client sends requests:
-
-- `tower`: through `timvw_rust_runtime::Client`, a tower service (reqwest unless replaced) from
-  [`timvw-rust-runtime`](../runtime/README.md), with retries by default, `SecretString` credentials, per-call
-  `RequestOptions`, `Upload` file parameters and WebAssembly support.
-- `reqwest-middleware`: through `reqwest` and `reqwest-middleware`, as up to 0.24 (frozen at 0.25's output).
+string, default `0.4` (the runtime release this generator renders for, `DEFAULT_RUNTIME_VERSION`). The version
+requirement of `timvw-rust-runtime` in `Cargo.toml`, written as `^<value>`. Every generated client sends through
+`timvw_rust_runtime::Client`, a tower service (reqwest unless replaced) from
+[`timvw-rust-runtime`](../runtime/README.md), with retries by default, `SecretString` credentials, per-call
+`RequestOptions`, `Upload` files and WebAssembly support ([guide](guides/http-stack.md)). A runtime fix reaches a
+client with `cargo update`; set it only to require a newer patch release.
 
 ```bash
---additional-properties=httpStack=reqwest-middleware
+--additional-properties=runtimeVersion=0.4.1
 ```
 
 ```toml
 # Cargo.toml with the default
-timvw-rust-runtime = { version = "^0.3.1", default-features = false }
-```
-
-Guide: [HTTP stack](guides/http-stack.md). Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java)
-(`towerIsTheDefaultAndSendsThroughTheRuntime`, `reqwestMiddlewareRendersWhat024Rendered`, `anUnknownStackFails`,
-`bothStacksBuild`).
-
-### `runtimeVersion`
-
-string, default `0.3.1` (the runtime release this generator renders for, `DEFAULT_RUNTIME_VERSION`). With
-`httpStack=tower`: the version requirement of `timvw-rust-runtime` in `Cargo.toml`, written as `^<value>`. A runtime
-fix reaches a client with `cargo update`; set it only to require a newer patch release.
-
-```bash
---additional-properties=runtimeVersion=0.3.0
+timvw-rust-runtime = { version = "^0.4", default-features = false }
 ```
 
 Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java) (`theRuntimeVersionAndPathAreOptions`, `theDefaultRuntimeVersionIsTheRuntimeCrates`).
 
 ### `runtimePath`
 
-string, unset by default. With `httpStack=tower`: a path dependency on `timvw-rust-runtime` next to the version, to
-build against an unreleased runtime. The generator's own tests set it to `runtime/` (through the system property
+string, unset by default. A path dependency on `timvw-rust-runtime` next to the version, to build against an unreleased runtime. The generator's own tests set it to `runtime/` (through the system property
 `timvw-rust.runtimePath`).
 
 ```bash
@@ -158,7 +143,7 @@ build against an unreleased runtime. The generator's own tests set it to `runtim
 ```
 
 ```toml
-timvw-rust-runtime = { version = "^0.3.1", default-features = false, path = "../openapi-generator-timvw-rust/runtime" }
+timvw-rust-runtime = { version = "^0.4", default-features = false, path = "../openapi-generator-timvw-rust/runtime" }
 ```
 
 Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java) (`theRuntimeVersionAndPathAreOptions`).
@@ -167,7 +152,7 @@ Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.ja
 
 comma-separated, default `native-tls`. The crate's default features, which choose reqwest's TLS: `native-tls`,
 `rustls`, or empty for none (then `Client::default()` fails every request; set a client with `Client::from_service`).
-With `httpStack=tower` the crate also has the features `retry` (default) and `tracing`, forwarded to the runtime
+The crate also has the features `retry` (default) and `tracing`, forwarded to the runtime
 ([features](guides/http-stack.md#features-of-the-generated-crate)).
 
 ```json
@@ -362,7 +347,7 @@ boolean, default `false`. A `text/event-stream` response is a function returning
 stream of typed events (each `data:` decoded to the event schema, `[DONE]` ends it), with `idle_timeout` for a stream
 that stalls. It is the operation's own function when the event stream is the first media type, `<operation>_stream`
 otherwise. `src/apis/sse.rs` is written only when an operation streams; the crate then depends on `futures-core` and,
-with `httpStack=tower`, the runtime's `time` feature (openai-client-base sets it).
+the runtime's `time` feature (openai-client-base sets it).
 
 <!-- not compiled: a generated signature -->
 ```rust
@@ -569,3 +554,4 @@ release cannot be silently ignored. The [migration guide](guides/migration.md) l
 | `boxResponseError` | always applied since 0.21: `Error::ResponseError` holds a `Box<ResponseContent<T>>` |
 | `jsonValueSchemas` | removed: unions render as typed enums |
 | `legacyModelRewrites` | removed in 0.17.0: the model-level rules replaced the text rewrites |
+| `httpStack` | removed in 0.29.0: the client always sends through `timvw-rust-runtime` (tower), the default since 0.25; reqwest-middleware is no longer generated |

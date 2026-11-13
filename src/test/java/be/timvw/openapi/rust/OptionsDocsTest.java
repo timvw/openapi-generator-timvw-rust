@@ -31,8 +31,6 @@ class OptionsDocsTest {
     /** Public constants that are not option names: values, the generator's name, keys the generator sets itself. */
     private static final Set<String> NOT_OPTIONS = new TreeSet<>(List.of(
             TimvwRustCodegen.GENERATOR_NAME,
-            TimvwRustCodegen.HTTP_STACK_TOWER,
-            TimvwRustCodegen.HTTP_STACK_REQWEST_MIDDLEWARE,
             TimvwRustCodegen.DEFAULT_RUNTIME_VERSION,
             RustCodegenBase.REQWEST_LIBRARY,
             RustCodegenBase.TEMPLATES,
@@ -52,6 +50,7 @@ class OptionsDocsTest {
         names.addAll(TimvwRustCodegen.FIXED_VALUES.keySet());
         names.add(TimvwRustCodegen.JSON_VALUE_SCHEMAS);
         names.add(TimvwRustCodegen.LEGACY_MODEL_REWRITES);
+        names.add(TimvwRustCodegen.HTTP_STACK);
         return names;
     }
 

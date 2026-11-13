@@ -18,7 +18,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Modifications: only the async reqwest + reqwest-middleware client is kept (no hyper, hyper0x, reqwest-trait,
+ * Modifications: only an async client is kept, on timvw-rust-runtime (no hyper, hyper0x, reqwest-trait,
  * blocking client, single request parameter, unsigned or best-fit integers, enum name suffix, boxed-model, mockall,
  * token source, AWS v4 signature or bon builder options); the two classes are merged into one base class that reads
  * its templates from {@code timvw-rust/}.
@@ -84,7 +84,7 @@ import static org.openapitools.codegen.utils.StringUtils.underscore;
  * The Rust language layer of {@code timvw-rust}: type mapping, identifier naming and escaping, the model and operation
  * post-processing the templates rely on, the supporting files and the crate options ({@code packageName},
  * {@code packageVersion}, {@code useChrono}, {@code useSerdePathToError}, {@code supportMultipleResponses},
- * {@code reqwestDefaultFeatures}). It renders an async {@code reqwest} client on {@code reqwest-middleware}, from the
+ * {@code reqwestDefaultFeatures}). It renders an async client on {@code timvw-rust-runtime} (tower), from the
  * templates under {@code timvw-rust/}.
  *
  * <p>Ported from openapi-generator 7.27.0's {@code AbstractRustCodegen} and {@code RustClientCodegen} (Apache License
@@ -208,7 +208,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         typeMapping.put("DateTime", "chrono::DateTime<chrono::FixedOffset>");
         typeMapping.put("password", "String");
         typeMapping.put("decimal", "String");
-        // reqwest's multipart file needs AsRef<Path>
+        // a file: a path (a timvw_rust_runtime::Upload for parameters and fields)
         typeMapping.put("file", "std::path::PathBuf");
         typeMapping.put("binary", "crate::models::File");
         typeMapping.put("ByteArray", "String");
@@ -238,7 +238,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         cliOptions.add(new CliOption(DOCUMENTATION_URL, "Cargo.toml documentation; unset leaves it out"));
         cliOptions.add(new CliOption(HOME_PAGE_URL, "Cargo.toml homepage; unset leaves it out"));
 
-        supportedLibraries.put(REQWEST_LIBRARY, "HTTP client: reqwest with reqwest-middleware (async).");
+        supportedLibraries.put(REQWEST_LIBRARY, "HTTP client: timvw-rust-runtime (tower, reqwest by default; async).");
         setLibrary(REQWEST_LIBRARY);
     }
 
@@ -1169,7 +1169,6 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
 
     @Override
     public OperationsMap postProcessOperationsWithModels(OperationsMap objs, List<ModelMap> allModels) {
-        boolean useAsyncFileStream = false;
         for (CodegenOperation operation : objs.getOperations().getOperation()) {
             Object grouped = operation.vendorExtensions.get(GROUP_PARAMETERS);
             if (grouped != null && !Boolean.FALSE.equals(grouped)) {
@@ -1213,14 +1212,6 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             if (useChrono && !usesChronoTypes && (usesType(operation, "chrono::")
                     || operation.allParams.stream().anyMatch(p -> p.isDate || p.isDateTime))) {
                 usesChronoTypes = true;
-            }
-
-            // A file body or multipart file is streamed from disk: the crate needs tokio, once.
-            if (!useAsyncFileStream && (operation.bodyParams.stream().anyMatch(p -> p.isFile)
-                    || operation.formParams.stream().anyMatch(p -> p.isFile))) {
-                useAsyncFileStream = true;
-                additionalProperties.put("useAsyncFileStream", Boolean.TRUE);
-                operation.vendorExtensions.put("useAsyncFileStream", Boolean.TRUE);
             }
 
             operation.httpMethod = operation.httpMethod.toUpperCase(Locale.ROOT);

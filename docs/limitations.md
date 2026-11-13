@@ -14,6 +14,10 @@ mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed i
 - **`RequestOptions` cannot change the path or the base URL** of one call (async-openai's path override); a
   `ProviderLayer` on the client does that for every call.
 
+- A multipart request body schema is also generated as a model (e.g. `CreateContainerFileBody`); its binary
+  properties stay `PathBuf`. The operation itself takes `timvw_rust_runtime::Upload`, so this only matters to code
+  that builds that model directly.
+
 ## Runtime
 
 - **No retry of a failed `fetch` on WebAssembly.** `fetch` does not tell a failure to connect from one after the request

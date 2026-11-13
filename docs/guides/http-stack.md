@@ -7,8 +7,9 @@ A generated client sends its requests through `Configuration.client`. What that 
 | `tower` (default) | `timvw_rust_runtime::Client`: a [tower](https://docs.rs/tower) service, reqwest unless replaced | 0.25 |
 | `reqwest-middleware` | `reqwest_middleware::ClientWithMiddleware` | up to 0.24 the only stack |
 
-The generated functions are the same with both: the same signatures, the same models, the same `ResponseContent`. What
-differs is how you configure sending, and the variants of `apis::Error` that report a failure to send.
+The generated functions are the same with both: the same arguments, the same models, the same `ResponseContent`. What
+differs is how you configure sending, the variants of `apis::Error` that report a failure to send, and, with `tower`,
+[headers and query parameters for one call](#headers-and-query-parameters-for-one-call).
 
 The examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as `my_client`. They
 are compiled by the tests.
@@ -66,6 +67,33 @@ configuration.client = Client::from_service(service);
 let page = items_api::list_items().configuration(&configuration).call().await?;
 assert_eq!(page.data[0].name, "Lamp");
 ```
+
+### Headers and query parameters for one call
+
+A layer changes every request. For one call, every operation's builder takes `.options(&options)`: a
+`RequestOptions` (`apis::RequestOptions`, the runtime's) with extra headers and query parameters. They are applied
+after everything the function sets, parameters, authentication, `Content-Type` and `Accept` included: each header
+replaces the values the request has under its name, and the query parameters are appended to the generated ones.
+`header` and `query` check their input, and fail with an `Error` whose `is_builder()` is true:
+
+```rust
+use my_client::apis::RequestOptions;
+
+let options = RequestOptions::new()
+    .header("x-request-source", "batch")? // replaces a generated header of that name
+    .query(&[("trace", "1")])?; // after the generated query
+let page = items_api::list_items()
+    .configuration(&configuration)
+    .limit(10)
+    .options(&options)
+    .call()
+    .await?;
+```
+
+Every method of an operation takes them: the `_response` twins, the methods of `contentTypeMethods` (multipart
+included) and the `_stream` methods of `typedEventStreams`. When an operation has a parameter named `options`, the
+setter is `.request_options(..)`. One `RequestOptions` can be reused for many calls. There is no such argument with
+`bonBuilders=false`, nor with `httpStack=reqwest-middleware`.
 
 To send or decode types of your own, call `configuration.client` directly, with the same layers; for a
 `text/event-stream` response, `response.events().json::<T>()` decodes each event. The runtime's guide shows

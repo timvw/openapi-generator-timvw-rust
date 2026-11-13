@@ -200,6 +200,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * against an unreleased runtime; defaults to the system property {@code timvw-rust.runtimePath}.
      */
     public static final String RUNTIME_PATH = "runtimePath";
+    /**
+     * Set on every operation: the name of its {@code timvw_rust_runtime::RequestOptions} parameter (with
+     * {@code httpStack=tower} and {@code bonBuilders}), {@code options} unless a parameter of the operation has it.
+     */
+    static final String OPTIONS_PARAM = "x-rust-options-param";
     /** Set on an operation with {@link #RESPONSE_FUNCTIONS}: the context its {@code _response} twin renders with. */
     static final String RESPONSE_FUNCTION = "x-rust-response-function";
     /** Set when an API module has a {@code <Operation>ResponseHeaders} struct: {@code api_response.rs} has its helpers. */
@@ -1670,6 +1675,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
             List<io.swagger.v3.oas.models.servers.Server> servers) {
         CodegenOperation co = super.fromOperation(path, httpMethod, operation, servers);
         co.vendorExtensions.put(ERROR_ENUM, co.operationIdCamelCase + "Error");
+        co.vendorExtensions.put(OPTIONS_PARAM, optionsParam(co));
         // Here rather than in postProcessOperationsWithModels, which webhook operations never reach.
         for (List<CodegenParameter> params : Arrays.asList(co.allParams, co.bodyParams, co.requiredParams,
                 co.optionalParams)) {
@@ -1682,6 +1688,27 @@ public class TimvwRustCodegen extends RustCodegenBase {
             specOperations.put(co, operation);
         }
         return co;
+    }
+
+    /**
+     * The name of the per-call {@code RequestOptions} parameter: {@code options}, or {@code request_options} (then
+     * {@code request_options_2}, ...) when a parameter of the operation is named so.
+     */
+    static String optionsParam(CodegenOperation co) {
+        Set<String> taken = new HashSet<>(List.of("configuration"));
+        if (co.allParams != null) {
+            for (CodegenParameter p : co.allParams) {
+                taken.add(p.paramName.startsWith("r#") ? p.paramName.substring(2) : p.paramName);
+            }
+        }
+        if (!taken.contains("options")) {
+            return "options";
+        }
+        String name = "request_options";
+        for (int i = 2; taken.contains(name); i++) {
+            name = "request_options_" + i;
+        }
+        return name;
     }
 
     /**

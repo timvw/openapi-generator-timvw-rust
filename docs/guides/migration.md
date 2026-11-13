@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [From 0.25 to 0.26](#from-025-to-026): per-call headers and query parameters; nothing to change.
 - [From 0.24 to 0.25](#from-024-to-025): the client sends through a tower service from `timvw-rust-runtime`.
 - [From 0.23 to 0.24](#from-023-to-024): union variant names under a model name prefix or suffix.
 - [From 0.22 to 0.23](#from-022-to-023): one rare type change.
@@ -9,6 +10,19 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From 0.25 to 0.26
+
+0.26 adds an optional last argument to every operation with `httpStack=tower` and `bonBuilders` (the defaults):
+`options: Option<&timvw_rust_runtime::RequestOptions>`, `.options(&options)` on the builder, for extra headers and
+query parameters of one call ([HTTP stack guide](http-stack.md#headers-and-query-parameters-for-one-call)). A call
+that does not set it sends what it sent before, so builder calls compile and behave as with 0.25. Two exceptions:
+
+- An operation with a parameter named `options` keeps it; its request options are `.request_options(..)`.
+- The generated code uses `RequestOptions`, new in `timvw-rust-runtime` after 0.1.0: a lock file that holds
+  `timvw-rust-runtime` 0.1.0 needs `cargo update -p timvw-rust-runtime`.
+
+`bonBuilders=false` and `httpStack=reqwest-middleware` render what 0.25 rendered.
 
 ## From 0.24 to 0.25
 

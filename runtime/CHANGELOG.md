@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `RequestOptions`: extra headers and query parameters for one call (`header`, `headers`, `query`), and
+  `RequestBuilder::options` to apply them: each header replaces the request's values of that name, the query
+  parameters are appended. Generated clients (`httpStack=tower`) take them on every operation's builder,
+  `.options(&options)`, and apply them after the headers, query and authentication they set.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added

@@ -25,6 +25,15 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | Options | `bonBuilders` (default `true`) adds `#[bon::builder]`; with `false` the function takes its arguments positionally (`create_item(&c, &i)`). `contentTypeMethods` and `typedEventStreams` add functions with a suffix ([`requestBody.content`](request-body.md#requestbodycontent), [`response.content`](response.md#responsecontent)), and `responseFunctions` an `_response` twin ([`response.content.response-function`](response.md#responsecontentresponse-function)) |
 | Tests | [`OperationMappingTest#anOperationIsAnAsyncFunctionWithABuilder`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L68), [`GenerationTest#apiFunctionsGetBonBuilderAfterDeprecated`](../../src/test/java/be/timvw/openapi/rust/GenerationTest.java#L55) |
 
+### `operation.operationId.request-options`
+
+| | |
+| --- | --- |
+| OpenAPI | every operation |
+| Rust | a last argument `options: Option<&timvw_rust_runtime::RequestOptions>`, so the builder has `.options(&options)`: extra headers and query parameters for one call, applied after everything the function sets (parameters, authentication, `Content-Type`, `Accept`). Each of its headers replaces the request's values of that name; its query parameters are appended. `apis::RequestOptions` re-exports the type. When a parameter of the operation is named `options`, the argument is `request_options` |
+| Options | only with `httpStack=tower` (the default) and `bonBuilders` (the default); `httpStack=reqwest-middleware` and `bonBuilders=false` render no such argument |
+| Tests | [`RequestOptionsTest#everyMethodTakesOptionsLast`](../../src/test/java/be/timvw/openapi/rust/RequestOptionsTest.java#L78), [`#theyAreAppliedLastBeforeBuilding`](../../src/test/java/be/timvw/openapi/rust/RequestOptionsTest.java#L92), [`#aParameterNamedOptionsKeepsItsName`](../../src/test/java/be/timvw/openapi/rust/RequestOptionsTest.java#L107), [`#notWithReqwestMiddlewareOrPositionalArguments`](../../src/test/java/be/timvw/openapi/rust/RequestOptionsTest.java#L114), [`#whatArrivesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/RequestOptionsTest.java#L131) |
+
 ### `operation.description`
 
 | | |

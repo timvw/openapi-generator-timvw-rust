@@ -15,6 +15,7 @@ crate ships, any layer from the tower ecosystem, or write your own.
 - [Concurrency and rate limits](#concurrency-and-rate-limits)
 - [Choosing the HTTP client, and tests without a network](#choosing-the-http-client)
 - [Your own types, and streams of server-sent events](#your-own-types-and-server-sent-events)
+- [Headers and query parameters for one call](#headers-and-query-parameters-for-one-call)
 - [Errors](#errors)
 - [Features](#features)
 
@@ -356,6 +357,40 @@ async fn run(client: &Client, api_key: &str) -> Result<(), timvw_rust_runtime::E
 `id:`), and `sse::Decoder` is the parser, for a body read some other way. A generated client's typed event streams use
 the same parser.
 
+## Headers and query parameters for one call
+
+A layer changes every request. `RequestOptions` holds extra headers and query parameters for one call; every
+operation of a generated client takes it, `.options(&options)` on its builder, and `RequestBuilder::options` applies it
+to a request of your own:
+
+```rust,no_run
+use timvw_rust_runtime::{Client, Method, RequestOptions};
+
+async fn run(client: &Client) -> Result<(), timvw_rust_runtime::Error> {
+    let options = RequestOptions::new()
+        .header("x-request-source", "batch")?
+        .query(&[("trace", "1")])?;
+    // generated: items_api::list_items().configuration(&configuration).options(&options).call().await
+    let response = client
+        .request(Method::GET, "https://api.example.com/v1/items?limit=10")
+        .bearer_auth("secret")
+        .options(&options)
+        .send()
+        .await?; // GET /v1/items?limit=10&trace=1, with x-request-source: batch
+    Ok(())
+}
+```
+
+- A header of the options replaces every value the request has under its name, whatever set it: a generated header
+  parameter, `Authorization`, `Content-Type`, `Accept`. Generated clients apply the options last, after everything
+  else. `RequestOptions::header` sets one value (a second call for the same name replaces it); `headers` merges a
+  `HeaderMap`, keeping several values of one name.
+- Query parameters are appended after the request's own: a name the request already has is sent twice.
+- `header` and `query` check their input at once and return an `Error` whose `is_builder()` is true for an invalid
+  header name or value, or a query that is not a flat list of pairs.
+- The options do not change the path or the body. One value can be cloned, or reused for many calls.
+- A header value marked with `HeaderValue::set_sensitive` stays sensitive (hidden from `Debug` output).
+
 ## Errors
 
 A request that fails to send is an `Error`:
@@ -386,7 +421,7 @@ A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under t
 ## What the generated code uses
 
 The generated functions build requests with `RequestBuilder` (`query`, `header`, `bearer_auth`, `basic_auth`, `json`,
-`form`, `body`, `multipart`, `build`) and read responses with `Response` (`status`, `headers`, `text`, `bytes`,
+`form`, `body`, `multipart`, `options`, `build`) and read responses with `Response` (`status`, `headers`, `text`, `bytes`,
 `bytes_stream`): the methods of reqwest's types of the same names. `multipart::Form` encodes multipart bodies.
 
 ## License

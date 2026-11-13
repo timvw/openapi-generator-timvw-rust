@@ -106,7 +106,9 @@ configuration.client = Client::from_service(ReqwestService::default()).layer(Ret
 `Configuration::new()` retries `429`, `408` and `5xx` responses and failed connections, honouring `Retry-After`
 (`RetryPolicy::default()`: 3 retries); the example retries more. The
 [runtime's guide](runtime/README.md) covers retries, timeouts, logging (`trace::TraceLayer`, feature `tracing`),
-headers and authentication layers, and rate limits. With
+headers and authentication layers, and rate limits. Headers and query parameters for one call go on its builder,
+`.options(&options)` with an `apis::RequestOptions`
+([guide](docs/guides/http-stack.md#headers-and-query-parameters-for-one-call)). With
 `httpStack=reqwest-middleware` the client is a `reqwest_middleware::ClientWithMiddleware` instead, as before 0.25.
 
 ### Models

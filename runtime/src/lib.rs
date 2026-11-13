@@ -13,6 +13,7 @@ mod client;
 mod error;
 pub mod multipart;
 mod request;
+mod request_options;
 #[cfg(feature = "reqwest")]
 mod reqwest_service;
 mod response;
@@ -26,6 +27,7 @@ pub use body::Body;
 pub use client::{Client, HttpService};
 pub use error::Error;
 pub use request::RequestBuilder;
+pub use request_options::RequestOptions;
 #[cfg(feature = "reqwest")]
 pub use reqwest_service::ReqwestService;
 pub use response::Response;

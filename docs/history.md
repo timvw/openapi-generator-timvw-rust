@@ -29,10 +29,13 @@ The reqwest-middleware stack is removed: every client sends through `timvw-rust-
   `#[serde(skip)]`; a required single file rejects JSON (`deserialize_with`). `new` and the bon setters take
   `impl Into<Upload>`. With `apiFeatures`, the `-types` features of such models depend on the runtime.
 - With `bonBuilders=false`, every API function takes a last `options: Option<&RequestOptions>` argument.
+- The generated API docs (`docs/<Api>.md`) list the per-call `options` argument of every operation, with a call in the
+  builder or positional form.
 - Generated functions declare `Configuration.base_path` to the request builder, so `RequestOptions::base_url`
   (runtime 0.4) replaces it for one call.
 - The generated `Cargo.toml` declares `rust-version = "1.88"`, the runtime's. CI and `WasmTest` check the runtime and
   generated crates on Rust 1.88, natively and for `wasm32-unknown-unknown`.
+- `apis::Error::Io` and its `From<std::io::Error>` are removed: nothing produced them since 0.27.
 - A removed option fails with an empty value too (an empty `jsonValueSchemas` was ignored).
 - Runtime 0.4.0: `RequestOptions::base_url` and `RequestBuilder::base`; per-call `RequestOptions` win over
   `ProviderLayer` (its headers and query parameters do not replace the call's, and it does not move a call with a base

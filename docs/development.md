@@ -42,7 +42,8 @@ The runtime is a cargo crate of its own:
 cd runtime
 cargo test --all-features
 cargo clippy --all-targets --all-features -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+RUSTDOCFLAGS="-D warnings" cargo hack doc --no-deps --each-feature # docs build with any features
+RUSTDOCFLAGS="-D warnings" cargo hack doc --no-deps --each-feature --target wasm32-unknown-unknown
 cargo clippy --target wasm32-unknown-unknown --no-default-features --features reqwest,retry,tracing -- -D warnings
 ```
 
@@ -72,9 +73,10 @@ To build against another openapi-generator version, pass it to Maven first
 - `build`: `./mvnw verify` (with the `wasm32-unknown-unknown` target installed, and `target/cargo-target` cached),
   the generator listed by the stock CLI, the image, and the petstore generated with both HTTP stacks, built, and
   checked for `wasm32-unknown-unknown` (tower).
-- `runtime`: `cargo fmt --check`, clippy, `cargo test --all-features`, each feature on its own (`cargo hack`) and
-  `cargo publish --dry-run`.
-- `wasm`: the runtime for `wasm32-unknown-unknown`: clippy, each feature on its own, and `tests/wasm.rs` in Node.js.
+- `runtime`: `cargo fmt --check`, clippy, `cargo test --all-features`, each feature on its own (`cargo hack`), the
+  docs with `-D warnings` without default features and with each feature, and `cargo publish --dry-run`.
+- `wasm`: the runtime for `wasm32-unknown-unknown`: clippy, each feature on its own, its docs with each feature, and
+  `tests/wasm.rs` in Node.js.
 
 ## Templates
 

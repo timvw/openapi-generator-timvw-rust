@@ -12,9 +12,25 @@ of [decisions.md](decisions.md); 0.22 fixes types the JSON did not decode to and
 null-only schemas and doc links; 0.24 adds typed error headers and fixes webhooks, model name options and schema
 mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` crate (`httpStack`); 0.26 keeps
 credentials in `SecretString`s, adds headers and query parameters per call and a Cargo feature per API group
-(`apiFeatures`); 0.27 takes file parameters as `timvw_rust_runtime::Upload`s, streamed and retried. The
+(`apiFeatures`); 0.27 takes file parameters as `timvw_rust_runtime::Upload`s, streamed and retried; 0.28 takes them in
+multipart unions too. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.28.0
+
+The file variant of a multipart union holds a `timvw_rust_runtime::Upload` with the default `httpStack=tower` (see
+[migration](guides/migration.md#from-027-to-028)). Generated clients need `timvw-rust-runtime` 0.3.1 (`^0.3.1`).
+
+- A multipart union with a file variant (`multipartHelper`) holds `Upload` (`Vec<Upload>` for an array of files)
+  instead of `PathBuf`: bytes, streams and files, on WebAssembly too. The variants are `#[serde(skip)]` (an upload has
+  no JSON form); the unions keep their derives, as `Upload` is `PartialEq` (runtime 0.3.1). They get `file(..)` and
+  `files(..)` constructors and `From` conversions from `Upload` and `PathBuf`, and with `bonBuilders` the setter takes
+  anything that converts into the union.
+- With `apiFeatures`, a `-types` feature whose models hold an upload depends on the runtime.
+- Runtime 0.3.1 adds `timeout::TimeoutLayer`, a request timeout with the crate's timer (tokio natively, `setTimeout` on
+  WebAssembly), and `RetryPolicy::retry_timeouts`; its docs build with any feature set and target.
+- `httpStack=reqwest-middleware` renders what 0.27 rendered, byte for byte.
 
 ## 0.27.0
 

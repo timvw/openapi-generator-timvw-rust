@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [From 0.27 to 0.28](#from-027-to-028): multipart unions with a file variant hold `Upload`s; runtime 0.3.1 and its `TimeoutLayer`.
 - [From 0.26 to 0.27](#from-026-to-027): file parameters are `timvw_rust_runtime::Upload`s; runtime 0.3; WebAssembly.
 - [From 0.25 to 0.26](#from-025-to-026): the credentials of `Configuration` are `SecretString`s; per-call headers and query parameters; runtime 0.2 retries.
 - [From 0.24 to 0.25](#from-024-to-025): the client sends through a tower service from `timvw-rust-runtime`.
@@ -11,6 +12,55 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From 0.27 to 0.28
+
+### Multipart unions with a file variant hold `Upload`s
+
+With `httpStack=tower` and `multipartHelper`, the file variant of a multipart union (a `oneOf`/`anyOf` with a
+`format: binary` branch, such as openai-client-base's `CreateVideoMultipartBodyInputReference`,
+`CreateVideoEditMultipartBodyVideo` or `CreateSkillBodyFiles`) holds a `timvw_rust_runtime::Upload` instead of a
+`std::path::PathBuf`, and an array of files a `Vec<Upload>`, so it takes bytes and streams as well as paths, on
+WebAssembly too. Code that builds the variant from a path changes:
+
+<!-- not compiled: code of 0.27 -->
+```rust
+// 0.27
+.video(models::CreateVideoEditMultipartBodyVideo::Text(PathBuf::from("clip.mp4")))
+.files(models::CreateSkillBodyFiles::ArrayOfStrings(vec![PathBuf::from("SKILL.md")]))
+```
+
+<!-- not compiled: openai-client-base's API -->
+```rust
+// 0.28: the setter takes an Upload or a PathBuf, or the union
+.video(PathBuf::from("clip.mp4"))
+.video(Upload::bytes(mp4).file_name("clip.mp4"))
+.files(models::CreateSkillBodyFiles::files([PathBuf::from("SKILL.md")]))
+// or build the variant: Text(path.into()), ArrayOfStrings(paths.into_iter().map(Into::into).collect())
+```
+
+- The unions get `file(impl Into<Upload>)` and `files(impl IntoIterator<Item = impl Into<Upload>>)` constructors, and
+  `From<Upload>`, `From<PathBuf>`, `From<Vec<Upload>>` and `From<Vec<PathBuf>>`. With `bonBuilders`, the setter of such
+  a parameter is `#[builder(into)]`: it takes anything that converts into the union. A call that passed
+  `value.into()` to it no longer infers the type; pass `value` itself.
+- The file variants are `#[serde(skip)]`: serializing a union (or a model holding one, such as `CreateSkillBody`) that
+  holds a file is an error, where it wrote the path as a string, and JSON never decodes to a file variant. The unions
+  keep `Clone`, `Debug`, `PartialEq`, `Serialize` and `Deserialize`; two uploads are equal when they send the same
+  thing (runtime 0.3.1). Their `Display` prints the file name, where it printed the path as JSON.
+- With `apiFeatures`, the `-types` features of the groups whose models hold such a union depend on the runtime
+  (`video-types = ["dep:timvw-rust-runtime"]`).
+- `httpStack=reqwest-middleware` renders what 0.27 rendered: its unions keep `PathBuf`.
+
+### Runtime 0.3.1
+
+The generated `Cargo.toml` asks for `timvw-rust-runtime` `^0.3.1` (`PartialEq` for `Upload`). The runtime adds
+`timeout::TimeoutLayer`, a request timeout that works natively and on WebAssembly (where `fetch` has none and tower's
+`TimeoutLayer` does not work), and `RetryPolicy::retry_timeouts`. Clients still have no timeout by default; see
+[timeouts](../../runtime/README.md#timeouts) for where to put one. A client that used `tower::timeout::TimeoutLayer`
+keeps working natively.
+
+To upgrade a client repository, bump the image tag to `0.28.0-og7.27.0`, regenerate, and run
+`cargo clippy --all-targets -- -D warnings` and `cargo test`.
 
 ## From 0.26 to 0.27
 

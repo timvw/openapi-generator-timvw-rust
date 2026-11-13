@@ -36,6 +36,24 @@ File parameters become `timvw_rust_runtime::Upload`s with the default `httpStack
   `Response::into_async_read` and `Events::idle_timeout` for streams that stall.
 - `httpStack=reqwest-middleware` renders what 0.26 rendered, byte for byte.
 
+### WebAssembly
+
+- A tower client builds for `wasm32-unknown-unknown` with its default features. The runtime puts what differs behind
+  `#[cfg(target_family = "wasm")]`: reqwest's `fetch` backend; `MaybeSend`/`MaybeSync` bounds (`Send`/`Sync`
+  natively, nothing there) and a `LocalBoxCloneService` as `HttpService`; retries and `idle_timeout` on the host's
+  `setTimeout` with `web-time` clocks, so a retry still backs off and honours `Retry-After`; no tokio, no files (a path
+  upload fails when sent).
+- The generated code bounds `EventStream::from_bytes` by `MaybeSend`; `Cargo.toml` adds uuid's `js` feature on
+  `wasm32-unknown-unknown`. CI checks the runtime and a generated petstore for wasm32, and runs the runtime's wasm tests
+  in Node.js.
+
+### Smaller changes
+
+- `EventStream::idle_timeout(duration)` (tower), forwarding to the runtime's `Events::idle_timeout`; the crate depends
+  on the runtime's `time` feature.
+- With `apiFeatures`, an API module whose functions are gated one by one carries `#![allow(unused_imports)]` (tower),
+  so a hand-written `lib.rs` needs no allow of its own.
+
 ## 0.26.0
 
 The credentials of `Configuration` become `SecretString`s with the default `httpStack=tower`: openai-client-base and

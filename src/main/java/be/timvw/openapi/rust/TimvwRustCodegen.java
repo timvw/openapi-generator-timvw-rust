@@ -171,6 +171,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * each {@code data:} payload (Milestone 3.6, see {@link ContentTypeMethods}).
      */
     public static final String TYPED_EVENT_STREAMS = "typedEventStreams";
+    /** Tower stack: the features of the runtime dependency in Cargo.toml (see {@link #runtimeFeatures}). */
+    static final String RUNTIME_FEATURES = "runtimeFeatures";
     /**
      * One method per request body media type and per success response shape, named with a suffix (Milestone 3.6, see
      * {@link ContentTypeMethods}).
@@ -1173,7 +1175,26 @@ public class TimvwRustCodegen extends RustCodegenBase {
             LOGGER.info("{}: {}: no operation has a text/event-stream response, so sse.rs is not written",
                     GENERATOR_NAME, TYPED_EVENT_STREAMS);
         }
+        if (httpStackTower) {
+            objs.put(RUNTIME_FEATURES, runtimeFeatures(objs));
+        }
         return objs;
+    }
+
+    /**
+     * The features of the runtime dependency (tower stack), quoted and comma-separated for Cargo.toml, or {@code null}
+     * for none: {@code fs} when a file parameter takes a path ({@code Upload::path}; the runtime leaves it out on
+     * WebAssembly), {@code time} for the idle timeout of typed event streams.
+     */
+    private static String runtimeFeatures(Map<String, Object> objs) {
+        List<String> features = new ArrayList<>();
+        if (Boolean.TRUE.equals(objs.get(UploadParams.RUNTIME_FS))) {
+            features.add("\"fs\"");
+        }
+        if (Boolean.TRUE.equals(objs.get(TYPED_EVENT_STREAMS))) {
+            features.add("\"time\"");
+        }
+        return features.isEmpty() ? null : String.join(", ", features);
     }
 
     /** The features of the operations and models, planned on first use: the spec no longer changes by then. */
@@ -1201,6 +1222,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
             String own = plan.operationCfg(classname, op.path, op.httpMethod);
             if (own != null) {
                 op.vendorExtensions.put(ApiFeatures.OPERATION_CFG, own);
+                if (httpStackTower) {
+                    // Some feature sets compile none of the functions that use an import: the module allows it, so
+                    // a crate's own lib.rs needs no `allow(unused_imports)`.
+                    module.put(ApiFeatures.FUNCTION_GATED, true);
+                }
             }
         }
     }

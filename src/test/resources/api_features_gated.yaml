@@ -1,0 +1,28 @@
+# apiFeatures: a group (admin, by path) takes one operation of the Items tag, so items_api.rs gates its functions one
+# by one, and the admin function alone uses none of the imports the other needs (models, ContentType).
+openapi: 3.0.3
+info: { title: gated, version: "1.0" }
+paths:
+  /items:
+    get:
+      tags: [Items]
+      operationId: listItems
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Item" } }
+  /admin/items/{id}:
+    delete:
+      tags: [Items]
+      operationId: deleteItem
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: deleted }
+components:
+  schemas:
+    Item:
+      type: object
+      properties: { id: { type: string } }

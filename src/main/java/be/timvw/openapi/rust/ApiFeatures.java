@@ -53,6 +53,11 @@ final class ApiFeatures {
     static final String MODULE_CFG = "x-rust-module-cfg";
     /** On an operation, when the module's cfg does not already say it: the cfg predicate of its items. */
     static final String OPERATION_CFG = "x-rust-operation-cfg";
+    /**
+     * On an API module (tower stack) with an operation gated on its own: the module allows unused imports, as a
+     * feature set may compile none of the functions that use one.
+     */
+    static final String FUNCTION_GATED = "x-rust-function-gated";
     /** On a model: the cfg predicate of its {@code pub mod} and {@code pub use} lines; absent when ungated. */
     static final String MODEL_CFG = "x-rust-model-cfg";
 

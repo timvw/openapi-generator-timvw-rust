@@ -188,6 +188,31 @@ tokio `AsyncRead`. The runtime's guide has [the details](../../runtime/README.md
 
 With `httpStack=reqwest-middleware` file parameters stay `std::path::PathBuf`s.
 
+### Typed event streams
+
+With `typedEventStreams`, a `text/event-stream` response is an `apis::sse::EventStream<T, E>`, whose
+`idle_timeout(duration)` ends a stream that stalls (no bytes, not even a `: keep-alive` comment, for `duration`) with
+an `Error::Http` whose `is_timeout()` is true. There is no limit by default. The crate depends on the runtime's `time`
+feature for it (tokio's timer natively, the host's `setTimeout` on WebAssembly).
+
+### WebAssembly
+
+A tower client builds for `wasm32-unknown-unknown` (a browser, a worker, Node.js) as it is, with its default features:
+
+```sh
+cargo build --target wasm32-unknown-unknown
+```
+
+The runtime does what differs, behind `#[cfg(target_family = "wasm")]`: reqwest sends with the host's `fetch`, retries
+back off and honour `Retry-After` with the host's timer, nothing needs to be `Send` (the bounds are the runtime's
+`MaybeSend` and `MaybeSync`, and `EventStream::from_bytes` takes them too), and tokio is not a dependency. TLS is the
+host's: `native-tls` and `rustls` select nothing there. There is no file system: give a file parameter bytes
+(`Upload::bytes`, a `Vec<u8>`) or a stream (`Upload::stream`, `Upload::from_fn`); a `PathBuf`, which a multipart union
+with a file variant still holds, compiles but fails when the request is built, with an `Error::Http` whose `is_io()` is
+true. A streamed upload is read into memory before `fetch` sends it. A crate with `uuid`s depends on uuid's `js`
+feature there (randomness from `crypto.getRandomValues`). The runtime's guide has
+[the details](../../runtime/README.md#webassembly).
+
 ### The runtime version
 
 The generated `Cargo.toml` asks for `timvw-rust-runtime = "^<runtimeVersion>"` (default: the release this generator
@@ -203,7 +228,13 @@ with the `runtime/` directory of the same commit.
 | `retry` | yes | `timvw_rust_runtime::retry` |
 | `tracing` | no | `timvw_rust_runtime::trace::TraceLayer`: logs each request and retry with `tracing` |
 
-A crate with a file parameter depends on the runtime with its `fs` feature (files read with tokio, `Response::save_to`).
+A crate with a file parameter depends on the runtime with its `fs` feature (files read with tokio, `Response::save_to`),
+one with typed event streams with its `time` feature (`EventStream::idle_timeout`). Neither brings tokio or files to
+a [WebAssembly](#webassembly) build.
+
+With `apiFeatures`, an API module whose functions are gated one by one (a group that takes part of a tag) allows unused
+imports itself, as a feature set may compile none of the functions that use one: a crate that keeps a `lib.rs` of its
+own needs no `allow(unused_imports)`.
 
 Without `native-tls` and `rustls`, `Client::default()` fails every request; set a client with `Client::from_service`.
 

@@ -115,7 +115,8 @@ whose body says it is permanent (OpenAI's `insufficient_quota`) is not retried w
 [runtime's guide](runtime/README.md) covers retries, timeouts, logging (`trace::TraceLayer`, feature `tracing`),
 headers and authentication layers, and rate limits. Headers and query parameters for one call go on its builder,
 `.options(&options)` with an `apis::RequestOptions`
-([guide](docs/guides/http-stack.md#headers-and-query-parameters-for-one-call)). With
+([guide](docs/guides/http-stack.md#headers-and-query-parameters-for-one-call)). The client builds for WebAssembly
+(`wasm32-unknown-unknown`) as it is ([guide](docs/guides/http-stack.md#webassembly)). With
 `httpStack=reqwest-middleware` the client is a `reqwest_middleware::ClientWithMiddleware` instead, as before 0.25.
 
 ### Models
@@ -310,12 +311,12 @@ dependencies the generator writes, which depend on the spec and the options:
 | Dependency | When |
 | --- | --- |
 | `serde`, `serde_json`, `serde_repr`, `url` | always |
-| `timvw-rust-runtime` | `httpStack=tower` (the default); with its `fs` feature when a parameter is a file (`Upload`) |
+| `timvw-rust-runtime` | `httpStack=tower` (the default); with its `fs` feature when a parameter is a file (`Upload`), its `time` feature with `typedEventStreams` and an operation that streams |
 | `reqwest`, `reqwest-middleware` | `httpStack=reqwest-middleware` |
 | `bon` | `bonBuilders` (the default) |
 | `serde_with` | a nullable optional property (`Option<Option<T>>`) or a `format: byte` property |
 | `chrono` | a `date` or `date-time` anywhere (model, parameter, union variant), with `useChrono` (the default) |
-| `uuid` | a `format: uuid` anywhere |
+| `uuid` | a `format: uuid` anywhere; with `httpStack=tower`, its `js` feature too on `wasm32-unknown-unknown` (a `[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]` table) |
 | `regex` | a `pattern` that `validate()` checks |
 | `futures-core` (and reqwest's `stream` feature with `httpStack=reqwest-middleware`) | `typedEventStreams` with an operation that streams |
 | `tokio` (`fs`), `tokio-util` (`codec`), reqwest's `stream` feature | `httpStack=reqwest-middleware`: a file body, or a multipart file without `multipartHelper` |

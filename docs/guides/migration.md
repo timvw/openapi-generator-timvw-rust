@@ -43,6 +43,29 @@ union with a file variant (`multipartHelper`) keeps `PathBuf` in its model and s
 `httpStack=reqwest-middleware` renders what 0.26 rendered. The crate depends on the runtime's `fs` feature instead of
 `tokio` and `tokio-util`; it needs the `timvw-rust-runtime` release that has `Upload`.
 
+### WebAssembly
+
+A tower client (and `timvw-rust-runtime` 0.3) builds for `wasm32-unknown-unknown`: nothing to change to keep building
+natively. For a WebAssembly build, see [the HTTP stack guide](http-stack.md#webassembly). Code of your own that names
+the runtime's bounds may need care:
+
+- `Client::from_service`, `Client::layer`, `Body::wrap`, `Body::wrap_stream`, `Upload::stream`, `Upload::from_fn`,
+  `Events::from_bytes` and `EventStream::from_bytes` bound their arguments by `timvw_rust_runtime::MaybeSend` and
+  `MaybeSync` instead of `Send` and `Sync`. Natively these are the same (`MaybeSend: Send`), so callers compile as
+  before; a generic function of yours that forwards to them can keep `Send` (natively) or use `MaybeSend` to build for
+  both.
+- `HttpService` is tower's `BoxCloneSyncService` natively, as before, and a `LocalBoxCloneService` on WebAssembly.
+- On WebAssembly, `Client`, `Response` and their futures are not `Send`, and `Upload::file`, `Upload::reader`,
+  `Response::save_to` and `Response::into_async_read` do not exist.
+
+### Smaller changes
+
+- A typed event stream has `idle_timeout(duration)` (`typedEventStreams`, tower): no timeout unless you set one. The
+  crate depends on the runtime's `time` feature for it.
+- With `apiFeatures`, an API module whose functions are gated one by one allows unused imports: the
+  `#![cfg_attr(not(feature = "full"), allow(unused_imports))]` a hand-written `lib.rs` added for it can go.
+- A crate with `uuid`s adds `uuid`'s `js` feature for `wasm32-unknown-unknown` (tower).
+
 ## From 0.25 to 0.26
 
 ### Credentials

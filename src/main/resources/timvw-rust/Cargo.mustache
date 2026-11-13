@@ -65,7 +65,13 @@ reqwest = { version = "^0.13", default-features = false, features = ["json", "mu
 {{/useAsyncFileStream}}
 {{/httpStackTower}}
 {{#httpStackTower}}
-timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFs}}, features = ["fs"]{{/runtimeFs}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#apiFeatures}}, optional = true{{/apiFeatures}} }
+timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFeatures}}, features = [{{{runtimeFeatures}}}]{{/runtimeFeatures}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#apiFeatures}}, optional = true{{/apiFeatures}} }
+{{#hasUUIDs}}
+
+# WebAssembly in a JavaScript host (wasm32-unknown-unknown): uuid's `v4` draws from `crypto.getRandomValues`.
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+uuid = { version = "^1.8", features = ["js"] }
+{{/hasUUIDs}}
 
 [features]
 default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry"{{#apiFeatures}}, "full"{{/apiFeatures}}]

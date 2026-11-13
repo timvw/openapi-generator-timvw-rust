@@ -224,15 +224,15 @@ Rule: [`schema.format.date-time`](mapping/schema.md#schemaformatdate-time). Test
 ### `bonBuilders`
 
 boolean, default `true`. `bon::Builder` on model structs and `#[bon::builder]` on API functions. `false` makes the
-functions take positional arguments, as stock does, and leaves out per-call `RequestOptions` (they need the
-builder).
+functions take positional arguments, as stock does; the last one is the per-call
+`Option<&RequestOptions>` (since 0.29; `None` for none).
 
 <!-- not compiled: calls, with and without the option -->
 ```rust
 // bonBuilders=true (default)
 list_models().configuration(&config).limit(10).order("desc").call().await?;
 // bonBuilders=false
-list_models(&config, Some(10), Some("desc"), None).await?;
+list_models(&config, Some(10), Some("desc"), None, None).await?; // the last: per-call RequestOptions
 ```
 
 Rule: [`operation.operationId`](mapping/operation.md#operationoperationid). Tests:

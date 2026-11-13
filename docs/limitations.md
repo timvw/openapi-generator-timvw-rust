@@ -6,16 +6,13 @@ mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed i
 
 ## Generated client
 
-- **`httpStack=reqwest-middleware` is frozen.** It renders what 0.25 rendered: no `Upload`s (file parameters are
-  `PathBuf`s), no `SecretString` credentials, no per-call `RequestOptions`, no WebAssembly support. New features go
-  to the default `tower` stack.
-- **No per-call options without builders.** `.options(&RequestOptions)` needs `bonBuilders` (the default); with
-  `bonBuilders=false` the functions take no such argument.
-- **`RequestOptions` cannot change the path or the base URL** of one call (async-openai's path override); a
-  `ProviderLayer` on the client does that for every call.
-- **Multipart body models keep `PathBuf`.** A multipart request body schema is also generated as a model (e.g.
-  `CreateContainerFileBody`); its binary properties stay `PathBuf`. The operation itself takes `timvw_rust_runtime::Upload`, so this only matters to code
-  that builds that model directly.
+- **`RequestOptions` cannot change the path** of one call (async-openai's path override): `base_url` replaces the
+  base URL, and the operation decides its path; a `ProviderLayer` with `map_path` rewrites paths for every call.
+- **An upload has no JSON form.** A model's file field (`Upload`) is left out of its JSON, and a model with a required
+  file field does not decode from JSON.
+- **Generated crates declare the runtime's `rust-version` (1.88) but not resolver 3.** On Rust 1.88, resolve with
+  `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update` (or `resolver = "3"` in your workspace): the newest
+  `uuid` needs a newer Rust.
 
 ## Runtime
 

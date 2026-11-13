@@ -88,7 +88,7 @@ Current releases: generator **0.28.0** (`ghcr.io/timvw/openapi-generator-timvw-r
 | --- | --- |
 | [Getting started](docs/guides/getting-started.md) | the generated crate: calling an operation, models, errors, validation; running the generator (Docker, Maven), a hand-kept `Cargo.toml` |
 | [Options](docs/options.md) | every option, with its default, an example and its tests; the names the generator rejects |
-| [HTTP stack](docs/guides/http-stack.md) | `httpStack`: the tower client, retries, providers, per-call options, credentials, uploads and downloads, event streams, WebAssembly |
+| [HTTP stack](docs/guides/http-stack.md) | the tower client, retries, providers, per-call options, credentials, uploads and downloads, event streams, WebAssembly |
 | [timvw-rust-runtime](runtime/README.md) | the runtime: retries, timeouts, logging, middleware, providers, rate limits, uploads, its features |
 | [Errors](docs/guides/errors.md) | the `Error` type, status variants, headers, text errors |
 | [Validation](docs/guides/validation.md) | `validate()`: what it checks, what it skips, the off switch |

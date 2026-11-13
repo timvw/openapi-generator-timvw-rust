@@ -22,6 +22,6 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | | |
 | --- | --- |
 | OpenAPI | any operation |
-| Rust | `Error<T>` also has `Http(timvw_rust_runtime::Error)` (building or sending the request, or reading the response, failed, a file to upload could not be read: `is_io()`; `Reqwest(reqwest::Error)` and `ReqwestMiddleware(reqwest_middleware::Error)` with `httpStack=reqwest-middleware`), `Serde(serde_json::Error)` (a success body did not decode, or a struct parameter did not serialize) and `Io(std::io::Error)` (with `httpStack=reqwest-middleware`: a file to send could not be read) |
-| Library | `Error::Http` (`Error::Reqwest` and `Error::ReqwestMiddleware` with `httpStack=reqwest-middleware`) |
+| Rust | `Error<T>` also has `Http(timvw_rust_runtime::Error)` (building or sending the request, or reading the response, failed, a file to upload could not be read: `is_io()`), `Serde(serde_json::Error)` (a success body did not decode, or a struct parameter did not serialize) and `Io(std::io::Error)` (not produced by the generated code; `?` on an `io::Error` converts) |
+| Library | `Error::Http` |
 | Tests | [`OperationMappingTest#errorResponsesAreAnUntaggedEnumPerOperation`](../../src/test/java/be/timvw/openapi/rust/OperationMappingTest.java#L149) |

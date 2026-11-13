@@ -44,7 +44,7 @@ templates (ported from `-g rust`), not something it inherits, so a rule can chan
 ## What the generator renders
 
 The **Rust** entry of every rule is what `timvw-rust` renders without options, in the one client configuration it
-generates (async, sending through a tower service from `timvw-rust-runtime`, `httpStack=tower`; the matching stock
+generates (async, sending through a tower service from `timvw-rust-runtime`; the matching stock
 options are rejected, see
 [not options](../options.md#not-options)). What used to be the baseline options (`boxOnlyCycles`,
 `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`,
@@ -57,12 +57,11 @@ entry describes those and every other option as a variation of what the generato
 
 ## HTTP library
 
-By default (`httpStack=tower`) the generated code sends through
+The generated code sends through
 [`timvw-rust-runtime`](../../runtime/README.md): its `Client` is a [tower](https://docs.rs/tower) service, reqwest
 unless replaced, and its `RequestBuilder`, `Response` and `multipart` have the methods of reqwest's that the code calls.
-With `httpStack=reqwest-middleware` it uses [reqwest](https://docs.rs/reqwest) and
-[reqwest-middleware](https://docs.rs/reqwest-middleware) directly, as up to 0.24, and the **Library** rows name the
-reqwest type of the same name (`reqwest::Response` for `timvw_rust_runtime::Response`, and so on). `--library` (stock
+Up to 0.28, `httpStack=reqwest-middleware` used [reqwest](https://docs.rs/reqwest) and
+[reqwest-middleware](https://docs.rs/reqwest-middleware) directly; 0.29 removed it. `--library` (stock
 `-g rust` has `hyper`, `hyper0x` and `reqwest-trait`) is rejected; see the
 [HTTP stack guide](../guides/http-stack.md).
 
@@ -73,11 +72,11 @@ has a **Library** row that names it. These are:
 | Where | Type from the HTTP library |
 | --- | --- |
 | a binary response (`format: binary`, `application/octet-stream`) | `timvw_rust_runtime::Response`, read as bytes or a stream |
-| a binary request body or file part | `timvw_rust_runtime::Upload` (a `PathBuf` converts); a file is streamed with tokio as a `timvw_rust_runtime::Body` or a `timvw_rust_runtime::multipart::Part`, and opened again by a retry |
+| a binary request body, file part or model field | `timvw_rust_runtime::Upload` (a `PathBuf` converts); a file is streamed with tokio as a `timvw_rust_runtime::Body` or a `timvw_rust_runtime::multipart::Part`, and opened again by a retry |
 | a `multipart/form-data` body | built as a `timvw_rust_runtime::multipart::Form` |
 | a `text/event-stream` response (`typedEventStreams`) | a stream over the response's bytes |
-| the client | `timvw_rust_runtime::Client` in `Configuration` (`reqwest_middleware::ClientWithMiddleware` with `httpStack=reqwest-middleware`) |
-| transport errors | `Error::Http(timvw_rust_runtime::Error)` (`Error::Reqwest(reqwest::Error)` and `Error::ReqwestMiddleware(reqwest_middleware::Error)` with `httpStack=reqwest-middleware`) |
+| the client | `timvw_rust_runtime::Client` in `Configuration` |
+| transport errors | `Error::Http(timvw_rust_runtime::Error)` |
 
 ## Objects
 

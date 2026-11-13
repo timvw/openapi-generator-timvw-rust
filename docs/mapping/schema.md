@@ -59,7 +59,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | `type: string, format: binary` (a file) |
 | Rust | as a request body, multipart part or parameter: `timvw_rust_runtime::Upload`, what to send (a path, bytes, a reader or a stream; the builder setter takes `impl Into<Upload>`, a `PathBuf` too). As a response: `timvw_rust_runtime::Response`, to read as bytes or a stream, or `save_to` a file |
 | Wire | the file's bytes, streamed from disk with a `Content-Length` (a part typed from the file's extension); the response body as it comes |
-| Library | `timvw_rust_runtime::Response`; `timvw_rust_runtime::Upload`, sent as a `timvw_rust_runtime::Body` or `timvw_rust_runtime::multipart::Part::upload`, and opened again by a retry. `httpStack=reqwest-middleware`: `std::path::PathBuf`, opened with tokio |
+| Library | `timvw_rust_runtime::Response`; `timvw_rust_runtime::Upload`, sent as a `timvw_rust_runtime::Body` or `timvw_rust_runtime::multipart::Part::upload`, and opened again by a retry |
 | Options | `fileProperties` renders listed `Schema.property` entries as files |
 | Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L107), [`EventStreamsTest#requestBodiesGoOutAsTheirMediaType`](../../src/test/java/be/timvw/openapi/rust/EventStreamsTest.java#L150) |
 

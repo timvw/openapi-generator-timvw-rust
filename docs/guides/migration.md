@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [From 0.28 to 0.29](#from-028-to-029): `httpStack` and reqwest-middleware removed; models' file fields hold `Upload`s; per-call options without builders and a per-call base URL; runtime 0.4.
 - [From 0.27 to 0.28](#from-027-to-028): multipart unions with a file variant hold `Upload`s; runtime 0.3.1 and its `TimeoutLayer`.
 - [From 0.26 to 0.27](#from-026-to-027): file parameters are `timvw_rust_runtime::Upload`s; runtime 0.3; WebAssembly.
 - [From 0.25 to 0.26](#from-025-to-026): the credentials of `Configuration` are `SecretString`s; per-call headers and query parameters; runtime 0.2 retries.
@@ -12,6 +13,98 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From 0.28 to 0.29
+
+### `httpStack` is removed: the client always sends through `timvw-rust-runtime`
+
+The tower client of [`timvw-rust-runtime`](../../runtime/README.md), the default since 0.25, is the only HTTP stack.
+`httpStack=reqwest-middleware` is no longer generated, and setting `httpStack` to any value, `tower` included, fails
+generation:
+
+```text
+timvw-rust: option 'httpStack' was removed in 0.29.0: the client always sends through timvw-rust-runtime (tower), the
+default since 0.25, and reqwest-middleware is no longer generated; remove it (it was set to 'tower').
+```
+
+- With `httpStack=tower` (or unset): remove the option; nothing else changes for it.
+- With `httpStack=reqwest-middleware`: remove the option and move to the tower client, as [0.25](#from-024-to-025)
+  describes for the default: `Configuration.client` is a `timvw_rust_runtime::Client`, `apis::Error` has
+  `Http(timvw_rust_runtime::Error)` instead of `Reqwest` and `ReqwestMiddleware`, file parameters are
+  `timvw_rust_runtime::Upload`s (a `PathBuf` converts), credentials are `SecretString`s (`Some("..".into())`), and
+  `Cargo.toml` depends on `timvw-rust-runtime` instead of `reqwest`, `reqwest-middleware`, `tokio` and `tokio-util`.
+  Middleware becomes tower layers:
+
+#### Moving from reqwest-middleware to tower
+
+| With `reqwest-middleware` | With `tower` |
+| --- | --- |
+| `reqwest_middleware::ClientBuilder::new(reqwest_client).build()` | `timvw_rust_runtime::Client::from_reqwest(reqwest_client)` |
+| `.with(RetryTransientMiddleware::new_with_policy(..))` | nothing: `Client::default()` retries; for another policy `Client::from_service(ReqwestService::default()).layer(RetryLayer::new(policy))` |
+| `.with(TracingMiddleware::default())` | `.layer(tower_http::trace::TraceLayer::new_for_http())`, or the runtime's `trace::TraceLayer` (feature `tracing`) |
+| a `reqwest_middleware::Middleware` of your own | a `tower::Layer` of your own (or `tower::ServiceBuilder::map_request`) |
+| `Error::Reqwest(e)`, `Error::ReqwestMiddleware(e)` | `Error::Http(e)` |
+| `Error::Io(e)` (a file to upload could not be read) | `Error::Http(e)` with `e.is_io()` |
+| `reqwest::StatusCode`, `reqwest::header::*` | `timvw_rust_runtime::StatusCode`, `timvw_rust_runtime::header::*` (the same types) |
+| a file response is a `reqwest::Response` | a file response is a `timvw_rust_runtime::Response` (`status()`, `headers()`, `bytes()`, `bytes_stream()`, `save_to(path)`) |
+| a file parameter is a `std::path::PathBuf` | a `timvw_rust_runtime::Upload`; the builder setter takes the `PathBuf` as it is |
+| `bearer_access_token: Some(token)` (a `String`) | `Some(token.into())` (a `SecretString`) |
+
+### Models' file fields hold `Upload`s
+
+A model's `format: binary` property (one file, an array, a map; optional or nullable) is a
+`timvw_rust_runtime::Upload` (`Vec<Upload>`, ...) instead of a `std::path::PathBuf`, as file parameters (0.27) and the
+file variants of multipart unions (0.28) are. In openai-client-base that is `CreateContainerFileBody.file` (the body of
+`POST /containers/{container_id}/files`, a JSON body too). The field is `#[serde(skip)]`: an upload has no JSON form,
+so the model's JSON leaves it out and JSON never sets it; a required single file is left out too, and the model then
+does not decode from JSON. `new` takes `impl Into<Upload>` for a required file, and the bon setters convert, so a
+`PathBuf` keeps working there:
+
+<!-- not compiled: openai-client-base's model -->
+```rust
+// 0.28
+let body = models::CreateContainerFileBody { file: Some(PathBuf::from("data.csv")), file_id: None };
+// 0.29
+let body = models::CreateContainerFileBody { file: Some(PathBuf::from("data.csv").into()), file_id: None };
+let body = models::CreateContainerFileBody::builder().file(PathBuf::from("data.csv")).build();
+```
+
+With `apiFeatures`, the `-types` features of such models depend on the runtime.
+
+### Per-call options without builders
+
+With `bonBuilders=false` every API function takes a last argument `options: Option<&RequestOptions>` (named
+`request_options` when the operation has a parameter named `options`), as the builders' `.options(..)`. Add `None` to
+each call:
+
+<!-- not compiled: bonBuilders=false -->
+```rust
+// 0.28
+items_api::list_items(&configuration, Some(10)).await?;
+// 0.29
+items_api::list_items(&configuration, Some(10), None).await?;
+```
+
+### Runtime 0.4: a per-call base URL, and per-call options win over `ProviderLayer`
+
+The generated `Cargo.toml` asks for `timvw-rust-runtime` `^0.4`, and declares `rust-version = "1.88"`, the runtime's.
+
+- `RequestOptions::base_url(url)` sends one call to another base URL: `Configuration.base_path` is replaced, and the
+  operation's path and query are kept. Generated functions declare their base (`RequestBuilder::base`) before
+  applying the options.
+- A `ProviderLayer` no longer replaces a header or query parameter that a call's `RequestOptions` set: the call's own
+  wins (an `api-version` set per call is sent instead of the provider's, once). Code that relied on the provider
+  overriding per-call options drops those options. A call with a per-call base URL is not moved by `rewrite_from`; at
+  the provider's own base it still gets the provider's path mapping, headers and query, any other base nothing.
+
+### Removed options fail whatever their value
+
+`jsonValueSchemas` with an empty value was accepted and ignored; like every removed or rejected option, setting it to
+any value, an empty one too, now fails generation. Remove it.
+
+To upgrade a client repository, bump the image tag to `0.29.0-og7.27.0`, remove `httpStack`, regenerate, and run
+`cargo clippy --all-targets -- -D warnings` and `cargo test`. On Rust 1.88, resolve with
+`CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update` (the newest `uuid` needs a newer Rust).
 
 ## From 0.27 to 0.28
 
@@ -119,7 +212,7 @@ the runtime's bounds may need care:
 - Retries (runtime 0.3) read `Retry-After` as an HTTP date too, and wait until the deadline the server gave, counted
   from when the response arrived. `RetryPolicy`'s API does not change; `server_directed_429(true)` is new and off.
 - To send the same API to another provider, `timvw_rust_runtime::ProviderLayer` replaces a layer of your own that
-  rewrote URLs ([HTTP stack guide](http-stack.md#tower-the-runtime-crate)).
+  rewrote URLs ([HTTP stack guide](http-stack.md#the-runtime-crate)).
 
 To upgrade a client repository, bump the image tag to `0.27.0-og7.27.0`, regenerate, and run
 `cargo clippy --all-targets -- -D warnings` and `cargo test`.
@@ -212,7 +305,7 @@ With the default `tower`:
 - `Configuration.client` is a `timvw_rust_runtime::Client` (`configuration::Client` re-exports it, where
   `configuration::ClientWithMiddleware` was). A `reqwest_middleware` stack becomes tower layers:
   `Client::from_reqwest(reqwest_client)` for a configured `reqwest::Client`, `.layer(..)` for each middleware. The
-  [HTTP stack guide](http-stack.md#moving-from-reqwest-middleware-to-tower) maps the common ones.
+  [table below](#moving-from-reqwest-middleware-to-tower) maps the common ones.
 - `apis::Error` has `Http(timvw_rust_runtime::Error)` where it had `Reqwest(reqwest::Error)` and
   `ReqwestMiddleware(reqwest_middleware::Error)`. A `match` on those variants matches `Http`; the reqwest error is its
   `source()`.

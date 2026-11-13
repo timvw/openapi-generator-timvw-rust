@@ -2,12 +2,11 @@
 
 Rules for the [Security Scheme Object](https://spec.openapis.org/oas/v3.0.3#security-scheme-object). Which schemes an
 operation sends is [`operation.security`](operation.md#operationsecurity). Every credential is a field of
-`Configuration`, empty by default, and is sent only when set. With `httpStack=tower` (the default) the secrets
+`Configuration`, empty by default, and is sent only when set. The secrets
 (the tokens, the basic-auth password and the api key) are `SecretString`s ([secrecy](https://docs.rs/secrecy),
 re-exported as `configuration::SecretString`): `Some("...".into())` sets one, `Debug` redacts them, and the generated
-code exposes them only to build the header, query parameter or cookie, sending headers marked sensitive. With
-`httpStack=reqwest-middleware` they are `String`s. `CredentialsTest` renders `src/test/resources/credentials.yaml`
-with both stacks and sends each scheme to a local server.
+code exposes them only to build the header, query parameter or cookie, sending headers marked sensitive.
+`CredentialsTest` renders `src/test/resources/credentials.yaml` and sends each scheme to a local server.
 
 Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#method`. `OperationMappingTest` renders
 `src/test/resources/operation_mapping.yaml` without options.

@@ -1,22 +1,16 @@
-# Guide: the HTTP stack (`httpStack`)
+# Guide: the HTTP stack
 
-A generated client sends its requests through `Configuration.client`. What that is depends on `httpStack`:
-
-| `httpStack` | `Configuration.client` | Since |
-| --- | --- | --- |
-| `tower` (default) | `timvw_rust_runtime::Client`: a [tower](https://docs.rs/tower) service, reqwest unless replaced | 0.25 |
-| `reqwest-middleware` | `reqwest_middleware::ClientWithMiddleware` | up to 0.24 the only stack |
-
-The generated functions are the same with both: the same arguments, the same models, the same `ResponseContent`. What
-differs is how you configure sending, the variants of `apis::Error` that report a failure to send, and, with `tower`,
-[headers and query parameters for one call](#headers-and-query-parameters-for-one-call).
+A generated client sends its requests through `Configuration.client`, a `timvw_rust_runtime::Client`: a
+[tower](https://docs.rs/tower) service, reqwest unless replaced. It has been the default since 0.25 and is the only
+stack since 0.29, which removed `httpStack=reqwest-middleware`
+([moving off it](migration.md#from-028-to-029)).
 
 The examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as `my_client`. They
 are compiled by the tests.
 
-## `tower`: the runtime crate
+## The runtime crate
 
-With `httpStack=tower` the crate depends on [`timvw-rust-runtime`](../../runtime/README.md), released from this
+The crate depends on [`timvw-rust-runtime`](../../runtime/README.md), released from this
 repository next to the generator. Its `Client` is a tower service from `http::Request<Body>` to `http::Response<Body>`:
 
 - `Client::default()` sends with reqwest (the crate's default features `native-tls` or `rustls` choose its TLS) and
@@ -81,10 +75,11 @@ assert_eq!(page.data[0].name, "Lamp");
 ### Headers and query parameters for one call
 
 A layer changes every request. For one call, every operation's builder takes `.options(&options)`: a
-`RequestOptions` (`apis::RequestOptions`, the runtime's) with extra headers and query parameters. They are applied
-after everything the function sets, parameters, authentication, `Content-Type` and `Accept` included: each header
-replaces the values the request has under its name, and the query parameters are appended to the generated ones.
-`header` and `query` check their input, and fail with an `Error` whose `is_builder()` is true:
+`RequestOptions` (`apis::RequestOptions`, the runtime's) with extra headers and query parameters, and another base URL.
+They are applied after everything the function sets, parameters, authentication, `Content-Type` and `Accept`
+included: each header replaces the values the request has under its name, and the query parameters are appended to
+the generated ones. `header`, `query` and `base_url` check their input, and fail with an `Error` whose `is_builder()`
+is true:
 
 ```rust
 use my_client::apis::RequestOptions;
@@ -102,8 +97,24 @@ let page = items_api::list_items()
 
 Every method of an operation takes them: the `_response` twins, the methods of `contentTypeMethods` (multipart
 included) and the `_stream` methods of `typedEventStreams`. When an operation has a parameter named `options`, the
-setter is `.request_options(..)`. One `RequestOptions` can be reused for many calls. There is no such argument with
-`bonBuilders=false`, nor with `httpStack=reqwest-middleware`.
+setter is `.request_options(..)`. One `RequestOptions` can be reused for many calls. With `bonBuilders=false` (since
+0.29) the options are each function's last argument, `None` for none:
+
+<!-- not compiled: bonBuilders=false -->
+```rust
+let page = items_api::list_items(&configuration, Some(10), Some(&options)).await?;
+let page = items_api::list_items(&configuration, Some(10), None).await?;
+```
+
+`RequestOptions::base_url` (runtime 0.4) sends one call to another base URL: it replaces `configuration.base_path`
+(scheme, host, port and path prefix), and the operation's own path and query are kept, so
+`base_url("https://eu.api.example.com/v2")` sends `GET {base_path}/items?limit=10` to
+`https://eu.api.example.com/v2/items?limit=10`. There is no per-call path: the operation decides it.
+
+Per-call options win over a `ProviderLayer` (runtime 0.4): the layer does not replace a header or query parameter the
+options set (with an `api-version` in both, the call's own is sent, once), and it does not move a call the options sent
+to a base URL of their own. When that base is the provider's (or under it), the layer still maps the path and adds its
+headers and query; any other base gets nothing from it, so the provider's credentials stay with the provider.
 
 To send or decode types of your own, call `configuration.client` directly, with the same layers; for a
 `text/event-stream` response, `response.events().json::<T>()` decodes each event. The runtime's guide shows
@@ -140,8 +151,7 @@ let key: &str = configuration.api_key.as_ref().unwrap().key.expose_secret();
 
 The generated code exposes a secret only where it builds the request, and sends an `Authorization`, api-key or
 `Cookie` header marked sensitive (`HeaderValue::set_sensitive`), so `Debug` of the request's headers and HTTP/2 header
-compression leave it out. An api key in a query parameter is part of the URL. With `httpStack=reqwest-middleware` the
-credentials are `String`s, as before 0.26.
+compression leave it out. An api key in a query parameter is part of the URL.
 
 ### Uploads and downloads
 
@@ -211,8 +221,20 @@ skills_api::create_skill()
 The file variants are `#[serde(skip)]`: an upload has no JSON form, so serializing a union (or a model holding it) that
 holds a file is an error, and JSON never decodes to one. The unions are request bodies, sent part by part.
 
-With `httpStack=reqwest-middleware` file parameters, and the file variants of multipart unions, stay
-`std::path::PathBuf`s.
+A model's file field (since 0.29) holds an `Upload` too: `Option<Upload>`, `Vec<Upload>` for an array of files, or in a
+map. That is a multipart body schema that is a model as well (openai-client-base's `CreateContainerFileBody`, also a
+JSON body), or any other schema with a `format: binary` property. The field is `#[serde(skip)]`: the model's JSON leaves
+it out, and JSON never sets it (`None`, empty). A required field holding one upload is left out of the JSON too, and
+decoding the model from JSON fails. `new` takes anything that converts into an upload for a required file (a `PathBuf`,
+bytes), and with `bonBuilders` the setters convert, as for parameters:
+
+<!-- not compiled: openai-client-base's model -->
+```rust
+use std::path::PathBuf;
+
+let body = models::CreateContainerFileBody::builder().file(PathBuf::from("data.csv")).build();
+assert_eq!(serde_json::to_string(&body)?, "{}"); // the file is no JSON
+```
 
 ### Typed event streams
 
@@ -266,23 +288,3 @@ imports itself, as a feature set may compile none of the functions that use one:
 own needs no `allow(unused_imports)`.
 
 Without `native-tls` and `rustls`, `Client::default()` fails every request; set a client with `Client::from_service`.
-
-## `reqwest-middleware`
-
-`httpStack=reqwest-middleware` renders what 0.24 rendered: `Configuration.client` is a
-`reqwest_middleware::ClientWithMiddleware`, `apis::Error` has `Reqwest(reqwest::Error)` and
-`ReqwestMiddleware(reqwest_middleware::Error)`, and the crate depends on `reqwest` and `reqwest-middleware`. Use it to
-keep middleware written for reqwest-middleware, such as `reqwest-retry` or `reqwest-tracing`, until you move them to
-tower layers.
-
-## Moving from `reqwest-middleware` to `tower`
-
-| With `reqwest-middleware` | With `tower` |
-| --- | --- |
-| `reqwest_middleware::ClientBuilder::new(reqwest_client).build()` | `timvw_rust_runtime::Client::from_reqwest(reqwest_client)` |
-| `.with(RetryTransientMiddleware::new_with_policy(..))` | nothing: `Client::default()` retries; for another policy `Client::from_service(ReqwestService::default()).layer(RetryLayer::new(policy))` |
-| `.with(TracingMiddleware::default())` | `.layer(tower_http::trace::TraceLayer::new_for_http())` |
-| a `reqwest_middleware::Middleware` of your own | a `tower::Layer` of your own (or `tower::ServiceBuilder::map_request`) |
-| `Error::Reqwest(e)`, `Error::ReqwestMiddleware(e)` | `Error::Http(e)` |
-| `reqwest::StatusCode`, `reqwest::header::*` | `timvw_rust_runtime::StatusCode`, `timvw_rust_runtime::header::*` (the same types) |
-| a file response is a `reqwest::Response` | a file response is a `timvw_rust_runtime::Response` (`status()`, `headers()`, `bytes()`, `bytes_stream()`) |

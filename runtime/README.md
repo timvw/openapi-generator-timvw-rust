@@ -12,6 +12,7 @@ crate ships, any layer from the tower ecosystem, or write your own.
 - [Timeouts](#timeouts)
 - [Logging](#logging)
 - [Middleware: headers, authentication, layers of your own](#middleware)
+- [Providers: the same API at another base URL](#providers)
 - [Concurrency and rate limits](#concurrency-and-rate-limits)
 - [Choosing the HTTP client, and tests without a network](#choosing-the-http-client)
 - [Your own types, and streams of server-sent events](#your-own-types-and-server-sent-events)
@@ -68,9 +69,11 @@ A `Client` is cheap to clone, and clones share their layers' state (a rate limit
 - It retries `429 Too Many Requests`, `408 Request Timeout`, every `5xx` and failures to connect. Any other response
   or error is returned at once.
 - It waits as long as the server asks, with `retry-after-ms` (milliseconds, as OpenAI sends) or `Retry-After`
-  (seconds), up to `max_retry_after` (60 s by default). A response that asks for longer is returned at once instead
-  of retried: waiting less than asked would likely fail again, and an hour-long wait is rarely what a caller wants.
-  (`Retry-After` as an HTTP date is ignored, and the policy backs off.)
+  (seconds, or an HTTP date such as `Wed, 21 Oct 2015 07:28:00 GMT`), up to `max_retry_after` (60 s by default). A
+  response that asks for longer is returned at once instead of retried: waiting less than asked would likely fail
+  again, and an hour-long wait is rarely what a caller wants. The wait is read once into a deadline, counted from when
+  the response arrived (a date in the past means now), and the policy sleeps until that deadline: reading a `429`'s
+  body for `permanent_429` does not make it wait longer than asked.
 - Otherwise it backs off exponentially: 200 ms, 400 ms, 800 ms, ..., capped at `max_delay` (8 s). Each delay is
   jittered, picked at random between half and all of it, so that clients that failed together do not retry together;
   `.jitter(false)` turns that off. A server's `Retry-After` is not jittered, nor capped by `max_delay`.
@@ -91,6 +94,21 @@ let client = Client::from_service(ReqwestService::default()).layer(RetryLayer::n
 ```
 
 `retry::RetryLayer::new(policy)` retries just like `tower::retry::RetryLayer::new(policy)`, which works too.
+
+### `429`s retried only when the server says when
+
+Some APIs send `Retry-After` with a `429` that passes by waiting, and leave it out when waiting will not help. With
+`RetryPolicy::server_directed_429(true)`, a `429` without `Retry-After` or `retry-after-ms` (or with one that does not
+parse) is returned at once, and one with them is retried at the time the server gave. `408`, `5xx` and failed
+connections still back off without advice. The default retries every `429`.
+
+```rust,no_run
+use timvw_rust_runtime::retry::{RetryLayer, RetryPolicy};
+use timvw_rust_runtime::{Client, ReqwestService};
+
+let client = Client::from_service(ReqwestService::default())
+    .layer(RetryLayer::new(RetryPolicy::default().server_directed_429(true)));
+```
 
 ### Permanent `429`s: an exhausted quota
 
@@ -301,6 +319,79 @@ let client = Client::default().layer(AccessToken { cached: Arc::default() });
 
 A layer's service must be `Clone + Send`; it need not be `Sync`. Its response body can be any `http_body::Body`.
 
+## Providers
+
+Several services serve one API under different base URLs: OpenAI-compatible providers, a proxy, a local server, a
+cloud's deployment of it. `ProviderLayer` (or `provider::ProviderLayer`) sends the requests of a generated client to
+one of them. To each request for the provider, it:
+
+1. replaces the base URL (scheme, host, port and path prefix) with the provider's, keeping the rest of the path and the
+   query;
+2. rewrites the rest of the path with `map_path`, if set (a deployment in the path, say);
+3. sets the headers of `header`, `sensitive_header` and `headers`, each replacing the request's values of that name
+   (the generated authentication included); `sensitive_header` marks the value sensitive, for an API key;
+4. sets the query parameters of `query` (an `api-version`, say), each replacing the request's parameters of that name.
+
+A request is the provider's when its URL is under the provider's base URL, or under the base declared with
+`rewrite_from`: the same scheme, host and port, and a path that starts with the base's at a segment boundary (`/v1`
+holds `/v1/models`, not `/v10`). Any other request (a download from another host) goes on unchanged, without the
+provider's headers. A generated `Configuration.base_path` works with it in either of two ways:
+
+- **`base_path` set to the provider**: set `configuration.base_path` to the provider's base URL and use
+  `ProviderLayer::new(provider_base)` for headers, query parameters and paths.
+- **`base_path` left as generated**: declare it with `.rewrite_from(generated_base)`, and the layer moves every request
+  under it. This suits a `Client` shared by several `Configuration`s, or a crate that hands out a client for a
+  provider.
+
+An OpenAI-compatible provider under another base URL, with its own key and headers:
+
+```rust
+use timvw_rust_runtime::http::header::AUTHORIZATION;
+use timvw_rust_runtime::{Client, ExposeSecret, Method, ProviderLayer, SecretString};
+
+let key = SecretString::from("sk-or-123");
+let provider = ProviderLayer::new("https://openrouter.example/api/v1")?
+    .rewrite_from("https://api.openai.com/v1")? // the generated client's base_path
+    .sensitive_header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()))?
+    .header("x-title", "my app")?;
+let client = Client::default().layer(provider.clone());
+// configuration.client = client;
+
+let uri = "https://api.openai.com/v1/chat/completions?stream=true".parse()?;
+assert_eq!(
+    provider.rewrite_uri(&uri)?.to_string(),
+    "https://openrouter.example/api/v1/chat/completions?stream=true"
+);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+A provider that puts a deployment in the path, takes an `api-version` query parameter and an `api-key` header:
+
+```rust
+use timvw_rust_runtime::{Client, ProviderLayer};
+
+let deployment = "gpt-4o";
+let provider = ProviderLayer::new("https://my-resource.example.com/openai")?
+    .rewrite_from("https://api.openai.com/v1")?
+    .sensitive_header("api-key", "secret")?
+    .query(&[("api-version", "2024-10-21")])?
+    .map_path(move |path| format!("/deployments/{deployment}{path}"));
+let client = Client::default().layer(provider.clone());
+
+let uri = "https://api.openai.com/v1/chat/completions".parse()?;
+assert_eq!(
+    provider.rewrite_uri(&uri)?.to_string(),
+    "https://my-resource.example.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21"
+);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+`map_path` gets the path after the base (`/chat/completions`), percent-encoded, and returns the one to put after the
+provider's base. `rewrite_uri` shows where a URL goes, without sending. Added last, the layer sees each request first,
+so it rewrites once, before the retries. The provider's headers and query parameters win over a call's
+[`RequestOptions`](#headers-and-query-parameters-for-one-call) of the same name; for another value per call, use
+another client. The layer knows no provider by name: presets for one API belong in a crate for that API.
+
 ## Concurrency and rate limits
 
 `tower::limit::ConcurrencyLimitLayer` caps requests in flight; the clones of a `Client` share the cap.
@@ -475,7 +566,7 @@ generated client turns it into `apis::Error::ResponseError`.
 | `rustls` | yes | reqwest with rustls, as `Client::default()` |
 | `native-tls` | no | reqwest with the platform's TLS |
 | `reqwest` | via `rustls` or `native-tls` | `ReqwestService`, `Client::from_reqwest` |
-| `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with tokio), and retries in `Client::default()` |
+| `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with tokio, read `Retry-After` dates with `httpdate`), and retries in `Client::default()` |
 | `tracing` | no | `trace::TraceLayer`, and a log event per retry |
 
 A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names.

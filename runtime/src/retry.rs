@@ -20,12 +20,13 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use bytes::{Bytes, BytesMut};
 use http::header::RETRY_AFTER;
 use http::{HeaderMap, StatusCode};
 use http_body_util::{BodyDataStream, BodyExt};
+use tokio::time::Instant;
 use tower::retry::Policy;
 use tower::{Layer, Service};
 
@@ -39,9 +40,13 @@ pub const DEFAULT_BODY_LIMIT: usize = 64 * 1024;
 
 /// Retries `429 Too Many Requests`, `408 Request Timeout` and `5xx` responses, and failures to connect.
 ///
-/// - It waits as long as the server asks, with `retry-after-ms` (milliseconds) or `Retry-After` (seconds), up to
-///   [`RetryPolicy::max_retry_after`] (60 s by default). A server that asks for longer gets its response returned at
-///   once: waiting less than it asked would likely fail again, and waiting an hour is rarely what a caller wants.
+/// - It waits as long as the server asks, with `retry-after-ms` (milliseconds) or `Retry-After` (seconds or an HTTP
+///   date), up to [`RetryPolicy::max_retry_after`] (60 s by default). The wait is read once into a deadline, counted
+///   from when the response arrived, and the policy sleeps until it: time spent in between (reading a `429` body for
+///   [`RetryLayer::permanent_429`]) is not added. A server that asks for longer than `max_retry_after` gets its
+///   response returned at once: waiting less than it asked would likely fail again, and waiting an hour is rarely
+///   what a caller wants. A date in the past means retry now.
+/// - With [`RetryPolicy::server_directed_429`], a `429` is retried only when the server says when.
 /// - Without those headers it backs off exponentially from [`RetryPolicy::base_delay`] (200 ms), doubling on each retry
 ///   up to [`RetryPolicy::max_delay`] (8 s), with jitter: each delay is picked at random between half and all of it, so
 ///   that clients that failed together do not retry together. [`RetryPolicy::jitter`] turns that off.
@@ -55,6 +60,7 @@ pub struct RetryPolicy {
     max_delay: Duration,
     max_retry_after: Duration,
     jitter: bool,
+    server_directed_429: bool,
 }
 
 impl RetryPolicy {
@@ -67,6 +73,7 @@ impl RetryPolicy {
             max_delay: Duration::from_secs(8),
             max_retry_after: Duration::from_secs(60),
             jitter: true,
+            server_directed_429: false,
         }
     }
 
@@ -97,25 +104,42 @@ impl RetryPolicy {
         self
     }
 
+    /// Whether a `429` is retried only when the server says when, with `Retry-After` or `retry-after-ms` (default
+    /// `false`: every `429` is retried, with backoff when the server does not say when).
+    ///
+    /// Some APIs answer a `429` without advice when waiting will not help (a quota, a request too large for a rate
+    /// limit), and with it when it will. `408`, `5xx` and connect failures are retried either way.
+    pub fn server_directed_429(mut self, server_directed: bool) -> Self {
+        self.server_directed_429 = server_directed;
+        self
+    }
+
     /// The number of retries allowed.
     pub fn max_retries(&self) -> usize {
         self.max_retries
     }
 
-    /// How long to wait before the next retry, or `None` when the server asks for longer than `max_retry_after`.
-    fn delay(&self, retry_after: Option<Duration>) -> Option<Duration> {
-        if let Some(retry_after) = retry_after {
-            return (retry_after <= self.max_retry_after).then_some(retry_after);
+    /// When to retry: the server's deadline, or `now` plus the backoff; `None` when the server asks to wait longer than
+    /// `max_retry_after`.
+    fn deadline(&self, retry_after: Option<Instant>, now: Instant) -> Option<Instant> {
+        if let Some(deadline) = retry_after {
+            return (deadline.saturating_duration_since(now) <= self.max_retry_after)
+                .then_some(deadline);
         }
+        Some(now + self.backoff())
+    }
+
+    /// The backoff before the next retry, jittered unless turned off.
+    fn backoff(&self) -> Duration {
         let backoff = self
             .base_delay
             .saturating_mul(1u32 << self.attempts.min(16))
             .min(self.max_delay);
-        Some(if self.jitter {
+        if self.jitter {
             jittered(backoff, random_unit())
         } else {
             backoff
-        })
+        }
     }
 }
 
@@ -140,8 +164,42 @@ fn random_unit() -> f64 {
     (hash >> 11) as f64 / (1u64 << 53) as f64
 }
 
-/// Whether a response or error is worth retrying, and how long the server asked to wait.
-fn retryable<B>(result: &Result<http::Response<B>, BoxError>) -> Option<Option<Duration>> {
+/// When a response arrived, set by [`RetryLayer`] on a `429` before it reads the body, so that the time spent reading
+/// is not added to the server's `Retry-After`.
+#[derive(Clone, Copy, Debug)]
+struct ReceivedAt(Instant);
+
+/// The clocks a `Retry-After` is read against: `Retry-After` in seconds counts from when the response arrived, an HTTP
+/// date against the wall clock, read together with the monotonic one.
+#[derive(Clone, Copy, Debug)]
+struct Clocks {
+    received_at: Instant,
+    now: Instant,
+    wall: SystemTime,
+}
+
+impl Clocks {
+    fn now<B>(response: &http::Response<B>) -> Self {
+        // The wall clock first, so that a pause between the two reads cannot shorten an HTTP date's deadline.
+        let wall = SystemTime::now();
+        let now = Instant::now();
+        let received_at = response
+            .extensions()
+            .get::<ReceivedAt>()
+            .map_or(now, |received| received.0);
+        Self {
+            received_at,
+            now,
+            wall,
+        }
+    }
+}
+
+/// Whether a response or error is worth retrying, and the deadline the server set, if any.
+fn retryable<B>(
+    result: &Result<http::Response<B>, BoxError>,
+    server_directed_429: bool,
+) -> Option<Option<Instant>> {
     match result {
         Ok(response) => {
             let status = response.status();
@@ -149,26 +207,43 @@ fn retryable<B>(result: &Result<http::Response<B>, BoxError>) -> Option<Option<D
                 || status == StatusCode::REQUEST_TIMEOUT
                 || status.is_server_error();
             let permanent = response.extensions().get::<Permanent>().is_some();
-            (transient && !permanent).then(|| retry_after(response.headers()))
+            if !transient || permanent {
+                return None;
+            }
+            let deadline = retry_after(response.headers(), Clocks::now(response));
+            if server_directed_429 && status == StatusCode::TOO_MANY_REQUESTS && deadline.is_none()
+            {
+                #[cfg(feature = "tracing")]
+                tracing::debug!(
+                    target: "timvw_rust_runtime::trace",
+                    status = status.as_u16(),
+                    "not retrying: a 429 without Retry-After (server_directed_429)"
+                );
+                return None;
+            }
+            Some(deadline)
         }
         Err(error) => is_connect(error.as_ref()).then_some(None),
     }
 }
 
-/// The wait a server asks for: `retry-after-ms` in milliseconds, else `Retry-After` in seconds. Both may have a
-/// fraction. `Retry-After` as an HTTP date is ignored (the policy backs off instead).
-fn retry_after(headers: &HeaderMap) -> Option<Duration> {
-    let parse = |name, scale: f64| {
-        let value = headers
-            .get(name)?
-            .to_str()
-            .ok()?
-            .trim()
-            .parse::<f64>()
-            .ok()?;
-        Duration::try_from_secs_f64(value * scale).ok()
+/// The deadline a server sets: `retry-after-ms` in milliseconds, else `Retry-After` in seconds (both may have a
+/// fraction) or as an HTTP date. A date in the past is now.
+fn retry_after(headers: &HeaderMap, clocks: Clocks) -> Option<Instant> {
+    let value = |name| Some(headers.get(name)?.to_str().ok()?.trim());
+    let delay = |value: &str, scale: f64| {
+        let delay = Duration::try_from_secs_f64(value.parse::<f64>().ok()? * scale).ok()?;
+        clocks.received_at.checked_add(delay)
     };
-    parse(RETRY_AFTER_MS, 0.001).or_else(|| parse(RETRY_AFTER.as_str(), 1.0))
+    if let Some(deadline) = value(RETRY_AFTER_MS).and_then(|value| delay(value, 0.001)) {
+        return Some(deadline);
+    }
+    let value = value(RETRY_AFTER.as_str())?;
+    delay(value, 1.0).or_else(|| {
+        let date = httpdate::parse_http_date(value).ok()?;
+        let delay = date.duration_since(clocks.wall).unwrap_or_default();
+        clocks.now.checked_add(delay)
+    })
 }
 
 #[allow(unused_variables)]
@@ -200,12 +275,14 @@ impl<B> Policy<http::Request<Body>, http::Response<B>, BoxError> for RetryPolicy
         if self.attempts >= self.max_retries {
             return None;
         }
-        let retry_after = retryable(result)?;
-        let Some(delay) = self.delay(retry_after) else {
+        let retry_after = retryable(result, self.server_directed_429)?;
+        let now = Instant::now();
+        let Some(deadline) = self.deadline(retry_after, now) else {
             #[cfg(feature = "tracing")]
             tracing::debug!(
                 target: "timvw_rust_runtime::trace",
-                retry_after_ms = retry_after.map_or(0, |delay| delay.as_millis() as u64),
+                retry_after_ms = retry_after
+                    .map_or(0, |deadline| deadline.saturating_duration_since(now).as_millis() as u64),
                 max_retry_after_ms = self.max_retry_after.as_millis() as u64,
                 status = result.as_ref().ok().map(|response| response.status().as_u16()),
                 "not retrying: the server asks to wait longer than max_retry_after"
@@ -218,11 +295,11 @@ impl<B> Policy<http::Request<Body>, http::Response<B>, BoxError> for RetryPolicy
             target: "timvw_rust_runtime::trace",
             attempt = self.attempts,
             max_retries = self.max_retries,
-            delay_ms = delay.as_millis() as u64,
+            delay_ms = deadline.saturating_duration_since(now).as_millis() as u64,
             status = result.as_ref().ok().map(|response| response.status().as_u16()),
             "retrying"
         );
-        Some(Box::pin(tokio::time::sleep(delay)))
+        Some(Box::pin(tokio::time::sleep_until(deadline)))
     }
 
     fn clone_request(&mut self, request: &http::Request<Body>) -> Option<http::Request<Body>> {
@@ -393,9 +470,10 @@ where
         let classify = self.classify.clone();
         let body_limit = self.body_limit;
         Box::pin(async move {
-            let response = response.await?.map(Body::wrap);
+            let mut response = response.await?.map(Body::wrap);
             Ok(match classify {
                 Some(classify) if response.status() == StatusCode::TOO_MANY_REQUESTS => {
+                    response.extensions_mut().insert(ReceivedAt(Instant::now()));
                     classify_429(response, &*classify, body_limit).await
                 }
                 _ => response,
@@ -465,29 +543,81 @@ mod tests {
         Ok(builder.body(()).unwrap())
     }
 
-    #[test]
-    fn retries_transient_statuses_only() {
-        assert_eq!(retryable(&response(429, &[])), Some(None));
+    /// Whether `result` is retried, and after how long, measured from now.
+    fn wait(
+        result: &Result<http::Response<()>, BoxError>,
+        server_directed_429: bool,
+    ) -> Option<Option<Duration>> {
+        let now = Instant::now();
+        retryable(result, server_directed_429)
+            .map(|deadline| deadline.map(|deadline| deadline.saturating_duration_since(now)))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn retries_transient_statuses_only() {
+        assert_eq!(wait(&response(429, &[]), false), Some(None));
         assert_eq!(
-            retryable(&response(503, &[("retry-after", "2")])),
+            wait(&response(503, &[("retry-after", "2")]), false),
             Some(Some(Duration::from_secs(2)))
         );
-        assert_eq!(retryable(&response(408, &[])), Some(None));
-        assert_eq!(retryable(&response(400, &[])), None);
-        assert_eq!(retryable(&response(200, &[])), None);
-        assert_eq!(retryable::<()>(&Err("boom".into())), None);
+        assert_eq!(wait(&response(408, &[]), false), Some(None));
+        assert_eq!(wait(&response(400, &[]), false), None);
+        assert_eq!(wait(&response(200, &[]), false), None);
+        assert_eq!(wait(&Err("boom".into()), false), None);
     }
 
-    #[test]
-    fn permanent_responses_are_not_retried() {
-        let mut result = response(429, &[]);
+    #[tokio::test(start_paused = true)]
+    async fn server_directed_429_needs_advice() {
+        assert_eq!(wait(&response(429, &[]), true), None);
+        assert_eq!(wait(&response(429, &[("retry-after", "soon")]), true), None);
+        assert_eq!(
+            wait(&response(429, &[("retry-after", "0")]), true),
+            Some(Some(Duration::ZERO))
+        );
+        assert_eq!(
+            wait(&response(429, &[("retry-after-ms", "300")]), true),
+            Some(Some(Duration::from_millis(300)))
+        );
+        let past = httpdate::fmt_http_date(SystemTime::now() - Duration::from_secs(60));
+        assert_eq!(
+            wait(&response(429, &[("retry-after", &past)]), true),
+            Some(Some(Duration::ZERO))
+        );
+        // Only 429s: other transient statuses back off without advice.
+        assert_eq!(wait(&response(503, &[]), true), Some(None));
+        assert_eq!(wait(&response(408, &[]), true), Some(None));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn permanent_responses_are_not_retried() {
+        let mut result = response(429, &[("retry-after", "1")]);
         result.as_mut().unwrap().extensions_mut().insert(Permanent);
-        assert_eq!(retryable(&result), None);
+        assert_eq!(wait(&result, false), None);
     }
 
-    #[test]
-    fn parses_retry_after_and_retry_after_ms() {
-        let wait = |headers: &[(&str, &str)]| retryable(&response(429, headers)).unwrap();
+    fn clocks() -> Clocks {
+        let now = Instant::now();
+        Clocks {
+            received_at: now,
+            now,
+            wall: httpdate::parse_http_date("Wed, 21 Oct 2015 07:28:00 GMT").unwrap(),
+        }
+    }
+
+    fn parse(headers: &[(&str, &str)], clocks: Clocks) -> Option<Duration> {
+        let mut map = HeaderMap::new();
+        for (name, value) in headers {
+            map.append(
+                http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                value.parse().unwrap(),
+            );
+        }
+        retry_after(&map, clocks).map(|deadline| deadline.saturating_duration_since(clocks.now))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn parses_retry_after_and_retry_after_ms() {
+        let wait = |headers: &[(&str, &str)]| parse(headers, clocks());
         assert_eq!(
             wait(&[("retry-after", " 20 ")]),
             Some(Duration::from_secs(20))
@@ -504,48 +634,97 @@ mod tests {
             wait(&[("retry-after-ms", "12.5")]),
             Some(Duration::from_micros(12_500))
         );
-        assert_eq!(
-            wait(&[("retry-after", "Wed, 21 Oct 2015 07:28:00 GMT")]),
-            None
-        );
         assert_eq!(wait(&[("retry-after", "-1")]), None);
+        assert_eq!(wait(&[("retry-after", "")]), None);
+        assert_eq!(wait(&[("retry-after", "later")]), None);
         assert_eq!(
             wait(&[("retry-after-ms", "nan"), ("retry-after", "3")]),
             Some(Duration::from_secs(3))
         );
+        assert_eq!(wait(&[]), None);
     }
 
-    #[test]
-    fn backs_off_and_caps() {
+    #[tokio::test(start_paused = true)]
+    async fn parses_http_dates_against_the_wall_clock() {
+        let wait = |value: &str| parse(&[("retry-after", value)], clocks());
+        // The wall clock of `clocks()` is 07:28:00.
+        assert_eq!(
+            wait("Wed, 21 Oct 2015 07:28:30 GMT"),
+            Some(Duration::from_secs(30))
+        );
+        assert_eq!(wait("Wed, 21 Oct 2015 07:28:00 GMT"), Some(Duration::ZERO));
+        assert_eq!(wait("Wed, 21 Oct 2015 07:00:00 GMT"), Some(Duration::ZERO));
+        // The obsolete formats HTTP still accepts.
+        assert_eq!(
+            wait("Wednesday, 21-Oct-15 07:29:00 GMT"),
+            Some(Duration::from_secs(60))
+        );
+        assert_eq!(
+            wait("Wed Oct 21 07:28:05 2015"),
+            Some(Duration::from_secs(5))
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn seconds_count_from_receipt_and_dates_from_now() {
+        let mut clocks = clocks();
+        clocks.now = clocks.received_at + Duration::from_secs(2); // two seconds reading the body
+        assert_eq!(
+            parse(&[("retry-after", "5")], clocks),
+            Some(Duration::from_secs(3))
+        );
+        assert_eq!(
+            parse(&[("retry-after-ms", "1000")], clocks),
+            Some(Duration::ZERO)
+        );
+        assert_eq!(
+            parse(&[("retry-after", "Wed, 21 Oct 2015 07:28:05 GMT")], clocks),
+            Some(Duration::from_secs(5))
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn backs_off_and_caps() {
         let mut policy = RetryPolicy::new(10)
             .base_delay(Duration::from_millis(100))
             .max_delay(Duration::from_secs(1))
             .jitter(false);
-        assert_eq!(policy.delay(None), Some(Duration::from_millis(100)));
+        let now = Instant::now();
+        assert_eq!(
+            policy.deadline(None, now),
+            Some(now + Duration::from_millis(100))
+        );
         policy.attempts = 2;
-        assert_eq!(policy.delay(None), Some(Duration::from_millis(400)));
+        assert_eq!(
+            policy.deadline(None, now),
+            Some(now + Duration::from_millis(400))
+        );
         policy.attempts = 8;
-        assert_eq!(policy.delay(None), Some(Duration::from_secs(1)));
+        assert_eq!(
+            policy.deadline(None, now),
+            Some(now + Duration::from_secs(1))
+        );
     }
 
-    #[test]
-    fn honours_retry_after_beyond_max_delay_up_to_max_retry_after() {
+    #[tokio::test(start_paused = true)]
+    async fn honours_retry_after_beyond_max_delay_up_to_max_retry_after() {
         let policy = RetryPolicy::new(3).max_delay(Duration::from_secs(1));
+        let now = Instant::now();
+        let after = |secs| Some(now + Duration::from_secs(secs));
+        assert_eq!(policy.deadline(after(30), now), after(30));
+        assert_eq!(policy.deadline(after(60), now), after(60));
+        assert_eq!(policy.deadline(after(61), now), None);
+        // A deadline already passed is kept: retry now.
         assert_eq!(
-            policy.delay(Some(Duration::from_secs(30))),
-            Some(Duration::from_secs(30))
+            policy.deadline(Some(now), now + Duration::from_secs(1)),
+            Some(now)
         );
-        assert_eq!(
-            policy.delay(Some(Duration::from_secs(60))),
-            Some(Duration::from_secs(60))
-        );
-        assert_eq!(policy.delay(Some(Duration::from_secs(61))), None);
         let policy = policy.max_retry_after(Duration::from_secs(5));
-        assert_eq!(policy.delay(Some(Duration::from_secs(6))), None);
+        assert_eq!(policy.deadline(after(6), now), None);
     }
 
-    #[test]
-    fn jitter_stays_between_half_and_all_of_the_backoff() {
+    #[tokio::test(start_paused = true)]
+    async fn jitter_stays_between_half_and_all_of_the_backoff() {
         let backoff = Duration::from_millis(800);
         assert_eq!(jittered(backoff, 0.0), Duration::from_millis(400));
         assert_eq!(jittered(backoff, 0.5), Duration::from_millis(600));
@@ -555,7 +734,7 @@ mod tests {
             .base_delay(Duration::from_millis(100))
             .max_delay(Duration::from_secs(1));
         policy.attempts = 3; // 800 ms before jitter
-        let delays: Vec<_> = (0..200).map(|_| policy.delay(None).unwrap()).collect();
+        let delays: Vec<_> = (0..200).map(|_| policy.backoff()).collect();
         for delay in &delays {
             assert!(
                 (Duration::from_millis(400)..=backoff).contains(delay),
@@ -564,10 +743,9 @@ mod tests {
         }
         assert!(delays.iter().any(|delay| *delay != delays[0]), "random");
         // The waits a server asks for are not jittered.
-        assert_eq!(
-            policy.delay(Some(Duration::from_secs(2))),
-            Some(Duration::from_secs(2))
-        );
+        let now = Instant::now();
+        let deadline = Some(now + Duration::from_secs(2));
+        assert_eq!(policy.deadline(deadline, now), deadline);
     }
 
     #[test]

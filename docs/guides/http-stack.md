@@ -29,8 +29,9 @@ repository next to the generator. Its `Client` is a tower service from `http::Re
 
 Retries are on by default (feature `retry`): `Client::default()`, and so `Configuration::new()`, retries with
 `RetryPolicy::default()`. `RetryPolicy` retries `429`, `408` and `5xx` responses
-and failed connections, waits as long as `Retry-After` (or `retry-after-ms`) asks, up to 60 s, or else backs off
-exponentially with jitter, and does not retry a request with a streamed body (it cannot be sent twice). A `429` that
+and failed connections, waits until the time `Retry-After` (seconds or an HTTP date) or `retry-after-ms` gives, up to
+60 s, or else backs off exponentially with jitter (`RetryPolicy::server_directed_429(true)` retries a `429` only when
+the server gives a time), and does not retry a request with a streamed body (it cannot be sent twice). A `429` that
 will not pass by waiting, such as OpenAI's `insufficient_quota`, is not retried once you turn on
 `timvw_rust_runtime::retry::RetryLayer::permanent_429` (opt-in, since what makes a `429` permanent differs between
 APIs; see [permanent `429`s](../../runtime/README.md#permanent-429s-an-exhausted-quota)). A body held in memory, which is every JSON, form and text body and every
@@ -54,6 +55,12 @@ Logging (feature `tracing`), headers, authentication, timeouts and rate limits a
 [logging](../../runtime/README.md#logging), [middleware](../../runtime/README.md#middleware) (a header on every
 request, a layer of your own that fetches a token),
 [concurrency and rate limits](../../runtime/README.md#concurrency-and-rate-limits).
+
+To send the same API to another provider (an OpenAI-compatible service, a proxy, a cloud deployment), add a
+`timvw_rust_runtime::ProviderLayer` to `configuration.client`: it moves requests from the generated `base_path` (declared
+with `rewrite_from`) to the provider's base URL, and sets the provider's headers, query parameters (an `api-version`)
+and path (a deployment). Or set `configuration.base_path` to the provider and use the layer for the rest only. See
+[providers](../../runtime/README.md#providers).
 
 A service of your own answers without a network, for tests:
 

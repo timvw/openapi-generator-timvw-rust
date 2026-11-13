@@ -23,8 +23,9 @@ default = ["rustls", "retry"]
 reqwest = ["dep:reqwest"]
 rustls = ["reqwest", "reqwest/rustls"]
 native-tls = ["reqwest", "reqwest/native-tls"]
-# `retry::{RetryLayer, RetryPolicy}`: retries 429, 408, 5xx and connect failures, honouring `Retry-After` (sleeps with tokio).
-retry = ["tower/retry", "dep:tokio", "tokio/time"]
+# `retry::{RetryLayer, RetryPolicy}`: retries 429, 408, 5xx and connect failures, honouring `Retry-After` (sleeps with tokio;
+# `httpdate` reads the HTTP-date form).
+retry = ["tower/retry", "dep:tokio", "tokio/time", "dep:httpdate"]
 # `trace::TraceLayer`: logs each request, its status and duration (and each retry) with `tracing`.
 tracing = ["dep:tracing"]
 
@@ -44,11 +45,13 @@ sync_wrapper = { version = "1", features = ["futures"] }
 tower = { version = "0.5.2", default-features = false, features = ["util"] }
 url = "2.5"
 
+httpdate = { version = "1", optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["stream"], optional = true }
 tokio = { version = "1", default-features = false, optional = true }
 tracing = { version = "0.1.40", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
+httpdate = "1"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync", "test-util"] }
 tracing = "0.1.40"

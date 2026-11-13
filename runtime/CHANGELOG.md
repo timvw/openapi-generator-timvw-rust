@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ProviderLayer` (`provider::ProviderLayer`): sends requests to another provider of the same API. It replaces the
+  base URL (the provider's own, or a generated base declared with `rewrite_from`) keeping the rest of the path and the
+  query, rewrites the path with `map_path`, and sets headers (`header`, `sensitive_header`, `headers`) and query
+  parameters (`query`), each replacing the request's of that name. Requests to other hosts pass unchanged.
+  Provider-neutral: no presets. `rewrite_uri` shows the URL a request is sent to.
+- `RetryPolicy::server_directed_429` (default `false`): retry a `429` only when it has `Retry-After` or
+  `retry-after-ms`.
+- `RetryPolicy` reads `Retry-After` as an HTTP date too (the `retry` feature depends on `httpdate`); a date in the past
+  retries at once.
+
+### Changed
+
+- `RetryPolicy` reads the server's wait once into a deadline, counted from when the response arrived, and sleeps until
+  it (`tokio::time::sleep_until`): time spent reading a `429` body for `RetryLayer::permanent_429` no longer adds to
+  the wait. `max_retry_after` compares with the time left until the deadline.
+
 ## [0.2.0] - 2026-11-13
 
 ### Added

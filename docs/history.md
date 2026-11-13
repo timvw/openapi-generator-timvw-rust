@@ -19,7 +19,9 @@ client repositories' scripts.
 ## 0.27.0
 
 File parameters become `timvw_rust_runtime::Upload`s with the default `httpStack=tower` (see
-[migration](guides/migration.md#from-026-to-027)); a builder call that passes a `PathBuf` compiles unchanged.
+[migration](guides/migration.md#from-026-to-027)); a builder call that passes a `PathBuf` compiles unchanged. Generated
+clients need `timvw-rust-runtime` 0.3 (`^0.3`), which also adds `ProviderLayer`, reads `Retry-After` dates and builds
+for WebAssembly. openai-client-base 0.32.0 and langfuse-client-base 0.23.0 are generated with it.
 
 ### Uploads and downloads
 
@@ -46,6 +48,18 @@ File parameters become `timvw_rust_runtime::Upload`s with the default `httpStack
 - The generated code bounds `EventStream::from_bytes` by `MaybeSend`; `Cargo.toml` adds uuid's `js` feature on
   `wasm32-unknown-unknown`. CI checks the runtime and a generated petstore for wasm32, and runs the runtime's wasm tests
   in Node.js.
+
+### Runtime 0.3
+
+- `ProviderLayer`: sends the same API to another provider (an OpenAI-compatible service, a proxy, a deployment): it
+  replaces the base URL (the provider's own, or the generated one declared with `rewrite_from`), rewrites the path
+  with `map_path` and sets headers and query parameters. Provider-neutral, without presets.
+- `RetryPolicy` reads `Retry-After` as an HTTP date too, and the server's wait once into a deadline counted from when
+  the response arrived, so reading a `429` body for `permanent_429` no longer adds to the wait.
+  `server_directed_429(true)` retries a `429` only when the server says when.
+- `Upload` (bytes, files, readers, streams, `from_fn`; `slice`, `name`, `media_type`), `Body::try_clone`,
+  `Response::save_to`, `Response::into_async_read`, `Events::idle_timeout` and `Error::is_io()`; features `fs`
+  (default) and `time` (turned on by `retry`). See the [runtime's changelog](../runtime/CHANGELOG.md).
 
 ### Smaller changes
 
@@ -301,8 +315,8 @@ The [migration guide](guides/migration.md#from-021-to-022) has every breaking ch
 
 ## 0.21.0 (breaking)
 
-The release of the [mapping decisions](decisions.md): what roadmap step 2 decided, implemented under
-[step 3](roadmap.md#3-make-the-generator-conform). The [migration guide](guides/migration.md) has every change with
+The release of the [mapping decisions](decisions.md): what step 2 of the
+[mapping roadmap](#the-mapping-roadmap-done-in-021) decided, implemented as its step 3. The [migration guide](guides/migration.md) has every change with
 the code before and after, and the steps for a client repository.
 
 ### Configuration
@@ -531,3 +545,21 @@ After 0.19.0 the plugin owns its Rust side. It still builds on openapi-generator
 The output did not change: every spec in `test-specs/` and `src/test/resources/` under four option sets (none, the
 baseline, the baseline with openai-client-base's and langfuse-client-base's extra options, and the crate options), and
 both client repos, generate byte-identical with 0.19.0's image.
+
+## The mapping roadmap (done in 0.21)
+
+Once the client scripts were gone, a roadmap of three steps made the mapping a written definition the generator is
+checked against. All three are done; the generator stayed a Java openapi-generator plugin throughout, and both clients
+stayed supported.
+
+1. **Document the mapping of the generator as it was**, without changing it: a rule per OpenAPI construct, with a
+   stable ID (`discriminator.propertyName`), the Rust it renders, how it behaves on the wire, the options that change
+   it, and the tests that show it ([docs/mapping/](mapping/README.md), checked by `MappingDocsTest`). Known gaps are
+   rules too.
+2. **Decide what to change**: compare each rule with stock `-g rust`, progenitor and others
+   ([comparison](comparison/README.md)), and decide each proposed change, with its impact on the two clients
+   ([decisions.md](decisions.md), [design notes](design/partial-decoding-and-ownership.md)).
+3. **Make the generator conform**: implement each adopted decision with its rule and tests, released together as
+   [0.21.0](#0210-breaking).
+
+What the generator and the runtime do not do yet is in [limitations.md](limitations.md).

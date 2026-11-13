@@ -1,6 +1,8 @@
 # Design: decoding only what is needed, and ownership
 
-Status: proposal, for step 2 of the [roadmap](../roadmap.md). Option A is implemented as the option `responseFunctions`
+Status: decided, in step 2 of the [mapping roadmap](../history.md#the-mapping-roadmap-done-in-021). The snippets
+show the types of the time (`reqwest::StatusCode`); today they are `timvw_rust_runtime`'s with the default
+`httpStack=tower`. Option A is implemented as the option `responseFunctions`
 ([guide](../guides/response-functions.md)); option C as [decision 2](../decisions.md#2-request-bodies-by-reference).
 
 Consumers often read a few fields of a large response, but the generated function decodes all of it into owned

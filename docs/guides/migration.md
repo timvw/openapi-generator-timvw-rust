@@ -1,7 +1,7 @@
 # Guide: migrating
 
-- [From 0.26 to 0.27](#from-026-to-027): file parameters are `timvw_rust_runtime::Upload`s.
-- [From 0.25 to 0.26](#from-025-to-026): the credentials of `Configuration` are `SecretString`s; per-call headers and query parameters.
+- [From 0.26 to 0.27](#from-026-to-027): file parameters are `timvw_rust_runtime::Upload`s; runtime 0.3; WebAssembly.
+- [From 0.25 to 0.26](#from-025-to-026): the credentials of `Configuration` are `SecretString`s; per-call headers and query parameters; runtime 0.2 retries.
 - [From 0.24 to 0.25](#from-024-to-025): the client sends through a tower service from `timvw-rust-runtime`.
 - [From 0.23 to 0.24](#from-023-to-024): union variant names under a model name prefix or suffix.
 - [From 0.22 to 0.23](#from-022-to-023): one rare type change.
@@ -41,7 +41,8 @@ What changes at run time:
 With `bonBuilders=false` a positional argument is an `Upload`: pass `path.into()` or `Upload::path(path)`. A multipart
 union with a file variant (`multipartHelper`) keeps `PathBuf` in its model and streams it the same way.
 `httpStack=reqwest-middleware` renders what 0.26 rendered. The crate depends on the runtime's `fs` feature instead of
-`tokio` and `tokio-util`; it needs the `timvw-rust-runtime` release that has `Upload`.
+`tokio` and `tokio-util`, and needs `timvw-rust-runtime` 0.3, which has `Upload`: the generated `Cargo.toml` asks for
+`^0.3`. A hand-kept `Cargo.toml` follows it ([dependencies](getting-started.md#running-the-generator)).
 
 ### WebAssembly
 
@@ -65,6 +66,13 @@ the runtime's bounds may need care:
 - With `apiFeatures`, an API module whose functions are gated one by one allows unused imports: the
   `#![cfg_attr(not(feature = "full"), allow(unused_imports))]` a hand-written `lib.rs` added for it can go.
 - A crate with `uuid`s adds `uuid`'s `js` feature for `wasm32-unknown-unknown` (tower).
+- Retries (runtime 0.3) read `Retry-After` as an HTTP date too, and wait until the deadline the server gave, counted
+  from when the response arrived. `RetryPolicy`'s API does not change; `server_directed_429(true)` is new and off.
+- To send the same API to another provider, `timvw_rust_runtime::ProviderLayer` replaces a layer of your own that
+  rewrote URLs ([HTTP stack guide](http-stack.md#tower-the-runtime-crate)).
+
+To upgrade a client repository, bump the image tag to `0.27.0-og7.27.0`, regenerate, and run
+`cargo clippy --all-targets -- -D warnings` and `cargo test`.
 
 ## From 0.25 to 0.26
 
@@ -120,6 +128,23 @@ that does not set it sends what it sent before, so builder calls compile and beh
   asks for `^0.2`.
 
 `bonBuilders=false` and `httpStack=reqwest-middleware` render what 0.25 rendered.
+
+### Retries
+
+Runtime 0.2 changes how `Configuration::new()` retries (no code change needed):
+
+- Each backoff delay is jittered (between half and all of it); `.jitter(false)` restores exact delays.
+- `retry-after-ms` and fractional `Retry-After` seconds are read. A server's wait is no longer capped by `max_delay`
+  (8 s): it is waited for in full up to `max_retry_after` (60 s), and a response that asks for longer is returned at
+  once instead of retried.
+- `RetryLayer::permanent_429(retry::openai_insufficient_quota)` (opt-in) stops retrying a `429` that will not pass by
+  waiting; a client that wants it builds from `Client::from_service(ReqwestService::default())`
+  ([runtime guide](../../runtime/README.md#permanent-429s-an-exhausted-quota)).
+
+`apiFeatures` and `apiFeaturesFile` are new and off by default: off, the output is what 0.25 rendered.
+
+To upgrade a client repository, bump the image tag to `0.26.0-og7.27.0`, regenerate, and run
+`cargo clippy --all-targets -- -D warnings` and `cargo test`.
 
 ## From 0.24 to 0.25
 

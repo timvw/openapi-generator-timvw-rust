@@ -4,7 +4,7 @@
 #   docs/comparison/generate.sh
 #
 # Needs Java 17+, the timvw-rust jar (./mvnw -DskipTests package), the openapi-generator CLI jar in target/
-# (see the README's Development section), cargo-progenitor (cargo install cargo-progenitor), a nightly rustfmt
+# (see docs/development.md), cargo-progenitor (cargo install cargo-progenitor), a nightly rustfmt
 # (rustup component add rustfmt --toolchain nightly) and python3 with PyYAML.
 # Output goes to target/comparison/{stock,timvw,progenitor}; each crate is then checked with cargo.
 set -euo pipefail

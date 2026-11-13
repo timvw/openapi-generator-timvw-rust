@@ -1,8 +1,8 @@
 # OpenAPI to Rust mapping
 
 This is what Rust `timvw-rust` renders for each OpenAPI construct, written as rules. It describes the generator as it
-is, including the known gaps. Changing a rendering means changing its rule here first; see the
-[roadmap](../roadmap.md).
+is, including the known gaps. Changing a rendering means changing its rule here first; see
+[how the mapping came about](../history.md#the-mapping-roadmap-done-in-021).
 
 ## Organization
 
@@ -45,8 +45,8 @@ templates (ported from `-g rust`), not something it inherits, so a rule can chan
 
 The **Rust** entry of every rule is what `timvw-rust` renders without options, in the one client configuration it
 generates (async, sending through a tower service from `timvw-rust-runtime`, `httpStack=tower`; the matching stock
-options are rejected, see the README's
-[options](../../README.md#options)). What used to be the baseline options (`boxOnlyCycles`,
+options are rejected, see
+[not options](../options.md#not-options)). What used to be the baseline options (`boxOnlyCycles`,
 `defaultOnlyWhereValid`, `enumFromStr`, `noStructDisplay`, `integersAsI64`, `qualifiedInlineNames`, `modelUnions`,
 `unionDispatch`, `openEnums`, `schemaDefaultDocs`, `nullableUnionFields`) is always applied, and setting one fails
 generation; so is the former `boxResponseError` (`ResponseError` holds a `Box`).

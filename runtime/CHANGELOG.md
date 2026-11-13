@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `retry::RetryLayer`: retries with a `RetryPolicy` like `tower::retry::RetryLayer`, and with `permanent_429(f)` reads
+  the body of each `429` (up to `body_limit`, 64 KiB by default) to not retry a permanent one; the body is put back
+  for the caller. `Client::default()`, `Client::new()` and `Client::from_reqwest` use it, without reading bodies.
+- `retry::openai_insufficient_quota`: OpenAI's exhausted quota (`error.code` or `error.type` `insufficient_quota`),
+  for `RetryLayer::permanent_429`. Opt-in: the default client stays provider-neutral.
+- `retry::Permanent`: a response extension that `RetryPolicy` never retries.
+- `RetryPolicy::max_retry_after` (default 60 s): the longest `Retry-After` the policy waits for; a response asking for
+  longer is returned at once.
+- `RetryPolicy::jitter` (default `true`): each backoff delay is picked at random between half and all of it.
+- `RetryPolicy` reads OpenAI's `retry-after-ms` header (before `Retry-After`), and fractional seconds in `Retry-After`.
+
+### Changed
+
+- `RetryPolicy::max_delay` caps the exponential backoff only, no longer `Retry-After`: a server that asks for 20 s
+  now gets 20 s, not 8 s. A `Retry-After` above `max_retry_after` (60 s) is no longer retried after 8 s but returned.
+- The exponential backoff is jittered by default; `.jitter(false)` restores exact delays.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added

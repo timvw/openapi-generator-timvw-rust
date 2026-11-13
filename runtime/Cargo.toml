@@ -23,7 +23,7 @@ default = ["rustls", "retry"]
 reqwest = ["dep:reqwest"]
 rustls = ["reqwest", "reqwest/rustls"]
 native-tls = ["reqwest", "reqwest/native-tls"]
-# `retry::RetryPolicy`: retries 429 and 5xx responses, honouring `Retry-After` (sleeps with tokio).
+# `retry::{RetryLayer, RetryPolicy}`: retries 429, 408, 5xx and connect failures, honouring `Retry-After` (sleeps with tokio).
 retry = ["tower/retry", "dep:tokio", "tokio/time"]
 # `trace::TraceLayer`: logs each request, its status and duration (and each retry) with `tracing`.
 tracing = ["dep:tracing"]
@@ -49,7 +49,7 @@ tracing = { version = "0.1.40", default-features = false, features = ["std"], op
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync", "test-util"] }
 tracing = "0.1.40"
 tower = { version = "0.5.2", features = ["util", "retry", "timeout", "limit", "buffer"] }
 tower-http = { version = "0.6", features = ["set-header", "trace"] }

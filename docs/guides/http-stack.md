@@ -28,8 +28,11 @@ repository next to the generator. Its `Client` is a tower service from `http::Re
 
 Retries are on by default (feature `retry`): `Client::default()`, and so `Configuration::new()`, retries with
 `RetryPolicy::default()`. `RetryPolicy` retries `429`, `408` and `5xx` responses
-and failed connections, waits as long as `Retry-After` asks or backs off exponentially, and does not retry a request
-with a streamed body (it cannot be sent twice). A body held in memory, which is every JSON, form and text body and every
+and failed connections, waits as long as `Retry-After` (or `retry-after-ms`) asks, up to 60 s, or else backs off
+exponentially with jitter, and does not retry a request with a streamed body (it cannot be sent twice). A `429` that
+will not pass by waiting, such as OpenAI's `insufficient_quota`, is not retried once you turn on
+`timvw_rust_runtime::retry::RetryLayer::permanent_429` (opt-in, since what makes a `429` permanent differs between
+APIs; see [permanent `429`s](../../runtime/README.md#permanent-429s-an-exhausted-quota)). A body held in memory, which is every JSON, form and text body and every
 multipart body without a streamed file, is sent again. Layers added to `Client::default()` wrap its retries; for
 another policy, or none, start from `Client::from_service(ReqwestService::default())`:
 

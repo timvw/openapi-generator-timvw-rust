@@ -14,6 +14,23 @@ mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` c
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## Unreleased
+
+### `apiFeatures`
+
+Off by default, and off the output is byte for byte what it was (both HTTP stacks, every test spec and the OpenAI
+spec). Nothing to migrate.
+
+- `apiFeatures=true` gives the crate a Cargo feature per tag, with a `-types` twin compiling only the tag's models
+  without the HTTP client, plus `types` and `full` (a default feature), as async-openai 0.43 has
+  ([guide](guides/api-features.md)). `apiFeaturesFile` groups operations by tags and path prefixes instead, which
+  openai-client-base needs for its 60 untagged operations (`/organization`, `/containers`, `/chatkit`, ...).
+- A group's models are found from the spec: every schema its operations reach through `$ref`, discriminator mappings
+  included. A group that takes part of an API module gates the module's functions one by one; the modules do not
+  change.
+- openai-client-base with async-openai's 29 groups: `responses` compiles 851 of the 3,131 models, in 19 s instead of 77 s
+  for the crate (dev build), and `responses-types` none of the HTTP stack. Every feature compiles alone.
+
 ## 0.25.0
 
 The client's HTTP stack becomes an option, `httpStack`, whose default changes: openai-client-base and

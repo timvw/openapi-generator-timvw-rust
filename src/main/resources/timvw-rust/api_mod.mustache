@@ -202,6 +202,9 @@ impl From<&str> for ContentType {
 
 {{#apiInfo}}
 {{#apis}}
+{{#x-rust-module-cfg}}
+#[cfg({{{.}}})]
+{{/x-rust-module-cfg}}
 pub mod {{{classFilename}}};
 {{/apis}}
 {{/apiInfo}}
@@ -214,6 +217,9 @@ pub use api_response::ApiResponse;
 {{#multipartHelper}}
 
 // Internal helper module for multipart file handling
+{{#apiFeatures}}
+#[allow(dead_code)] // the API features enabled may not use every helper
+{{/apiFeatures}}
 pub(crate) mod multipart_helper;
 
 {{/multipartHelper}}{{#typedEventStreams}}
@@ -221,5 +227,8 @@ pub(crate) mod multipart_helper;
 pub mod sse;
 
 {{/typedEventStreams}}{{#webhookModules}}
+{{#webhookModuleCfg}}
+#[cfg({{{.}}})]
+{{/webhookModuleCfg}}
 pub mod {{{.}}};
 {{/webhookModules}}

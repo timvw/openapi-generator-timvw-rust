@@ -58,30 +58,50 @@ uuid = { version = "^1.8", features = ["serde", "v4"] }
 chrono = { version = "^0.4",  features = ["serde"] }
 {{/usesChronoTypes}}
 {{#useAsyncFileStream}}
-tokio = { version = "^1.46.0", features = ["fs"] }
-tokio-util = { version = "^0.7", features = ["codec"] }
+tokio = { version = "^1.46.0", features = ["fs"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
+tokio-util = { version = "^0.7", features = ["codec"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
 {{^httpStackTower}}
-reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart", "stream", "query", "form"] }
+reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart", "stream", "query", "form"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
 {{/httpStackTower}}
 {{/useAsyncFileStream}}
 {{#httpStackTower}}
-timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}} }
+timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#apiFeatures}}, optional = true{{/apiFeatures}} }
 
 [features]
-default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry"]
-native-tls = ["timvw-rust-runtime/native-tls"]
-rustls = ["timvw-rust-runtime/rustls"]
-retry = ["timvw-rust-runtime/retry"]
-tracing = ["timvw-rust-runtime/tracing"]
+default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry"{{#apiFeatures}}, "full"{{/apiFeatures}}]
+native-tls = ["timvw-rust-runtime{{#apiFeatures}}?{{/apiFeatures}}/native-tls"]
+rustls = ["timvw-rust-runtime{{#apiFeatures}}?{{/apiFeatures}}/rustls"]
+retry = ["timvw-rust-runtime{{#apiFeatures}}?{{/apiFeatures}}/retry"]
+tracing = ["timvw-rust-runtime{{#apiFeatures}}?{{/apiFeatures}}/tracing"]
 {{/httpStackTower}}
 {{^httpStackTower}}
 {{^useAsyncFileStream}}
-reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart"{{#typedEventStreams}}, "stream"{{/typedEventStreams}}, "query", "form"] }
+reqwest = { version = "^0.13", default-features = false, features = ["json", "multipart"{{#typedEventStreams}}, "stream"{{/typedEventStreams}}, "query", "form"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
 {{/useAsyncFileStream}}
-reqwest-middleware = { version = "^0.5", features = ["json", "multipart", "query", "form"] }
+reqwest-middleware = { version = "^0.5", features = ["json", "multipart", "query", "form"]{{#apiFeatures}}, optional = true{{/apiFeatures}} }
 
 [features]
-default = [{{#reqwestDefaultFeatures}}"{{.}}"{{^-last}}, {{/-last}}{{/reqwestDefaultFeatures}}]
-native-tls = ["reqwest/native-tls"]
-rustls = ["reqwest/rustls"]
+default = [{{#reqwestDefaultFeatures}}"{{.}}"{{^-last}}, {{/-last}}{{/reqwestDefaultFeatures}}{{#apiFeatures}}, "full"{{/apiFeatures}}]
+native-tls = ["reqwest{{#apiFeatures}}?{{/apiFeatures}}/native-tls"]
+rustls = ["reqwest{{#apiFeatures}}?{{/apiFeatures}}/rustls"]
 {{/httpStackTower}}
+{{#apiFeatures}}
+# API features (apiFeatures): `<group>` compiles the group's API functions with its models and the HTTP client,
+# `<group>-types` only its models. `types` is every model, `full` everything.
+full = [
+{{#apiFeaturesFull}}
+    "{{{.}}}",
+{{/apiFeaturesFull}}
+]
+types = [
+{{#apiFeaturesTypes}}
+    "{{{.}}}",
+{{/apiFeaturesTypes}}
+]
+_api = [{{#httpStackTower}}"dep:timvw-rust-runtime"{{/httpStackTower}}{{^httpStackTower}}"dep:reqwest", "dep:reqwest-middleware"{{/httpStackTower}}{{#useAsyncFileStream}}, "dep:tokio", "dep:tokio-util"{{/useAsyncFileStream}}]
+{{#apiFeatureGroups}}
+# {{{selects}}}
+{{{name}}} = ["{{{name}}}-types", "_api"]
+{{{name}}}-types = []
+{{/apiFeatureGroups}}
+{{/apiFeatures}}

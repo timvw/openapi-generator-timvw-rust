@@ -186,7 +186,33 @@ in parts. A binary response is a `timvw_rust_runtime::Response`: `save_to(path)`
 to `path` and renames it once complete, so `path` never holds half a download; `into_async_read()` reads it as a
 tokio `AsyncRead`. The runtime's guide has [the details](../../runtime/README.md#uploads-and-downloads).
 
-With `httpStack=reqwest-middleware` file parameters stay `std::path::PathBuf`s.
+A multipart union with a file variant (`multipartHelper`, such as a `oneOf` of a file and a JSON object) holds an
+`Upload` in that variant too, and `Vec<Upload>` for an array of files. Its builder setter takes anything that converts
+into the union: an `Upload` or a `PathBuf` (the file variant), or the union itself. `Union::file(..)` and
+`Union::files(..)` build the file variants from anything that converts into an `Upload` (in openai-client-base):
+
+<!-- not compiled: openai-client-base's API (src/test/rust/multipart_unions.rs runs the same calls on a fixture) -->
+```rust
+// A video from bytes held in memory; the other variant, an object, is still a JSON part.
+videos_api::create_video_edit()
+    .configuration(&configuration)
+    .video(Upload::bytes(mp4).file_name("clip.mp4").mime("video/mp4"))
+    .prompt("slower")
+    .call()
+    .await?;
+// An array of files: a part each.
+skills_api::create_skill()
+    .configuration(&configuration)
+    .files(models::CreateSkillBodyFiles::files([PathBuf::from("SKILL.md"), PathBuf::from("main.py")]))
+    .call()
+    .await?;
+```
+
+The file variants are `#[serde(skip)]`: an upload has no JSON form, so serializing a union (or a model holding it) that
+holds a file is an error, and JSON never decodes to one. The unions are request bodies, sent part by part.
+
+With `httpStack=reqwest-middleware` file parameters, and the file variants of multipart unions, stay
+`std::path::PathBuf`s.
 
 ### Typed event streams
 
@@ -207,9 +233,12 @@ The runtime does what differs, behind `#[cfg(target_family = "wasm")]`: reqwest 
 back off and honour `Retry-After` with the host's timer, nothing needs to be `Send` (the bounds are the runtime's
 `MaybeSend` and `MaybeSync`, and `EventStream::from_bytes` takes them too), and tokio is not a dependency. TLS is the
 host's: `native-tls` and `rustls` select nothing there. There is no file system: give a file parameter bytes
-(`Upload::bytes`, a `Vec<u8>`) or a stream (`Upload::stream`, `Upload::from_fn`); a `PathBuf`, which a multipart union
-with a file variant still holds, compiles but fails when the request is built, with an `Error::Http` whose `is_io()` is
-true. A streamed upload is read into memory before `fetch` sends it. A crate with `uuid`s depends on uuid's `js`
+(`Upload::bytes`, a `Vec<u8>`) or a stream (`Upload::stream`, `Upload::from_fn`), and so does the file variant of a
+multipart union; a `PathBuf` compiles but fails when the request is built, with an `Error::Http` whose `is_io()` is
+true. A streamed upload is read into memory before `fetch` sends it. `fetch` has no timeout: add the runtime's
+`timeout::TimeoutLayer` to `configuration.client` (runtime 0.3.1, feature `time`, which the `retry` feature turns on),
+which waits with the host's timer; tower's `TimeoutLayer` needs tokio's timer and does not work there
+([timeouts](../../runtime/README.md#timeouts)). A crate with `uuid`s depends on uuid's `js`
 feature there (randomness from `crypto.getRandomValues`). The runtime's guide has
 [the details](../../runtime/README.md#webassembly).
 

@@ -26,12 +26,33 @@ type Factory = Arc<dyn Fn() -> Chunks>;
 /// | Source | Length | Retried |
 /// |---|---|---|
 /// | [`Upload::bytes`] (`Bytes`, `Vec<u8>`, `&'static [u8]`) | known | yes, without a copy |
-/// | [`Upload::path`], [`Upload::file`] | from the file's metadata | yes: the file is opened again |
+#[cfg_attr(
+    all(feature = "fs", not(target_family = "wasm")),
+    doc = "| [`Upload::path`], [`Upload::file`] | from the file's metadata | yes: the file is opened again |"
+)]
+#[cfg_attr(
+    not(all(feature = "fs", not(target_family = "wasm"))),
+    doc = "| `Upload::path`, `Upload::file` (feature `fs`, not on WebAssembly) | from the file's metadata | yes: the file is opened again |"
+)]
 /// | [`Upload::from_fn`] | [`Upload::len`] | yes: the function makes a fresh stream |
-/// | [`Upload::reader`], [`Upload::stream`] | [`Upload::len`] | no, unless [`Upload::buffer_for_retry`] holds it all |
+#[cfg_attr(
+    all(feature = "fs", not(target_family = "wasm")),
+    doc = "| [`Upload::reader`], [`Upload::stream`] | [`Upload::len`] | no, unless [`Upload::buffer_for_retry`] holds it all |"
+)]
+#[cfg_attr(
+    not(all(feature = "fs", not(target_family = "wasm"))),
+    doc = "| `Upload::reader` (feature `fs`), [`Upload::stream`] | [`Upload::len`] | no, unless [`Upload::buffer_for_retry`] holds it all |"
+)]
 ///
 /// When the length is known, the body (or the whole multipart form) is sent with a `Content-Length`, not chunked.
-/// A path's length is read by [`Upload::resolve`], which generated clients call; [`Upload::file`] is
+#[cfg_attr(
+    all(feature = "fs", not(target_family = "wasm")),
+    doc = "A path's length is read by [`Upload::resolve`], which generated clients call; [`Upload::file`] is"
+)]
+#[cfg_attr(
+    not(all(feature = "fs", not(target_family = "wasm"))),
+    doc = "A path's length is read by [`Upload::resolve`], which generated clients call; `Upload::file` is"
+)]
 /// `Upload::path(path).resolve()`.
 ///
 /// ```no_run
@@ -256,7 +277,14 @@ impl Upload {
     /// A file, streamed from disk with tokio and opened again for each attempt, so a retry sends it again.
     ///
     /// The file name is the path's last component, the media type is guessed from its extension. Nothing is read
-    /// until the request is sent; [`Upload::resolve`] (or [`Upload::file`]) reads the length, so the body is sent with
+    #[cfg_attr(
+        not(target_family = "wasm"),
+        doc = "until the request is sent; [`Upload::resolve`] (or [`Upload::file`]) reads the length, so the body is sent with"
+    )]
+    #[cfg_attr(
+        target_family = "wasm",
+        doc = "until the request is sent; [`Upload::resolve`] (or `Upload::file`) reads the length, so the body is sent with"
+    )]
     /// a `Content-Length`, and fails early when the file does not exist.
     ///
     /// On WebAssembly there is no file system: the upload fails ([`Upload::resolve`], or the request) with an I/O
@@ -480,6 +508,39 @@ impl From<&std::path::Path> for Upload {
     }
 }
 
+/// Two uploads are equal when they send the same thing: equal bytes, the same path, or the same stream or
+/// [`from_fn`](Upload::from_fn) function (an upload and its clones), with the same file name, media type, length,
+/// slice and [`buffer_for_retry`](Upload::buffer_for_retry) limit. Two streams are never equal to each other, even
+/// with the same contents: they are not read to compare them. A path is compared as a path, not by the file's contents,
+/// and whether it was [`resolve`](Upload::resolve)d does not matter.
+///
+/// It lets a model that holds an upload (a generated multipart union with a file variant) derive `PartialEq`.
+impl PartialEq for Upload {
+    fn eq(&self, other: &Self) -> bool {
+        let same_source = match (&self.source, &other.source) {
+            (Source::Bytes(a), Source::Bytes(b)) => a == b,
+            #[cfg(feature = "fs")]
+            (Source::File(a), Source::File(b)) => a == b,
+            (Source::Once(a), Source::Once(b)) => Arc::ptr_eq(a, b),
+            (Source::Factory(a), Source::Factory(b)) => {
+                std::ptr::addr_eq(Arc::as_ptr(a), Arc::as_ptr(b))
+            }
+            _ => false,
+        };
+        #[cfg(feature = "fs")]
+        let total = matches!(self.source, Source::File(_)) || self.total == other.total;
+        #[cfg(not(feature = "fs"))]
+        let total = self.total == other.total;
+        same_source
+            && total
+            && self.file_name == other.file_name
+            && self.mime == other.mime
+            && self.start == other.start
+            && self.end == other.end
+            && self.buffer_limit == other.buffer_limit
+    }
+}
+
 impl fmt::Debug for Upload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug = f.debug_struct("Upload");
@@ -515,6 +576,36 @@ mod tests {
                 .map(|part| Ok(Bytes::from_static(part.as_bytes())))
                 .collect::<Vec<_>>(),
         )
+    }
+
+    #[test]
+    fn uploads_are_equal_when_they_send_the_same_thing() {
+        let bytes = Upload::bytes(&b"abc"[..]).file_name("a.txt");
+        assert_eq!(bytes, bytes.clone());
+        assert_eq!(bytes, Upload::bytes(b"abc".to_vec()).file_name("a.txt"));
+        assert_ne!(bytes, Upload::bytes(&b"abc"[..]));
+        assert_ne!(bytes, bytes.clone().mime("text/plain"));
+        assert_ne!(bytes, bytes.clone().slice(1..));
+        let stream = Upload::stream(stream::iter([Ok::<_, std::io::Error>(&b"abc"[..])]));
+        assert_eq!(stream, stream.clone());
+        assert_ne!(
+            stream,
+            Upload::stream(stream::iter([Ok::<_, std::io::Error>(&b"abc"[..])]))
+        );
+        assert_ne!(stream, Upload::bytes(&b"abc"[..]));
+        let from_fn = Upload::from_fn(|| stream::iter([Ok::<_, std::io::Error>(&b"abc"[..])]));
+        assert_eq!(from_fn, from_fn.clone());
+        assert_ne!(from_fn, stream);
+    }
+
+    #[cfg(feature = "fs")]
+    #[tokio::test]
+    async fn paths_are_equal_as_paths() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let path = Upload::path(file.path());
+        assert_eq!(path, Upload::from(file.path().to_path_buf()));
+        assert_eq!(path, path.clone().resolve().await.unwrap());
+        assert_ne!(path, Upload::path("other.txt"));
     }
 
     #[tokio::test]

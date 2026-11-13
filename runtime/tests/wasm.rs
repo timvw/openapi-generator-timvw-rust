@@ -1,5 +1,5 @@
-//! WebAssembly: services that are not `Send`, retries that wait with the JavaScript host's timers, the SSE idle timeout
-//! and uploads, with no file system.
+//! WebAssembly: services that are not `Send`, retries and request timeouts that wait with the JavaScript host's timers,
+//! the SSE idle timeout and uploads, with no file system.
 //!
 //! `cargo test --target wasm32-unknown-unknown --no-default-features --features reqwest,retry --test wasm`, with
 //! `wasm-bindgen-test-runner` as the target's runner (it runs the tests in Node.js).
@@ -12,6 +12,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use timvw_rust_runtime::multipart::{Form, Part};
 use timvw_rust_runtime::retry::{RetryLayer, RetryPolicy};
+use timvw_rust_runtime::timeout::TimeoutLayer;
 use timvw_rust_runtime::{Body, BoxError, Client, Method, StatusCode, Upload};
 use wasm_bindgen_test::wasm_bindgen_test;
 use web_time::Instant;
@@ -51,6 +52,58 @@ async fn retries_wait_as_long_as_the_server_asks() {
     assert_eq!(calls.get(), 3);
     assert!(
         (Duration::from_millis(400)..Duration::from_secs(2)).contains(&waited),
+        "{waited:?}"
+    );
+}
+
+/// `TimeoutLayer` waits with `setTimeout`: a service that never answers times out, inside the retries for each attempt
+/// (retried with `retry_timeouts`), outside them for the whole call.
+#[wasm_bindgen_test]
+async fn a_request_times_out_with_the_hosts_timer() {
+    let calls = Rc::new(Cell::new(0));
+    let counter = calls.clone();
+    let hangs_once = tower::service_fn(move |_request: http::Request<Body>| {
+        let n = counter.get();
+        counter.set(n + 1);
+        async move {
+            if n == 0 {
+                futures_util::future::pending::<()>().await;
+            }
+            Ok::<_, BoxError>(http::Response::new(Body::from("late")))
+        }
+    });
+    let client = Client::from_service(hangs_once)
+        .layer(TimeoutLayer::new(Duration::from_millis(200)))
+        .layer(RetryLayer::new(
+            RetryPolicy::new(1)
+                .base_delay(Duration::from_millis(10))
+                .retry_timeouts(true),
+        ));
+    let started = Instant::now();
+    let response = client
+        .request(Method::GET, "https://example.invalid/")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.text().await.unwrap(), "late");
+    assert_eq!(calls.get(), 2);
+    assert!(started.elapsed() >= Duration::from_millis(200));
+
+    let never = tower::service_fn(|_request: http::Request<Body>| async {
+        futures_util::future::pending::<()>().await;
+        Ok::<_, BoxError>(http::Response::new(Body::empty()))
+    });
+    let client = Client::from_service(never).layer(TimeoutLayer::new(Duration::from_millis(150)));
+    let started = Instant::now();
+    let error = client
+        .request(Method::GET, "https://example.invalid/")
+        .send()
+        .await
+        .unwrap_err();
+    let waited = started.elapsed();
+    assert!(error.is_timeout(), "{error:?}");
+    assert!(
+        (Duration::from_millis(150)..Duration::from_secs(2)).contains(&waited),
         "{waited:?}"
     );
 }
@@ -124,7 +177,8 @@ async fn uploads_of_bytes_and_streams_encode_without_a_file_system() {
 }
 
 /// reqwest's `fetch` backend end to end, against the server of `TIMVW_WASM_TEST_SERVER` (read when the test is built):
-/// `/flaky?id=..` answers `503` with `retry-after-ms` the first time, `/echo` echoes the body, `/sse` sends two events.
+/// `/flaky?id=..` answers `503` with `retry-after-ms` the first time, `/echo` echoes the body, `/sse` sends two events,
+/// `/slow?ms=..` answers after a delay.
 /// Skipped without it.
 #[cfg(feature = "reqwest")]
 #[wasm_bindgen_test]
@@ -188,6 +242,23 @@ async fn reqwest_sends_with_fetch() {
         numbers,
         [serde_json::json!({"n": 1}), serde_json::json!({"n": 2})]
     );
+
+    // `fetch` has no timeout of its own: `TimeoutLayer` gives up on a slow response (and reqwest aborts the fetch).
+    let client = Client::new().layer(TimeoutLayer::new(Duration::from_millis(300)));
+    let started = Instant::now();
+    let error = client
+        .request(Method::GET, &format!("{server}/slow?ms=3000"))
+        .send()
+        .await
+        .unwrap_err();
+    assert!(error.is_timeout(), "{error:?}");
+    assert!(started.elapsed() < Duration::from_secs(2));
+    let response = client
+        .request(Method::GET, &format!("{server}/slow?ms=10"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.text().await.unwrap(), "slow");
 }
 
 /// With `fs` on WebAssembly a path still makes an upload (generated models with a file variant hold one), which fails

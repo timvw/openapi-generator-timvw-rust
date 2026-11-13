@@ -7,7 +7,14 @@
 //! - a `5xx` response or a failure to send: an event at `WARN`.
 //!
 //! Events have the target `timvw_rust_runtime::trace`, so `RUST_LOG=timvw_rust_runtime=debug` shows every request.
-//! With the `retry` feature, [`RetryPolicy`](crate::retry::RetryPolicy) logs each retry at `DEBUG` too.
+#![cfg_attr(
+    feature = "retry",
+    doc = "With the `retry` feature, [`RetryPolicy`](crate::retry::RetryPolicy) logs each retry at `DEBUG` too."
+)]
+#![cfg_attr(
+    not(feature = "retry"),
+    doc = "With the `retry` feature, `RetryPolicy` logs each retry at `DEBUG` too."
+)]
 //!
 //! ```no_run
 //! # #[cfg(feature = "reqwest")]

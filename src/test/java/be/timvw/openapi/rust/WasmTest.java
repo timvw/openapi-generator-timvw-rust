@@ -59,6 +59,7 @@ class WasmTest {
         "src/test/resources/uploads.yaml, wasm_uploads_features, true",
         "src/test/resources/multipart.yaml, wasm_multipart, false",
         "src/test/resources/multipart.yaml, wasm_multipart_features, true",
+        "src/test/resources/multipart_unions.yaml, wasm_multipart_unions, false",
     })
     void buildsForWasm32(String spec, String packageName, boolean apiFeatures) throws IOException, InterruptedException {
         generate(spec, packageName, apiFeatures);

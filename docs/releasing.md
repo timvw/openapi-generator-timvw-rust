@@ -3,17 +3,17 @@
 The generator and the runtime have versions of their own: the generator (`v<version>` tags, Maven Central and the
 image) and `timvw-rust-runtime` (`timvw-rust-runtime-v<version>` tags, crates.io). Release the runtime first when the
 generator's `DEFAULT_RUNTIME_VERSION` (`TimvwRustCodegen`, the default of `runtimeVersion`) needs a runtime that is
-not on crates.io yet: generator 0.27 renders for runtime `0.3`.
+not on crates.io yet: generator 0.28 renders for runtime `0.3.1`.
 
 ## The generator
 
 1. Make sure `main` is green.
-2. Tag and push: `git tag v0.27.0 && git push origin v0.27.0`.
+2. Tag and push: `git tag v0.28.0 && git push origin v0.28.0`.
 3. The `Release` workflow (`.github/workflows/release.yml`) does the rest:
    - It sets the pom version from the tag and runs `./mvnw -Prelease deploy`. That signs the jar, sources and javadoc
      with GPG and publishes them through the Sonatype Central Portal.
    - It builds one image per supported openapi-generator version and pushes
-     `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator>` (`0.27.0-og7.27.0`). The default
+     `ghcr.io/timvw/openapi-generator-timvw-rust:<version>-og<openapi-generator>` (`0.28.0-og7.27.0`). The default
      openapi-generator version also gets `:<version>` and `:latest`.
 
 To rebuild the images of an existing tag (after a workflow fix), run the `Release` workflow by hand with its

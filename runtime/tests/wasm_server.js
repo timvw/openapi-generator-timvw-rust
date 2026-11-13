@@ -1,6 +1,7 @@
 // The server tests/wasm.rs sends to with reqwest's fetch backend: `node tests/wasm_server.js`, then build the tests
 // with TIMVW_WASM_TEST_SERVER=http://127.0.0.1:18765 (see the CI workflow).
 // /flaky?id=..: 503 with retry-after-ms the first time for an id, then 200. /echo: echoes the body. /sse: two events.
+// /slow?ms=..: 200 after that many milliseconds.
 const http = require('http');
 const seen = new Set();
 http.createServer((req, res) => {
@@ -15,6 +16,11 @@ http.createServer((req, res) => {
         return res.end('busy');
       }
       res.writeHead(200, {'content-type': 'text/plain', 'x-test': 'yes'}); return res.end('ok');
+    }
+    if (req.url.startsWith('/slow?')) {
+      const ms = Number(new URL(req.url, 'http://localhost').searchParams.get('ms')) || 0;
+      setTimeout(() => { res.writeHead(200, {'content-type': 'text/plain'}); res.end('slow'); }, ms);
+      return;
     }
     if (req.url === '/echo') {
       res.writeHead(200, {'content-type': 'text/plain', 'x-content-type': req.headers['content-type'] || '', 'x-length': req.headers['content-length'] || ''});

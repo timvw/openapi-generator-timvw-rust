@@ -22,7 +22,7 @@ From the directory that holds `openapi.yaml`:
 
 ```bash
 docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
-  ghcr.io/timvw/openapi-generator-timvw-rust:0.27.0-og7.27.0 generate \
+  ghcr.io/timvw/openapi-generator-timvw-rust:0.28.0-og7.27.0 generate \
   -g timvw-rust \
   -i /local/openapi.yaml \
   -o /local/my-client \
@@ -52,9 +52,9 @@ for item in &page.data {
 }
 ```
 
-Current releases: generator **0.27.0** (`ghcr.io/timvw/openapi-generator-timvw-rust:0.27.0-og7.27.0`,
-`be.timvw:openapi-generator-timvw-rust:0.27.0`, built and tested against openapi-generator 7.27.0) and
-[`timvw-rust-runtime`](runtime/README.md) **0.3.0**, which the generated `Cargo.toml` asks for (`^0.3`).
+Current releases: generator **0.28.0** (`ghcr.io/timvw/openapi-generator-timvw-rust:0.28.0-og7.27.0`,
+`be.timvw:openapi-generator-timvw-rust:0.28.0`, built and tested against openapi-generator 7.27.0) and
+[`timvw-rust-runtime`](runtime/README.md) **0.3.1**, which the generated `Cargo.toml` asks for (`^0.3.1`).
 
 ## What you get
 
@@ -94,7 +94,7 @@ Current releases: generator **0.27.0** (`ghcr.io/timvw/openapi-generator-timvw-r
 | [Validation](docs/guides/validation.md) | `validate()`: what it checks, what it skips, the off switch |
 | [API features](docs/guides/api-features.md) | `apiFeatures`: a Cargo feature per API group, and types-only features |
 | [Response functions](docs/guides/response-functions.md) | `responseFunctions`: status, (typed) headers and partial decoding of a success |
-| [Migration](docs/guides/migration.md) | upgrading release by release (0.20 to 0.27), and coming from stock `-g rust` |
+| [Migration](docs/guides/migration.md) | upgrading release by release (0.20 to 0.28), and coming from stock `-g rust` |
 | [Type mapping](docs/type-mapping.md), [mapping rules](docs/mapping/README.md) | what each OpenAPI construct becomes: one overview table, and the rules per specification object, each with its tests |
 | [Known limitations](docs/limitations.md) | what the generator and the runtime do not do yet |
 | [Comparison](docs/comparison/README.md) | stock `-g rust`, timvw-rust and progenitor side by side on one spec |

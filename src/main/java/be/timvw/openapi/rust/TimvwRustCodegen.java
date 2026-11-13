@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedSet;
 
 /**
  * {@code timvw-rust}: a Rust client generator. {@link RustCodegenBase} holds the Rust language layer (ported from
@@ -196,7 +197,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /** The version requirement of {@code timvw-rust-runtime} in the generated Cargo.toml (with {@code httpStack=tower}). */
     public static final String RUNTIME_VERSION = "runtimeVersion";
     /** The {@code timvw-rust-runtime} release this generator renders for: the default of {@link #RUNTIME_VERSION}. */
-    public static final String DEFAULT_RUNTIME_VERSION = "0.3";
+    public static final String DEFAULT_RUNTIME_VERSION = "0.3.1";
     /**
      * A path dependency on {@code timvw-rust-runtime} next to the version (with {@code httpStack=tower}), for testing
      * against an unreleased runtime; defaults to the system property {@code timvw-rust.runtimePath}.
@@ -629,6 +630,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
         UnionRules.payloads(unions, objs);
         unionModels.putAll(unions);
         UnionRules.DispatchCounts counts = UnionRules.dispatch(unions, objs, openAPI, mapped);
+        if (httpStackTower && UploadParams.markUnions(unions)) {
+            // `From<PathBuf>` for the unions: Upload::path.
+            additionalProperties.put(UploadParams.RUNTIME_FS, true);
+        }
         anyDispatch = counts.explicit() + counts.implicit() > 0;
         LOGGER.info("{}: union dispatch: {} tagged ({} by a discriminator, {} implicitly), {} untagged; {} have a value "
                         + "on two variants, {} allow the tag to be missing", GENERATOR_NAME,
@@ -1237,18 +1242,43 @@ public class TimvwRustCodegen extends RustCodegenBase {
      */
     private void describeApiFeatures(Map<String, Object> objs) {
         ApiFeatures.Plan plan = apiFeaturesPlan();
+        // A union with a file variant holds a timvw_rust_runtime::Upload: the features that compile it without the
+        // API functions need the runtime too.
+        Set<String> uploadFeatures = new HashSet<>();
+        if (objs.get("models") instanceof List) {
+            for (Object m : (List<?>) objs.get("models")) {
+                if (m instanceof ModelMap && ((ModelMap) m).getModel() != null
+                        && ((ModelMap) m).getModel().vendorExtensions.containsKey(UploadParams.FILE_UNION)) {
+                    SortedSet<String> f = plan.models.get(((ModelMap) m).getModel().name);
+                    if (f == null || f.isEmpty()) {
+                        uploadFeatures.add(ApiFeatures.TYPES);
+                    } else if (f.equals(plan.features)) {
+                        // An ungated model: the runtime is no longer optional.
+                        objs.put(UploadParams.RUNTIME_REQUIRED, true);
+                    } else {
+                        uploadFeatures.addAll(f);
+                    }
+                }
+            }
+        }
         List<Map<String, Object>> groups = new ArrayList<>();
         for (String f : plan.features) {
             Map<String, Object> g = new LinkedHashMap<>();
             g.put("name", f);
             g.put("selects", plan.selects.get(f));
+            g.put(UploadParams.TYPES_NEED_RUNTIME, uploadFeatures.contains(f) && !objs.containsKey(
+                    UploadParams.RUNTIME_REQUIRED));
             groups.add(g);
         }
         objs.put("apiFeatureGroups", groups);
         List<String> full = new ArrayList<>(plan.features);
         full.add(ApiFeatures.TYPES);
         objs.put("apiFeaturesFull", full);
-        objs.put("apiFeaturesTypes", plan.features.stream().map(f -> f + ApiFeatures.TYPES_SUFFIX).toList());
+        List<String> types = new ArrayList<>(plan.features.stream().map(f -> f + ApiFeatures.TYPES_SUFFIX).toList());
+        if (uploadFeatures.contains(ApiFeatures.TYPES) && !objs.containsKey(UploadParams.RUNTIME_REQUIRED)) {
+            types.add("dep:timvw-rust-runtime");
+        }
+        objs.put("apiFeaturesTypes", types);
         if (webhookModule != null) {
             String cfg = plan.moduleCfg(toApiName(sanitizeTag(webhookModule)));
             if (cfg != null) {
@@ -2055,6 +2085,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 if (multipartHelper && op.isMultipart && op.formParams != null && !op.formParams.isEmpty()) {
                     MultipartRules.classify(openAPI, op, unionModels,
                             msg -> LOGGER.warn("{}: multipart: {}", GENERATOR_NAME, msg));
+                    if (httpStackTower && bonBuilders) {
+                        UploadParams.markUnionSetters(op);
+                    }
                     for (CodegenParameter p : op.formParams) {
                         if (p.isFile || !p.vendorExtensions.containsKey(MultipartRules.STOCK)) {
                             helperUsed = true;

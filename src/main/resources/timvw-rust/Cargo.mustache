@@ -65,7 +65,7 @@ reqwest = { version = "^0.13", default-features = false, features = ["json", "mu
 {{/useAsyncFileStream}}
 {{/httpStackTower}}
 {{#httpStackTower}}
-timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFeatures}}, features = [{{{runtimeFeatures}}}]{{/runtimeFeatures}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#apiFeatures}}, optional = true{{/apiFeatures}} }
+timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFeatures}}, features = [{{{runtimeFeatures}}}]{{/runtimeFeatures}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#apiFeatures}}{{^runtimeRequired}}, optional = true{{/runtimeRequired}}{{/apiFeatures}} }
 {{#hasUUIDs}}
 
 # WebAssembly in a JavaScript host (wasm32-unknown-unknown): uuid's `v4` draws from `crypto.getRandomValues`.
@@ -75,10 +75,10 @@ uuid = { version = "^1.8", features = ["js"] }
 
 [features]
 default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry"{{#apiFeatures}}, "full"{{/apiFeatures}}]
-native-tls = ["timvw-rust-runtime{{#apiFeatures}}?{{/apiFeatures}}/native-tls"]
-rustls = ["timvw-rust-runtime{{#apiFeatures}}?{{/apiFeatures}}/rustls"]
-retry = ["timvw-rust-runtime{{#apiFeatures}}?{{/apiFeatures}}/retry"]
-tracing = ["timvw-rust-runtime{{#apiFeatures}}?{{/apiFeatures}}/tracing"]
+native-tls = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/native-tls"]
+rustls = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/rustls"]
+retry = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/retry"]
+tracing = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/tracing"]
 {{/httpStackTower}}
 {{^httpStackTower}}
 {{^useAsyncFileStream}}
@@ -104,10 +104,10 @@ types = [
     "{{{.}}}",
 {{/apiFeaturesTypes}}
 ]
-_api = [{{#httpStackTower}}"dep:timvw-rust-runtime"{{/httpStackTower}}{{^httpStackTower}}"dep:reqwest", "dep:reqwest-middleware"{{#useAsyncFileStream}}, "dep:tokio", "dep:tokio-util"{{/useAsyncFileStream}}{{/httpStackTower}}]
+_api = [{{#httpStackTower}}{{^runtimeRequired}}"dep:timvw-rust-runtime"{{/runtimeRequired}}{{/httpStackTower}}{{^httpStackTower}}"dep:reqwest", "dep:reqwest-middleware"{{#useAsyncFileStream}}, "dep:tokio", "dep:tokio-util"{{/useAsyncFileStream}}{{/httpStackTower}}]
 {{#apiFeatureGroups}}
 # {{{selects}}}
 {{{name}}} = ["{{{name}}}-types", "_api"]
-{{{name}}}-types = []
+{{{name}}}-types = [{{#typesNeedRuntime}}"dep:timvw-rust-runtime"{{/typesNeedRuntime}}]
 {{/apiFeatureGroups}}
 {{/apiFeatures}}

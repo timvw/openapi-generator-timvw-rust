@@ -76,29 +76,33 @@ impl Error {
     }
 
     /// A file could not be read or written: an [`Upload`](crate::Upload) whose file is missing, or
-    /// [`Response::save_to`](crate::Response::save_to) failing to write. [`Error::source`](std::error::Error::source)
-    /// is the `std::io::Error`.
+    #[cfg_attr(
+        all(feature = "fs", not(target_family = "wasm")),
+        doc = "[`Response::save_to`](crate::Response::save_to) failing to write."
+    )]
+    #[cfg_attr(
+        not(all(feature = "fs", not(target_family = "wasm"))),
+        doc = "`Response::save_to` (feature `fs`, not on WebAssembly) failing to write."
+    )]
+    /// [`Error::source`](std::error::Error::source) is the `std::io::Error`.
     pub fn is_io(&self) -> bool {
         self.kind == Kind::Io
     }
 
-    /// Whether the request timed out: a reqwest timeout, tower's `timeout` layer, or an
-    /// [`idle_timeout`](crate::sse::Events::idle_timeout) of server-sent events.
+    /// Whether the request timed out: a reqwest timeout, tower's `timeout` layer, this crate's
+    #[cfg_attr(
+        feature = "time",
+        doc = "[`TimeoutLayer`](crate::timeout::TimeoutLayer), or an [`idle_timeout`](crate::sse::Events::idle_timeout)"
+    )]
+    #[cfg_attr(
+        not(feature = "time"),
+        doc = "`timeout::TimeoutLayer`, or an `idle_timeout` (both feature `time`)"
+    )]
+    /// of server-sent events.
     pub fn is_timeout(&self) -> bool {
-        let mut source: Option<&(dyn StdError + 'static)> = self.source.as_deref().map(|e| e as _);
-        while let Some(error) = source {
-            if error.to_string() == "request timed out" || error.is::<TimedOut>() {
-                return true;
-            }
-            #[cfg(feature = "reqwest")]
-            if let Some(error) = error.downcast_ref::<reqwest::Error>() {
-                if error.is_timeout() {
-                    return true;
-                }
-            }
-            source = error.source();
-        }
-        false
+        self.source
+            .as_deref()
+            .is_some_and(|source| is_timeout(source as _))
     }
 
     /// Whether connecting to the server failed (only known for reqwest, and not on WebAssembly, where `fetch` does not
@@ -152,7 +156,25 @@ impl StdError for Error {
     }
 }
 
-/// Nothing arrived within a time limit, such as an [`idle_timeout`](crate::sse::Events::idle_timeout).
+/// Whether `error`, or an error it was caused by, is a timeout: tower's `Elapsed`, a reqwest timeout, or [`TimedOut`].
+pub(crate) fn is_timeout(error: &(dyn StdError + 'static)) -> bool {
+    let mut source = Some(error);
+    while let Some(error) = source {
+        if error.to_string() == "request timed out" || error.is::<TimedOut>() {
+            return true;
+        }
+        #[cfg(feature = "reqwest")]
+        if let Some(error) = error.downcast_ref::<reqwest::Error>() {
+            if error.is_timeout() {
+                return true;
+            }
+        }
+        source = error.source();
+    }
+    false
+}
+
+/// Nothing arrived within a time limit, such as an `idle_timeout` of server-sent events.
 #[derive(Debug)]
 #[cfg_attr(not(feature = "time"), allow(dead_code))]
 pub(crate) struct TimedOut(pub(crate) String);

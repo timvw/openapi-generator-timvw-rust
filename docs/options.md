@@ -128,7 +128,7 @@ Tests: [`ErrorsAndLintsTest`](../src/test/java/be/timvw/openapi/rust/ErrorsAndLi
 
 ```toml
 # Cargo.toml with the default
-timvw-rust-runtime = { version = "^0.3", default-features = false }
+timvw-rust-runtime = { version = "^0.3.1", default-features = false }
 ```
 
 Guide: [HTTP stack](guides/http-stack.md). Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java)
@@ -137,7 +137,7 @@ Guide: [HTTP stack](guides/http-stack.md). Tests: [`HttpStackTest`](../src/test/
 
 ### `runtimeVersion`
 
-string, default `0.3` (the runtime release this generator renders for, `DEFAULT_RUNTIME_VERSION`). With
+string, default `0.3.1` (the runtime release this generator renders for, `DEFAULT_RUNTIME_VERSION`). With
 `httpStack=tower`: the version requirement of `timvw-rust-runtime` in `Cargo.toml`, written as `^<value>`. A runtime
 fix reaches a client with `cargo update`; set it only to require a newer patch release.
 
@@ -158,7 +158,7 @@ build against an unreleased runtime. The generator's own tests set it to `runtim
 ```
 
 ```toml
-timvw-rust-runtime = { version = "^0.3", default-features = false, path = "../openapi-generator-timvw-rust/runtime" }
+timvw-rust-runtime = { version = "^0.3.1", default-features = false, path = "../openapi-generator-timvw-rust/runtime" }
 ```
 
 Tests: [`HttpStackTest`](../src/test/java/be/timvw/openapi/rust/HttpStackTest.java) (`theRuntimeVersionAndPathAreOptions`).

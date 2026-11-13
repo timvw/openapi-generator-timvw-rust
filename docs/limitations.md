@@ -13,9 +13,8 @@ mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed i
   `bonBuilders=false` the functions take no such argument.
 - **`RequestOptions` cannot change the path or the base URL** of one call (async-openai's path override); a
   `ProviderLayer` on the client does that for every call.
-
-- A multipart request body schema is also generated as a model (e.g. `CreateContainerFileBody`); its binary
-  properties stay `PathBuf`. The operation itself takes `timvw_rust_runtime::Upload`, so this only matters to code
+- **Multipart body models keep `PathBuf`.** A multipart request body schema is also generated as a model (e.g.
+  `CreateContainerFileBody`); its binary properties stay `PathBuf`. The operation itself takes `timvw_rust_runtime::Upload`, so this only matters to code
   that builds that model directly.
 
 ## Runtime

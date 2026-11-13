@@ -5,7 +5,8 @@
 #
 # Needs Java 17+, the timvw-rust jar (./mvnw -DskipTests package), the openapi-generator CLI jar in target/
 # (see docs/development.md), cargo-progenitor (cargo install cargo-progenitor), a nightly rustfmt
-# (rustup component add rustfmt --toolchain nightly) and python3 with PyYAML.
+# (rustup component add rustfmt --toolchain nightly), the wasm32-unknown-unknown target
+# (rustup target add wasm32-unknown-unknown) and python3 with PyYAML.
 # Output goes to target/comparison/{stock,timvw,progenitor}; each crate is then checked with cargo.
 set -euo pipefail
 
@@ -57,6 +58,15 @@ for crate in stock timvw progenitor; do
     (cd "$OUT/$crate" && cargo clippy --quiet 2>&1 | grep -E '^(warning|error)' | sort | uniq -c | sort -rn || true)
   fi
 done
+
+# WebAssembly, and the timvw-rust models without the HTTP client (apiFeatures' `types`).
+for crate in stock timvw progenitor; do
+  if [ -f "$OUT/$crate/Cargo.toml" ]; then
+    (cd "$OUT/$crate" && cargo check --quiet --target wasm32-unknown-unknown >/dev/null 2>&1 \
+      && echo "== wasm32 $crate: builds" || echo "== wasm32 $crate: does not build")
+  fi
+done
+(cd "$OUT/timvw" && cargo check --quiet --no-default-features --features types && echo "== timvw types-only: builds")
 
 # The same payloads through each crate (docs/comparison/decode.rs).
 for pair in stock:comparison_stock::models timvw:comparison_timvw::models progenitor:comparison_progenitor::types; do

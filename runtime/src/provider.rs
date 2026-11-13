@@ -16,6 +16,7 @@ use serde::Serialize;
 use tower::{Layer, Service};
 use url::Url;
 
+use crate::request_options::Applied;
 use crate::{BoxError, Error};
 
 /// Rewrites a path relative to the base URL, see [`ProviderLayer::map_path`].
@@ -37,6 +38,16 @@ type MapPath = Arc<dyn Fn(&str) -> String + Send + Sync>;
 ///
 /// Any other request (a download from another host, say) is passed on unchanged, so the provider's credentials are
 /// never sent elsewhere.
+///
+/// Per-call [`RequestOptions`](crate::RequestOptions) win over the layer:
+///
+/// - a header the options set is not replaced by the layer's header of that name;
+/// - a query parameter the options added is not replaced by the layer's parameter of that name (with an `api-version`
+///   in both, the options' is sent, once);
+/// - a call the options sent to a [base URL](crate::RequestOptions::base_url) of their own is not moved: the layer
+///   ignores [`ProviderLayer::rewrite_from`] for it. When that base is the provider's (or under it), the layer still
+///   rewrites the path and adds its headers and query parameters; any other base gets nothing from the layer, so its
+///   credentials do not go there.
 ///
 /// There are two ways to point a generated client at a provider:
 ///
@@ -188,17 +199,21 @@ impl ProviderLayer {
     /// or `uri` unchanged when it is not the provider's. Fails, with an error whose
     /// [`is_builder()`](Error::is_builder) is true, when the rewritten URL is invalid.
     pub fn rewrite_uri(&self, uri: &Uri) -> Result<Uri, Error> {
-        Ok(self.rewrite(uri)?.unwrap_or_else(|| uri.clone()))
+        Ok(self.rewrite(uri, None)?.unwrap_or_else(|| uri.clone()))
     }
 
-    /// The rewritten URL, or `None` when the request is not the provider's.
-    fn rewrite(&self, uri: &Uri) -> Result<Option<Uri>, Error> {
+    /// The rewritten URL, or `None` when the request is not the provider's. `applied` is what per-call options set.
+    fn rewrite(&self, uri: &Uri, applied: Option<&Applied>) -> Result<Option<Uri>, Error> {
         let Ok(mut url) = Url::parse(&uri.to_string()) else {
             return Ok(None);
         };
-        let rest = self
+        // A call the options sent to a base of their own is not moved.
+        let rewrite_from = self
             .rewrite_from
-            .iter()
+            .as_ref()
+            .filter(|_| !applied.is_some_and(|applied| applied.base));
+        let rest = rewrite_from
+            .into_iter()
             .chain([&self.base])
             .find_map(|base| rest_of_path(&url, base));
         let Some(rest) = rest else {
@@ -215,31 +230,38 @@ impl ProviderLayer {
         url.set_host(self.base.host_str()).map_err(Error::builder)?;
         let _ = url.set_port(self.base.port());
         url.set_path(if path.is_empty() { "/" } else { &path });
-        self.set_query(&mut url);
+        self.set_query(&mut url, applied);
         url.as_str()
             .parse::<Uri>()
             .map(Some)
             .map_err(Error::builder)
     }
 
-    fn set_query(&self, url: &mut Url) {
-        if self.query.is_empty() {
+    fn set_query(&self, url: &mut Url, applied: Option<&Applied>) {
+        // The options' parameters win: the layer leaves their names alone.
+        let query: Vec<&(String, String)> = self
+            .query
+            .iter()
+            .filter(|(name, _)| !applied.is_some_and(|applied| applied.has_query(name)))
+            .collect();
+        if query.is_empty() {
             return;
         }
         let replaced = url
             .query_pairs()
-            .any(|(name, _)| self.query.iter().any(|(new, _)| *new == name));
+            .any(|(name, _)| query.iter().any(|(new, _)| *new == name));
         if replaced {
             // Re-encode the query without the replaced names.
             let kept: Vec<(String, String)> = url
                 .query_pairs()
-                .filter(|(name, _)| !self.query.iter().any(|(new, _)| new == name))
+                .filter(|(name, _)| !query.iter().any(|(new, _)| new == name))
                 .map(|(name, value)| (name.into_owned(), value.into_owned()))
                 .collect();
             url.set_query(None);
             url.query_pairs_mut().extend_pairs(kept);
         }
-        url.query_pairs_mut().extend_pairs(&self.query);
+        url.query_pairs_mut()
+            .extend_pairs(query.iter().map(|(name, value)| (name, value)));
     }
 }
 
@@ -300,7 +322,8 @@ where
     }
 
     fn call(&mut self, mut request: http::Request<B>) -> Self::Future {
-        match self.provider.rewrite(request.uri()) {
+        let applied = request.extensions().get::<Applied>().cloned();
+        match self.provider.rewrite(request.uri(), applied.as_ref()) {
             Err(error) => Either::Left(future::ready(Err(error.into()))),
             Ok(None) => Either::Right(
                 self.inner
@@ -309,7 +332,19 @@ where
             ),
             Ok(Some(uri)) => {
                 *request.uri_mut() = uri;
-                request.headers_mut().extend(self.provider.headers.clone());
+                match &applied {
+                    None => request.headers_mut().extend(self.provider.headers.clone()),
+                    Some(applied) => {
+                        // The options' headers win: the layer leaves their names alone.
+                        let mut kept = HeaderMap::new();
+                        for (name, value) in &self.provider.headers {
+                            if !applied.has_header(name) {
+                                kept.append(name.clone(), value.clone());
+                            }
+                        }
+                        request.headers_mut().extend(kept);
+                    }
+                }
                 Either::Right(
                     self.inner
                         .call(request)
@@ -336,7 +371,8 @@ where
     Ok((name, value))
 }
 
-fn parse_base(base_url: &str) -> Result<Url, Error> {
+/// A base URL: absolute, with a host, without a query or fragment.
+pub(crate) fn parse_base(base_url: &str) -> Result<Url, Error> {
     let url = Url::parse(base_url).map_err(Error::builder)?;
     if url.cannot_be_a_base() || url.host_str().is_none() {
         return Err(Error::builder(format!(
@@ -345,20 +381,20 @@ fn parse_base(base_url: &str) -> Result<Url, Error> {
     }
     if url.query().is_some() || url.fragment().is_some() {
         return Err(Error::builder(format!(
-            "a base URL has no query or fragment (use ProviderLayer::query): {base_url}"
+            "a base URL has no query or fragment (set query parameters with `query`): {base_url}"
         )));
     }
     Ok(url)
 }
 
 /// The path of a base URL without its trailing `/`: empty for the root.
-fn trimmed_path(base: &Url) -> &str {
+pub(crate) fn trimmed_path(base: &Url) -> &str {
     base.path().trim_end_matches('/')
 }
 
 /// The path of `url` after `base`'s, when `url` is under `base`: the same scheme, host and port, and a path that starts
 /// with `base`'s at a segment boundary.
-fn rest_of_path(url: &Url, base: &Url) -> Option<String> {
+pub(crate) fn rest_of_path(url: &Url, base: &Url) -> Option<String> {
     if url.scheme() != base.scheme()
         || url.host_str() != base.host_str()
         || url.port_or_known_default() != base.port_or_known_default()

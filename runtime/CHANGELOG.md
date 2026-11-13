@@ -40,13 +40,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for `duration`; every chunk restarts the clock, and the whole stream has no limit.
 - `Error::is_io()`: a file could not be read or written (an upload, `save_to`).
 - Features `fs` (default: files, readers, `save_to`, `into_async_read`; tokio's `fs` and `io-util`, `mime_guess`) and
-  `time` (`idle_timeout`; turned on by `retry`).
+  `time` (`idle_timeout` and the sleeps of retries; turned on by `retry`).
+- WebAssembly (`wasm32-unknown-unknown`, `#[cfg(target_family = "wasm")]`): the crate builds there with any features
+  (`default-features = false, features = ["reqwest", "retry"]` is the useful set). reqwest sends with the host's
+  `fetch` (a streamed request body is read into memory first; responses stream). Retries back off and honour
+  `Retry-After` with the host's `setTimeout` (`gloo-timers`) and `performance.now()`/`Date.now()` clocks (`web-time`),
+  as does `Events::idle_timeout`; `TraceLayer` measures with `performance.now()`. A failed `fetch` is not retried
+  (`is_connect()` is always `false` there). `rustls`/`native-tls` add nothing but reqwest; `fs` adds only
+  `Upload::path` and `From<PathBuf>`/`From<&Path>`, which fail with an `Unsupported` I/O error when resolved or sent.
+  tokio and the file system are not dependencies there.
+- `MaybeSend` and `MaybeSync`: `Send` and `Sync` natively, implemented by every type on WebAssembly, where the
+  host's futures and streams are not `Send`.
+- `LocalBoxCloneService`: a boxed, cloneable service that need not be `Send`, nor its future; `HttpService` on
+  WebAssembly.
 
 ### Changed
 
 - `RetryPolicy` reads the server's wait once into a deadline, counted from when the response arrived, and sleeps until
   it (`tokio::time::sleep_until`): time spent reading a `429` body for `RetryLayer::permanent_429` no longer adds to
   the wait. `max_retry_after` compares with the time left until the deadline.
+- The `Send`/`Sync` bounds of `Client::from_service`, `Client::layer`, `Body::wrap`, `Body::wrap_stream`,
+  `Upload::stream`, `Upload::from_fn`, `sse::Events::from_bytes`, `TraceLayer`'s and `RetryLayer`'s services, and the
+  `Send` of `Response::bytes_stream` are `MaybeSend`/`MaybeSync`: the same natively, none on WebAssembly. `HttpService`
+  is a `LocalBoxCloneService` on WebAssembly.
+- `tokio` and `mime_guess` are no longer dependencies on WebAssembly, whatever the features.
 
 ## [0.2.0] - 2026-11-13
 

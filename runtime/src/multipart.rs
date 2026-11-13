@@ -16,6 +16,7 @@ use futures_util::{future, stream, StreamExt};
 use http::HeaderValue;
 use http_body_util::BodyDataStream;
 
+use crate::maybe::box_stream;
 use crate::{Body, BoxError, Error, Upload};
 
 /// A `multipart/form-data` form.
@@ -128,8 +129,8 @@ fn encode(pieces: Vec<(Bytes, Content)>, closing: Bytes, len: Option<u64>) -> Bo
         .map(|(head, content)| {
             let head = stream::once(future::ready(Ok::<_, BoxError>(head)));
             let content = match content {
-                Content::Bytes(bytes) => stream::once(future::ready(Ok(bytes))).boxed(),
-                Content::Stream(body) => BodyDataStream::new(body).boxed(),
+                Content::Bytes(bytes) => box_stream(stream::once(future::ready(Ok(bytes)))),
+                Content::Stream(body) => box_stream(BodyDataStream::new(body)),
             };
             let tail = stream::once(future::ready(Ok(Bytes::from_static(b"\r\n"))));
             head.chain(content).chain(tail)

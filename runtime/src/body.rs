@@ -7,11 +7,36 @@ use bytes::Bytes;
 use futures_core::TryStream;
 use futures_util::TryStreamExt;
 use http_body::{Frame, SizeHint};
-use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, StreamBody};
 use sync_wrapper::SyncStream;
 
-use crate::BoxError;
+use crate::{BoxError, MaybeSend, MaybeSync};
+
+/// A body of any type: `Send` and `Sync` natively.
+#[cfg(not(target_family = "wasm"))]
+type DynBody = http_body_util::combinators::BoxBody<Bytes, BoxError>;
+#[cfg(target_family = "wasm")]
+type DynBody = Pin<Box<dyn http_body::Body<Data = Bytes, Error = BoxError>>>;
+
+/// Makes a fresh body for each attempt: `Send` and `Sync` natively.
+#[cfg(not(target_family = "wasm"))]
+pub(crate) type MakeBody = Arc<dyn Fn() -> Body + Send + Sync>;
+#[cfg(target_family = "wasm")]
+pub(crate) type MakeBody = Arc<dyn Fn() -> Body>;
+
+fn boxed<B>(body: B) -> DynBody
+where
+    B: http_body::Body<Data = Bytes, Error = BoxError> + MaybeSend + MaybeSync + 'static,
+{
+    #[cfg(not(target_family = "wasm"))]
+    {
+        body.boxed()
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        Box::pin(body)
+    }
+}
 
 /// The body of a request or a response: bytes held in memory, a stream, or a stream that can be made again.
 ///
@@ -25,7 +50,7 @@ pub struct Body {
 enum Kind {
     Full(Option<Bytes>),
     Stream {
-        body: BoxBody<Bytes, BoxError>,
+        body: DynBody,
         /// The length, when known and the body cannot tell (a stream of chunks).
         len: Option<u64>,
     },
@@ -34,7 +59,7 @@ enum Kind {
 
 /// A body made again for each attempt: `make` starts a fresh stream, `current` is the one being read.
 struct Replay {
-    make: Arc<dyn Fn() -> Body + Send + Sync>,
+    make: MakeBody,
     len: Option<u64>,
     current: Option<Box<Body>>,
 }
@@ -47,28 +72,30 @@ impl Body {
         }
     }
 
-    /// A body that wraps another [`http_body::Body`], such as the body of a hyper or reqwest response.
+    /// A body that wraps another [`http_body::Body`], such as the body of a hyper or reqwest response. It must be
+    /// `Send` and `Sync`, except on WebAssembly ([`MaybeSend`], [`MaybeSync`]).
     pub fn wrap<B>(body: B) -> Self
     where
-        B: http_body::Body + Send + Sync + 'static,
+        B: http_body::Body + MaybeSend + MaybeSync + 'static,
         B::Data: Into<Bytes>,
         B::Error: Into<BoxError>,
     {
         Self {
             kind: Kind::Stream {
-                body: body
-                    .map_frame(|frame| frame.map_data(Into::into))
-                    .map_err(Into::into)
-                    .boxed(),
+                body: boxed(
+                    body.map_frame(|frame| frame.map_data(Into::into))
+                        .map_err(Into::into),
+                ),
                 len: None,
             },
         }
     }
 
-    /// A body that reads the chunks of a stream, such as a file read with `tokio_util::io::ReaderStream`.
+    /// A body that reads the chunks of a stream, such as a file read with `tokio_util::io::ReaderStream`. It must be
+    /// `Send`, except on WebAssembly ([`MaybeSend`]).
     pub fn wrap_stream<S>(stream: S) -> Self
     where
-        S: TryStream + Send + 'static,
+        S: TryStream + MaybeSend + 'static,
         S::Ok: Into<Bytes>,
         S::Error: Into<BoxError>,
     {
@@ -78,7 +105,7 @@ impl Body {
     /// A stream of chunks whose total length, when known, is `len` (sent as `Content-Length`).
     pub(crate) fn sized_stream<S>(stream: S, len: Option<u64>) -> Self
     where
-        S: TryStream + Send + 'static,
+        S: TryStream + MaybeSend + 'static,
         S::Ok: Into<Bytes>,
         S::Error: Into<BoxError>,
     {
@@ -90,7 +117,7 @@ impl Body {
         );
         Self {
             kind: Kind::Stream {
-                body: StreamBody::new(frames).boxed(),
+                body: boxed(StreamBody::new(frames)),
                 len,
             },
         }
@@ -98,7 +125,7 @@ impl Body {
 
     /// A body that `make` starts afresh for each attempt, so it can be cloned; `len` is the length of every body
     /// `make` returns, when known.
-    pub(crate) fn replay(make: Arc<dyn Fn() -> Body + Send + Sync>, len: Option<u64>) -> Self {
+    pub(crate) fn replay(make: MakeBody, len: Option<u64>) -> Self {
         Self {
             kind: Kind::Replay(Replay {
                 make,

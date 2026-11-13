@@ -22,13 +22,17 @@
 //! `TraceLayer`; it works with [`Client::layer`](crate::Client::layer) too.
 
 use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
 use std::task::{Context, Poll};
+#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 
 use tower::{Layer, Service};
 use tracing::Instrument;
+#[cfg(target_family = "wasm")]
+use web_time::Instant;
+
+use crate::maybe::BoxFuture;
+use crate::MaybeSend;
 
 /// A tower layer that logs each request and its outcome. See the [module](self) documentation.
 #[derive(Clone, Copy, Debug, Default)]
@@ -61,11 +65,11 @@ impl<S, ReqBody, ResBody> Service<http::Request<ReqBody>> for TraceService<S>
 where
     S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
     S::Error: fmt::Display,
-    S::Future: Send + 'static,
+    S::Future: MaybeSend + 'static,
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<S::Response, S::Error>> + Send>>;
+    type Future = BoxFuture<'static, Result<S::Response, S::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)

@@ -20,6 +20,7 @@ crate ships, any layer from the tower ecosystem, or write your own.
 - [Credentials](#credentials)
 - [Headers and query parameters for one call](#headers-and-query-parameters-for-one-call)
 - [Errors](#errors)
+- [WebAssembly](#webassembly)
 - [Features](#features)
 
 ## Quick start
@@ -320,7 +321,8 @@ async fn fetch_token() -> String {
 let client = Client::default().layer(AccessToken { cached: Arc::default() });
 ```
 
-A layer's service must be `Clone + Send`; it need not be `Sync`. Its response body can be any `http_body::Body`.
+A layer's service must be `Clone + Send`; it need not be `Sync` (on [WebAssembly](#webassembly), not `Send` either:
+`MaybeSend`). Its response body can be any `http_body::Body`.
 
 ## Providers
 
@@ -652,20 +654,63 @@ A request that fails to send is an `Error`:
 generated client wraps it as `apis::Error::Http(error)`. A response with an error status is not an `Error` here; the
 generated client turns it into `apis::Error::ResponseError`.
 
+## WebAssembly
+
+The crate, and the clients generated with it, build for `wasm32-unknown-unknown` (a browser, a web worker, Node.js,
+Cloudflare Workers: any JavaScript host). Everything that differs is behind `#[cfg(target_family = "wasm")]`, so the
+same `Cargo.toml` works for both:
+
+```toml
+# Natively and on WebAssembly. On WebAssembly `rustls`/`native-tls` add nothing (the host does TLS), and `fs` adds only
+# `Upload::path` and `From<PathBuf>`, which fail when sent.
+timvw-rust-runtime = { version = "0.3", default-features = false, features = ["reqwest", "retry"] }
+```
+
+`default-features = true` builds too. On WebAssembly:
+
+- **Sending.** reqwest sends with the host's `fetch`. `fetch` takes a request body whole, so a streamed body (an
+  `Upload::stream`, a multipart form with one) is read into memory first; responses still stream as they arrive.
+  Connect and read timeouts, proxies and TLS settings belong to the host: `tower::timeout::TimeoutLayer` still works,
+  as does any other layer.
+- **Retries** wait as natively: exponential backoff with jitter, `Retry-After` and `retry-after-ms` (an HTTP date is
+  read against the host's clock, `Date.now()`). The timer is the host's `setTimeout` (`gloo-timers`) and deadlines use
+  `performance.now()` (`web-time`), as `std::time::Instant::now()` panics there. A failure to `fetch` is not retried:
+  `fetch` does not tell a failure to connect from one after the request was sent (or a CORS refusal), so
+  `Error::is_connect()` is always `false`.
+- **Server-sent events** work, `Events::idle_timeout` with the host's timer; `TraceLayer` measures with
+  `performance.now()`.
+- **`Send` and `Sync`.** The host's futures and streams cannot leave its thread, so on WebAssembly nothing here needs
+  to be `Send` or `Sync`: the bounds of `Client::from_service`, `Client::layer`, `Body::wrap`, `Body::wrap_stream`,
+  `Upload::stream`, `Upload::from_fn`, `Events::from_bytes` and the layers are [`MaybeSend`] and [`MaybeSync`]:
+  `Send` and `Sync` natively, nothing on WebAssembly. Use them in your own bounds to write code that builds for both.
+  `HttpService` is a `LocalBoxCloneService` there (tower's `BoxCloneSyncService` natively), and `Client`, `Body`,
+  `Response` and the futures of `send` are not `Send`: run them with `wasm_bindgen_futures::spawn_local`, not on
+  another thread.
+- **No files.** There is no file system: `Upload::file`, `Upload::reader`, `Response::save_to` and
+  `Response::into_async_read` are not there, and an `Upload::path` (or a `PathBuf` given to a generated client) fails
+  with an I/O error of kind `Unsupported` when it is resolved or sent. Send `Upload::bytes`, `Upload::stream` or
+  `Upload::from_fn`; read a response with `bytes`, `bytes_stream` or `events`.
+
+`tests/wasm.rs` runs in Node.js with `wasm-bindgen-test-runner` (see the CI workflow).
+
+[`MaybeSend`]: https://docs.rs/timvw-rust-runtime/latest/timvw_rust_runtime/trait.MaybeSend.html
+[`MaybeSync`]: https://docs.rs/timvw-rust-runtime/latest/timvw_rust_runtime/trait.MaybeSync.html
+
 ## Features
 
 | Feature | Default | What it adds |
 | --- | --- | --- |
-| `rustls` | yes | reqwest with rustls, as `Client::default()` |
-| `native-tls` | no | reqwest with the platform's TLS |
+| `rustls` | yes | reqwest with rustls, as `Client::default()` (on WebAssembly: reqwest, the host does TLS) |
+| `native-tls` | no | reqwest with the platform's TLS (on WebAssembly: reqwest, the host does TLS) |
 | `reqwest` | via `rustls` or `native-tls` | `ReqwestService`, `Client::from_reqwest` |
-| `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with tokio, read `Retry-After` dates with `httpdate`), and retries in `Client::default()`; turns on `time` |
-| `time` | via `retry` | `sse::Events::idle_timeout` (tokio's timer) |
-| `fs` | yes | file and reader [uploads](#uploads-and-downloads) (`Upload::path`, `Upload::file`, `Upload::reader`), `Response::save_to` and `Response::into_async_read` (tokio) |
+| `retry` | yes | `retry::RetryLayer` and `retry::RetryPolicy` (sleep with the `time` timer, read `Retry-After` dates with `httpdate`), and retries in `Client::default()`; turns on `time` |
+| `time` | via `retry` | `sse::Events::idle_timeout` and the sleeps of retries: tokio's timer, the host's `setTimeout` on [WebAssembly](#webassembly) |
+| `fs` | yes | file and reader [uploads](#uploads-and-downloads) (`Upload::path`, `Upload::file`, `Upload::reader`), `Response::save_to` and `Response::into_async_read` (tokio); on WebAssembly only `Upload::path` and `From<PathBuf>`, which fail when sent |
 | `tracing` | no | `trace::TraceLayer`, and a log event per retry |
 
-A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names, and turns on `fs` when it
-has a file parameter.
+A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names, turns on `fs` when it
+has a file parameter and `time` when it has typed event streams (their `idle_timeout`), and builds for WebAssembly as
+it is.
 
 ## What the generated code uses
 

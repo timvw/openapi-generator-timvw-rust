@@ -101,9 +101,10 @@ impl Error {
         false
     }
 
-    /// Whether connecting to the server failed (only known for reqwest).
+    /// Whether connecting to the server failed (only known for reqwest, and not on WebAssembly, where `fetch` does not
+    /// tell).
     pub fn is_connect(&self) -> bool {
-        #[cfg(feature = "reqwest")]
+        #[cfg(all(feature = "reqwest", not(target_family = "wasm")))]
         {
             let mut source: Option<&(dyn StdError + 'static)> =
                 self.source.as_deref().map(|e| e as _);

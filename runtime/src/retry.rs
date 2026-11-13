@@ -16,21 +16,20 @@
 //! ```
 
 use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
 use http::header::RETRY_AFTER;
 use http::{HeaderMap, StatusCode};
 use http_body_util::{BodyDataStream, BodyExt};
-use tokio::time::Instant;
 use tower::retry::Policy;
 use tower::{Layer, Service};
 
-use crate::{Body, BoxError};
+use crate::maybe::BoxFuture;
+use crate::timer::{since_epoch, Instant, Sleep};
+use crate::{Body, BoxError, MaybeSend, MaybeSync};
 
 /// The header OpenAI (and others) send next to `Retry-After`, in milliseconds.
 const RETRY_AFTER_MS: &str = "retry-after-ms";
@@ -170,18 +169,18 @@ fn random_unit() -> f64 {
 struct ReceivedAt(Instant);
 
 /// The clocks a `Retry-After` is read against: `Retry-After` in seconds counts from when the response arrived, an HTTP
-/// date against the wall clock, read together with the monotonic one.
+/// date against the wall clock (the time since the Unix epoch), read together with the monotonic one.
 #[derive(Clone, Copy, Debug)]
 struct Clocks {
     received_at: Instant,
     now: Instant,
-    wall: SystemTime,
+    wall: Duration,
 }
 
 impl Clocks {
     fn now<B>(response: &http::Response<B>) -> Self {
         // The wall clock first, so that a pause between the two reads cannot shorten an HTTP date's deadline.
-        let wall = SystemTime::now();
+        let wall = since_epoch();
         let now = Instant::now();
         let received_at = response
             .extensions()
@@ -241,14 +240,19 @@ fn retry_after(headers: &HeaderMap, clocks: Clocks) -> Option<Instant> {
     let value = value(RETRY_AFTER.as_str())?;
     delay(value, 1.0).or_else(|| {
         let date = httpdate::parse_http_date(value).ok()?;
-        let delay = date.duration_since(clocks.wall).unwrap_or_default();
+        let date = date
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        let delay = date.saturating_sub(clocks.wall);
         clocks.now.checked_add(delay)
     })
 }
 
+/// Whether the request failed to connect, so it was not sent and can be sent again. Never on WebAssembly: `fetch`
+/// fails the same way whether or not the request reached the server (and for CORS), so a failure there is not retried.
 #[allow(unused_variables)]
 fn is_connect(error: &(dyn std::error::Error + 'static)) -> bool {
-    #[cfg(feature = "reqwest")]
+    #[cfg(all(feature = "reqwest", not(target_family = "wasm")))]
     {
         let mut source = Some(error);
         while let Some(error) = source {
@@ -265,7 +269,7 @@ fn is_connect(error: &(dyn std::error::Error + 'static)) -> bool {
 }
 
 impl<B> Policy<http::Request<Body>, http::Response<B>, BoxError> for RetryPolicy {
-    type Future = Pin<Box<dyn Future<Output = ()> + Send>>;
+    type Future = BoxFuture<'static, ()>;
 
     fn retry(
         &mut self,
@@ -299,7 +303,7 @@ impl<B> Policy<http::Request<Body>, http::Response<B>, BoxError> for RetryPolicy
             status = result.as_ref().ok().map(|response| response.status().as_u16()),
             "retrying"
         );
-        Some(Box::pin(tokio::time::sleep_until(deadline)))
+        Some(Box::pin(Sleep::until(deadline)))
     }
 
     fn clone_request(&mut self, request: &http::Request<Body>) -> Option<http::Request<Body>> {
@@ -452,14 +456,14 @@ impl<S: fmt::Debug> fmt::Debug for Classify429<S> {
 impl<S, R, B> Service<R> for Classify429<S>
 where
     S: Service<R, Response = http::Response<B>>,
-    S::Future: Send + 'static,
-    B: http_body::Body + Send + Sync + 'static,
+    S::Future: MaybeSend + 'static,
+    B: http_body::Body + MaybeSend + MaybeSync + 'static,
     B::Data: Into<Bytes>,
     B::Error: Into<BoxError>,
 {
     type Response = http::Response<Body>;
     type Error = S::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -578,7 +582,7 @@ mod tests {
             wait(&response(429, &[("retry-after-ms", "300")]), true),
             Some(Some(Duration::from_millis(300)))
         );
-        let past = httpdate::fmt_http_date(SystemTime::now() - Duration::from_secs(60));
+        let past = httpdate::fmt_http_date(std::time::SystemTime::now() - Duration::from_secs(60));
         assert_eq!(
             wait(&response(429, &[("retry-after", &past)]), true),
             Some(Some(Duration::ZERO))
@@ -600,7 +604,10 @@ mod tests {
         Clocks {
             received_at: now,
             now,
-            wall: httpdate::parse_http_date("Wed, 21 Oct 2015 07:28:00 GMT").unwrap(),
+            wall: httpdate::parse_http_date("Wed, 21 Oct 2015 07:28:00 GMT")
+                .unwrap()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap(),
         }
     }
 

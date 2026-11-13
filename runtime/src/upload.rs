@@ -1,18 +1,21 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::ops::{Bound, RangeBounds};
-use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use bytes::{Bytes, BytesMut};
 use futures_core::Stream;
 use futures_util::{future, stream, StreamExt, TryStreamExt};
 
-use crate::{Body, BoxError, Error};
+use crate::maybe::BoxStream;
+use crate::{Body, BoxError, Error, MaybeSend, MaybeSync};
 
-type Chunks = Pin<Box<dyn Stream<Item = Result<Bytes, BoxError>> + Send>>;
+type Chunks = BoxStream<'static, Result<Bytes, BoxError>>;
 type Once = Arc<Mutex<Option<Chunks>>>;
+#[cfg(not(target_family = "wasm"))]
 type Factory = Arc<dyn Fn() -> Chunks + Send + Sync>;
+#[cfg(target_family = "wasm")]
+type Factory = Arc<dyn Fn() -> Chunks>;
 
 /// Something to upload: a file, bytes, a reader or a stream, with a file name and a media type.
 ///
@@ -32,7 +35,7 @@ type Factory = Arc<dyn Fn() -> Chunks + Send + Sync>;
 /// `Upload::path(path).resolve()`.
 ///
 /// ```no_run
-/// # #[cfg(feature = "fs")]
+/// # #[cfg(all(feature = "fs", not(target_family = "wasm")))]
 /// # async fn demo() -> Result<(), timvw_rust_runtime::Error> {
 /// use timvw_rust_runtime::Upload;
 ///
@@ -75,10 +78,11 @@ impl Upload {
     }
 
     /// A stream of chunks, read once: a retry cannot send it again unless [`Upload::buffer_for_retry`] holds it.
-    /// Its length is unknown (the body is chunked) unless set with [`Upload::len`].
+    /// Its length is unknown (the body is chunked) unless set with [`Upload::len`]. The stream must be `Send`, except
+    /// on WebAssembly ([`MaybeSend`]).
     pub fn stream<S, B, E>(stream: S) -> Self
     where
-        S: Stream<Item = Result<B, E>> + Send + 'static,
+        S: Stream<Item = Result<B, E>> + MaybeSend + 'static,
         B: Into<Bytes> + 'static,
         E: Into<BoxError> + 'static,
     {
@@ -88,10 +92,11 @@ impl Upload {
 
     /// A stream that `make` starts afresh for every attempt, so a retry sends it again. Its length is unknown (the
     /// body is chunked) unless set with [`Upload::len`]; every stream `make` returns must then have that length.
+    /// `make` must be `Send` and `Sync`, and its streams `Send`, except on WebAssembly ([`MaybeSend`], [`MaybeSync`]).
     pub fn from_fn<F, S, B, E>(make: F) -> Self
     where
-        F: Fn() -> S + Send + Sync + 'static,
-        S: Stream<Item = Result<B, E>> + Send + 'static,
+        F: Fn() -> S + MaybeSend + MaybeSync + 'static,
+        S: Stream<Item = Result<B, E>> + MaybeSend + 'static,
         B: Into<Bytes> + 'static,
         E: Into<BoxError> + 'static,
     {
@@ -187,7 +192,11 @@ impl Upload {
     /// exist), and reads a stream with [`Upload::buffer_for_retry`] into memory. Other uploads are returned as they
     /// are.
     pub async fn resolve(mut self) -> Result<Self, Error> {
-        #[cfg(feature = "fs")]
+        #[cfg(all(feature = "fs", target_family = "wasm"))]
+        if let Source::File(path) = &self.source {
+            return Err(Error::io(no_file_system(path)));
+        }
+        #[cfg(all(feature = "fs", not(target_family = "wasm")))]
         if let Source::File(path) = &self.source {
             if self.total.is_none() {
                 let metadata = tokio::fs::metadata(&**path)
@@ -238,6 +247,10 @@ impl Upload {
     /// The file name is the path's last component, the media type is guessed from its extension. Nothing is read
     /// until the request is sent; [`Upload::resolve`] (or [`Upload::file`]) reads the length, so the body is sent with
     /// a `Content-Length`, and fails early when the file does not exist.
+    ///
+    /// On WebAssembly there is no file system: the upload fails ([`Upload::resolve`], or the request) with an I/O
+    /// error of kind `Unsupported`. The function is there so that code taking a `PathBuf` (a generated model with a
+    /// file variant) compiles; send bytes or a stream instead.
     pub fn path(path: impl Into<std::path::PathBuf>) -> Self {
         let path: Arc<std::path::Path> = Arc::from(path.into());
         let file_name = path
@@ -251,7 +264,10 @@ impl Upload {
         upload.mime = mime;
         upload
     }
+}
 
+#[cfg(all(feature = "fs", not(target_family = "wasm")))]
+impl Upload {
     /// [`Upload::path`], resolved: its length read from the file's metadata, an error when there is no such file.
     pub async fn file(path: impl Into<std::path::PathBuf>) -> Result<Self, Error> {
         Self::path(path).resolve().await
@@ -268,7 +284,7 @@ impl Upload {
 }
 
 /// The chunks of a reader, up to its end; fewer bytes than `expected` is an error.
-#[cfg(feature = "fs")]
+#[cfg(all(feature = "fs", not(target_family = "wasm")))]
 fn read_chunks<R>(
     reader: R,
     expected: Option<u64>,
@@ -294,13 +310,25 @@ where
     })
 }
 
-#[cfg(feature = "fs")]
+/// The error of a file upload on WebAssembly, where there is no file system.
+#[cfg(all(feature = "fs", target_family = "wasm"))]
+fn no_file_system(path: &std::path::Path) -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        format!(
+            "{}: no file system on WebAssembly: upload bytes or a stream instead",
+            path.display()
+        ),
+    )
+}
+
+#[cfg(all(feature = "fs", not(target_family = "wasm")))]
 fn with_path(error: std::io::Error, path: &std::path::Path) -> std::io::Error {
     std::io::Error::new(error.kind(), format!("{}: {error}", path.display()))
 }
 
 /// The bytes of a file from `start` to `end`, `len` of them when known.
-#[cfg(feature = "fs")]
+#[cfg(all(feature = "fs", not(target_family = "wasm")))]
 fn file_chunks(
     path: Arc<std::path::Path>,
     start: u64,
@@ -376,7 +404,11 @@ impl From<Upload> for Body {
                 let from = start.min(to);
                 Body::from(bytes.slice(from as usize..to as usize))
             }
-            #[cfg(feature = "fs")]
+            #[cfg(all(feature = "fs", target_family = "wasm"))]
+            Source::File(path) => Body::wrap_stream(stream::once(future::ready(Err::<Bytes, _>(
+                no_file_system(&path),
+            )))),
+            #[cfg(all(feature = "fs", not(target_family = "wasm")))]
             Source::File(path) => Body::replay(
                 Arc::new(move || {
                     Body::sized_stream(file_chunks(path.clone(), start, end, len), len)
@@ -546,7 +578,7 @@ mod tests {
         assert_eq!(read(long).await, "abcde");
     }
 
-    #[cfg(feature = "fs")]
+    #[cfg(all(feature = "fs", not(target_family = "wasm")))]
     #[tokio::test]
     async fn a_file_is_resolved_reopened_and_sliced() {
         let dir = tempfile::tempdir().unwrap();
@@ -575,7 +607,7 @@ mod tests {
         assert_eq!(read(tail).await, "89");
     }
 
-    #[cfg(feature = "fs")]
+    #[cfg(all(feature = "fs", not(target_family = "wasm")))]
     #[tokio::test]
     async fn a_missing_file_fails_to_resolve() {
         let error = Upload::file("/no/such/file.bin").await.unwrap_err();
@@ -583,7 +615,7 @@ mod tests {
         assert!(error.to_string().contains("/no/such/file.bin"), "{error}");
     }
 
-    #[cfg(feature = "fs")]
+    #[cfg(all(feature = "fs", not(target_family = "wasm")))]
     #[tokio::test]
     async fn a_file_that_shrank_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
@@ -594,7 +626,7 @@ mod tests {
         assert!(Body::from(upload).collect_bytes().await.is_err());
     }
 
-    #[cfg(feature = "fs")]
+    #[cfg(all(feature = "fs", not(target_family = "wasm")))]
     #[tokio::test]
     async fn a_reader_is_read_once() {
         let upload = Upload::reader(&b"from a reader"[..]);

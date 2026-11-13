@@ -23,16 +23,18 @@ default = ["rustls", "retry", "fs"]
 reqwest = ["dep:reqwest"]
 rustls = ["reqwest", "reqwest/rustls"]
 native-tls = ["reqwest", "reqwest/native-tls"]
-# `retry::{RetryLayer, RetryPolicy}`: retries 429, 408, 5xx and connect failures, honouring `Retry-After` (sleeps with tokio;
-# `httpdate` reads the HTTP-date form).
+# `retry::{RetryLayer, RetryPolicy}`: retries 429, 408, 5xx and connect failures, honouring `Retry-After` (sleeps with
+# the `time` feature's timer; `httpdate` reads the HTTP-date form).
 retry = ["tower/retry", "time", "dep:httpdate"]
-# Timers with tokio: `sse::Events::idle_timeout`.
-time = ["dep:tokio", "tokio/time"]
+# Timers: `sse::Events::idle_timeout` and the sleeps of `retry`. tokio's natively; on WebAssembly (`target_family =
+# "wasm"`) the JavaScript host's `setTimeout` (`gloo-timers`), with `web-time`'s clocks.
+time = ["dep:tokio", "tokio/time", "dep:gloo-timers", "dep:web-time"]
 # Files and tokio I/O: `Upload::path`/`Upload::file`/`Upload::reader`, `Response::save_to` and
-# `Response::into_async_read`.
+# `Response::into_async_read`. On WebAssembly, where there is no file system, only `Upload::path` and `From<PathBuf>`
+# remain, for code that names a path (a generated model with a file variant): such an upload fails when sent.
 fs = ["dep:tokio", "tokio/fs", "tokio/io-util", "dep:mime_guess"]
 # `trace::TraceLayer`: logs each request, its status and duration (and each retry) with `tracing`.
-tracing = ["dep:tracing"]
+tracing = ["dep:tracing", "dep:web-time"]
 
 [dependencies]
 base64 = "0.22"
@@ -53,10 +55,18 @@ url = "2.5"
 httpdate = { version = "1", optional = true }
 mime_guess = { version = "2", optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["stream"], optional = true }
-tokio = { version = "1", default-features = false, optional = true }
 tracing = { version = "0.1.40", default-features = false, features = ["std"], optional = true }
 
-[dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { version = "1", default-features = false, optional = true }
+
+# WebAssembly in a JavaScript host (wasm32-unknown-unknown): reqwest sends with `fetch`, timers are `setTimeout`, and
+# clocks are `performance.now()` and `Date.now()` (std's panic there).
+[target.'cfg(target_family = "wasm")'.dependencies]
+gloo-timers = { version = "0.3", features = ["futures"], optional = true }
+web-time = { version = "1", optional = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 httpdate = "1"
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"
@@ -66,6 +76,12 @@ tower = { version = "0.5.2", features = ["util", "retry", "timeout", "limit", "b
 tower-http = { version = "0.6", features = ["set-header", "trace"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 wiremock = "0.6"
+
+# `tests/wasm.rs`, run with wasm-bindgen-test-runner (see the CI workflow).
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+futures-channel = "0.3"
+wasm-bindgen-test = "0.3"
+web-time = "1"
 
 [lints.rust]
 missing_docs = "warn"

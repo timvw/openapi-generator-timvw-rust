@@ -1,16 +1,28 @@
 use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
+#[cfg(not(target_family = "wasm"))]
 use std::sync::{Mutex, PoisonError};
 use std::task::{Context, Poll};
 
+#[cfg(not(target_family = "wasm"))]
 use tower::util::BoxCloneSyncService;
 use tower::{Layer, Service, ServiceExt};
 
-use crate::{Body, BoxError, Error, Method, RequestBuilder, Response};
+use crate::maybe::BoxFuture;
+use crate::{Body, BoxError, Error, MaybeSend, MaybeSync, Method, RequestBuilder, Response};
 
-/// The service a [`Client`] sends requests through, with its type erased.
+/// The service a [`Client`] sends requests through, with its type erased: tower's `BoxCloneSyncService`.
+///
+/// On WebAssembly (`target_family = "wasm"`) it is a [`LocalBoxCloneService`](crate::LocalBoxCloneService), which is
+/// neither `Send` nor `Sync`, like the futures of reqwest's `fetch` backend.
+#[cfg(not(target_family = "wasm"))]
 pub type HttpService = BoxCloneSyncService<http::Request<Body>, http::Response<Body>, BoxError>;
+/// The service a [`Client`] sends requests through, with its type erased.
+///
+/// On WebAssembly (`target_family = "wasm"`) it is a [`LocalBoxCloneService`](crate::LocalBoxCloneService), which is
+/// neither `Send` nor `Sync`, like the futures of reqwest's `fetch` backend; natively tower's `BoxCloneSyncService`.
+#[cfg(target_family = "wasm")]
+pub type HttpService =
+    crate::LocalBoxCloneService<http::Request<Body>, http::Response<Body>, BoxError>;
 
 /// Sends the requests of a generated client through a tower service.
 ///
@@ -57,22 +69,25 @@ impl Client {
     /// A client that sends with any tower service from `http::Request<Body>` to `http::Response<B>`.
     ///
     /// The service must be `Clone` and `Send`, not `Sync`: services such as `ConcurrencyLimit` that cannot be shared
-    /// between threads are held behind a lock that is only taken to clone them.
+    /// between threads are held behind a lock that is only taken to clone them. On WebAssembly
+    /// (`target_family = "wasm"`) it need not be `Send` either ([`MaybeSend`]), nor its future and body.
     pub fn from_service<S, B>(service: S) -> Self
     where
-        S: Service<http::Request<Body>, Response = http::Response<B>> + Clone + Send + 'static,
+        S: Service<http::Request<Body>, Response = http::Response<B>> + Clone + MaybeSend + 'static,
         S::Error: Into<BoxError>,
-        S::Future: Send + 'static,
-        B: http_body::Body + Send + Sync + 'static,
+        S::Future: MaybeSend + 'static,
+        B: http_body::Body + MaybeSend + MaybeSync + 'static,
         B::Data: Into<bytes::Bytes>,
         B::Error: Into<BoxError>,
     {
         let service = service
             .map_response(|response: http::Response<B>| response.map(Body::wrap))
             .map_err(Into::into);
-        Self {
-            service: BoxCloneSyncService::new(SyncService(Mutex::new(service))),
-        }
+        #[cfg(not(target_family = "wasm"))]
+        let service = BoxCloneSyncService::new(SyncService(Mutex::new(service)));
+        #[cfg(target_family = "wasm")]
+        let service = crate::LocalBoxCloneService::new(service);
+        Self { service }
     }
 
     /// Wraps the client's service in a tower layer: retries, timeouts, rate limits, tracing, ...
@@ -81,11 +96,13 @@ impl Client {
     pub fn layer<L, B>(self, layer: L) -> Self
     where
         L: Layer<HttpService>,
-        L::Service:
-            Service<http::Request<Body>, Response = http::Response<B>> + Clone + Send + 'static,
+        L::Service: Service<http::Request<Body>, Response = http::Response<B>>
+            + Clone
+            + MaybeSend
+            + 'static,
         <L::Service as Service<http::Request<Body>>>::Error: Into<BoxError>,
-        <L::Service as Service<http::Request<Body>>>::Future: Send + 'static,
-        B: http_body::Body + Send + Sync + 'static,
+        <L::Service as Service<http::Request<Body>>>::Future: MaybeSend + 'static,
+        B: http_body::Body + MaybeSend + MaybeSync + 'static,
         B::Data: Into<bytes::Bytes>,
         B::Error: Into<BoxError>,
     {
@@ -135,10 +152,12 @@ impl fmt::Debug for Client {
     }
 }
 
-/// Makes a `Clone + Send` service `Sync`. Every request clones the service, under the lock, and calls the clone, so
+/// Makes a `Clone + Send` service `Sync` (not needed on WebAssembly, where nothing is `Sync`). Every request clones the service, under the lock, and calls the clone, so
 /// the lock is never held across `poll_ready` or `call` on a shared value.
+#[cfg(not(target_family = "wasm"))]
 struct SyncService<S>(Mutex<S>);
 
+#[cfg(not(target_family = "wasm"))]
 impl<S: Clone> Clone for SyncService<S> {
     fn clone(&self) -> Self {
         let service = self
@@ -150,6 +169,7 @@ impl<S: Clone> Clone for SyncService<S> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<S: Service<R>, R> Service<R> for SyncService<S> {
     type Response = S::Response;
     type Error = S::Error;
@@ -178,7 +198,7 @@ struct NoService;
 impl Service<http::Request<Body>> for NoService {
     type Response = http::Response<Body>;
     type Error = BoxError;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))

@@ -37,7 +37,7 @@ use std::task::{Context, Poll};
 use futures_core::Stream;
 use serde::de::DeserializeOwned;
 
-use crate::{Error, Response};
+use crate::{Error, MaybeSend, Response};
 
 /// The `data:` value that ends a stream.
 pub const DONE: &str = "[DONE]";
@@ -191,11 +191,14 @@ pub struct Events {
 #[cfg(feature = "time")]
 struct Idle {
     limit: std::time::Duration,
-    timer: Option<Pin<Box<tokio::time::Sleep>>>,
+    timer: Option<crate::timer::Sleep>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 type Chunk = Box<dyn AsRef<[u8]> + Send>;
-type Body = Pin<Box<dyn Stream<Item = Result<Chunk, Error>> + Send>>;
+#[cfg(target_family = "wasm")]
+type Chunk = Box<dyn AsRef<[u8]>>;
+type Body = crate::maybe::BoxStream<'static, Result<Chunk, Error>>;
 
 impl Events {
     /// The events of a response body. The status and the content type are not checked.
@@ -203,11 +206,12 @@ impl Events {
         Self::from_bytes(response.bytes_stream())
     }
 
-    /// The events of a body read as a stream of chunks.
+    /// The events of a body read as a stream of chunks. The stream and its chunks must be `Send`, except on
+    /// WebAssembly ([`MaybeSend`]).
     pub fn from_bytes<S, B>(bytes: S) -> Self
     where
-        S: Stream<Item = Result<B, Error>> + Send + 'static,
-        B: AsRef<[u8]> + Send + 'static,
+        S: Stream<Item = Result<B, Error>> + MaybeSend + 'static,
+        B: AsRef<[u8]> + MaybeSend + 'static,
     {
         Self {
             bytes: Some(Box::pin(Chunks(Box::pin(bytes)))),
@@ -221,7 +225,7 @@ impl Events {
     /// Ends the stream with an error when no bytes arrive for `limit`: a server or a proxy that keeps the connection
     /// open but stopped sending. The error ([`Error::is_timeout`] and [`Error::is_body`]) is the last item, and the
     /// body is dropped. Every chunk restarts the clock, comments (`: keep-alive`) too; there is no limit on the whole
-    /// stream. Feature `time`; the timer is tokio's.
+    /// stream. Feature `time`; the timer is tokio's, or the JavaScript host's `setTimeout` on WebAssembly.
     ///
     /// ```no_run
     /// # async fn demo(response: timvw_rust_runtime::Response) {
@@ -240,17 +244,17 @@ impl Events {
     #[cfg(feature = "time")]
     fn idle(&mut self, cx: &mut Context<'_>, reset: bool) -> Option<Error> {
         let idle = self.idle.as_mut()?;
-        let deadline = tokio::time::Instant::now() + idle.limit;
+        let deadline = crate::timer::Instant::now() + idle.limit;
         match &mut idle.timer {
-            Some(timer) if reset => timer.as_mut().reset(deadline),
+            Some(timer) if reset => timer.reset(deadline),
             Some(_) => {}
-            None => idle.timer = Some(Box::pin(tokio::time::sleep_until(deadline))),
+            None => idle.timer = Some(crate::timer::Sleep::until(deadline)),
         }
         if reset {
             return None;
         }
         let timer = idle.timer.as_mut()?;
-        match timer.as_mut().poll(cx) {
+        match Pin::new(timer).poll(cx) {
             Poll::Ready(()) => Some(Error::body(crate::error::TimedOut(format!(
                 "no server-sent event data for {:?}",
                 idle.limit
@@ -325,7 +329,7 @@ struct Chunks<S>(Pin<Box<S>>);
 impl<S, B> Stream for Chunks<S>
 where
     S: Stream<Item = Result<B, Error>>,
-    B: AsRef<[u8]> + Send + 'static,
+    B: AsRef<[u8]> + MaybeSend + 'static,
 {
     type Item = Result<Chunk, Error>;
 

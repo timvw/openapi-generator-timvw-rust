@@ -6,7 +6,7 @@ use futures_util::TryStreamExt;
 use http_body_util::BodyDataStream;
 use serde::de::DeserializeOwned;
 
-use crate::{Body, Error, HeaderMap, StatusCode};
+use crate::{Body, Error, HeaderMap, MaybeSend, StatusCode};
 
 /// A response, with the methods of reqwest's `Response` that generated clients use.
 pub struct Response {
@@ -53,8 +53,8 @@ impl Response {
         serde_json::from_slice(&bytes).map_err(Error::decode)
     }
 
-    /// The body as a stream of chunks, as they arrive.
-    pub fn bytes_stream(self) -> impl Stream<Item = Result<Bytes, Error>> + Send + 'static {
+    /// The body as a stream of chunks, as they arrive. `Send`, except on WebAssembly ([`MaybeSend`]).
+    pub fn bytes_stream(self) -> impl Stream<Item = Result<Bytes, Error>> + MaybeSend + 'static {
         BodyDataStream::new(self.inner.into_body()).map_err(Error::body)
     }
 
@@ -69,7 +69,7 @@ impl Response {
     /// The body goes to a temporary file in the same directory, which is flushed to disk (`fsync`) and then renamed
     /// to `path`, replacing any file there: `path` never holds part of a body. When reading the body or writing the
     /// file fails, the temporary file is removed and `path` is left as it was. The status is not checked.
-    #[cfg(feature = "fs")]
+    #[cfg(all(feature = "fs", not(target_family = "wasm")))]
     pub async fn save_to(self, path: impl AsRef<std::path::Path>) -> Result<u64, Error> {
         crate::download::save_to(self.bytes_stream(), path.as_ref()).await
     }
@@ -77,7 +77,7 @@ impl Response {
     /// The body as a tokio [`AsyncRead`](tokio::io::AsyncRead), read as it arrives: to copy it somewhere with
     /// `tokio::io::copy`, or to decode it with a reader. A failure reading the body is an `std::io::Error` whose
     /// source is the [`Error`].
-    #[cfg(feature = "fs")]
+    #[cfg(all(feature = "fs", not(target_family = "wasm")))]
     pub fn into_async_read(self) -> impl tokio::io::AsyncRead + Send + Unpin + 'static {
         crate::download::BodyReader::new(self.bytes_stream())
     }

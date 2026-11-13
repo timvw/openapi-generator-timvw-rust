@@ -18,6 +18,9 @@ license = "{{.}}"
 license = "Unlicense"
 {{/licenseInfo}}
 edition = "2021"
+# timvw-rust-runtime's minimum supported Rust version. To build on it, resolve dependency versions that support it:
+# CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update (or resolver = "3" in your workspace).
+rust-version = "{{{rustVersion}}}"
 {{#publishRustRegistry}}
 publish = ["{{.}}"]
 {{/publishRustRegistry}}

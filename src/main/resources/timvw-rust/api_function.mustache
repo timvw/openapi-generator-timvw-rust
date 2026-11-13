@@ -41,8 +41,8 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
 }}{{^required}}>{{/required}}{{#required}}{{#isNullable}}>{{/isNullable}}{{/required}}{{!
 ### Comma for next arguement
 }}{{^-last}}, {{/-last}}{{/allParams}}{{!
-### Per-call headers and query parameters (tower, builders)
-}}{{#bonBuilders}}{{#allParams.0}}, {{/allParams.0}}{{{vendorExtensions.x-rust-options-param}}}: Option<&timvw_rust_runtime::RequestOptions>{{/bonBuilders}}{{!
+### Per-call headers, query parameters and base URL
+}}{{#allParams.0}}, {{/allParams.0}}{{{vendorExtensions.x-rust-options-param}}}: Option<&timvw_rust_runtime::RequestOptions>{{!
 ### Function return type
 }}) -> Result<{{#x-rust-as-response}}super::ApiResponse<{{{x-rust-response-type}}}>{{/x-rust-as-response}}{{^x-rust-as-response}}{{!
 ### Response File Support
@@ -688,12 +688,10 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#vendorExtensions.x-rust-event-stream}}
     req_builder = req_builder.header(timvw_rust_runtime::header::ACCEPT, "text/event-stream");
     {{/vendorExtensions.x-rust-event-stream}}
-    {{#bonBuilders}}
-    // last, so its headers replace the generated ones
+    // last, so its headers replace the generated ones; its base URL replaces configuration.base_path
     if let Some(options) = {{{vendorExtensions.x-rust-options-param}}} {
-        req_builder = req_builder.options(options);
+        req_builder = req_builder.base(&configuration.base_path).options(options);
     }
-    {{/bonBuilders}}
     let req = req_builder.build()?;
     let resp = configuration.client.execute(req).await?;
 

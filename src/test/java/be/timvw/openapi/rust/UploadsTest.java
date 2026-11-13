@@ -82,7 +82,7 @@ class UploadsTest {
             assertFalse(api.contains("TokioFile"), api);
         }
         assertContains(api(positional), "file: " + UPLOAD + ", purpose: &str, mask: Option<" + UPLOAD + ">, images: "
-                + "Option<Vec<" + UPLOAD + ">>) ->");
+                + "Option<Vec<" + UPLOAD + ">>, options: Option<&timvw_rust_runtime::RequestOptions>) ->");
         assertFalse(api(positional).contains("#[builder"), api(positional));
     }
 

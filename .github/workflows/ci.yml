@@ -87,6 +87,19 @@ jobs:
           CARGO_TARGET_DIR: target/cargo-target
         run: cargo check --target wasm32-unknown-unknown --manifest-path target/petstore/Cargo.toml
 
+      # The generated crate's rust-version (timvw-rust-runtime's), natively and on WebAssembly, with the newest
+      # dependency versions that support it.
+      - name: cargo check generated petstore on the minimum supported Rust version
+        env:
+          CARGO_TARGET_DIR: target/cargo-target
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
+        run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' target/petstore/Cargo.toml)
+          rustup toolchain install "$msrv" --profile minimal --target wasm32-unknown-unknown
+          cargo "+$msrv" generate-lockfile --manifest-path target/petstore/Cargo.toml
+          cargo "+$msrv" check --manifest-path target/petstore/Cargo.toml
+          cargo "+$msrv" check --target wasm32-unknown-unknown --manifest-path target/petstore/Cargo.toml
+
   runtime:
     name: timvw-rust-runtime
     runs-on: ubuntu-latest
@@ -128,6 +141,19 @@ jobs:
 
       - name: Package
         run: cargo publish --dry-run
+
+      # The minimum supported Rust version (rust-version in Cargo.toml): every feature on its own, then the tests.
+      - name: MSRV toolchain
+        run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+          rustup toolchain install "$msrv" --profile minimal --component clippy
+
+      - name: clippy on the MSRV (every feature on its own)
+        run: cargo "+$MSRV" hack clippy --each-feature --no-dev-deps -- -D warnings
+
+      - name: test on the MSRV
+        run: cargo "+$MSRV" test --locked --all-features
 
   wasm:
     name: timvw-rust-runtime on WebAssembly
@@ -179,3 +205,22 @@ jobs:
         run: |
           node tests/wasm_server.js &
           cargo test --target wasm32-unknown-unknown --no-default-features --features reqwest,retry,fs,tracing --test wasm
+
+      # The minimum supported Rust version (rust-version in Cargo.toml) on WebAssembly: every feature on its own, and
+      # the Node.js tests.
+      - name: MSRV toolchain (wasm32-unknown-unknown)
+        run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+          rustup toolchain install "$msrv" --profile minimal --component clippy --target wasm32-unknown-unknown
+
+      - name: clippy on the MSRV (wasm32-unknown-unknown, every feature on its own)
+        run: cargo "+$MSRV" hack clippy --target wasm32-unknown-unknown --each-feature --no-dev-deps -- -D warnings
+
+      - name: test on the MSRV (wasm32-unknown-unknown, Node.js)
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+          TIMVW_WASM_TEST_SERVER: http://127.0.0.1:18765
+        run: |
+          node tests/wasm_server.js &
+          cargo "+$MSRV" test --locked --target wasm32-unknown-unknown --no-default-features --features reqwest,retry,fs,tracing --test wasm

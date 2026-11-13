@@ -23,8 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Per-call {@code RequestOptions} (extra headers and query parameters) on every operation's builder, on src/test/resources/request_options.yaml. src/test/rust/request_options.rs checks against a
- * local server that they arrive and override generated headers; {@link #whatArrivesAtRunTime} runs it and clippy.
+ * Per-call {@code RequestOptions} (extra headers and query parameters, another base URL) on every operation: a setter
+ * of its builder, or its last positional argument with {@code bonBuilders=false}; on
+ * src/test/resources/request_options.yaml. src/test/rust/request_options.rs (and request_options_positional.rs) check
+ * against a local server that they arrive and override generated headers; {@link #whatArrivesAtRunTime} runs them and
+ * clippy.
  */
 class RequestOptionsTest {
 
@@ -78,7 +81,8 @@ class RequestOptionsTest {
         }
         // every method, the twins and the content type and stream methods included
         assertEquals(count(api, "pub async fn "), count(api, "RequestOptions>) -> Result<"), api);
-        assertEquals(count(api, "pub async fn "), count(api, "req_builder = req_builder.options(options);"), api);
+        assertEquals(count(api, "pub async fn "),
+                count(api, "req_builder = req_builder.base(&configuration.base_path).options(options);"), api);
     }
 
     @Test
@@ -86,9 +90,9 @@ class RequestOptionsTest {
         String api = api(tower);
         assertContains(api, """
                     req_builder = req_builder.header(timvw_rust_runtime::header::ACCEPT, "text/event-stream");
-                    // last, so its headers replace the generated ones
+                    // last, so its headers replace the generated ones; its base URL replaces configuration.base_path
                     if let Some(options) = options {
-                        req_builder = req_builder.options(options);
+                        req_builder = req_builder.base(&configuration.base_path).options(options);
                     }
                     let req = req_builder.build()?;
                 """);
@@ -103,12 +107,18 @@ class RequestOptionsTest {
         assertContains(api(tower), "    if let Some(options) = request_options {\n");
     }
 
+    /** With {@code bonBuilders=false} the options are the last positional argument. */
     @Test
-    void notWithPositionalArguments() throws IOException {
-        assertFalse(api(positional).contains("options("), api(positional));
-        assertFalse(api(positional).contains("RequestOptions"), api(positional));
-        assertContains(api(positional), "pub async fn create_item(configuration: &configuration::Configuration, "
-                + "item: &models::Item, x_trace: Option<&str>, limit: Option<i64>) ->");
+    void positionalFunctionsTakeOptionsLast() throws IOException {
+        String api = api(positional);
+        assertContains(api, "pub async fn create_item(configuration: &configuration::Configuration, "
+                + "item: &models::Item, x_trace: Option<&str>, limit: Option<i64>, "
+                + "options: Option<&timvw_rust_runtime::RequestOptions>) ->");
+        assertContains(api, "pub async fn search(configuration: &configuration::Configuration, "
+                + "options: Option<&str>, request_options: Option<&timvw_rust_runtime::RequestOptions>) ->");
+        assertEquals(count(api, "pub async fn "), count(api, "RequestOptions>) -> Result<"), api);
+        assertContains(Files.readString(positional.resolve("src/apis/mod.rs")),
+                "pub use timvw_rust_runtime::RequestOptions;\n");
     }
 
     @Test
@@ -120,27 +130,30 @@ class RequestOptionsTest {
     @Test
     void whatArrivesAtRunTime() throws IOException, InterruptedException {
         Assumptions.assumeTrue(cargo(tower, 30, "--version") != null, "no cargo");
-        Path manifest = tower.resolve("Cargo.toml");
-        String cargo = Files.readString(manifest);
-        if (!cargo.contains("[dev-dependencies]")) {
-            Files.writeString(manifest, cargo + """
+        for (String[] run : new String[][] {{"request_options"}, {"request_options_positional"}}) {
+            Path dir = run[0].equals("request_options") ? tower : positional;
+            Path manifest = dir.resolve("Cargo.toml");
+            String cargo = Files.readString(manifest);
+            if (!cargo.contains("[dev-dependencies]")) {
+                Files.writeString(manifest, cargo + """
 
-                    [dev-dependencies]
-                    futures-util = "0.3"
-                    tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
-                    """);
+                        [dev-dependencies]
+                        futures-util = "0.3"
+                        tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+                        """);
+            }
+            Files.createDirectories(dir.resolve("tests"));
+            Files.copy(Path.of("src/test/rust/" + run[0] + ".rs"), dir.resolve("tests/" + run[0] + ".rs"),
+                    StandardCopyOption.REPLACE_EXISTING);
+            String result = cargo(dir, 900, "test", "--test", run[0]);
+            assertNotNull(result, "cargo did not finish");
+            assertTrue(result.contains("test result: ok.") && !result.contains(" 0 passed"), result);
+            String clippy = cargo(dir, 900, "clippy", "--all-targets", "--", "-D", "warnings");
+            Assumptions.assumeTrue(clippy == null || !clippy.contains("no such command"), "no clippy");
+            assertNotNull(clippy, "clippy did not finish");
+            assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("warning:"),
+                    clippy);
         }
-        Files.createDirectories(tower.resolve("tests"));
-        Files.copy(Path.of("src/test/rust/request_options.rs"), tower.resolve("tests/request_options.rs"),
-                StandardCopyOption.REPLACE_EXISTING);
-        String result = cargo(tower, 900, "test", "--test", "request_options");
-        assertNotNull(result, "cargo did not finish");
-        assertTrue(result.contains("test result: ok.") && !result.contains(" 0 passed"), result);
-        String clippy = cargo(tower, 900, "clippy", "--all-targets", "--", "-D", "warnings");
-        Assumptions.assumeTrue(clippy == null || !clippy.contains("no such command"), "no clippy");
-        assertNotNull(clippy, "clippy did not finish");
-        assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("warning:"),
-                clippy);
     }
 
     /** What cargo printed, or {@code null} when it cannot run or does not finish in time. */

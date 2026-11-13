@@ -273,3 +273,31 @@ async fn a_parameter_named_options_keeps_its_name() {
         "{request}"
     );
 }
+
+/// A per-call base URL replaces `configuration.base_path`, keeping the operation's path and query.
+#[tokio::test]
+async fn a_base_url_sends_one_call_elsewhere() {
+    let (served, server) = serve("application/json", ITEM).await;
+    let mut configuration = served.clone();
+    // The configured base is not served; the call goes to the server's, under another prefix.
+    configuration.base_path = "http://127.0.0.1:9/v1".to_owned();
+    let options = RequestOptions::new()
+        .base_url(&format!("{}/v2", served.base_path))
+        .unwrap()
+        .query(&[("extra", "1")])
+        .unwrap();
+    default_api::create_item()
+        .configuration(&configuration)
+        .item(&item())
+        .limit(5)
+        .options(&options)
+        .call()
+        .await
+        .unwrap();
+    let request = server.await.unwrap();
+    assert_eq!(
+        head(&request)[0],
+        "POST /v2/items?limit=5&extra=1 HTTP/1.1",
+        "{request}"
+    );
+}

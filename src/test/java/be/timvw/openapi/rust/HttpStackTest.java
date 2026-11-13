@@ -135,6 +135,19 @@ class HttpStackTest {
         }
     }
 
+    /** A generated crate's minimum supported Rust version is the runtime crate's. */
+    @Test
+    void theRustVersionIsTheRuntimes() throws IOException {
+        Matcher version = Pattern.compile("(?m)^rust-version = \"([^\"]+)\"")
+                .matcher(Files.readString(Path.of("runtime/Cargo.toml")));
+        assertTrue(version.find());
+        assertEquals(version.group(1), TimvwRustCodegen.RUST_VERSION);
+        generate(out, Map.of());
+        assertTrue(read(out, "Cargo.toml").contains("\nedition = \"2021\"\n"), read(out, "Cargo.toml"));
+        assertTrue(read(out, "Cargo.toml").contains("\nrust-version = \"" + version.group(1) + "\"\n"),
+                read(out, "Cargo.toml"));
+    }
+
     /** It builds, with and without multipartHelper. Needs cargo; without it there is nothing to build. */
     @ParameterizedTest
     @CsvSource({"true", "false"})

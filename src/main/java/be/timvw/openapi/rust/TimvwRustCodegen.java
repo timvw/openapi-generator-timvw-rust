@@ -192,16 +192,22 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public static final String HTTP_STACK = "httpStack";
     /** The version requirement of {@code timvw-rust-runtime} in the generated Cargo.toml. */
     public static final String RUNTIME_VERSION = "runtimeVersion";
+    /**
+     * The minimum supported Rust version of a generated crate ({@code rust-version} in its Cargo.toml): the one of the
+     * {@code timvw-rust-runtime} release it renders for.
+     */
+    static final String RUST_VERSION = "1.88";
     /** The {@code timvw-rust-runtime} release this generator renders for: the default of {@link #RUNTIME_VERSION}. */
-    public static final String DEFAULT_RUNTIME_VERSION = "0.3.1";
+    public static final String DEFAULT_RUNTIME_VERSION = "0.4";
     /**
      * A path dependency on {@code timvw-rust-runtime} next to the version, for testing
      * against an unreleased runtime; defaults to the system property {@code timvw-rust.runtimePath}.
      */
     public static final String RUNTIME_PATH = "runtimePath";
     /**
-     * Set on every operation: the name of its {@code timvw_rust_runtime::RequestOptions} parameter (with
-     * {@code bonBuilders}), {@code options} unless a parameter of the operation has it.
+     * Set on every operation: the name of its {@code timvw_rust_runtime::RequestOptions} parameter, the last one (a
+     * setter of the bon builder, or the last positional argument), {@code options} unless a parameter of the
+     * operation has it.
      */
     static final String OPTIONS_PARAM = "x-rust-options-param";
     /**
@@ -885,6 +891,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         } else {
             additionalProperties.put(RUNTIME_PATH, path.replace('\\', '/'));
         }
+        additionalProperties.put("rustVersion", RUST_VERSION);
 
         Object featuresFile = additionalProperties.get(API_FEATURES_FILE);
         boolean withFile = featuresFile != null && !String.valueOf(featuresFile).isEmpty();

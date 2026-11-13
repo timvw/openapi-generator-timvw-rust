@@ -90,7 +90,7 @@ class ApiFeaturesTest {
     void oneFeaturePerTag() throws IOException {
         generate(out, Map.of(TimvwRustCodegen.API_FEATURES, "true"));
         String cargo = read(out, "Cargo.toml");
-        assertTrue(cargo.contains("timvw-rust-runtime = { version = \"^0.1\", default-features = false"), cargo);
+        assertTrue(cargo.contains("timvw-rust-runtime = { version = \"^" + TimvwRustCodegen.DEFAULT_RUNTIME_VERSION + "\", default-features = false"), cargo);
         assertTrue(cargo.contains(", optional = true }"), cargo);
         assertTrue(cargo.contains("default = [\"native-tls\", \"retry\", \"full\"]\n"
                 + "native-tls = [\"timvw-rust-runtime?/native-tls\"]\n"), cargo);

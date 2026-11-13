@@ -49,9 +49,9 @@ configuration.api_key = Some(ApiKey {
 });
 ```
 
-Code that read a credential back reads `token.expose_secret()` where it read `token`. The generated client needs a
-`timvw-rust-runtime` release that has `SecretString` and `RequestBuilder::sensitive_header`; regenerate and run
-`cargo update -p timvw-rust-runtime`.
+Code that read a credential back reads `token.expose_secret()` where it read `token`. The generated client needs
+`timvw-rust-runtime` 0.2, which has `SecretString` and `RequestBuilder::sensitive_header`; the generated
+`Cargo.toml` asks for `^0.2`.
 
 ### Per-call request options
 
@@ -61,8 +61,8 @@ query parameters of one call ([HTTP stack guide](http-stack.md#headers-and-query
 that does not set it sends what it sent before, so builder calls compile and behave as with 0.25. Two exceptions:
 
 - An operation with a parameter named `options` keeps it; its request options are `.request_options(..)`.
-- The generated code uses `RequestOptions`, new in `timvw-rust-runtime` after 0.1.0: a lock file that holds
-  `timvw-rust-runtime` 0.1.0 needs `cargo update -p timvw-rust-runtime`.
+- The generated code needs `timvw-rust-runtime` 0.2 (`RequestOptions`, `SecretString`): the generated `Cargo.toml`
+  asks for `^0.2`.
 
 `bonBuilders=false` and `httpStack=reqwest-middleware` render what 0.25 rendered.
 

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-13
+
 ### Added
 
 - `retry::RetryLayer`: retries with a `RetryPolicy` like `tower::retry::RetryLayer`, and with `permanent_429(f)` reads

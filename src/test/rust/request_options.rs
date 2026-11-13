@@ -53,7 +53,7 @@ async fn serve(
     });
     let mut configuration = Configuration::new();
     configuration.base_path = format!("http://127.0.0.1:{port}");
-    configuration.bearer_access_token = Some("from-configuration".to_owned());
+    configuration.bearer_access_token = Some("from-configuration".into());
     // The server answers once: no retries.
     configuration.client =
         timvw_rust_runtime::Client::from_service(timvw_rust_runtime::ReqwestService::default());

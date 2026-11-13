@@ -194,7 +194,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /** The version requirement of {@code timvw-rust-runtime} in the generated Cargo.toml (with {@code httpStack=tower}). */
     public static final String RUNTIME_VERSION = "runtimeVersion";
     /** The {@code timvw-rust-runtime} release this generator renders for: the default of {@link #RUNTIME_VERSION}. */
-    public static final String DEFAULT_RUNTIME_VERSION = "0.1";
+    public static final String DEFAULT_RUNTIME_VERSION = "0.2";
     /**
      * A path dependency on {@code timvw-rust-runtime} next to the version (with {@code httpStack=tower}), for testing
      * against an unreleased runtime; defaults to the system property {@code timvw-rust.runtimePath}.

@@ -172,10 +172,10 @@ Each of these is a rule with its tests in [mapping/](mapping/README.md#objects):
 | OpenAPI | Rust |
 | --- | --- |
 | `servers[0].url` | `Configuration::default().base_path` |
-| `http` `bearer` | `configuration.bearer_access_token`, sent as `Authorization: Bearer` |
-| `http` `basic` | `configuration.basic_auth: Option<(String, Option<String>)>` |
-| `apiKey` | `configuration.api_key: Option<ApiKey { prefix, key }>`, sent in the header, query parameter or cookie the scheme names |
-| `oauth2` | `configuration.oauth_access_token` |
+| `http` `bearer` | `configuration.bearer_access_token: Option<SecretString>`, sent as `Authorization: Bearer` |
+| `http` `basic` | `configuration.basic_auth: Option<(String, Option<SecretString>)>` |
+| `apiKey` | `configuration.api_key: Option<ApiKey { prefix, key: SecretString }>`, sent in the header, query parameter or cookie the scheme names |
+| `oauth2` | `configuration.oauth_access_token: Option<SecretString>` |
 | which scheme an operation uses | the operation's `security`, or the spec's |
 | user agent | `OpenAPI-Generator/<spec version>/rust`; `userAgentFromPackage` gives `<package>/<crate version>` |
 | HTTP client *(reqwest)* | `reqwest_middleware::ClientWithMiddleware`, so retries and tracing plug in as middleware |

@@ -46,7 +46,7 @@ mod readme {
 
         let mut configuration = Configuration::new();
         configuration.base_path = "https://api.example.com/v1".to_owned();
-        configuration.bearer_access_token = Some("secret".to_owned());
+        configuration.bearer_access_token = Some("secret".into());
 
         let page = items_api::list_items()
             .configuration(&configuration)
@@ -506,11 +506,37 @@ mod http_stack {
         assert_eq!(page.data[0].name, "Lamp");
         Ok(())
     }
+
+    fn credentials() -> Result<(), BoxError> {
+        use my_client::apis::configuration::{ApiKey, ExposeSecret, SecretString};
+
+        let mut configuration = Configuration::new();
+        configuration.bearer_access_token = Some(SecretString::from(std::env::var("API_TOKEN")?));
+        configuration.basic_auth = Some(("user".to_owned(), Some("password".into())));
+        configuration.api_key = Some(ApiKey { prefix: None, key: "sk-123".into() });
+        println!("{configuration:?}"); // the secrets print as [REDACTED]
+        let key: &str = configuration.api_key.as_ref().unwrap().key.expose_secret();
+        Ok(())
+    }
 }
 
 /// docs/guides/migration.md
 mod migration {
     use super::*;
+
+    fn secret_credentials() {
+        use my_client::apis::configuration::{ApiKey, SecretString};
+
+        let mut configuration = Configuration::new();
+        let token = "sk-123".to_owned();
+        configuration.bearer_access_token = Some(token.into());
+        configuration.oauth_access_token = Some(SecretString::from("oauth-token"));
+        configuration.basic_auth = Some(("user".to_owned(), Some("password".into())));
+        configuration.api_key = Some(ApiKey {
+            prefix: Some("Token".to_owned()),
+            key: "key".into(),
+        });
+    }
 
     async fn bodies() -> Result<(), BoxError> {
         let configuration = configuration();

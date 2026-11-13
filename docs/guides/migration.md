@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [From 0.25 to 0.26](#from-025-to-026): the credentials of `Configuration` are `SecretString`s.
 - [From 0.24 to 0.25](#from-024-to-025): the client sends through a tower service from `timvw-rust-runtime`.
 - [From 0.23 to 0.24](#from-023-to-024): union variant names under a model name prefix or suffix.
 - [From 0.22 to 0.23](#from-022-to-023): one rare type change.
@@ -9,6 +10,46 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From 0.25 to 0.26
+
+With `httpStack=tower` (the default), the secrets of `Configuration` are `secrecy::SecretString`s instead of
+`String`s: `bearer_access_token` and `oauth_access_token` are `Option<SecretString>`, `BasicAuth` is
+`(String, Option<SecretString>)` and `ApiKey::key` is a `SecretString`. The username and `ApiKey::prefix` stay
+`String`s. `configuration::SecretString` re-exports the type; it is made from a `String` or a `&str` with `.into()` or
+`SecretString::from`, and read back with `ExposeSecret::expose_secret` (`configuration::ExposeSecret`). With
+`httpStack=reqwest-middleware` nothing changes.
+
+Before:
+
+<!-- not compiled: 0.25 -->
+```rust
+let token = "sk-123".to_owned();
+configuration.bearer_access_token = Some(token);
+configuration.oauth_access_token = Some("oauth-token".to_owned());
+configuration.basic_auth = Some(("user".to_owned(), Some("password".to_owned())));
+configuration.api_key = Some(ApiKey {
+    prefix: Some("Token".to_owned()),
+    key: "key".to_owned(),
+});
+```
+
+After:
+
+```rust
+let token = "sk-123".to_owned();
+configuration.bearer_access_token = Some(token.into());
+configuration.oauth_access_token = Some(SecretString::from("oauth-token"));
+configuration.basic_auth = Some(("user".to_owned(), Some("password".into())));
+configuration.api_key = Some(ApiKey {
+    prefix: Some("Token".to_owned()),
+    key: "key".into(),
+});
+```
+
+Code that read a credential back reads `token.expose_secret()` where it read `token`. The generated client needs a
+`timvw-rust-runtime` release that has `SecretString` and `RequestBuilder::sensitive_header`; regenerate and run
+`cargo update -p timvw-rust-runtime`.
 
 ## From 0.24 to 0.25
 

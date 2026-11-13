@@ -214,7 +214,12 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#isApiKey}}
     {{#isKeyInQuery}}
     if let Some(ref apikey) = configuration.api_key {
+        {{#httpStackTower}}
+        let key = {{httpCrate}}::ExposeSecret::expose_secret(&apikey.key).to_owned();
+        {{/httpStackTower}}
+        {{^httpStackTower}}
         let key = apikey.key.clone();
+        {{/httpStackTower}}
         let value = match apikey.prefix {
             Some(ref prefix) => format!("{} {}", prefix, key),
             None => key,
@@ -254,30 +259,55 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#isApiKey}}
     {{#isKeyInHeader}}
     if let Some(ref apikey) = configuration.api_key {
+        {{#httpStackTower}}
+        let key = {{httpCrate}}::ExposeSecret::expose_secret(&apikey.key).to_owned();
+        {{/httpStackTower}}
+        {{^httpStackTower}}
         let key = apikey.key.clone();
+        {{/httpStackTower}}
         let value = match apikey.prefix {
             Some(ref prefix) => format!("{} {}", prefix, key),
             None => key,
         };
+        {{#httpStackTower}}
+        req_builder = req_builder.sensitive_header("{{{keyParamName}}}", value);
+        {{/httpStackTower}}
+        {{^httpStackTower}}
         req_builder = req_builder.header("{{{keyParamName}}}", value);
+        {{/httpStackTower}}
     };
     {{/isKeyInHeader}}
     {{/isApiKey}}
     {{#isBasic}}
     {{#isBasicBasic}}
     if let Some(ref auth_conf) = configuration.basic_auth {
+        {{#httpStackTower}}
+        req_builder = req_builder.basic_auth(&auth_conf.0, auth_conf.1.as_ref().map({{httpCrate}}::ExposeSecret::expose_secret));
+        {{/httpStackTower}}
+        {{^httpStackTower}}
         req_builder = req_builder.basic_auth(auth_conf.0.to_owned(), auth_conf.1.to_owned());
+        {{/httpStackTower}}
     };
     {{/isBasicBasic}}
     {{#isBasicBearer}}
     if let Some(ref token) = configuration.bearer_access_token {
+        {{#httpStackTower}}
+        req_builder = req_builder.bearer_auth({{httpCrate}}::ExposeSecret::expose_secret(token));
+        {{/httpStackTower}}
+        {{^httpStackTower}}
         req_builder = req_builder.bearer_auth(token.to_owned());
+        {{/httpStackTower}}
     };
     {{/isBasicBearer}}
     {{/isBasic}}
     {{#isOAuth}}
     if let Some(ref token) = configuration.oauth_access_token {
+        {{#httpStackTower}}
+        req_builder = req_builder.bearer_auth({{httpCrate}}::ExposeSecret::expose_secret(token));
+        {{/httpStackTower}}
+        {{^httpStackTower}}
         req_builder = req_builder.bearer_auth(token.to_owned());
+        {{/httpStackTower}}
     };
     {{/isOAuth}}
     {{/authMethods}}
@@ -319,10 +349,19 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{#isApiKey}}
     {{#isKeyInCookie}}
     if let Some(ref apikey) = configuration.api_key {
+        {{#httpStackTower}}
+        let key = {{httpCrate}}::ExposeSecret::expose_secret(&apikey.key);
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key.to_owned(),
+        };
+        {{/httpStackTower}}
+        {{^httpStackTower}}
         let value = match apikey.prefix {
             Some(ref prefix) => format!("{} {}", prefix, apikey.key),
             None => apikey.key.clone(),
         };
+        {{/httpStackTower}}
         cookies.push(format!("{{{keyParamName}}}={}", crate::apis::cookie_encode(value)));
     }
     {{/isKeyInCookie}}
@@ -330,7 +369,12 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     {{/authMethods}}
     {{/hasAuthMethods}}
     if !cookies.is_empty() {
+        {{#httpStackTower}}
+        req_builder = req_builder.sensitive_header({{httpCrate}}::header::COOKIE, cookies.join("; "));
+        {{/httpStackTower}}
+        {{^httpStackTower}}
         req_builder = req_builder.header({{httpCrate}}::header::COOKIE, cookies.join("; "));
+        {{/httpStackTower}}
     }
     {{/vendorExtensions.x-rust-cookies}}
 {{#multipartHelper}}

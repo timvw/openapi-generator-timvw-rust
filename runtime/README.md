@@ -15,6 +15,7 @@ crate ships, any layer from the tower ecosystem, or write your own.
 - [Concurrency and rate limits](#concurrency-and-rate-limits)
 - [Choosing the HTTP client, and tests without a network](#choosing-the-http-client)
 - [Your own types, and streams of server-sent events](#your-own-types-and-server-sent-events)
+- [Credentials](#credentials)
 - [Errors](#errors)
 - [Features](#features)
 
@@ -366,18 +367,18 @@ whose replies differ, `serde_json::Value`), call the client directly: the same l
 ```rust,no_run
 use futures_util::StreamExt;
 use serde::Deserialize;
-use timvw_rust_runtime::{Client, Method};
+use timvw_rust_runtime::{Client, ExposeSecret, Method, SecretString};
 
 #[derive(Deserialize)]
 struct Delta {
     id: String,
 }
 
-async fn run(client: &Client, api_key: &str) -> Result<(), timvw_rust_runtime::Error> {
+async fn run(client: &Client, api_key: &SecretString) -> Result<(), timvw_rust_runtime::Error> {
     let request = serde_json::json!({"model": "some-model", "stream": true});
     let response = client
         .request(Method::POST, "https://api.example.com/v1/chat/completions")
-        .bearer_auth(api_key)
+        .bearer_auth(api_key.expose_secret())
         .json(&request)
         .send()
         .await?;
@@ -393,6 +394,29 @@ async fn run(client: &Client, api_key: &str) -> Result<(), timvw_rust_runtime::E
 `is_decode()` is true, and the stream goes on. `events()` alone gives each `sse::Event` undecoded (`event:`, `data:`,
 `id:`), and `sse::Decoder` is the parser, for a body read some other way. A generated client's typed event streams use
 the same parser.
+
+## Credentials
+
+A generated `Configuration` keeps its tokens, basic-auth password and api key in
+[`secrecy`](https://docs.rs/secrecy)'s `SecretString`, which this crate re-exports (`timvw_rust_runtime::secrecy`,
+`SecretString` and `ExposeSecret`). A `SecretString` is made from a `String` or a `&str`, its `Debug` is redacted,
+and it is zeroed when dropped. `bearer_auth`, `basic_auth` and `sensitive_header` take the exposed value and mark the
+header sensitive, so the `Debug` of the request's headers leaves it out:
+
+```rust
+use timvw_rust_runtime::{Client, ExposeSecret, Method, SecretString};
+
+let key = SecretString::from("sk-123");
+assert_eq!(format!("{key:?}"), "SecretBox<str>([REDACTED])");
+
+let request = Client::default()
+    .request(Method::GET, "https://api.example.com/v1/models")
+    .sensitive_header("x-api-key", key.expose_secret())
+    .build()?;
+assert!(request.headers()["x-api-key"].is_sensitive());
+assert!(!format!("{:?}", request.headers()).contains("sk-123"));
+# Ok::<(), timvw_rust_runtime::Error>(())
+```
 
 ## Errors
 
@@ -423,8 +447,8 @@ A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under t
 
 ## What the generated code uses
 
-The generated functions build requests with `RequestBuilder` (`query`, `header`, `bearer_auth`, `basic_auth`, `json`,
-`form`, `body`, `multipart`, `build`) and read responses with `Response` (`status`, `headers`, `text`, `bytes`,
+The generated functions build requests with `RequestBuilder` (`query`, `header`, `sensitive_header`, `bearer_auth`,
+`basic_auth`, `json`, `form`, `body`, `multipart`, `build`) and read responses with `Response` (`status`, `headers`, `text`, `bytes`,
 `bytes_stream`): the methods of reqwest's types of the same names. `multipart::Form` encodes multipart bodies.
 
 ## License

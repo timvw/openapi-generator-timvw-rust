@@ -56,7 +56,7 @@ fn header<'a>(request: &'a str, name: &str) -> Option<&'a str> {
 fn with_key(mut configuration: Configuration, key: &str) -> Configuration {
     configuration.api_key = Some(ApiKey {
         prefix: None,
-        key: key.to_owned(),
+        key: key.into(),
     });
     configuration
 }

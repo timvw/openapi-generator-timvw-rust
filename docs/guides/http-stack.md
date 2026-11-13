@@ -84,6 +84,30 @@ The generated code builds requests with `timvw_rust_runtime::RequestBuilder` and
 codes and headers are the `http` crate's types (`timvw_rust_runtime::StatusCode`, `timvw_rust_runtime::header`), the
 same types reqwest re-exports.
 
+### Credentials
+
+The secrets of `Configuration` are `secrecy::SecretString`s, as async-openai keeps its key:
+`bearer_access_token`, `oauth_access_token`, the password of `basic_auth` and the `key` of `api_key` (the username and
+the key's `prefix` stay `String`s). `configuration::SecretString` and `configuration::ExposeSecret` re-export the
+runtime's. A `SecretString` is made from a `String` or a `&str` (`.into()` or `SecretString::from`), prints as
+`[REDACTED]`, and is zeroed in memory when dropped:
+
+```rust
+use my_client::apis::configuration::{ApiKey, ExposeSecret, SecretString};
+
+let mut configuration = Configuration::new();
+configuration.bearer_access_token = Some(SecretString::from(std::env::var("API_TOKEN")?));
+configuration.basic_auth = Some(("user".to_owned(), Some("password".into())));
+configuration.api_key = Some(ApiKey { prefix: None, key: "sk-123".into() });
+println!("{configuration:?}"); // the secrets print as [REDACTED]
+let key: &str = configuration.api_key.as_ref().unwrap().key.expose_secret();
+```
+
+The generated code exposes a secret only where it builds the request, and sends an `Authorization`, api-key or
+`Cookie` header marked sensitive (`HeaderValue::set_sensitive`), so `Debug` of the request's headers and HTTP/2 header
+compression leave it out. An api key in a query parameter is part of the URL. With `httpStack=reqwest-middleware` the
+credentials are `String`s, as before 0.26.
+
 ### The runtime version
 
 The generated `Cargo.toml` asks for `timvw-rust-runtime = "^<runtimeVersion>"` (default: the release this generator

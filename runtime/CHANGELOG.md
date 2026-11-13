@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer is returned at once.
 - `RetryPolicy::jitter` (default `true`): each backoff delay is picked at random between half and all of it.
 - `RetryPolicy` reads OpenAI's `retry-after-ms` header (before `Retry-After`), and fractional seconds in `Retry-After`.
+- `secrecy` is a dependency and re-exported (`timvw_rust_runtime::secrecy`, and `SecretString` and `ExposeSecret` at
+  the crate root): generated clients keep their credentials in `SecretString`s.
+- `RequestBuilder::sensitive_header`: sets a header, replacing an earlier value, and marks it sensitive, as
+  `bearer_auth` and `basic_auth` do. Generated clients send an api key and the `Cookie` header with it.
 
 ### Changed
 

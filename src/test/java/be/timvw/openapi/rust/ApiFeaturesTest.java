@@ -156,6 +156,28 @@ class ApiFeaturesTest {
         assertEquals("#[cfg(feature = \"default-api-types\")]", cfgOf(models, "health"));
     }
 
+    /**
+     * In a module split between features, an operation's typed headers are gated like the operation: the struct and
+     * both of its impls, so a build without that feature has none of them.
+     */
+    @Test
+    void typedHeadersAreGatedWithTheirOperation() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.API_FEATURES_FILE, groups("admin: { paths: [/admin] }\n").toString(),
+                TimvwRustCodegen.RESPONSE_FUNCTIONS, "true"));
+        String module = read(out, "src/apis/default_api.rs");
+        for (String name : List.of("ListUsersResponseHeaders", "ListUsersErrorHeaders")) {
+            for (String item : List.of("pub struct " + name + " {", "impl " + name + " {",
+                    "impl From<&timvw_rust_runtime::header::HeaderMap> for " + name + " {")) {
+                int at = module.indexOf(item);
+                assertTrue(at > 0, item + " in\n" + module);
+                String before = module.substring(0, at);
+                String gate = "#[cfg(feature = \"admin\")]\n";
+                assertTrue(before.endsWith(gate) || before.endsWith(gate + "#[derive(Clone, Debug, Default, PartialEq)]\n"),
+                        item + " is gated:\n" + module.substring(Math.max(0, at - 200), at));
+            }
+        }
+    }
+
     /** An operation two groups select is in both: an operation of a tag group and of a path group. */
     @Test
     void anOperationInTwoGroupsIsInBoth() throws IOException {
@@ -255,7 +277,8 @@ class ApiFeaturesTest {
     void eachFeatureBuildsAlone() throws IOException, InterruptedException {
         Assumptions.assumeTrue(cargo(out, 30, "--version") != null, "no cargo");
         generate(out, Map.of(TimvwRustCodegen.API_FEATURES_FILE,
-                groups("admin: { paths: [/admin] }\nanimals: { tags: [Pets] }\n").toString()));
+                groups("admin: { paths: [/admin] }\nanimals: { tags: [Pets] }\n").toString(),
+                TimvwRustCodegen.RESPONSE_FUNCTIONS, "true"));
         List<String> sets = List.of("animals-types", "rustls,animals", "rustls,admin", "rustls,default-api",
                 "store-types", "types", "rustls,full", "");
         for (String features : sets) {

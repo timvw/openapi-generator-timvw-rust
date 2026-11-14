@@ -78,6 +78,16 @@ paths:
       responses:
         "200":
           description: the users
+          headers:
+            X-Total-Count:
+              schema:
+                type: integer
+        "429":
+          description: too many requests
+          headers:
+            Retry-After:
+              schema:
+                type: integer
           content:
             application/json:
               schema:

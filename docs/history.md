@@ -17,6 +17,26 @@ multipart unions too; 0.29 in model fields, and removes the reqwest-middleware s
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## Unreleased
+
+A required property that can be null and is listed in `stringProperties` is an `Option<String>` that decodes `null`
+(see [migration](guides/migration.md#unreleased)).
+
+- `stringProperties` replaced the listed property with a bare `type: string` and dropped its nullability: a required
+  `anyOf: [..., {type: "null"}]` was a `String`, which fails to decode `null`. The replacement keeps it nullable
+  (`nullable: true`, or `null` among the types or a `null` branch, through references), so a required one is an
+  `Option<String>` with `deserialize_with = "Option::deserialize"` and an optional one follows
+  [`schema.nullable`](mapping/schema.md#schemanullable). openai-client-base: `Response.instructions` and
+  `CreateCompletionRequest.prompt`, `String` before, are `Option<String>`; `Response::new` and
+  `CreateCompletionRequest::new` take an `Option<String>`. langfuse-client-base sets no `stringProperties` and is
+  unchanged.
+- Without `stringProperties`, a property that an `allOf` part adds as a reference to a union of a string and a list,
+  and a required `anyOf: [<such a union>, {type: "null"}]`, were already typed: `Option<models::InputParam>` and
+  `Option<models::ResponseAllOfInstructions>` (an enum of `Text(String)` and `InputItemList(Vec<models::InputItem>)`)
+  for openai-client-base's `CreateResponse.input` and `Response.instructions`. Tests now cover both, and that a union
+  of strings only keeps its mapping. openai-client-base renders them as `String` because its config lists them in
+  `stringProperties`; dropping the two entries gives the typed fields.
+
 ## 0.29.0
 
 The reqwest-middleware stack is removed: every client sends through `timvw-rust-runtime` (see

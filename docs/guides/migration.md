@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [Unreleased](#unreleased): a required nullable `stringProperties` property is an `Option<String>`.
 - [From 0.28 to 0.29](#from-028-to-029): `httpStack` and reqwest-middleware removed; `Error::Io` removed; models' file fields hold `Upload`s; per-call options without builders and a per-call base URL; runtime 0.4.
 - [From 0.27 to 0.28](#from-027-to-028): multipart unions with a file variant hold `Upload`s; runtime 0.3.1 and its `TimeoutLayer`.
 - [From 0.26 to 0.27](#from-026-to-027): file parameters are `timvw_rust_runtime::Upload`s; runtime 0.3; WebAssembly.
@@ -13,6 +14,28 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## Unreleased
+
+### A required nullable `stringProperties` property is an `Option<String>`
+
+Only a property listed in `stringProperties` that can be null changes. A required one was a `String`, which failed to
+decode the `null` the API sends; it is an `Option<String>`, and `new` takes an `Option<String>` for it. An optional
+one is an `Option<Option<String>>`, like any optional nullable property.
+
+<!-- not compiled: openai-client-base code -->
+```rust
+// before
+let instructions: &str = &response.instructions;
+let request = CreateCompletionRequest::new(model, prompt);
+// after
+let instructions: Option<&str> = response.instructions.as_deref();
+let request = CreateCompletionRequest::new(model, Some(prompt));
+```
+
+To get the typed union instead of a `String`, remove the property from `stringProperties`: the generator types a
+union of a string and a list itself (openai-client-base's `CreateResponse.input` is then an
+`Option<models::InputParam>`, and `Response.instructions` an `Option<models::ResponseAllOfInstructions>`).
 
 ## From 0.28 to 0.29
 

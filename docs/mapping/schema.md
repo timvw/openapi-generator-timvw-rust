@@ -103,8 +103,8 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | --- | --- |
 | OpenAPI | a component schema that is only a scalar (`Alias: {type: string}`) |
 | Rust | no type of its own: a reference to it is the scalar, documented with the component's description |
-| Options | `stringIdSchemas` renders listed components as `String` whatever they hold; `stringIdProperties` and `stringProperties` render listed properties as `String` |
-| Tests | [`SchemaMappingTest#aScalarComponentHasNoTypeOfItsOwn`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L154), [`SpecRulesTest#idSchemasAndIdPropertiesBecomeStrings`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L111), [`#stringProperties`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L124) |
+| Options | `stringIdSchemas` renders listed components as `String` whatever they hold; `stringIdProperties` and `stringProperties` render listed properties as `String` (a `stringProperties` entry that can be null stays nullable) |
+| Tests | [`SchemaMappingTest#aScalarComponentHasNoTypeOfItsOwn`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L154), [`SpecRulesTest#idSchemasAndIdPropertiesBecomeStrings`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L111), [`#stringProperties`](../../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java#L124), [`StringFirstUnionsTest#stringPropertiesKeepTheirNullability`](../../src/test/java/be/timvw/openapi/rust/StringFirstUnionsTest.java#L99) |
 
 ### `schema.pattern`
 
@@ -352,7 +352,7 @@ A tagged union opens too: [`discriminator.propertyName.unknown-value`](discrimin
 | --- | --- |
 | OpenAPI | `allOf` of objects |
 | Rust | one struct holding the properties of every part, required where any part requires them; each referenced part keeps its own struct |
-| Tests | [`SchemaMappingTest#allOfObjectsIsOneStructWithEveryPartsProperties`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L194) |
+| Tests | [`SchemaMappingTest#allOfObjectsIsOneStructWithEveryPartsProperties`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L194), [`StringFirstUnionsTest#anAllOfPropertyReferencingAStringFirstUnionIsTheUnion`](../../src/test/java/be/timvw/openapi/rust/StringFirstUnionsTest.java#L70) |
 
 ### `schema.allOf.union`
 
@@ -416,7 +416,7 @@ object kind decides. Two variants that accept the same values decode to whicheve
 | Rust | the `null` branch is no variant: the union is nullable. With one other branch, there is no union: the schema is that branch (an object next to `null` is a struct). Where it is used, the nullable union follows [`schema.nullable`](../type-mapping.md#objects): an optional property is `Option<Option<U>>`. A required query, header or cookie parameter of a nullable union is an `Option` too, and `None` sends nothing (no header either: one used to be sent empty); a path parameter is the union, never an `Option`; an inline one of a parameter or form field follows [`parameter.schema.null-branch`](parameter.md#parameterschemanull-branch) |
 | Wire | `null` decodes to `Some(None)`, an absent property to `None` |
 | Options | always |
-| Tests | [`ModelUnionsTest#anObjectNextToNullIsAStruct`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L116), [`#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103), [`ExtraRulesTest#nullableUnionFieldsCanHoldNull`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L137), [`UnionParamsTest#aRequiredNullableUnionParameterIsAnOption`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L87) |
+| Tests | [`ModelUnionsTest#anObjectNextToNullIsAStruct`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L116), [`#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103), [`ExtraRulesTest#nullableUnionFieldsCanHoldNull`](../../src/test/java/be/timvw/openapi/rust/ExtraRulesTest.java#L137), [`UnionParamsTest#aRequiredNullableUnionParameterIsAnOption`](../../src/test/java/be/timvw/openapi/rust/UnionParamsTest.java#L87), [`StringFirstUnionsTest#aRequiredNullableStringFirstUnionIsAnOptionOfTheUnion`](../../src/test/java/be/timvw/openapi/rust/StringFirstUnionsTest.java#L78) |
 
 ### `schema.oneOf.enum-branch`
 

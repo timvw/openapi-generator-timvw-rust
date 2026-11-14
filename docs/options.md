@@ -1,7 +1,7 @@
 # Options
 
 No options are needed: what `timvw-rust` renders without them is the [mapping](mapping/README.md). The options add
-functions or modules, choose the HTTP stack, shape the crate, or adapt a spec whose shape does not fit; none of them
+functions or modules, set the runtime dependency and its TLS, shape the crate, or adapt a spec whose shape does not fit; none of them
 makes the models or the error handling "more correct". This page lists every option, with its default, an example and
 the tests that cover it, and then the names the generator [rejects](#not-options).
 

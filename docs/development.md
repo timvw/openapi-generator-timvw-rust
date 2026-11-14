@@ -71,12 +71,13 @@ To build against another openapi-generator version, pass it to Maven first
 `.github/workflows/ci.yml` runs on every push and pull request:
 
 - `build`: `./mvnw verify` (with the `wasm32-unknown-unknown` target installed, and `target/cargo-target` cached),
-  the generator listed by the stock CLI, the image, and the petstore generated with both HTTP stacks, built, and
-  checked for `wasm32-unknown-unknown` (tower).
+  the generator listed by the stock CLI, the image, and the petstore generated with it, built, checked for
+  `wasm32-unknown-unknown`, and checked natively and for WebAssembly on its `rust-version` (the runtime's).
 - `runtime`: `cargo fmt --check`, clippy, `cargo test --all-features`, each feature on its own (`cargo hack`), the
-  docs with `-D warnings` without default features and with each feature, and `cargo publish --dry-run`.
+  docs with `-D warnings` without default features and with each feature, `cargo publish --dry-run`, and clippy
+  (each feature on its own) and the tests on its `rust-version`.
 - `wasm`: the runtime for `wasm32-unknown-unknown`: clippy, each feature on its own, its docs with each feature, and
-  `tests/wasm.rs` in Node.js.
+  `tests/wasm.rs` in Node.js, on stable and on its `rust-version`.
 
 ## Templates
 

@@ -40,7 +40,7 @@ docker run --rm -v "$PWD:/local" -u "$(id -u):$(id -g)" \
 your output unannounced.
 
 No options are needed: what the generator renders without them is the [mapping](docs/mapping/README.md). The
-[options](docs/options.md) add functions, choose the HTTP stack or adapt a spec. Maven and the openapi-generator Maven
+[options](docs/options.md) add functions, set the runtime dependency and its TLS, or adapt a spec. Maven and the openapi-generator Maven
 plugin are in [getting started](docs/guides/getting-started.md#running-the-generator).
 
 ```rust
@@ -105,7 +105,7 @@ built and tested against the openapi-generator version in its image tag (`-og<ve
 | [Validation](docs/guides/validation.md) | `validate()`: what it checks, what it skips, the off switch |
 | [API features](docs/guides/api-features.md) | `apiFeatures`: a Cargo feature per API group, and types-only features |
 | [Response functions](docs/guides/response-functions.md) | `responseFunctions`: status, (typed) headers and partial decoding of a success |
-| [Migration](docs/guides/migration.md) | upgrading release by release (0.20 to 0.28), and coming from stock `-g rust` |
+| [Migration](docs/guides/migration.md) | upgrading release by release (from 0.20 on), and coming from stock `-g rust` |
 | [Type mapping](docs/type-mapping.md), [mapping rules](docs/mapping/README.md) | what each OpenAPI construct becomes: one overview table, and the rules per specification object, each with its tests |
 | [Known limitations](docs/limitations.md) | what the generator and the runtime do not do yet |
 | [Comparison](docs/comparison/README.md) | stock `-g rust`, timvw-rust and progenitor side by side on one spec |

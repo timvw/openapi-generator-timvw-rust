@@ -17,10 +17,10 @@ multipart unions too; 0.29 in model fields, and removes the reqwest-middleware s
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
-## Unreleased
+## 0.30.0
 
 A required property that can be null and is listed in `stringProperties` is an `Option<String>` that decodes `null`
-(see [migration](guides/migration.md#unreleased)). The new option `optionalProperties` makes properties the spec marks
+(see [migration](guides/migration.md#from-029-to-030)). The new option `optionalProperties` makes properties the spec marks
 required, but the API leaves out, optional.
 
 - `stringProperties` and `fileProperties` fail generation on an entry that names no property (before, it was only

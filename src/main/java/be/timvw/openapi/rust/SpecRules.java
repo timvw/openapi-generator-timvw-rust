@@ -35,7 +35,7 @@ import java.util.regex.Pattern;
  * {@link #inlineStringRefsInUnions}, {@link #normalizeHyphenatedSchemaNames} and
  * {@link #simplifyObjectQueryParameters}. The <em>spec decisions</em> are driven by options and name the schemas
  * or properties they apply to: {@link #routeWebhooks}, {@link #stringSchemas}, {@link #stringIdProperties},
- * {@link #stringProperties} and the deep-object allow list of
+ * {@link #stringProperties}, {@link #optionalProperties} and the deep-object allow list of
  * {@link #simplifyObjectQueryParameters}.</p>
  *
  * <p>Every rule reports what it changed through a {@code Consumer<String>} so the generator can log it.</p>
@@ -58,6 +58,18 @@ final class SpecRules {
      * the {@code --additional-properties} value), so an underscore in such an entry stands for a space.
      */
     static List<String> entries(Object value) {
+        return entries(value, true);
+    }
+
+    /**
+     * Splits an option value of {@code Schema.property} entries as {@link #entries(Object)} does, but keeps the
+     * underscores of a CLI value: property names such as {@code cache_write_tokens} are written with them.
+     */
+    static List<String> propertyEntries(Object value) {
+        return entries(value, false);
+    }
+
+    private static List<String> entries(Object value, boolean underscoreIsSpace) {
         List<String> out = new ArrayList<>();
         if (value == null) {
             return out;
@@ -72,7 +84,7 @@ final class SpecRules {
         }
         for (String part : String.valueOf(value).split("[|;\\s]+")) {
             if (!part.isEmpty()) {
-                out.add(part.replace('_', ' '));
+                out.add(underscoreIsSpace ? part.replace('_', ' ') : part);
             }
         }
         return out;
@@ -267,6 +279,61 @@ final class SpecRules {
             string.setTypes(new LinkedHashSet<>(List.of("string", "null")));
         }
         return string;
+    }
+
+    /**
+     * Makes {@code Schema.property} entries optional, for properties a spec marks required that the API omits: the
+     * name is removed from the {@code required} list of the schema and of every inline {@code allOf} part that lists
+     * it (the addressing of {@link #stringProperties}). The property schema is left as it is, so a nullable one stays
+     * nullable and becomes an optional nullable property.
+     *
+     * @throws IllegalArgumentException when an entry is not {@code Schema.property}, or names no component schema or
+     *                                  no property declared or required by it or by its inline {@code allOf} parts
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static void optionalProperties(OpenAPI openAPI, Collection<String> entries, Consumer<String> log) {
+        Map<String, Schema> schemas = schemas(openAPI);
+        for (String entry : entries) {
+            int dot = entry.lastIndexOf('.');
+            if (dot < 0) {
+                throw new IllegalArgumentException(TimvwRustCodegen.GENERATOR_NAME
+                        + ": optionalProperties entry must be Schema.property: " + entry);
+            }
+            Schema schema = schemas.get(entry.substring(0, dot));
+            String prop = entry.substring(dot + 1);
+            List<Schema> parts = new ArrayList<>();
+            if (schema != null) {
+                parts.add(schema);
+                if (schema.getAllOf() != null) {
+                    for (Object item : schema.getAllOf()) {
+                        if (((Schema) item).get$ref() == null) {
+                            parts.add((Schema) item);
+                        }
+                    }
+                }
+            }
+            boolean found = false;
+            boolean removed = false;
+            for (Schema part : parts) {
+                if (part.getProperties() != null && part.getProperties().containsKey(prop)) {
+                    found = true;
+                }
+                if (part.getRequired() != null && part.getRequired().contains(prop)) {
+                    found = true;
+                    removed = true;
+                    List<String> required = new ArrayList<>(part.getRequired());
+                    required.remove(prop);
+                    part.setRequired(required.isEmpty() ? null : required);
+                }
+            }
+            if (!found) {
+                throw new IllegalArgumentException(String.format("%s: optionalProperties: %s names no property of a "
+                        + "component schema (nor of its inline allOf parts); remove it or correct its name",
+                        TimvwRustCodegen.GENERATOR_NAME, entry));
+            }
+            log.accept(removed ? "optionalProperties: " + entry + " is no longer required"
+                    : "optionalProperties: " + entry + " was not required");
+        }
     }
 
     /** Renders {@code Schema.property} entries as a file ({@code type: string, format: binary}). */

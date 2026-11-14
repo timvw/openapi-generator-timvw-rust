@@ -1,0 +1,61 @@
+# OptionalPropertiesTest: properties a spec marks required that the API omits, made optional by optionalProperties.
+openapi: 3.1.0
+info:
+  title: Optional properties
+  version: 1.0.0
+paths:
+  /replies:
+    get:
+      operationId: getReply
+      responses:
+        "200":
+          description: The reply.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reply"
+components:
+  schemas:
+    # A required property declared on the schema itself.
+    OutputText:
+      type: object
+      required: [text, logprobs]
+      properties:
+        text:
+          type: string
+        logprobs:
+          type: array
+          items:
+            type: number
+    UsageBase:
+      type: object
+      required: [input_tokens]
+      properties:
+        input_tokens:
+          type: integer
+    # A required property contributed by an allOf part.
+    Usage:
+      allOf:
+        - $ref: "#/components/schemas/UsageBase"
+        - type: object
+          required: [cached_tokens, cache_write_tokens]
+          properties:
+            cached_tokens:
+              type: integer
+            cache_write_tokens:
+              type: integer
+    Reply:
+      type: object
+      required: [id, output, usage, access_programs]
+      properties:
+        id:
+          type: string
+        output:
+          $ref: "#/components/schemas/OutputText"
+        usage:
+          $ref: "#/components/schemas/Usage"
+        # Required and nullable.
+        access_programs:
+          type: [array, "null"]
+          items:
+            type: string

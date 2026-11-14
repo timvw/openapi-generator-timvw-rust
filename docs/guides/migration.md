@@ -1,6 +1,6 @@
 # Guide: migrating
 
-- [Unreleased](#unreleased): a required nullable `stringProperties` property is an `Option<String>`.
+- [Unreleased](#unreleased): a required nullable `stringProperties` property is an `Option<String>`; the new option `optionalProperties`.
 - [From 0.28 to 0.29](#from-028-to-029): `httpStack` and reqwest-middleware removed; `Error::Io` removed; models' file fields hold `Upload`s; per-call options without builders and a per-call base URL; runtime 0.4.
 - [From 0.27 to 0.28](#from-027-to-028): multipart unions with a file variant hold `Upload`s; runtime 0.3.1 and its `TimeoutLayer`.
 - [From 0.26 to 0.27](#from-026-to-027): file parameters are `timvw_rust_runtime::Upload`s; runtime 0.3; WebAssembly.
@@ -36,6 +36,23 @@ let request = CreateCompletionRequest::new(model, Some(prompt));
 To get the typed union instead of a `String`, remove the property from `stringProperties`: the generator types a
 union of a string and a list itself (openai-client-base's `CreateResponse.input` is then an
 `Option<models::InputParam>`, and `Response.instructions` an `Option<models::ResponseAllOfInstructions>`).
+
+### New option: `optionalProperties`
+
+Nothing changes unless you set it. A property the spec marks `required` that the API leaves out fails to decode;
+listing it in [`optionalProperties`](../options.md#optionalproperties) as `Schema.property` makes it an `Option`, and
+`new` no longer takes it. A required nullable property becomes an `Option<Option<T>>`, like any optional nullable
+property. An entry that names no property fails generation.
+
+<!-- not compiled: openai-client-base code -->
+```rust
+// before: a response without logprobs failed to decode
+let logprobs: &Vec<models::LogProb> = &content.logprobs;
+let content = OutputTextContent::new(annotations, logprobs, text, r#type);
+// after, with "optionalProperties": ["OutputTextContent.logprobs"]
+let logprobs: Option<&Vec<models::LogProb>> = content.logprobs.as_ref();
+let content = OutputTextContent::new(annotations, text, r#type);
+```
 
 ## From 0.28 to 0.29
 

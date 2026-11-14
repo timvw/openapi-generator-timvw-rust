@@ -1,0 +1,79 @@
+# The nullable forms of OpenAPI 3.0 for StringFirstUnionsTest: `nullable: true` on a union and on a string.
+openapi: 3.0.3
+info:
+  title: String-first unions (3.0)
+  version: 1.0.0
+paths:
+  /replies:
+    post:
+      operationId: createReply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReply"
+      responses:
+        "200":
+          description: The reply.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reply"
+components:
+  schemas:
+    Item:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+    # A union whose first branch is a string, next to a list.
+    InputParam:
+      oneOf:
+        - type: string
+          title: Text input
+        - type: array
+          title: Input item list
+          items:
+            $ref: "#/components/schemas/Item"
+    # A union of strings only.
+    ModelId:
+      anyOf:
+        - type: string
+        - type: string
+          enum: [small, large]
+    ReplyProperties:
+      type: object
+      properties:
+        model:
+          $ref: "#/components/schemas/ModelId"
+    # A property added by an allOf part, a reference to the union.
+    CreateReply:
+      allOf:
+        - $ref: "#/components/schemas/ReplyProperties"
+        - type: object
+          properties:
+            input:
+              $ref: "#/components/schemas/InputParam"
+    Reply:
+      allOf:
+        - $ref: "#/components/schemas/ReplyProperties"
+        - type: object
+          required: [id, instructions, note]
+          properties:
+            id:
+              type: string
+            # Required and nullable: the union, or null.
+            instructions:
+              nullable: true
+              oneOf:
+                - type: string
+                - type: array
+                  title: Input item list
+                  items:
+                    $ref: "#/components/schemas/Item"
+            # Required and nullable: a string, or null.
+            note:
+              type: string
+              nullable: true

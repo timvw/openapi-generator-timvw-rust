@@ -217,7 +217,12 @@ final class SpecRules {
         }
     }
 
-    /** Renders {@code Schema.property} entries as a bare {@code type: string}, directly or in an allOf component. */
+    /**
+     * Renders {@code Schema.property} entries as a bare {@code type: string}, directly or in an allOf component. A
+     * property that can be null ({@code nullable}, {@code null} among its types or a {@code null} branch, as
+     * {@link #nullableItems} reads it) stays nullable: a required one is an {@code Option<String>} that decodes
+     * {@code null}, not a {@code String} that fails on it.
+     */
     @SuppressWarnings({"rawtypes", "unchecked"})
     static void stringProperties(OpenAPI openAPI, Collection<String> entries, Consumer<String> log) {
         Map<String, Schema> schemas = schemas(openAPI);
@@ -235,14 +240,14 @@ final class SpecRules {
             }
             boolean done = false;
             if (schema.getProperties() != null && schema.getProperties().containsKey(prop)) {
-                schema.getProperties().put(prop, new StringSchema());
+                schema.getProperties().put(prop, string((Schema) schema.getProperties().get(prop), schemas));
                 done = true;
             }
             if (schema.getAllOf() != null) {
                 for (Object item : schema.getAllOf()) {
                     Schema s = (Schema) item;
                     if (s.getProperties() != null && s.getProperties().containsKey(prop)) {
-                        s.getProperties().put(prop, new StringSchema());
+                        s.getProperties().put(prop, string((Schema) s.getProperties().get(prop), schemas));
                         done = true;
                     }
                 }
@@ -250,6 +255,18 @@ final class SpecRules {
             log.accept(done ? "stringProperties: " + entry + " is now type: string"
                     : "stringProperties: " + entry + " not found");
         }
+    }
+
+    /** A {@code type: string} in place of {@code original}, nullable when {@code original} can be null. */
+    @SuppressWarnings("rawtypes")
+    private static Schema string(Schema original, Map<String, Schema> schemas) {
+        StringSchema string = new StringSchema();
+        if (nullableItems(original, schemas)) {
+            // nullable: true for 3.0, null among the types for 3.1
+            string.setNullable(true);
+            string.setTypes(new LinkedHashSet<>(List.of("string", "null")));
+        }
+        return string;
     }
 
     /** Renders {@code Schema.property} entries as a file ({@code type: string, format: binary}). */

@@ -423,8 +423,16 @@ pub voice: Option<String>,
 pub kind: Option<String>, // Event.kind
 ```
 
+A `stringProperties` entry that can be null (`nullable: true`, `null` among its types or a `null` branch) stays
+nullable: a required one is an `Option<String>` that decodes `null`, an optional one follows
+[`schema.nullable`](mapping/schema.md#schemanullable). The entry replaces the whole property schema, so a union with
+non-string branches (a string or a list, say) loses them: the API's other forms no longer decode. The generator types
+such unions itself ([`schema.oneOf`](mapping/schema.md#schemaoneof)); list a property here only when a `String` is what
+you want.
+
 Rule: [`schema.type.scalar-component`](mapping/schema.md#schematypescalar-component). Tests:
-[`SpecRulesTest`](../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java) (`idSchemasAndIdPropertiesBecomeStrings`, `stringProperties`).
+[`SpecRulesTest`](../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java) (`idSchemasAndIdPropertiesBecomeStrings`, `stringProperties`),
+[`StringFirstUnionsTest`](../src/test/java/be/timvw/openapi/rust/StringFirstUnionsTest.java) (`stringPropertiesKeepTheirNullability`).
 
 ### `fileProperties`
 

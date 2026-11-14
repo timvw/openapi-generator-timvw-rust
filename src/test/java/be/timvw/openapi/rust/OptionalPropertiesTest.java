@@ -28,14 +28,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code optionalProperties} drops {@code Schema.property} entries from the {@code required} lists of the schema and
  * of its inline {@code allOf} parts, for properties a spec marks required that the API omits: such a property is an
  * {@code Option} skipped when {@code None}, and a required nullable one becomes an optional nullable one, an
- * {@code Option<Option<T>>}. An entry that names no property fails generation.
+ * {@code Option<Option<T>>}. A {@code Schema.prop1.prop2} entry addresses a property of an object nested under a
+ * component property: an inline object, a nullable one, or a referenced component. An entry that names no property,
+ * or whose path does not lead to an object, fails generation.
  */
 class OptionalPropertiesTest {
 
     private static final String SPEC = "src/test/resources/optional_properties.yaml";
     private static final String SPEC_30 = "src/test/resources/optional_properties_30.yaml";
     private static final String OPTIONAL_PROPERTIES =
-            "OutputText.logprobs|Usage.cache_write_tokens|Reply.access_programs";
+            "OutputText.logprobs|Usage.cache_write_tokens|Reply.access_programs"
+                    + "|ResponseUsage.input_tokens_details.cache_write_tokens"
+                    + "|ResponseUsage.output_tokens_details.audio_tokens|ResponseUsage.totals.cached";
 
     @TempDir
     static Path required;
@@ -139,6 +143,47 @@ class OptionalPropertiesTest {
                 ? "timvw-rust: optionalProperties: " + entry + " names no property of a component schema "
                         + "(nor of its inline allOf parts); remove it or correct its name"
                 : "timvw-rust: optionalProperties entry must be Schema.property: " + entry;
+        assertEquals(expected, cause.getMessage());
+    }
+
+    @Test
+    void aPropertyOfANestedObjectIsOptional() throws IOException {
+        for (Path output : List.of(optional, optional30)) {
+            String details = model(output, "response_usage_input_tokens_details");
+            assertContains(details, "    #[serde(rename = \"cache_write_tokens\", skip_serializing_if = \"Option::is_none\")]\n"
+                    + "    pub cache_write_tokens: Option<i64>,\n");
+            assertContains(details, "    pub cached_tokens: i64,\n");
+            String output_details = model(output, "response_usage_output_tokens_details");
+            assertContains(output_details, "    pub audio_tokens: Option<i64>,\n");
+            assertContains(output_details, "    pub reasoning_tokens: i64,\n");
+            String totals = model(output, "token_totals");
+            assertContains(totals, "    pub cached: Option<i64>,\n");
+            assertContains(totals, "    pub total: i64,\n");
+        }
+        assertContains(model(required, "response_usage_input_tokens_details"), "    pub cache_write_tokens: i64,\n");
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"ResponseUsage.nope.cache_write_tokens", "ResponseUsage.input_tokens_details.nope",
+            "ResponseUsage.tags.x", "ResponseUsage.input_tokens.x", "Nope.input_tokens_details.cache_write_tokens"})
+    void aNestedEntryThatCannotBeResolvedFailsGeneration(String entry, @TempDir Path out) {
+        RuntimeException e = assertThrows(RuntimeException.class,
+                () -> generate(SPEC, out, List.of("OutputText.logprobs", entry)));
+        Throwable cause = e;
+        while (cause.getCause() != null && !(cause instanceof IllegalArgumentException)) {
+            cause = cause.getCause();
+        }
+        String prefix = "timvw-rust: optionalProperties: " + entry + ": ";
+        String expected = switch (entry) {
+            case "ResponseUsage.nope.cache_write_tokens" -> prefix + "nope names no property of the object at "
+                    + "ResponseUsage (nor of its inline allOf parts); remove it or correct its name";
+            case "ResponseUsage.input_tokens_details.nope" -> prefix + "nope names no property of the object at "
+                    + "ResponseUsage.input_tokens_details (nor of its inline allOf parts); remove it or correct its name";
+            case "Nope.input_tokens_details.cache_write_tokens" -> prefix + "Nope names no component schema; "
+                    + "remove it or correct its name";
+            default -> prefix + entry.substring(0, entry.lastIndexOf('.')) + " is not an object (an inline object, "
+                    + "a $ref to a component or a nullable wrapper of one), so x cannot be addressed in it";
+        };
         assertEquals(expected, cause.getMessage());
     }
 

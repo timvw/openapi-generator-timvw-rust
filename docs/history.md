@@ -17,6 +17,15 @@ multipart unions too; 0.29 in model fields, and removes the reqwest-middleware s
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## 0.30.1
+
+`optionalProperties` addresses properties of objects nested under a component property, with entries of more than two
+segments: `ResponseUsage.input_tokens_details.cache_write_tokens` makes `cache_write_tokens` of the inline
+`input_tokens_details` object optional (its generated model, `ResponseUsageInputTokensDetails`, is no component, so it
+could not be listed). A step descends into an inline object, a `$ref` to a component (the change then applies
+wherever the component is used) or a nullable wrapper of either; a step that names no property or no object fails
+generation, naming the entry and the step. `Schema.property` entries behave as before.
+
 ## 0.30.0
 
 A required property that can be null and is listed in `stringProperties` is an `Option<String>` that decodes `null`

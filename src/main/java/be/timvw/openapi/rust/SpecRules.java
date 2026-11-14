@@ -287,8 +287,14 @@ final class SpecRules {
      * it (the addressing of {@link #stringProperties}). The property schema is left as it is, so a nullable one stays
      * nullable and becomes an optional nullable property.
      *
+     * <p>An entry {@code Schema.prop1.prop2...propN} addresses a property of an object nested under a component
+     * property: each intermediate segment names a property of the schema reached so far (or of its inline
+     * {@code allOf} parts) and descends into its schema, see {@link #nestedObject}. The last segment is made optional
+     * there. An entry whose part before the last dot is a component name keeps the {@code Schema.property} reading.
+     *
      * @throws IllegalArgumentException when an entry is not {@code Schema.property}, or names no component schema or
-     *                                  no property declared or required by it or by its inline {@code allOf} parts
+     *                                  no property declared or required by it or by its inline {@code allOf} parts,
+     *                                  or a step of a nested entry cannot be resolved to an object
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
     static void optionalProperties(OpenAPI openAPI, Collection<String> entries, Consumer<String> log) {
@@ -301,17 +307,11 @@ final class SpecRules {
             }
             Schema schema = schemas.get(entry.substring(0, dot));
             String prop = entry.substring(dot + 1);
-            List<Schema> parts = new ArrayList<>();
-            if (schema != null) {
-                parts.add(schema);
-                if (schema.getAllOf() != null) {
-                    for (Object item : schema.getAllOf()) {
-                        if (((Schema) item).get$ref() == null) {
-                            parts.add((Schema) item);
-                        }
-                    }
-                }
+            String[] segments = entry.split("\\.", -1);
+            if (schema == null && segments.length > 2) {
+                schema = nestedObject(schemas, entry, segments);
             }
+            List<Schema> parts = inlineParts(schema);
             boolean found = false;
             boolean removed = false;
             for (Schema part : parts) {
@@ -326,6 +326,11 @@ final class SpecRules {
                     part.setRequired(required.isEmpty() ? null : required);
                 }
             }
+            if (!found && schemas.get(entry.substring(0, dot)) == null && segments.length > 2) {
+                throw new IllegalArgumentException(String.format("%s: optionalProperties: %s: %s names no property "
+                        + "of the object at %s (nor of its inline allOf parts); remove it or correct its name",
+                        TimvwRustCodegen.GENERATOR_NAME, entry, prop, entry.substring(0, dot)));
+            }
             if (!found) {
                 throw new IllegalArgumentException(String.format("%s: optionalProperties: %s names no property of a "
                         + "component schema (nor of its inline allOf parts); remove it or correct its name",
@@ -334,6 +339,102 @@ final class SpecRules {
             log.accept(removed ? "optionalProperties: " + entry + " is no longer required"
                     : "optionalProperties: " + entry + " was not required");
         }
+    }
+
+    /** The schema and its inline (non-{@code $ref}) {@code allOf} parts; empty for {@code null}. */
+    @SuppressWarnings("rawtypes")
+    private static List<Schema> inlineParts(Schema schema) {
+        List<Schema> parts = new ArrayList<>();
+        if (schema != null) {
+            parts.add(schema);
+            if (schema.getAllOf() != null) {
+                for (Object item : schema.getAllOf()) {
+                    if (((Schema) item).get$ref() == null) {
+                        parts.add((Schema) item);
+                    }
+                }
+            }
+        }
+        return parts;
+    }
+
+    /**
+     * The object schema {@code segments[0..n-2]} of a nested {@code optionalProperties} entry addresses: the
+     * component {@code segments[0]}, then for each further segment but the last the schema of that property (declared
+     * by the schema reached so far or by one of its inline {@code allOf} parts), which must be an object: an inline
+     * object ({@code properties} or {@code allOf}), a {@code $ref} to a component (the change then applies to every
+     * use of that component), or a nullable wrapper of one ({@code anyOf}/{@code oneOf} with a single non-null
+     * branch, or a single-element {@code allOf}).
+     *
+     * @throws IllegalArgumentException naming the entry and the step that cannot be resolved
+     */
+    @SuppressWarnings("rawtypes")
+    private static Schema nestedObject(Map<String, Schema> schemas, String entry, String[] segments) {
+        Schema current = schemas.get(segments[0]);
+        if (current == null) {
+            throw new IllegalArgumentException(String.format("%s: optionalProperties: %s: %s names no component "
+                    + "schema; remove it or correct its name", TimvwRustCodegen.GENERATOR_NAME, entry, segments[0]));
+        }
+        StringBuilder path = new StringBuilder(segments[0]);
+        for (int i = 1; i < segments.length - 1; i++) {
+            String segment = segments[i];
+            Schema property = null;
+            for (Schema part : inlineParts(current)) {
+                if (part.getProperties() != null && part.getProperties().get(segment) != null) {
+                    property = (Schema) part.getProperties().get(segment);
+                    break;
+                }
+            }
+            if (property == null) {
+                throw new IllegalArgumentException(String.format("%s: optionalProperties: %s: %s names no property "
+                        + "of the object at %s (nor of its inline allOf parts); remove it or correct its name",
+                        TimvwRustCodegen.GENERATOR_NAME, entry, segment, path));
+            }
+            path.append('.').append(segment);
+            current = objectOf(property, schemas);
+            if (current == null) {
+                throw new IllegalArgumentException(String.format("%s: optionalProperties: %s: %s is not an object "
+                        + "(an inline object, a $ref to a component or a nullable wrapper of one), so %s cannot be "
+                        + "addressed in it", TimvwRustCodegen.GENERATOR_NAME, entry, path, segments[i + 1]));
+            }
+        }
+        return current;
+    }
+
+    /** The object {@code schema} is or wraps (see {@link #nestedObject}), or {@code null} when it is none. */
+    @SuppressWarnings("rawtypes")
+    private static Schema objectOf(Schema schema, Map<String, Schema> schemas) {
+        Schema s = schema;
+        for (int depth = 0; s != null && depth < 16; depth++) {
+            if (s.get$ref() != null) {
+                s = schemas.get(refName(s.get$ref()));
+                continue;
+            }
+            List<Schema> union = s.getAnyOf() != null ? s.getAnyOf() : s.getOneOf();
+            if (union != null) {
+                List<Schema> nonNull = new ArrayList<>();
+                for (Schema b : union) {
+                    if (!(b.get$ref() == null && ("null".equals(b.getType())
+                            || b.getTypes() != null && b.getTypes().equals(Set.of("null"))))) {
+                        nonNull.add(b);
+                    }
+                }
+                if (nonNull.size() != 1 || s.getProperties() != null) {
+                    return null;
+                }
+                s = nonNull.get(0);
+                continue;
+            }
+            if (s.getProperties() == null && s.getAllOf() != null && s.getAllOf().size() == 1) {
+                s = (Schema) s.getAllOf().get(0);
+                continue;
+            }
+            if (s.getProperties() != null || s.getAllOf() != null) {
+                return s;
+            }
+            return null;
+        }
+        return null;
     }
 
     /** Renders {@code Schema.property} entries as a file ({@code type: string, format: binary}). */

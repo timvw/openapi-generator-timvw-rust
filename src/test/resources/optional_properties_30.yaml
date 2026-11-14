@@ -54,9 +54,52 @@ components:
           $ref: "#/components/schemas/OutputText"
         usage:
           $ref: "#/components/schemas/Usage"
+        response_usage:
+          $ref: "#/components/schemas/ResponseUsage"
         # Required and nullable.
         access_programs:
           type: array
           nullable: true
+          items:
+            type: string
+    TokenTotals:
+      type: object
+      required: [total, cached]
+      properties:
+        total:
+          type: integer
+        cached:
+          type: integer
+    # Required properties of objects nested under component properties (Schema.prop1.prop2 entries).
+    ResponseUsage:
+      type: object
+      required: [input_tokens, input_tokens_details, output_tokens_details, totals]
+      properties:
+        input_tokens:
+          type: integer
+        # An inline object.
+        input_tokens_details:
+          type: object
+          required: [cached_tokens, cache_write_tokens]
+          properties:
+            cached_tokens:
+              type: integer
+            cache_write_tokens:
+              type: integer
+        # A nullable inline object.
+        output_tokens_details:
+          type: object
+          nullable: true
+          required: [reasoning_tokens, audio_tokens]
+          properties:
+            reasoning_tokens:
+              type: integer
+            audio_tokens:
+              type: integer
+        # A $ref to a component.
+        totals:
+          $ref: "#/components/schemas/TokenTotals"
+        tags:
+          type: array
           items:
             type: string

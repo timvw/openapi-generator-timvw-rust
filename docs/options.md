@@ -448,7 +448,7 @@ part adds is addressed through the schema, as for `stringProperties`). The prope
 keeps its underscores (`cache_write_tokens`).
 
 ```json
-{ "optionalProperties": ["OutputTextContent.logprobs", "ResponseUsageInputTokensDetails.cache_write_tokens", "Response.access_programs"] }
+{ "optionalProperties": ["OutputTextContent.logprobs", "ResponseUsage.input_tokens_details.cache_write_tokens", "Response.access_programs"] }
 ```
 
 <!-- not compiled: generated fields -->
@@ -467,6 +467,30 @@ The property schema is left as it is, so a required nullable property becomes an
 required by the schema or its inline `allOf` parts, fails generation, naming the entry. A property only a referenced
 `allOf` part (`$ref`) declares is addressed through that schema: the change then applies to every schema that
 references it. [`preprocessedSpecFile`](#preprocessedspecfile) shows the changed `required` lists.
+
+An entry `Schema.prop1.prop2...propN` addresses a property of an object nested under a component property, such as
+the inline `input_tokens_details` object of `ResponseUsage` (generated as `ResponseUsageInputTokensDetails`, which is
+not a component, so `ResponseUsageInputTokensDetails.cache_write_tokens` names nothing). `Schema` is a component; each
+segment but the last names a property of the object reached so far (or of its inline `allOf` parts) and descends into
+its schema, which must be an object:
+
+- an inline object (`properties` or `allOf`);
+- a `$ref` to a component: the change then applies everywhere that component is used, as if it were listed as
+  `Component.property`;
+- a nullable wrapper of one of these: `nullable: true`, `anyOf`/`oneOf` with a single non-null branch beside
+  `{type: "null"}`, or a single-element `allOf`.
+
+The last segment is removed from the `required` lists of that object and its inline `allOf` parts. Arrays, maps and
+unions with more than one non-null branch cannot be descended into. A step that cannot be resolved fails generation,
+naming the entry and the step:
+
+```text
+timvw-rust: optionalProperties: ResponseUsage.nope.cache_write_tokens: nope names no property of the object at ResponseUsage (nor of its inline allOf parts); remove it or correct its name
+timvw-rust: optionalProperties: ResponseUsage.tags.x: ResponseUsage.tags is not an object (an inline object, a $ref to a component or a nullable wrapper of one), so x cannot be addressed in it
+timvw-rust: optionalProperties: Nope.details.x: Nope names no component schema; remove it or correct its name
+```
+
+An entry whose part before the last dot is itself a component name is read as `Schema.property`.
 
 Rule: [`schema.required`](mapping/schema.md#schemarequired). Tests:
 [`OptionalPropertiesTest`](../src/test/java/be/timvw/openapi/rust/OptionalPropertiesTest.java), with

@@ -135,7 +135,7 @@ user needs it: `useChrono=false`. `email`, `uri` and `decimal` stay `String`.
 | Rust | required: `T`, a parameter of `new()`. Optional: `Option<T>` with `skip_serializing_if = "Option::is_none"` |
 | Wire | an optional field that is `None` is left out |
 | Options | `optionalProperties` removes listed properties from `required`, for properties the API leaves out (a required nullable one becomes optional and nullable) |
-| Tests | [`SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L114), [`OptionalPropertiesTest#aListedPropertyIsAnOptionSkippedWhenNone`](../../src/test/java/be/timvw/openapi/rust/OptionalPropertiesTest.java#L85), [`#aRequiredNullablePropertyBecomesAnOptionalNullableOne`](../../src/test/java/be/timvw/openapi/rust/OptionalPropertiesTest.java#L108) |
+| Tests | [`SchemaMappingTest#propertiesAreAStructWithAConstructorOfTheRequiredFields`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L114), [`OptionalPropertiesTest#aListedPropertyIsAnOptionSkippedWhenNone`](../../src/test/java/be/timvw/openapi/rust/OptionalPropertiesTest.java#L89), [`#aRequiredNullablePropertyBecomesAnOptionalNullableOne`](../../src/test/java/be/timvw/openapi/rust/OptionalPropertiesTest.java#L112) |
 
 ### `schema.nullable`
 

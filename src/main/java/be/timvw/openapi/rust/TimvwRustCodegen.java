@@ -854,7 +854,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
         stringIdSchemas = SpecRules.entries(additionalProperties.get(STRING_ID_SCHEMAS));
         stringIdProperties = SpecRules.entries(additionalProperties.get(STRING_ID_PROPERTIES));
-        stringProperties = SpecRules.entries(additionalProperties.get(STRING_PROPERTIES));
+        stringProperties = SpecRules.propertyEntries(additionalProperties.get(STRING_PROPERTIES));
         optionalProperties = SpecRules.propertyEntries(additionalProperties.get(OPTIONAL_PROPERTIES));
         deepObjectQueryParameters = SpecRules.entries(additionalProperties.get(DEEP_OBJECT_QUERY_PARAMETERS));
         resetQueryParameterStyle = additionalProperties.containsKey(RESET_QUERY_PARAMETER_STYLE)
@@ -865,7 +865,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (multipartHelper) {
             supportingFiles.add(new SupportingFile("multipart_helper.mustache", apiFolder, "multipart_helper.rs"));
         }
-        fileProperties = SpecRules.entries(additionalProperties.get(FILE_PROPERTIES));
+        fileProperties = SpecRules.propertyEntries(additionalProperties.get(FILE_PROPERTIES));
         typedEnumParameters = additionalProperties.containsKey(TYPED_ENUM_PARAMETERS)
                 && convertPropertyToBooleanAndWriteBack(TYPED_ENUM_PARAMETERS);
         deprecatedAttributes = additionalProperties.containsKey(DEPRECATED_ATTRIBUTES)

@@ -17,6 +17,12 @@ The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_ex
 
 ## Unreleased
 
+### Unknown `stringProperties` and `fileProperties` entries fail generation
+
+An entry that names no property used to be logged and skipped; it now stops generation with
+`stringProperties: <entry> names no property of a component schema …` (or `fileProperties: …`). Remove or correct the
+entry. On the command line, underscores in an entry are kept: write `Usage.cache_write_tokens`, not a space.
+
 ### A required nullable `stringProperties` property is an `Option<String>`
 
 Only a property listed in `stringProperties` that can be null changes. A required one was a `String`, which failed to

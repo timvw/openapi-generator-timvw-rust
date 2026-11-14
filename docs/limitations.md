@@ -1,6 +1,7 @@
 # Known limitations
 
-What the generator and the runtime do not do (yet), as of generator 0.28 and `timvw-rust-runtime` 0.3.1. The gaps of the
+What the generator and the runtime do not do (yet), as of the current releases (see the badges in the
+[README](../README.md)). The gaps of the
 mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed in
 [type-mapping.md](type-mapping.md#known-gaps), each with its rule in the [mapping](mapping/README.md).
 
@@ -10,7 +11,8 @@ mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed i
   base URL, and the operation decides its path; a `ProviderLayer` with `map_path` rewrites paths for every call.
 - **An upload has no JSON form.** A model's file field (`Upload`) is left out of its JSON, and a model with a required
   file field does not decode from JSON.
-- **Generated crates declare the runtime's `rust-version` (1.88) but not resolver 3.** On Rust 1.88, resolve with
+- **Generated crates declare the runtime's `rust-version` (that of [`runtime/Cargo.toml`](../runtime/Cargo.toml)) but not
+  resolver 3.** On that Rust, resolve with
   `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update` (or `resolver = "3"` in your workspace): the newest
   `uuid` needs a newer Rust.
 

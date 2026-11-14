@@ -55,7 +55,7 @@ import java.util.SortedSet;
  *       if-let/else expression (Milestone 2.2);</li>
  *   <li>spec rules run before naming (Milestone 2.3, see {@link SpecRules}): generic repairs of constructs the stock
  *       generator mishandles, and the options {@code webhookModule}, {@code webhookModuleReexport},
- *       {@code stringIdSchemas}, {@code stringIdProperties}, {@code stringProperties},
+ *       {@code stringIdSchemas}, {@code stringIdProperties}, {@code stringProperties}, {@code optionalProperties},
  *       {@code deepObjectQueryParameters} and {@code resetQueryParameterStyle} for decisions a client takes about its spec;</li>
  *   <li>{@code apiLintAllows} and {@code userAgentFromPackage} shape the API modules (Milestone 2.6);
  *       {@code Error::ResponseError} always holds {@code Box<ResponseContent<T>>} (the former {@code boxResponseError},
@@ -114,6 +114,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public static final String STRING_ID_PROPERTIES = "stringIdProperties";
     /** {@code Schema.property} entries rendered as a bare {@code String}. */
     public static final String STRING_PROPERTIES = "stringProperties";
+    /** {@code Schema.property} entries removed from their schema's {@code required} list. */
+    public static final String OPTIONAL_PROPERTIES = "optionalProperties";
     /**
      * Removed: component schemas rendered as {@code serde_json::Value}. Unions render as typed enums now, so setting it
      * is an error rather than ignored.
@@ -362,6 +364,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private List<String> stringIdSchemas = new ArrayList<>();
     private List<String> stringIdProperties = new ArrayList<>();
     private List<String> stringProperties = new ArrayList<>();
+    private List<String> optionalProperties = new ArrayList<>();
     /** The unions that are nullable, whose parameters take an {@code Option} (see {@link ExtraRules#nullableUnions}). */
     private final Set<String> nullableUnionModels = new HashSet<>();
     private List<String> deepObjectQueryParameters = new ArrayList<>();
@@ -460,6 +463,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         + "stringIdSchemas schema or are a union, directly or through allOf"));
         cliOptions.add(CliOption.newString(STRING_PROPERTIES,
                 "Schema.property entries rendered as a bare String, directly or in an allOf component"));
+        cliOptions.add(CliOption.newString(OPTIONAL_PROPERTIES,
+                "Schema.property entries made optional (Option, skipped when None) for properties the spec marks "
+                        + "required that the API omits: removed from the required list of the schema and of its "
+                        + "inline allOf parts. A nullable one becomes an optional nullable property. An entry that "
+                        + "names no property fails generation"));
         cliOptions.add(CliOption.newBoolean(RESET_QUERY_PARAMETER_STYLE,
                 "Give every query parameter not listed in deepObjectQueryParameters the default style (form, "
                         + "exploded), so arrays are sent as repeated parameters whatever the spec says", false));
@@ -847,6 +855,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         stringIdSchemas = SpecRules.entries(additionalProperties.get(STRING_ID_SCHEMAS));
         stringIdProperties = SpecRules.entries(additionalProperties.get(STRING_ID_PROPERTIES));
         stringProperties = SpecRules.entries(additionalProperties.get(STRING_PROPERTIES));
+        optionalProperties = SpecRules.propertyEntries(additionalProperties.get(OPTIONAL_PROPERTIES));
         deepObjectQueryParameters = SpecRules.entries(additionalProperties.get(DEEP_OBJECT_QUERY_PARAMETERS));
         resetQueryParameterStyle = additionalProperties.containsKey(RESET_QUERY_PARAMETER_STYLE)
                 && convertPropertyToBooleanAndWriteBack(RESET_QUERY_PARAMETER_STYLE);
@@ -1127,6 +1136,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
             LOGGER.info("{}: hoisted inline union {}", GENERATOR_NAME, h);
         }
         SpecRules.stringProperties(openAPI, stringProperties, log);
+        SpecRules.optionalProperties(openAPI, optionalProperties, log);
         SpecRules.fileProperties(openAPI, fileProperties, log);
         // A hoisted union may carry a stringIdSchemas name: apply the string rendering to it as well.
         SpecRules.stringSchemas(openAPI, stringIdSchemas, log);

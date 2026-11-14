@@ -35,7 +35,7 @@ Value types:
 | [Types and naming](#types-and-naming) | `useChrono`, `bonBuilders`, `titleNaming`, `typedEnumParameters`, `deprecatedAttributes` |
 | [Functions and modules](#functions-and-modules) | `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `validateMethods` |
 | [Helpers](#helpers) | `multipartHelper`, `pruneAllHelpers` |
-| [Adapting a spec](#adapting-a-spec) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `webhookModule`, `webhookModuleReexport` |
+| [Adapting a spec](#adapting-a-spec) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `webhookModule`, `webhookModuleReexport` |
 | [Debugging](#debugging) | `unionPlanFile`, `preprocessedSpecFile` |
 
 ## The crate
@@ -433,6 +433,39 @@ you want.
 Rule: [`schema.type.scalar-component`](mapping/schema.md#schematypescalar-component). Tests:
 [`SpecRulesTest`](../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java) (`idSchemasAndIdPropertiesBecomeStrings`, `stringProperties`),
 [`StringFirstUnionsTest`](../src/test/java/be/timvw/openapi/rust/StringFirstUnionsTest.java) (`stringPropertiesKeepTheirNullability`).
+
+### `optionalProperties`
+
+list, empty by default. `Schema.property` entries the spec marks `required` but the API leaves out: the name is
+removed from the `required` list of the schema and of every inline `allOf` part that lists it (a property an `allOf`
+part adds is addressed through the schema, as for `stringProperties`). The property is then an `Option<T>` with
+`skip_serializing_if = "Option::is_none"`, left out of `new()`, and a body without it decodes. A command-line entry
+keeps its underscores (`cache_write_tokens`).
+
+```json
+{ "optionalProperties": ["OutputTextContent.logprobs", "ResponseUsageInputTokensDetails.cache_write_tokens", "Response.access_programs"] }
+```
+
+<!-- not compiled: generated fields -->
+```rust
+// before
+pub logprobs: Vec<models::LogProb>,
+pub access_programs: Option<Vec<String>>, // required and nullable
+// after
+pub logprobs: Option<Vec<models::LogProb>>,
+pub access_programs: Option<Option<Vec<String>>>,
+```
+
+The property schema is left as it is, so a required nullable property becomes an optional nullable one and follows
+[`schema.nullable`](mapping/schema.md#schemanullable): `Option<Option<T>>` through `serde_with::rust::double_option`
+(`None` when absent, `Some(None)` for `null`). An entry that is not `Schema.property`, or names no property declared or
+required by the schema or its inline `allOf` parts, fails generation, naming the entry. A property only a referenced
+`allOf` part (`$ref`) declares is addressed through that schema: the change then applies to every schema that
+references it. [`preprocessedSpecFile`](#preprocessedspecfile) shows the changed `required` lists.
+
+Rule: [`schema.required`](mapping/schema.md#schemarequired). Tests:
+[`OptionalPropertiesTest`](../src/test/java/be/timvw/openapi/rust/OptionalPropertiesTest.java), with
+[`optional_properties.rs`](../src/test/rust/optional_properties.rs) decoding and round-tripping the fields.
 
 ### `fileProperties`
 

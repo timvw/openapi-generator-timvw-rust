@@ -20,7 +20,8 @@ client repositories' scripts.
 ## Unreleased
 
 A required property that can be null and is listed in `stringProperties` is an `Option<String>` that decodes `null`
-(see [migration](guides/migration.md#unreleased)).
+(see [migration](guides/migration.md#unreleased)). The new option `optionalProperties` makes properties the spec marks
+required, but the API leaves out, optional.
 
 - `stringProperties` replaced the listed property with a bare `type: string` and dropped its nullability: a required
   `anyOf: [..., {type: "null"}]` was a `String`, which fails to decode `null`. The replacement keeps it nullable
@@ -36,6 +37,12 @@ A required property that can be null and is listed in `stringProperties` is an `
   for openai-client-base's `CreateResponse.input` and `Response.instructions`. Tests now cover both, and that a union
   of strings only keeps its mapping. openai-client-base renders them as `String` because its config lists them in
   `stringProperties`; dropping the two entries gives the typed fields.
+- `optionalProperties` (new) removes `Schema.property` entries from the `required` list of the schema and of its
+  inline `allOf` parts, so they are `Option`s skipped when `None`; a required nullable one becomes optional and
+  nullable (`Option<Option<T>>`), and an entry that names no property fails generation. It replaces patching the spec
+  for properties the API omits; openai-client-base needs it for `OutputTextContent.logprobs`,
+  `ResponseTextDeltaEvent.logprobs`, `ResponseUsageInputTokensDetails.cache_write_tokens` and
+  `Response.access_programs`, without which real responses fail to decode.
 
 ## 0.29.0
 

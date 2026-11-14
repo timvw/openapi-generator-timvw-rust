@@ -23,6 +23,9 @@ A required property that can be null and is listed in `stringProperties` is an `
 (see [migration](guides/migration.md#unreleased)). The new option `optionalProperties` makes properties the spec marks
 required, but the API leaves out, optional.
 
+- `stringProperties` and `fileProperties` fail generation on an entry that names no property (before, it was only
+  logged), and keep the underscores of a command-line value, so a snake_case property such as
+  `Usage.cache_write_tokens` matches (before, an underscore stood for a space).
 - `stringProperties` replaced the listed property with a bare `type: string` and dropped its nullability: a required
   `anyOf: [..., {type: "null"}]` was a `String`, which fails to decode `null`. The replacement keeps it nullable
   (`nullable: true`, or `null` among the types or a `null` branch, through references), so a required one is an

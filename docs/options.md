@@ -430,9 +430,14 @@ non-string branches (a string or a list, say) loses them: the API's other forms 
 such unions itself ([`schema.oneOf`](mapping/schema.md#schemaoneof)); list a property here only when a `String` is what
 you want.
 
+A `Schema.property` entry that names no property of a component schema (nor of its inline `allOf` parts) fails
+generation. On the command line, entries are separated by `|`, `;` or whitespace, and underscores are kept
+(`Usage.cache_write_tokens`).
+
 Rule: [`schema.type.scalar-component`](mapping/schema.md#schematypescalar-component). Tests:
 [`SpecRulesTest`](../src/test/java/be/timvw/openapi/rust/SpecRulesTest.java) (`idSchemasAndIdPropertiesBecomeStrings`, `stringProperties`),
-[`StringFirstUnionsTest`](../src/test/java/be/timvw/openapi/rust/StringFirstUnionsTest.java) (`stringPropertiesKeepTheirNullability`).
+[`StringFirstUnionsTest`](../src/test/java/be/timvw/openapi/rust/StringFirstUnionsTest.java) (`stringPropertiesKeepTheirNullability`),
+[`PropertyEntriesTest`](../src/test/java/be/timvw/openapi/rust/PropertyEntriesTest.java).
 
 ### `optionalProperties`
 
@@ -476,8 +481,11 @@ types an upload as a plain string.
 { "fileProperties": ["CreateFileRequest.file"] }
 ```
 
+An entry that names no property of a component schema fails generation; on the command line, underscores are kept.
+
 Rule: [`schema.format.binary`](mapping/schema.md#schemaformatbinary). Tests:
-[`MultipartTest`](../src/test/java/be/timvw/openapi/rust/MultipartTest.java) (`filePropertiesTurnAPropertyIntoAFile`).
+[`MultipartTest`](../src/test/java/be/timvw/openapi/rust/MultipartTest.java) (`filePropertiesTurnAPropertyIntoAFile`),
+[`PropertyEntriesTest`](../src/test/java/be/timvw/openapi/rust/PropertyEntriesTest.java).
 
 ### `deepObjectQueryParameters`
 

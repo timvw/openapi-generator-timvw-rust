@@ -246,16 +246,12 @@ final class SpecRules {
             String schemaName = entry.substring(0, dot);
             String prop = entry.substring(dot + 1);
             Schema schema = schemas.get(schemaName);
-            if (schema == null) {
-                log.accept("stringProperties: no component schema named " + schemaName);
-                continue;
-            }
             boolean done = false;
-            if (schema.getProperties() != null && schema.getProperties().containsKey(prop)) {
+            if (schema != null && schema.getProperties() != null && schema.getProperties().containsKey(prop)) {
                 schema.getProperties().put(prop, string((Schema) schema.getProperties().get(prop), schemas));
                 done = true;
             }
-            if (schema.getAllOf() != null) {
+            if (schema != null && schema.getAllOf() != null) {
                 for (Object item : schema.getAllOf()) {
                     Schema s = (Schema) item;
                     if (s.getProperties() != null && s.getProperties().containsKey(prop)) {
@@ -264,8 +260,12 @@ final class SpecRules {
                     }
                 }
             }
-            log.accept(done ? "stringProperties: " + entry + " is now type: string"
-                    : "stringProperties: " + entry + " not found");
+            if (!done) {
+                throw new IllegalArgumentException(String.format("%s: stringProperties: %s names no property of a "
+                        + "component schema (nor of its inline allOf parts); remove it or correct its name",
+                        TimvwRustCodegen.GENERATOR_NAME, entry));
+            }
+            log.accept("stringProperties: " + entry + " is now type: string");
         }
     }
 
@@ -348,8 +348,8 @@ final class SpecRules {
             Schema schema = schemas.get(entry.substring(0, dot));
             String prop = entry.substring(dot + 1);
             if (schema == null || schema.getProperties() == null || !schema.getProperties().containsKey(prop)) {
-                log.accept("fileProperties: " + entry + " not found");
-                continue;
+                throw new IllegalArgumentException(String.format("%s: fileProperties: %s names no property of a "
+                        + "component schema; remove it or correct its name", TimvwRustCodegen.GENERATOR_NAME, entry));
             }
             Schema old = (Schema) schema.getProperties().get(prop);
             StringSchema file = new StringSchema();

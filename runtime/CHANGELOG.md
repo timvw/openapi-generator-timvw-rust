@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/timvw/openapi-generator-timvw-rust/compare/timvw-rust-runtime-v0.4.0...timvw-rust-runtime-v0.4.1) - 2026-11-14
+
+### Fixed
+
+- *(deps)* update rust crate base64 to 0.23
+- *(deps)* update rust crate gloo-timers to 0.4
+
+### Other
+
+- *(deps)* update rust crate tower-http to 0.7
+- describe the default runtimeVersion without hardcoding the release ([#105](https://github.com/timvw/openapi-generator-timvw-rust/pull/105))
+
 ## [0.4.0] - 2026-11-13
 
 ### Added

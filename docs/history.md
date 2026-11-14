@@ -17,6 +17,14 @@ multipart unions too; 0.29 in model fields, and removes the reqwest-middleware s
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## 0.30.2
+
+With `apiFeatures` and `responseFunctions`, an operation gated on its own feature (in an API module that other features
+share) now gates its typed headers whole: the `<Operation>ResponseHeaders` and `<Operation>ErrorHeaders` struct and its
+`from_headers` and `From<&HeaderMap>` impls. Before, only the struct was gated, so a build with the module's other
+feature and without the operation's failed to compile. The `header_value` and `header_list` helpers allow `dead_code`,
+for a feature set without any typed headers.
+
 ## 0.30.1
 
 `optionalProperties` addresses properties of objects nested under a component property, with entries of more than two

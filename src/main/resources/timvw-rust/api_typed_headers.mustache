@@ -10,6 +10,9 @@
 {{/error}}
 ///
 /// Every field is `None` when the response does not have the header or its value does not parse as the field's type.
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct {{{name}}} {
     {{#fields}}
@@ -18,6 +21,9 @@ pub struct {{{name}}} {
     {{/fields}}
 }
 
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
 impl {{{name}}} {
     /// Reads the declared headers from `headers`. Header names are matched ignoring case; a header that is missing or
     /// does not parse is `None`, never an error.
@@ -30,6 +36,9 @@ impl {{{name}}} {
     }
 }
 
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
 impl From<&timvw_rust_runtime::header::HeaderMap> for {{{name}}} {
     fn from(headers: &timvw_rust_runtime::header::HeaderMap) -> Self {
         Self::from_headers(headers)

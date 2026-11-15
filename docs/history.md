@@ -13,9 +13,20 @@ null-only schemas and doc links; 0.24 adds typed error headers and fixes webhook
 mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` crate (`httpStack`); 0.26 keeps
 credentials in `SecretString`s, adds headers and query parameters per call and a Cargo feature per API group
 (`apiFeatures`); 0.27 takes file parameters as `timvw_rust_runtime::Upload`s, streamed and retried; 0.28 takes them in
-multipart unions too; 0.29 in model fields, and removes the reqwest-middleware stack. The
+multipart unions too; 0.29 in model fields, and removes the reqwest-middleware stack; 0.31 renders the models alone or an axum server as
+well (`targets`). The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.31.0
+
+The `targets` option chooses what a crate holds: the models alone, the client (the default, unchanged), an
+[axum](https://docs.rs/axum) server, or a client and a server behind the Cargo features `client` and `server`. The
+server has a trait per API module with a native async method per operation, a request struct and a response enum per
+operation, typed headers shared with the client (the new `headers` module) and one `router`; a request that does not
+decode gets a 400 shaped by an `ErrorHandler`. Operations that are not JSON (event streams, multipart, files) are left
+out of the server with a warning for now. An option of a target that is not in `targets` fails generation. See the
+[server guide](guides/server.md).
 
 ## 0.30.2
 

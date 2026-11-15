@@ -55,28 +55,62 @@ url = "^2.5"
 regex = "^1.10"
 {{/validationRegex}}
 {{#hasUUIDs}}
-uuid = { version = "^1.8", features = ["serde", "v4"] }
+uuid = { version = "^1.8", features = ["serde", "v4"]{{#uuidOptional}}, optional = true{{/uuidOptional}} }
 {{/hasUUIDs}}
 {{#usesChronoTypes}}
-chrono = { version = "^0.4",  features = ["serde"] }
+chrono = { version = "^0.4",  features = ["serde"]{{#chronoOptional}}, optional = true{{/chronoOptional}} }
 {{/usesChronoTypes}}
-timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFeatures}}, features = [{{{runtimeFeatures}}}]{{/runtimeFeatures}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#apiFeatures}}{{^runtimeRequired}}, optional = true{{/runtimeRequired}}{{/apiFeatures}} }
+{{#runtimeDependency}}
+timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFeatures}}, features = [{{{runtimeFeatures}}}]{{/runtimeFeatures}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#runtimeOptional}}, optional = true{{/runtimeOptional}} }
+{{/runtimeDependency}}
+{{#serverTarget}}
+axum = { version = "^0.8", default-features = false{{#targetFeatures}}, optional = true{{/targetFeatures}} }
+http = { version = "^1"{{#targetFeatures}}, optional = true{{/targetFeatures}} }
+{{/serverTarget}}
 {{#hasUUIDs}}
 
 # WebAssembly in a JavaScript host (wasm32-unknown-unknown): uuid's `v4` draws from `crypto.getRandomValues`.
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-uuid = { version = "^1.8", features = ["js"] }
+uuid = { version = "^1.8", features = ["js"]{{#uuidOptional}}, optional = true{{/uuidOptional}} }
 {{/hasUUIDs}}
 
 [features]
-default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry"{{#apiFeatures}}, "full"{{/apiFeatures}}]
-native-tls = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/native-tls"]
-rustls = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/rustls"]
-retry = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/retry"]
-tracing = ["timvw-rust-runtime{{#apiFeatures}}{{^runtimeRequired}}?{{/runtimeRequired}}{{/apiFeatures}}/tracing"]
+{{#clientTarget}}
+default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry"{{#apiFeatures}}, "full"{{/apiFeatures}}{{#targetFeatures}}, "client", "server"{{/targetFeatures}}]
+native-tls = ["timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/native-tls"]
+rustls = ["timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/rustls"]
+retry = ["timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/retry"]
+tracing = ["timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/tracing"]
+{{/clientTarget}}
+{{^clientTarget}}
+default = [{{#apiFeatures}}"full"{{/apiFeatures}}]
+{{/clientTarget}}
+{{#targetFeatures}}
+# Targets: `client` compiles the HTTP client (`apis`), `server` the axum server (`server`).
+client = [{{#runtimeOptional}}"dep:timvw-rust-runtime", {{/runtimeOptional}}"dep:http"{{{targetDeps}}}]
+server = ["dep:axum", "dep:http"{{{targetDeps}}}]
+{{/targetFeatures}}
 {{#apiFeatures}}
+{{#clientTarget}}
+{{^serverTarget}}
 # API features (apiFeatures): `<group>` compiles the group's API functions with its models and the HTTP client,
 # `<group>-types` only its models. `types` is every model, `full` everything.
+{{/serverTarget}}
+{{#serverTarget}}
+# API features (apiFeatures): `<group>` compiles the group's models with its API functions (with `client`) and its
+# server operations (with `server`), `<group>-types` only its models. `types` is every model, `full` everything.
+{{/serverTarget}}
+{{/clientTarget}}
+{{^clientTarget}}
+{{#serverTarget}}
+# API features (apiFeatures): `<group>` compiles the group's models and its server operations, `<group>-types` only
+# its models. `types` is every model, `full` everything.
+{{/serverTarget}}
+{{^serverTarget}}
+# API features (apiFeatures): `<group>` and `<group>-types` compile the group's models. `types` is every model,
+# `full` everything.
+{{/serverTarget}}
+{{/clientTarget}}
 full = [
 {{#apiFeaturesFull}}
     "{{{.}}}",
@@ -87,7 +121,7 @@ types = [
     "{{{.}}}",
 {{/apiFeaturesTypes}}
 ]
-_api = [{{^runtimeRequired}}"dep:timvw-rust-runtime"{{/runtimeRequired}}]
+_api = [{{#apiRuntime}}"dep:timvw-rust-runtime"{{/apiRuntime}}]
 {{#apiFeatureGroups}}
 # {{{selects}}}
 {{{name}}} = ["{{{name}}}-types", "_api"]

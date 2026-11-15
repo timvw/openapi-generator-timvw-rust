@@ -1,0 +1,418 @@
+{{>partial_header}}
+//! The server, on axum: one trait per API module, with a method per operation the server serves, a request struct
+//! and a response enum per operation, and [`router`], which serves an implementation of every trait.
+//!
+//! ```ignore
+//! #[derive(Clone)]
+//! struct MyApi;
+//!
+//! impl server::ErrorHandler for MyApi {}
+//! // impl server::<module>::<Trait> for MyApi { ... }
+//!
+//! let app: axum::Router = server::router(MyApi);
+//! ```
+//!
+//! A request whose path or query parameters or JSON body do not decode is answered by
+//! [`ErrorHandler::invalid_request`] (a `400` with a JSON error body by default) without calling the
+//! implementation; an implementation's error by [`ErrorHandler::server_error`] (a `500`).
+
+{{#serverModules}}
+pub use self::{{{module}}}::{{{trait}}};
+{{/serverModules}}
+
+/// An error of an implementation of the server's traits: the server answers it with
+/// [`ErrorHandler::server_error`]. Any error converts into it with `?`, and [`ServerError::new`] makes one from a
+/// message.
+#[derive(Debug)]
+pub struct ServerError(Box<dyn std::error::Error + Send + Sync>);
+
+impl ServerError {
+    /// An error with this message.
+    pub fn new(message: impl Into<String>) -> Self {
+        ServerError(message.into().into())
+    }
+
+    /// The error it holds.
+    pub fn inner(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+        &*self.0
+    }
+}
+
+impl std::fmt::Display for ServerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<E: std::error::Error + Send + Sync + 'static> From<E> for ServerError {
+    fn from(error: E) -> Self {
+        ServerError(Box::new(error))
+    }
+}
+
+/// A request the server cannot decode: a path or query parameter that is missing or does not parse as its type, or
+/// a body that is not the JSON of its type.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RequestError {
+    location: &'static str,
+    name: Option<String>,
+    message: String,
+}
+
+impl RequestError {
+    /// An error of the request's `location` (`path`, `query` or `body`), at the parameter `name` if any.
+    pub fn new(location: &'static str, name: Option<&str>, message: impl Into<String>) -> Self {
+        RequestError { location, name: name.map(str::to_owned), message: message.into() }
+    }
+
+    /// Where in the request: `path`, `query` or `body`.
+    pub fn location(&self) -> &'static str {
+        self.location
+    }
+
+    /// The parameter, for a path or query parameter.
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// What is wrong.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for RequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.name {
+            Some(name) => write!(f, "{} parameter `{}`: {}", self.location, name, self.message),
+            None => write!(f, "{}: {}", self.location, self.message),
+        }
+    }
+}
+
+impl std::error::Error for RequestError {}
+
+/// How the server answers what the implementation does not: a request that does not decode, and an implementation's
+/// error. Both methods have a default; implement the trait with `impl ErrorHandler for MyApi {}` to keep them.
+pub trait ErrorHandler {
+    /// The response to a request that does not decode. By default a `400` with the JSON body
+    /// `{"error": {"message": "...", "location": "query", "name": "limit"}}` (`name` only for a parameter).
+    fn invalid_request(&self, error: RequestError) -> axum::response::Response {
+        let mut body = serde_json::Map::new();
+        body.insert("message".to_owned(), serde_json::Value::String(error.to_string()));
+        body.insert("location".to_owned(), serde_json::Value::String(error.location().to_owned()));
+        if let Some(name) = error.name() {
+            body.insert("name".to_owned(), serde_json::Value::String(name.to_owned()));
+        }
+        error_response(http::StatusCode::BAD_REQUEST, body)
+    }
+
+    /// The response to an implementation's error. By default a `500` with the JSON body
+    /// `{"error": {"message": "internal server error"}}`: the error is not shown to the caller.
+    fn server_error(&self, error: ServerError) -> axum::response::Response {
+        let _ = error;
+        let mut body = serde_json::Map::new();
+        body.insert("message".to_owned(), serde_json::Value::String("internal server error".to_owned()));
+        error_response(http::StatusCode::INTERNAL_SERVER_ERROR, body)
+    }
+}
+
+/// Serves `api`, an implementation of every trait of the server, with its error handler: a route per operation.
+pub fn router<I>(api: I) -> axum::Router
+where
+    I: {{#serverModules}}{{{module}}}::{{{trait}}} + {{/serverModules}}ErrorHandler + 'static,
+{
+    let router = axum::Router::new();
+    {{#serverModules}}
+    let router = {{{module}}}::routes::<I>(router);
+    {{/serverModules}}
+    router.with_state(std::sync::Arc::new(api))
+}
+
+fn error_response(status: http::StatusCode, error: serde_json::Map<String, serde_json::Value>) -> axum::response::Response {
+    let mut body = serde_json::Map::new();
+    body.insert("error".to_owned(), serde_json::Value::Object(error));
+    json_response(status, http::HeaderMap::new(), &body)
+}
+
+/// `body` as JSON with this status and these headers; a body that does not serialize is a `500`.
+#[allow(dead_code)]
+fn json_response<T: serde::Serialize>(
+    status: http::StatusCode,
+    headers: http::HeaderMap,
+    body: &T,
+) -> axum::response::Response {
+    let (status, bytes) = match serde_json::to_vec(body) {
+        Ok(bytes) => (status, bytes),
+        Err(_) => (
+            http::StatusCode::INTERNAL_SERVER_ERROR,
+            br#"{"error":{"message":"the response does not serialize"}}"#.to_vec(),
+        ),
+    };
+    let mut response = axum::response::Response::new(axum::body::Body::from(bytes));
+    *response.status_mut() = status;
+    response.headers_mut().extend(headers);
+    response.headers_mut().insert(http::header::CONTENT_TYPE, http::HeaderValue::from_static("application/json"));
+    response
+}
+
+/// An empty body with this status and these headers.
+#[allow(dead_code)]
+fn empty_response(status: http::StatusCode, headers: http::HeaderMap) -> axum::response::Response {
+    let mut response = axum::response::Response::new(axum::body::Body::empty());
+    *response.status_mut() = status;
+    response.headers_mut().extend(headers);
+    response
+}
+
+#[allow(dead_code)]
+fn status(code: u16) -> http::StatusCode {
+    http::StatusCode::from_u16(code).unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[allow(dead_code)]
+fn query_pairs(query: Option<&str>) -> Vec<(String, String)> {
+    url::form_urlencoded::parse(query.unwrap_or("").as_bytes()).into_owned().collect()
+}
+
+/// The path parameter at `key` (its position in the route), `name` in the spec, read by `parse`.
+#[allow(dead_code)]
+fn path_value<T>(
+    path: &std::collections::HashMap<String, String>,
+    key: &str,
+    name: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> Result<T, RequestError> {
+    let value = path.get(key).ok_or_else(|| RequestError::new("path", Some(name), "missing"))?;
+    parse(value).ok_or_else(|| RequestError::new("path", Some(name), format!("invalid value '{value}'")))
+}
+
+/// The first value of the query parameter `name`, read by `parse`; `None` when the query does not have it.
+#[allow(dead_code)]
+fn query_value<T>(
+    query: &[(String, String)],
+    name: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> Result<Option<T>, RequestError> {
+    match query.iter().find(|(key, _)| key == name) {
+        None => Ok(None),
+        Some((_, value)) => parse(value)
+            .map(Some)
+            .ok_or_else(|| RequestError::new("query", Some(name), format!("invalid value '{value}'"))),
+    }
+}
+
+/// The items of the query parameter `name`: one per occurrence, or the items of its one value split by
+/// `separator`, each read by `parse`; `None` when the query does not have it.
+#[allow(dead_code)]
+fn query_list<T>(
+    query: &[(String, String)],
+    name: &str,
+    separator: Option<&str>,
+    parse: impl Fn(&str) -> Option<T>,
+) -> Result<Option<Vec<T>>, RequestError> {
+    let values: Vec<&str> = query.iter().filter(|(key, _)| key == name).map(|(_, value)| value.as_str()).collect();
+    if values.is_empty() {
+        return Ok(None);
+    }
+    let mut items = Vec::new();
+    for value in values {
+        let parts: Vec<&str> = match separator {
+            Some(separator) if !value.is_empty() => value.split(separator).collect(),
+            Some(_) => Vec::new(),
+            None => vec![value],
+        };
+        for part in parts {
+            items.push(parse(part).ok_or_else(|| {
+                RequestError::new("query", Some(name), format!("invalid item '{part}'"))
+            })?);
+        }
+    }
+    Ok(Some(items))
+}
+
+/// A required parameter's value: an error when it is missing.
+#[allow(dead_code)]
+fn required<T>(location: &'static str, name: &str, value: Option<T>) -> Result<T, RequestError> {
+    value.ok_or_else(|| RequestError::new(location, Some(name), "missing"))
+}
+
+#[allow(dead_code)]
+fn json_body<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<T, RequestError> {
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Err(RequestError::new("body", None, "missing"));
+    }
+    serde_json::from_slice(body).map_err(|e| RequestError::new("body", None, e.to_string()))
+}
+
+#[allow(dead_code)]
+fn optional_json_body<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<Option<T>, RequestError> {
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Ok(None);
+    }
+    // `null` is no body too: what a client sends for one it does not have
+    serde_json::from_slice(body).map_err(|e| RequestError::new("body", None, e.to_string()))
+}
+{{#serverModules}}
+
+/// The operations of the `{{{module}}}` API module.
+pub mod {{{module}}} {
+    #![allow(clippy::large_enum_variant)]
+
+    use crate::models;
+
+    /// The operations of the `{{{module}}}` API module the server serves. Implement it, with
+    /// [`ErrorHandler`](super::ErrorHandler), and serve the implementation with [`router`](super::router).
+    pub trait {{{trait}}}: Send + Sync {
+        {{#operations}}
+        /// `{{{httpMethod}}} {{{path}}}`{{#summary}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/summary}}
+        {{#cfg}}
+        #[cfg({{{.}}})]
+        {{/cfg}}
+        fn {{{name}}}(
+            &self,
+            request: {{{camel}}}Request,
+        ) -> impl std::future::Future<Output = Result<{{{camel}}}Response, super::ServerError>> + Send;
+        {{/operations}}
+    }
+    {{#left}}
+
+    // Not served: `{{{name}}}` ({{{httpMethod}}} {{{path}}}): {{{reason}}}. The server serves operations whose
+    // request body and responses are JSON.
+    {{/left}}
+
+    // A route per operation, each a statement of its own so that a Cargo feature can leave it out.
+    #[allow(clippy::let_and_return)]
+    pub(super) fn routes<I>(router: axum::Router<std::sync::Arc<I>>) -> axum::Router<std::sync::Arc<I>>
+    where
+        I: {{{trait}}} + super::ErrorHandler + 'static,
+    {
+        {{#operations}}
+        {{#cfg}}
+        #[cfg({{{.}}})]
+        {{/cfg}}
+        let router = router.route("{{{route}}}", axum::routing::{{{method}}}(handle_{{{bare}}}::<I>));
+        {{/operations}}
+        router
+    }
+    {{#operations}}
+
+    /// The request of [`{{{trait}}}::{{{name}}}`] (`{{{httpMethod}}} {{{path}}}`).
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    #[derive(Clone, Debug)]
+    pub struct {{{camel}}}Request {
+        {{#pathParams}}
+        /// `{{{name}}}`, a path parameter{{#doc}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/doc}}
+        pub {{{field}}}: {{{type}}},
+        {{/pathParams}}
+        {{#queryParams}}
+        /// `{{{name}}}`, a query parameter{{#doc}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/doc}}
+        pub {{{field}}}: {{{type}}},
+        {{/queryParams}}
+        {{#body}}
+        /// The request body{{#doc}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/doc}}
+        pub body: {{{type}}},
+        {{/body}}
+        /// The request's headers, with its header and cookie parameters and credentials.
+        pub headers: http::HeaderMap,
+    }
+
+    /// The responses of [`{{{trait}}}::{{{name}}}`], one per status the spec declares.
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    #[derive(Clone, Debug)]
+    pub enum {{{camel}}}Response {
+        {{#responses}}
+        /// `{{{code}}}`{{#doc}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/doc}}
+        {{{declaration}}},
+        {{/responses}}
+    }
+
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    impl axum::response::IntoResponse for {{{camel}}}Response {
+        fn into_response(self) -> axum::response::Response {
+            match self {
+                {{#responses}}
+                {{{camel}}}Response::{{{pattern}}} => {{{encode}}},
+                {{/responses}}
+            }
+        }
+    }
+
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    async fn handle_{{{bare}}}<I>(
+        axum::extract::State(api): axum::extract::State<std::sync::Arc<I>>,
+        {{#hasPath}}
+        path: Result<
+            axum::extract::Path<std::collections::HashMap<String, String>>,
+            axum::extract::rejection::PathRejection,
+        >,
+        {{/hasPath}}
+        {{#hasQuery}}
+        axum::extract::RawQuery(query): axum::extract::RawQuery,
+        {{/hasQuery}}
+        headers: http::HeaderMap,
+        {{#body}}
+        body: axum::body::Bytes,
+        {{/body}}
+    ) -> axum::response::Response
+    where
+        I: {{{trait}}} + super::ErrorHandler + 'static,
+    {
+        {{#hasPath}}
+        let path = match path {
+            Ok(axum::extract::Path(path)) => path,
+            Err(rejection) => return api.invalid_request(super::RequestError::new("path", None, rejection.body_text())),
+        };
+        {{/hasPath}}
+        {{#hasQuery}}
+        let query = super::query_pairs(query.as_deref());
+        {{/hasQuery}}
+        let request = match decode_{{{bare}}}({{#hasPath}}&path, {{/hasPath}}{{#hasQuery}}&query, {{/hasQuery}}{{#body}}&body, {{/body}}headers) {
+            Ok(request) => request,
+            Err(error) => return api.invalid_request(error),
+        };
+        match api.{{{name}}}(request).await {
+            Ok(response) => axum::response::IntoResponse::into_response(response),
+            Err(error) => api.server_error(error),
+        }
+    }
+
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    fn decode_{{{bare}}}(
+        {{#hasPath}}
+        path: &std::collections::HashMap<String, String>,
+        {{/hasPath}}
+        {{#hasQuery}}
+        query: &[(String, String)],
+        {{/hasQuery}}
+        {{#body}}
+        body: &[u8],
+        {{/body}}
+        headers: http::HeaderMap,
+    ) -> Result<{{{camel}}}Request, super::RequestError> {
+        Ok({{{camel}}}Request {
+            {{#pathParams}}
+            {{{field}}}: super::path_value(path, "{{{position}}}", "{{{name}}}", |v| {{{parse}}})?,
+            {{/pathParams}}
+            {{#queryParams}}
+            {{{field}}}: {{#required}}super::required("query", "{{{name}}}", {{/required}}super::query_{{#list}}list{{/list}}{{^list}}value{{/list}}(query, "{{{name}}}", {{#list}}{{#separator}}Some("{{{.}}}"){{/separator}}{{^separator}}None{{/separator}}, {{/list}}|v| {{{parse}}})?{{#required}})?{{/required}},
+            {{/queryParams}}
+            {{#body}}
+            body: super::{{#required}}json_body{{/required}}{{^required}}optional_json_body{{/required}}(body)?,
+            {{/body}}
+            headers,
+        })
+    }
+    {{/operations}}
+}
+{{/serverModules}}

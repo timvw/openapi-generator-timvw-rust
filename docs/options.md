@@ -29,6 +29,7 @@ Value types:
 
 | Group | Options |
 | --- | --- |
+| [Targets](#targets) | `targets`, `serverFramework`, `serverValidation` |
 | [The crate](#the-crate) | `packageName`, `packageVersion`, `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, `userAgentFromPackage`, `apiLintAllows` |
 | [HTTP stack and runtime](#http-stack-and-runtime) | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
 | [Cargo features](#cargo-features) | `apiFeatures`, `apiFeaturesFile` |
@@ -37,6 +38,42 @@ Value types:
 | [Helpers](#helpers) | `multipartHelper`, `pruneAllHelpers` |
 | [Adapting a spec](#adapting-a-spec) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `webhookModule`, `webhookModuleReexport` |
 | [Debugging](#debugging) | `unionPlanFile`, `preprocessedSpecFile` |
+
+Every option belongs to the models (any target), to the client or to the server; an option of a target that is not in
+[`targets`](#targets) fails generation. The [server guide](guides/server.md#options-per-target) lists which is which.
+
+## Targets
+
+### `targets`
+
+list, default `["client"]`. What the crate holds: entries from `models`, `client` and `server`; `client` and `server`
+imply `models`, and there is no `all`. `["models"]` is the models without HTTP dependencies, `["server"]` the models
+and an [axum](https://docs.rs/axum) server, `["client", "server"]` both, behind the Cargo features `client` and
+`server` (both default). Without the option, or with `["client"]`, the output is what it was.
+
+```json
+{ "targets": ["client", "server"] }
+```
+
+```bash
+--additional-properties=targets=client|server
+```
+
+Guide: [the server](guides/server.md). Tests: [`ServerTest`](../src/test/java/be/timvw/openapi/rust/ServerTest.java),
+which runs [src/test/rust/server.rs](../src/test/rust/server.rs) (the client calls the server of the same crate).
+
+### `serverFramework`
+
+string, default `axum`, server only. The framework the server is rendered for; `axum` is the only one.
+
+Tests: [`ServerTest`](../src/test/java/be/timvw/openapi/rust/ServerTest.java) (`theServerOptionsTakeTheirOneValue`).
+
+### `serverValidation`
+
+boolean, default `false`, server only. Reserved for validating requests with the models' `Validate` before the
+implementation is called; that is not implemented yet, so only `false` is accepted.
+
+Tests: [`ServerTest`](../src/test/java/be/timvw/openapi/rust/ServerTest.java) (`theServerOptionsTakeTheirOneValue`).
 
 ## The crate
 

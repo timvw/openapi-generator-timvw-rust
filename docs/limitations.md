@@ -16,6 +16,16 @@ mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed i
   `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update` (or `resolver = "3"` in your workspace): the newest
   `uuid` needs a newer Rust.
 
+## Generated server
+
+- **JSON operations only.** An operation with a multipart, form, file or text body or response, or a
+  `text/event-stream` response, is left out of the server with a comment and a warning
+  ([guide](guides/server.md#what-the-server-does-not-serve-yet)).
+- **No authentication, no validation.** Credentials are in the request's `HeaderMap` for axum middleware to check;
+  `serverValidation` only takes `false`.
+- **One trait per API module (tag).** With an `apiFeaturesFile` group that takes part of a module, the module's trait
+  keeps the methods of the enabled groups, gated one by one.
+
 ## Runtime
 
 - **No retry of a failed `fetch` on WebAssembly.** `fetch` does not tell a failure to connect from one after the request

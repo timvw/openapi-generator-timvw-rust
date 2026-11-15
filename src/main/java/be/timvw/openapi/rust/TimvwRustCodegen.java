@@ -305,6 +305,17 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /** Key under which the api mod template finds the webhook module files to declare. */
     static final String WEBHOOK_MODULES_KEY = "webhookModules";
 
+    /** What the generator renders: a list from {@code models}, {@code client} and {@code server} (see {@link Targets}). */
+    public static final String TARGETS = "targets";
+    /** The server's framework: only {@code axum}. */
+    public static final String SERVER_FRAMEWORK = "serverFramework";
+    /** The server validates requests with the models' {@code Validate}: not supported yet, only {@code false}. */
+    public static final String SERVER_VALIDATION = "serverValidation";
+    /** The one framework the server is rendered for. */
+    static final String AXUM = "axum";
+    /** Set on a typed headers struct the client re-exports from {@code crate::headers} (a crate with a server). */
+    static final String SHARED_HEADERS = "x-rust-shared-headers";
+
     /** Mustache lambda that templates wrap around doc-comment text. */
     static final String RUSTDOC_LAMBDA = "rustdoc";
 
@@ -406,6 +417,16 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private final Map<CodegenOperation, io.swagger.v3.oas.models.Operation> specOperations =
             new java.util.IdentityHashMap<>();
     private boolean apiFeatures;
+    private Targets targets = Targets.DEFAULT;
+    /** With the server target: the served and left-out operations of each API module, by class name. */
+    private final Map<String, Map<String, Object>> serverModules = new LinkedHashMap<>();
+    /** With the server target: every typed headers struct, rendered into {@code src/headers.rs}. */
+    private final List<Map<String, Object>> headerStructs = new ArrayList<>();
+    /** A model holds a {@code timvw_rust_runtime::Upload}: a crate without the client still needs the runtime. */
+    private boolean modelsUseRuntime;
+    /** With the server target: whether the models use uuid and chrono, or only the API code does. */
+    private boolean modelsUseUuid;
+    private boolean modelsUseChrono;
     private List<ApiFeatures.Group> apiFeatureGroups = List.of();
     /** With {@link #API_FEATURES}: the features of the operations and models, planned once the spec is final. */
     private ApiFeatures.Plan apiFeaturesPlan;
@@ -527,6 +548,17 @@ public class TimvwRustCodegen extends RustCodegenBase {
         cliOptions.add(CliOption.newString(API_FEATURES_FILE,
                 "With apiFeatures (implied): a YAML or JSON file mapping a feature name to the 'tags' and/or 'paths' "
                         + "(path prefixes) of its operations; operations no group selects keep their tag's feature"));
+        cliOptions.add(CliOption.newString(TARGETS,
+                "What the crate holds, a list from models, client and server (client and server imply models): "
+                        + "[\"client\"] (the default) renders the models and the client, [\"server\"] the models and "
+                        + "an axum server, [\"models\"] the models only, [\"client\", \"server\"] both, behind the "
+                        + "Cargo features client and server. An option of a target that is not listed fails "
+                        + "generation"));
+        cliOptions.add(new CliOption(SERVER_FRAMEWORK, "With the server target: the server's framework; only axum")
+                .defaultValue(AXUM));
+        cliOptions.add(CliOption.newBoolean(SERVER_VALIDATION,
+                "With the server target: validate requests with the models' Validate. Not supported yet: only false",
+                false));
         cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
                 "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
                         + "object-typed query parameter is sent as a string"));
@@ -634,10 +666,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (UploadParams.markUnions(unions)) {
             // `From<PathBuf>` for the unions: Upload::path.
             additionalProperties.put(UploadParams.RUNTIME_FS, true);
+            modelsUseRuntime = true;
         }
         if (UploadParams.markModels(objs, unions, additionalProperties)) {
             // A path converts into the upload of a field (Upload::path).
             additionalProperties.put(UploadParams.RUNTIME_FS, true);
+            modelsUseRuntime = true;
         }
         anyDispatch = counts.explicit() + counts.implicit() > 0;
         LOGGER.info("{}: union dispatch: {} tagged ({} by a discriminator, {} implicitly), {} untagged; {} have a value "
@@ -825,6 +859,20 @@ public class TimvwRustCodegen extends RustCodegenBase {
         notSuggested.add(HTTP_STACK);
         UnknownOptions.check(GENERATOR_NAME, additionalProperties.keySet(), cliOptions(), List.of(), notSuggested);
 
+        targets = Targets.parse(additionalProperties.get(TARGETS));
+        // Before any option is given its default below: only the options that were set count.
+        targets.check(additionalProperties.keySet());
+        Object framework = additionalProperties.get(SERVER_FRAMEWORK);
+        if (framework != null && !AXUM.equals(String.valueOf(framework))) {
+            throw new IllegalArgumentException(String.format("%s: option '%s' is '%s'; the server is only rendered "
+                    + "for '%s'", GENERATOR_NAME, SERVER_FRAMEWORK, framework, AXUM));
+        }
+        if (additionalProperties.containsKey(SERVER_VALIDATION)
+                && convertPropertyToBoolean(SERVER_VALIDATION)) {
+            throw new IllegalArgumentException(String.format("%s: option '%s' is not supported yet: the server does "
+                    + "not validate requests; set it to false or remove it", GENERATOR_NAME, SERVER_VALIDATION));
+        }
+
         setLibrary(REQWEST_LIBRARY);
         super.processOpts();
 
@@ -930,6 +978,21 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
         additionalProperties.put(RUSTDOC_LAMBDA,
                 (Mustache.Lambda) (fragment, out) -> out.write(RustDoc.wrapBareUrls(fragment.execute())));
+
+        additionalProperties.put(TARGETS, targets.names());
+        additionalProperties.put("clientTarget", targets.client());
+        additionalProperties.put("serverTarget", targets.server());
+        additionalProperties.put("targetFeatures", targets.features());
+        if (!targets.client()) {
+            // No client: no API modules, API docs or client support files.
+            apiTemplateFiles.clear();
+            apiDocTemplateFiles.clear();
+            supportingFiles.removeIf(f -> f.getFolder() != null && f.getFolder().replace('\\', '/').equals(apiFolder));
+        }
+        if (targets.server()) {
+            supportingFiles.add(new SupportingFile("server.mustache", "src", "server.rs"));
+            supportingFiles.add(new SupportingFile("headers.mustache", "src", "headers.rs"));
+        }
     }
 
     /** The key of {@code additionalProperties} equal to {@code option} ignoring case, or {@code null}. */
@@ -1179,6 +1242,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
             objs.put(WEBHOOK_MODULES_KEY, Arrays.asList(toApiFilename(webhookModule)));
         }
+        if (!targets.client() && modelsUseRuntime) {
+            // no client to make the runtime optional: the models' uploads need it whatever the features
+            objs.put(UploadParams.RUNTIME_REQUIRED, true);
+        }
         if (apiFeatures) {
             describeApiFeatures(objs);
         }
@@ -1190,7 +1257,61 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     GENERATOR_NAME, TYPED_EVENT_STREAMS);
         }
         objs.put(RUNTIME_FEATURES, runtimeFeatures(objs));
+        describeTargets(objs);
         return objs;
+    }
+
+    /**
+     * What Cargo.toml, lib.rs and the README need to know about the targets: the runtime dependency, the cfg of the
+     * {@code apis}, {@code server} and {@code headers} modules, the server's modules and the typed headers structs.
+     */
+    private void describeTargets(Map<String, Object> objs) {
+        boolean runtimeRequired = objs.containsKey(UploadParams.RUNTIME_REQUIRED)
+                || (!apiFeatures && modelsUseRuntime);
+        // the client's runtime: optional with apiFeatures or the target features, unless an ungated model needs it
+        objs.put("runtimeDependency", targets.client() || modelsUseRuntime);
+        objs.put("runtimeOptional", targets.client() && (apiFeatures || targets.features()) && !runtimeRequired);
+        // `_api` (apiFeatures) enables the runtime when it is the client's alone; the `client` feature does otherwise
+        objs.put("apiRuntime", targets.client() && !targets.features() && !runtimeRequired);
+        String client = null;
+        if (targets.features()) {
+            client = apiFeatures ? "all(feature = \"client\", feature = \"_api\")" : "feature = \"client\"";
+        } else if (apiFeatures) {
+            client = "feature = \"_api\"";
+        }
+        if (client != null) {
+            objs.put("clientCfg", client);
+        }
+        if (targets.features()) {
+            // uuid and chrono only the client or the server use are enabled by their features
+            List<String> shared = new ArrayList<>();
+            if (!modelsUseUuid && Boolean.TRUE.equals(additionalProperties.get("hasUUIDs"))) {
+                objs.put("uuidOptional", true);
+                shared.add("\"dep:uuid\"");
+            }
+            if (!modelsUseChrono && Boolean.TRUE.equals(additionalProperties.get("usesChronoTypes"))) {
+                objs.put("chronoOptional", true);
+                shared.add("\"dep:chrono\"");
+            }
+            objs.put("targetDeps", shared.isEmpty() ? null : ", " + String.join(", ", shared));
+            objs.put("serverCfg", "feature = \"server\"");
+            objs.put("headersCfg", "any(feature = \"client\", feature = \"server\")");
+        }
+        if (targets.server()) {
+            List<Map<String, Object>> modules = new ArrayList<>(serverModules.values());
+            modules.sort(java.util.Comparator.comparing(m -> String.valueOf(m.get("module"))));
+            objs.put("serverModules", modules);
+            objs.put("headerStructs", headerStructs);
+            int served = 0;
+            List<Object> left = new ArrayList<>();
+            for (Map<String, Object> m : modules) {
+                served += ((List<?>) m.get("operations")).size();
+                left.addAll((List<?>) m.get("left"));
+            }
+            objs.put("serverLeft", left);
+            objs.put("hasServerLeft", !left.isEmpty());
+            LOGGER.info("{}: server: {} operations served, {} left out", GENERATOR_NAME, served, left.size());
+        }
     }
 
     /**
@@ -1703,6 +1824,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             if (errorHeaders != null) {
                 errorHeaders.put("name", op.operationIdCamelCase + "ErrorHeaders");
                 errorHeaders.put("error", true);
+                if (targets.server()) {
+                    errorHeaders.put(SHARED_HEADERS, true);
+                }
                 op.vendorExtensions.put(ResponseHeaders.ERROR_STRUCT, errorHeaders);
                 additionalProperties.put(TYPED_ERROR_HEADERS, true);
                 noteHeaderHelpers(errorHeaders);
@@ -1720,6 +1844,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             // One struct per operation, named after it, which its methods' twins share.
             headers.put("name", op.operationIdCamelCase + "ResponseHeaders");
             headers.put("error", false);
+            if (targets.server()) {
+                headers.put(SHARED_HEADERS, true);
+            }
             op.vendorExtensions.put(ResponseHeaders.STRUCT, headers);
             for (CodegenOperation m : methods) {
                 @SuppressWarnings("unchecked")
@@ -1876,7 +2003,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
         }
         markFormExplode(co, operation);
-        if (responseFunctions) {
+        if (responseFunctions || targets.server()) {
             specOperations.put(co, operation);
         }
         return co;
@@ -2129,9 +2256,93 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (apiFeatures && objs.getOperations() != null && objs.getOperations().getOperation() != null) {
             markApiFeatures(objs, objs.getOperations().getClassname(), objs.getOperations().getOperation());
         }
+        if (targets.server() && objs.getOperations() != null && objs.getOperations().getOperation() != null
+                && objs.getOperations().getClassname() != null) {
+            planServer(objs.getOperations().getClassname(), toApiFilename(objs.getOperations().getOperation().get(0).baseName),
+                    objs.getOperations().getOperation(), allModels);
+        }
         if (objs.getOperations() != null && objs.getOperations().getClassname() != null) {
             pathApis.put(objs.getOperations().getClassname(), objs);
         }
         return objs;
+    }
+
+    /**
+     * With the server target: the server's trait, request structs, response enums and routes of one API module's
+     * operations (see {@link ServerRules}), and the typed headers structs of {@code src/headers.rs}. An operation the
+     * server cannot serve yet is left out, with a comment and a warning.
+     */
+    @SuppressWarnings("unchecked")
+    private void planServer(String classname, String file, List<CodegenOperation> operations,
+            List<ModelMap> allModels) {
+        modelsUseUuid = RustCodegenBase.modelsUseUuid(allModels);
+        modelsUseChrono = RustCodegenBase.modelsUseChrono(allModels);
+        Map<String, CodegenModel> models = new HashMap<>();
+        for (ModelMap mm : allModels) {
+            if (mm.getModel() != null) {
+                models.put(mm.getModel().classname, mm.getModel());
+            }
+        }
+        List<Map<String, Object>> served = new ArrayList<>();
+        List<Map<String, Object>> left = new ArrayList<>();
+        for (CodegenOperation op : operations) {
+            if (op.vendorExtensions.containsKey(CONTENT_VARIANT)) {
+                continue;
+            }
+            io.swagger.v3.oas.models.Operation spec = specOperations.get(op);
+            if (spec == null) {
+                continue;
+            }
+            String cfg = apiFeatures ? apiFeaturesPlan().fullOperationCfg(classname, op.path, op.httpMethod) : null;
+            // with responseFunctions the client planned (and warned about) the same structs already
+            java.util.function.Consumer<String> warn = responseFunctions ? msg -> { }
+                    : msg -> LOGGER.warn("{}: server: {}", GENERATOR_NAME, msg);
+            Map<String, Object> success = (Map<String, Object>) op.vendorExtensions.get(ResponseHeaders.STRUCT);
+            if (success == null) {
+                success = ResponseHeaders.plan(openAPI, spec, false, op.operationId, this::getTypeDeclaration,
+                        this::toVarName, warn);
+                if (success != null) {
+                    success.put("name", op.operationIdCamelCase + "ResponseHeaders");
+                    success.put("error", false);
+                }
+            }
+            Map<String, Object> errors = (Map<String, Object>) op.vendorExtensions.get(ResponseHeaders.ERROR_STRUCT);
+            if (errors == null) {
+                errors = ResponseHeaders.plan(openAPI, spec, true, op.operationId, this::getTypeDeclaration,
+                        this::toVarName, warn);
+                if (errors != null) {
+                    errors.put("name", op.operationIdCamelCase + "ErrorHeaders");
+                    errors.put("error", true);
+                }
+            }
+            for (Map<String, Object> struct : Arrays.asList(success, errors)) {
+                if (struct != null) {
+                    struct.put("operationId", op.operationId);
+                    if (cfg != null) {
+                        struct.put("cfg", cfg);
+                    }
+                    noteTypes(ResponseHeaders.types(struct));
+                    headerStructs.add(struct);
+                }
+            }
+            try {
+                served.add(ServerRules.plan(openAPI, op, spec, models, success, errors, cfg));
+            } catch (ServerRules.Unsupported e) {
+                LOGGER.warn("{}: server: {} ({} {}) is not served: {}", GENERATOR_NAME, op.operationId,
+                        op.httpMethod, op.path, e.getMessage());
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("name", op.operationId);
+                m.put("httpMethod", op.httpMethod);
+                m.put("path", op.path);
+                m.put("reason", e.getMessage());
+                left.add(m);
+            }
+        }
+        Map<String, Object> module = new LinkedHashMap<>();
+        module.put("module", file);
+        module.put("trait", classname);
+        module.put("operations", served);
+        module.put("left", left);
+        serverModules.put(classname, module);
     }
 }

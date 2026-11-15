@@ -155,6 +155,7 @@ final class ResponseHeaders {
             m.put("literal", f.header().replace("\\", "\\\\").replace("\"", "\\\""));
             m.put("type", f.list() ? "Vec<" + f.type() + ">" : f.type());
             m.put("parse", f.parse());
+            m.put("format", format(f.type()));
             m.put("list", f.list());
             m.put("doc", f.doc());
             rendered.add(m);
@@ -162,7 +163,25 @@ final class ResponseHeaders {
         Map<String, Object> struct = new LinkedHashMap<>();
         struct.put("fields", rendered);
         struct.put("statuses", String.join(", ", declaring.stream().map(s -> "`" + s + "`").toList()));
+        struct.put("codes", declaring);
         return struct;
+    }
+
+    /**
+     * The Rust expression that writes a value {@code v} ({@code &T}) of {@code type} as header text (a
+     * {@code String}): the inverse of its parse.
+     */
+    static String format(String type) {
+        if ("String".equals(type)) {
+            return "v.clone()";
+        }
+        if (DATE_TIME.equals(type)) {
+            return "v.to_rfc3339()";
+        }
+        if (type.startsWith("models::")) {
+            return "json_text(v)";
+        }
+        return "v.to_string()";
     }
 
     /** The Rust types of the struct's fields, for the crate's dependencies. */

@@ -1,4 +1,19 @@
+{{#clientTarget}}
+{{^serverTarget}}
 # Rust API client for {{{packageName}}}
+{{/serverTarget}}
+{{#serverTarget}}
+# Rust API client and server for {{{packageName}}}
+{{/serverTarget}}
+{{/clientTarget}}
+{{^clientTarget}}
+{{#serverTarget}}
+# Rust API server for {{{packageName}}}
+{{/serverTarget}}
+{{^serverTarget}}
+# Rust API models for {{{packageName}}}
+{{/serverTarget}}
+{{/clientTarget}}
 
 {{#x-rust-readme-description}}
 {{{.}}}
@@ -25,6 +40,7 @@ Put the package under your project folder in a directory named `{{packageName}}`
 {{{packageName}}} = { path = "./{{{packageName}}}" }
 ```
 
+{{#clientTarget}}
 ## Documentation for API Endpoints
 
 All URIs are relative to *{{{basePath}}}*
@@ -34,6 +50,31 @@ Class | Method | HTTP request | Description
 {{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}*{{{classname}}}* | [**{{{operationId}}}**]({{{apiDocPath}}}{{classname}}.md#{{{operationIdLowerCase}}}) | **{{{httpMethod}}}** {{{path}}} | {{{summary}}}
 {{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 
+{{/clientTarget}}
+{{#serverTarget}}
+## Server
+
+The `server` module serves the API with [axum](https://docs.rs/axum): implement the trait of each API module
+(`server::<module>::<Trait>`) and `server::ErrorHandler`, then build the router:
+
+```rust,ignore
+let app: axum::Router = {{{externCrateName}}}::server::router(MyApi::new());
+```
+
+Trait | Method | HTTP request
+----- | ------ | ------------
+{{#serverModules}}{{#operations}}`{{{trait}}}` | `{{{name}}}` | **{{{httpMethod}}}** {{{path}}}
+{{/operations}}{{/serverModules}}
+{{#hasServerLeft}}
+
+Not served yet (the server serves operations whose request body and responses are JSON):
+
+{{/hasServerLeft}}
+{{#serverLeft}}
+- `{{{name}}}` (**{{{httpMethod}}}** {{{path}}}): {{{reason}}}
+{{/serverLeft}}
+
+{{/serverTarget}}
 ## Documentation For Models
 
 {{#models}}{{#model}} - [{{{classname}}}]({{{modelDocPath}}}{{{classname}}}.md)

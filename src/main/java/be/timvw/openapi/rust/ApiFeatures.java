@@ -217,6 +217,15 @@ final class ApiFeatures {
         }
 
         /**
+         * The cfg predicate of an operation's items outside its API module (the server, the typed headers): its own
+         * features, or {@code null} when the plan does not know it.
+         */
+        String fullOperationCfg(String module, String key, String method) {
+            SortedSet<String> f = operations.get(opKey(module, key, method));
+            return f == null || f.isEmpty() ? null : any(f, "");
+        }
+
+        /**
          * The cfg predicate of a model: the {@code -types} features of the groups that need it, {@code types} when
          * none does, {@code null} (ungated) when every group does.
          */

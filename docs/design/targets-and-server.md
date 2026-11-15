@@ -1,6 +1,7 @@
 # Design: targets, and a server
 
-Status: proposed. Nothing on this page is implemented yet.
+Status: slice 1 is implemented (`targets`, the Cargo features `client` and `server`, and an axum server for JSON
+operations; see the [server guide](../guides/server.md)). Slices 2 to 4 are proposed.
 
 `timvw-rust` renders an HTTP client and its models. This page proposes a `targets` option that picks what the
 generator renders: the models, a client, a server, or more than one of them in one crate. It also describes the

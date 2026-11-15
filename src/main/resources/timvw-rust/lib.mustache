@@ -9,8 +9,20 @@ extern crate serde;
 extern crate serde_json;
 extern crate url;
 
-{{#apiFeatures}}
-#[cfg(feature = "_api")]
-{{/apiFeatures}}
+{{#clientTarget}}
+{{#clientCfg}}
+#[cfg({{{.}}})]
+{{/clientCfg}}
 pub mod apis;
+{{/clientTarget}}
 pub mod models;
+{{#serverTarget}}
+{{#headersCfg}}
+#[cfg({{{.}}})]
+{{/headersCfg}}
+pub mod headers;
+{{#serverCfg}}
+#[cfg({{{.}}})]
+{{/serverCfg}}
+pub mod server;
+{{/serverTarget}}

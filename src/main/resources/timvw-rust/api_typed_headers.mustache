@@ -1,3 +1,11 @@
+{{#x-rust-shared-headers}}
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
+pub use crate::headers::{{{name}}};
+
+{{/x-rust-shared-headers}}
+{{^x-rust-shared-headers}}
 {{^error}}
 /// The headers the success responses of [`{{operationId}}`] declare ({{{statuses}}}), typed. Read them from the
 /// [`ApiResponse`](super::ApiResponse) of a `_response` function with
@@ -45,3 +53,4 @@ impl From<&timvw_rust_runtime::header::HeaderMap> for {{{name}}} {
     }
 }
 
+{{/x-rust-shared-headers}}

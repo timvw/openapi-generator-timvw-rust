@@ -1221,25 +1221,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             }
         }
 
-        if (!hasUUIDs) {
-            for (ModelMap map : allModels) {
-                CodegenModel m = map.getModel();
-                if (m.getIsUuid() || anyProperty(fieldsAndVariants(m), p -> p.isUuid
-                        || (p.dataType != null && p.dataType.contains("uuid::Uuid")))) {
-                    hasUUIDs = true;
-                    break;
-                }
-            }
+        if (!hasUUIDs && modelsUseUuid(allModels)) {
+            hasUUIDs = true;
         }
-        if (useChrono && !usesChronoTypes) {
-            for (ModelMap map : allModels) {
-                CodegenModel m = map.getModel();
-                if (m.getIsDate() || anyProperty(fieldsAndVariants(m), p -> p.isDate || p.isDateTime
-                        || (p.dataType != null && p.dataType.contains("chrono::")))) {
-                    usesChronoTypes = true;
-                    break;
-                }
-            }
+        if (useChrono && !usesChronoTypes && modelsUseChrono(allModels)) {
+            usesChronoTypes = true;
         }
 
         additionalProperties.put("hasUUIDs", hasUUIDs);
@@ -1260,6 +1246,30 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             usesChronoTypes = true;
             additionalProperties.put("usesChronoTypes", true);
         }
+    }
+
+    /** Whether a model holds a {@code uuid::Uuid}. */
+    static boolean modelsUseUuid(List<ModelMap> allModels) {
+        for (ModelMap map : allModels) {
+            CodegenModel m = map.getModel();
+            if (m.getIsUuid() || anyProperty(fieldsAndVariants(m), p -> p.isUuid
+                    || (p.dataType != null && p.dataType.contains("uuid::Uuid")))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether a model holds a chrono type. */
+    static boolean modelsUseChrono(List<ModelMap> allModels) {
+        for (ModelMap map : allModels) {
+            CodegenModel m = map.getModel();
+            if (m.getIsDate() || anyProperty(fieldsAndVariants(m), p -> p.isDate || p.isDateTime
+                    || (p.dataType != null && p.dataType.contains("chrono::")))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Whether a parameter, the return type or a response of the operation names the Rust type {@code type}. */

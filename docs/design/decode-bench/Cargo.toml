@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 openai-client-base = "=0.32.0"
-langfuse-client-base = "=0.23.0"
+langfuse-client-base = "=0.25.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 

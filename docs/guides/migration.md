@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [Unix timestamps are `jiff::Timestamp`s](#unix-timestamps-are-jifftimestamps) (0.38): properties of `format: unixtime`, with `dateLibrary=jiff`.
 - [From chrono to jiff](#from-chrono-to-jiff): `dateLibrary` (0.36) replaces `useChrono` and `dateTimeLibrary`, and jiff is the default.
 - [From 0.29 to 0.30](#from-029-to-030): a required nullable `stringProperties` property is an `Option<String>`; unknown `stringProperties`/`fileProperties` entries fail generation; the new option `optionalProperties`.
 - [From 0.28 to 0.29](#from-028-to-029): `httpStack` and reqwest-middleware removed; `Error::Io` removed; models' file fields hold `Upload`s; per-call options without builders and a per-call base URL; runtime 0.4.
@@ -15,6 +16,27 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## Unix timestamps are `jiff::Timestamp`s
+
+Since 0.38, with `dateLibrary=jiff` (the default), a model property of `type: integer` or `type: number` with
+`format: unixtime` is a `jiff::Timestamp` instead of an `i64` or `f64`
+([`schema.format.unixtime`](../mapping/schema.md#schemaformatunixtime)). The JSON does not change: a number of
+seconds. It is a breaking change for the users of a crate whose spec has such properties; a crate that wants the
+numbers back sets `dateLibrary=string` (and gets its dates as `String`s).
+
+| | Before | Since 0.38 |
+| --- | --- | --- |
+| Field | `pub created_at: i64` | `pub created_at: jiff::Timestamp` |
+| Read the seconds | `response.created_at` | `response.created_at.as_second()` |
+| Build one | `created_at: 1_700_000_000` | `created_at: jiff::Timestamp::from_second(1_700_000_000)?` |
+| Now | `SystemTime::now()` and arithmetic | `jiff::Timestamp::now()` |
+| Compare, order | on the numbers | on the timestamps (`Ord`), `a.duration_since(b)` |
+| Print | a number | RFC 3339 (`2023-11-14T22:13:20Z`) with `Display` |
+
+A value that is no time in seconds fails to decode instead of landing in the field: milliseconds, for one, are past
+the year 9999. A number with a fraction (`1700000000.0`) is read. An array item, a map value and a parameter of that
+format keep their number.
 
 ## From chrono to jiff
 

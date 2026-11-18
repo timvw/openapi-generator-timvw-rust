@@ -16,7 +16,7 @@ use server_fixture::server::owners_api::{
     GetOwnerPetRequest, GetOwnerPetResponse, OwnerEventsRequest, OwnerEventsResponse,
 };
 use server_fixture::server::pets_api::{
-    CreatePetRequest, CreatePetResponse, DeletePetRequest, DeletePetResponse, GetPetNameRequest, GetPetNameResponse,
+    AnswerPetRequest, AnswerPetResponse, CreatePetRequest, CreatePetResponse, DeletePetRequest, DeletePetResponse, GetPetNameRequest, GetPetNameResponse,
     GetPetRequest, GetPetResponse, GetPhotoRequest, GetPhotoResponse, ImportPetBody, ImportPetRequest,
     ImportPetResponse, ListPetsRequest, ListPetsResponse, PetEventsRequest, PetEventsResponse, PetFeedRequest,
     PetFeedResponse, PutPhotoRequest, PutPhotoResponse, RenamePetRequest, RenamePetResponse, SearchPetsForm,
@@ -193,6 +193,11 @@ impl PetsApi for Store {
         Ok(ImportPetResponse::Status200(Imported { via: via.to_owned(), detail }))
     }
 
+    async fn answer_pet(&self, request: AnswerPetRequest) -> Result<AnswerPetResponse, ServerError> {
+        let answer = format!("{}a=pet:{}\r\n", request.body, request.pet_id);
+        Ok(AnswerPetResponse::Status201(Binary::bytes(answer).content_type("application/sdp")))
+    }
+
     async fn pet_events(&self, request: PetEventsRequest) -> Result<PetEventsResponse, ServerError> {
         let born = PetBorn::new(models::pet_born::Type::PetBorn, format!("pet {}", request.pet_id));
         let renamed = PetRenamed::new(models::pet_renamed::Type::PetRenamed, "Tom".to_owned(), "Tom II".to_owned());
@@ -271,6 +276,9 @@ macro_rules! delegate {
             }
             async fn import_pet(&self, request: ImportPetRequest) -> Result<ImportPetResponse, ServerError> {
                 self.0.import_pet(request).await
+            }
+            async fn answer_pet(&self, request: AnswerPetRequest) -> Result<AnswerPetResponse, ServerError> {
+                self.0.answer_pet(request).await
             }
             async fn pet_events(&self, request: PetEventsRequest) -> Result<PetEventsResponse, ServerError> {
                 self.0.pet_events(request).await
@@ -708,6 +716,9 @@ async fn a_body_of_several_media_types() {
     let sdp = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n";
     let imported = pets_api::import_pet_sdp().configuration(&configuration).body(sdp).call().await.unwrap();
     assert_eq!((imported.via.as_str(), imported.detail.as_str()), ("sdp", sdp));
+    // a string answered as `application/sdp`: neither JSON nor text/plain, the client returns it as it is
+    let answer = pets_api::answer_pet().configuration(&configuration).pet_id(7).body(sdp).call().await.unwrap();
+    assert_eq!(answer, format!("{sdp}a=pet:7\r\n"));
 
     let send = |content_type: Option<&'static str>, body: &'static str| {
         let configuration = configuration.clone();

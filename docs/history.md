@@ -36,6 +36,11 @@ partial server implements only the operations it serves. `ServerError::not_imple
 so the Cargo feature, of the webhook payload models. A server's helpers that only some operations use no longer
 warn as dead code when the enabled features compile none of those operations.
 
+Client fix: a function returning a `String` whose response is declared with a media type that is neither JSON nor
+`text/plain` returns the body as it is; it failed with "cannot be converted to `String`". OpenAI's
+`create_realtime_call` answers `application/sdp`, so openai-client-base's `create_realtime_call` and
+`create_realtime_call_sdp` failed on every answer.
+
 ## 0.34.0
 
 The server serves a request body that declares media types of more than one kind as an enum, `<Operation>Body`, with

@@ -15,7 +15,7 @@ credentials in `SecretString`s, adds headers and query parameters per call and a
 (`apiFeatures`); 0.27 takes file parameters as `timvw_rust_runtime::Upload`s, streamed and retried; 0.28 takes them in
 multipart unions too; 0.29 in model fields, and removes the reqwest-middleware stack; 0.31 renders the models alone or an axum server as
 well (`targets`); 0.32 serves event streams, files, text and multipart forms; 0.33 renders dates with jiff
-(`dateTimeLibrary`). The
+(`dateTimeLibrary`) and serves bodies of several media types, urlencoded forms and named events. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
@@ -26,6 +26,24 @@ The `dateTimeLibrary` option picks the date library: `chrono` (the default, unch
 `Display`. chrono is unmaintained ([RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543)); a crate
 can now move off it. A `date-time` path parameter of either library is percent-encoded. See
 [`dateTimeLibrary`](options.md#datetimelibrary) and the [migration note](guides/migration.md#from-chrono-to-jiff).
+
+The server serves a request body that declares media types of more than one kind as an enum, `<Operation>Body`, with
+a variant per kind named as the client's [`contentTypeMethods`](options.md#contenttypemethods) function for it
+(`Json`, `Multipart`, `Form`, `Text`, `Bytes`, `Sdp`, ...), chosen by the request's `Content-Type`; another media type
+is a `415` (`RequestError::status()`, `RequestError::unsupported_media_type`). An `application/x-www-form-urlencoded`
+body is a form struct like a multipart one, a list the spec joins (`explode: false`) split as the client joins it. A
+string body that is not binary is a `String` whatever its media type (`application/sdp`), as the client sends it; it
+was the bytes. An event stream whose event schema has a discriminator names each event by it in an `event:` line, as
+OpenAI writes a Responses stream; clients read the `data:` line as before. On the OpenAI spec, 374 operations are
+served and 14 left out (multipart file unions, deepObject query parameters, the `?beta=true` paths, and two `order`
+parameters without a text form).
+
+With `apiFeatures`, `bon` and `serde_with` are optional dependencies, enabled by the features that compile a user of
+them (`_api` for the API functions' builders, a group's `-types` for its models): a feature set that compiles none,
+such as no feature at all, no longer gets cargo's `unused_dependencies` warning.
+
+Breaking for a server implementation of an operation whose body is a string under a media type that is not
+`text/*` (and not `format: binary`): its `body` is a `String`, not `Bytes`.
 
 ## 0.32.0
 

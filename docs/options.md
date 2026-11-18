@@ -48,7 +48,8 @@ Every option belongs to the models (any target), to the client or to the server;
 
 list, default `["client"]`. What the crate holds: entries from `models`, `client` and `server`; `client` and `server`
 imply `models`, and there is no `all`. `["models"]` is the models without HTTP dependencies, `["server"]` the models
-and an [axum](https://docs.rs/axum) server (JSON, text, binary and multipart bodies, server-sent events),
+and an [axum](https://docs.rs/axum) server (JSON, text, binary, multipart and urlencoded bodies, bodies of several
+media types, server-sent events),
 `["client", "server"]` both, behind the Cargo features `client` and
 `server` (both default). Without the option, or with `["client"]`, the output is what it was.
 

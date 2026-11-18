@@ -36,11 +36,16 @@ homepage = "{{.}}"
 
 [dependencies]
 {{#bonBuilders}}
+{{^bonOptional}}
 bon = "^3"
+{{/bonOptional}}
+{{#bonOptional}}
+bon = { version = "^3", optional = true }
+{{/bonOptional}}
 {{/bonBuilders}}
 serde = { version = "^1.0", features = ["derive"] }
 {{#serdeWith}}
-serde_with = { version = "^3.8", default-features = false, features = ["base64", "std", "macros"] }
+serde_with = { version = "^3.8", default-features = false, features = ["base64", "std", "macros"]{{#serdeWithOptional}}, optional = true{{/serdeWithOptional}} }
 {{/serdeWith}}
 serde_json = "^1.0"
 {{#typedEventStreams}}
@@ -132,10 +137,10 @@ types = [
     "{{{.}}}",
 {{/apiFeaturesTypes}}
 ]
-_api = [{{#apiRuntime}}"dep:timvw-rust-runtime"{{/apiRuntime}}]
+_api = [{{{apiDeps}}}]
 {{#apiFeatureGroups}}
 # {{{selects}}}
 {{{name}}} = ["{{{name}}}-types", "_api"]
-{{{name}}}-types = [{{#typesNeedRuntime}}"dep:timvw-rust-runtime"{{/typesNeedRuntime}}]
+{{{name}}}-types = [{{{typesDeps}}}]
 {{/apiFeatureGroups}}
 {{/apiFeatures}}

@@ -427,6 +427,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private boolean serverStreams;
     /** With the server target: an operation takes a multipart form. */
     private boolean serverMultipart;
+    /** With the server target: an operation reads a form (multipart or urlencoded). */
+    private boolean serverForms;
+    /** With the server target: an operation's body is one of several media types. */
+    private boolean serverBodyEnums;
     /** With the server target: every typed headers struct, rendered into {@code src/headers.rs}. */
     private final List<Map<String, Object>> headerStructs = new ArrayList<>();
     /** A model holds a {@code timvw_rust_runtime::Upload}: a crate without the client still needs the runtime. */
@@ -435,6 +439,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private boolean modelsUseUuid;
     private boolean modelsUseDates;
     private List<ApiFeatures.Group> apiFeatureGroups = List.of();
+    /** With {@code apiFeatures}: an API module is compiled in every feature set. */
+    private boolean ungatedApi;
     /** With {@link #API_FEATURES}: the features of the operations and models, planned once the spec is final. */
     private ApiFeatures.Plan apiFeaturesPlan;
     /** The methods per API module ({@code tag#operationId}), to fail on a suffixed name another operation has. */
@@ -1310,6 +1316,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
             objs.put("serverModules", modules);
             objs.put("serverStreams", serverStreams);
             objs.put("serverMultipart", serverMultipart);
+            objs.put("serverForms", serverForms);
+            objs.put("serverBodyEnums", serverBodyEnums);
             objs.put("headerStructs", headerStructs);
             int served = 0;
             List<Object> left = new ArrayList<>();
@@ -1357,6 +1365,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         if (cfg != null) {
             module.put(ApiFeatures.MODULE_CFG, cfg);
         } else {
+            ungatedApi = true;
             LOGGER.warn("{}: {}: API module {} has no operation the spec lists; it is not gated", GENERATOR_NAME,
                     API_FEATURES, classname);
         }
@@ -1397,13 +1406,63 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 }
             }
         }
+        // bon (the API functions' builders, the model structs' derive) and serde_with (some fields): a feature set
+        // that compiles no user of one (no feature at all, or only enums) would leave it unused, which newer cargo
+        // warns about. Each is optional, enabled by the features that compile a user of it, unless code that is not
+        // gated uses it.
+        Set<String> bonFeatures = new HashSet<>();
+        Set<String> serdeWithFeatures = new HashSet<>();
+        // an API module that is not gated compiles its functions' builders in every feature set
+        boolean bonRequired = ungatedApi && targets.client();
+        // the double option of a byte array lives in the models module, which is not gated
+        boolean serdeWithRequired = Boolean.TRUE.equals(additionalProperties.get("serdeAsDoubleOption"));
+        if (objs.get("models") instanceof List) {
+            for (Object m : (List<?>) objs.get("models")) {
+                if (!(m instanceof ModelMap) || ((ModelMap) m).getModel() == null) {
+                    continue;
+                }
+                CodegenModel cm = ((ModelMap) m).getModel();
+                SortedSet<String> f = plan.models.get(cm.name);
+                boolean ungated = f != null && !f.isEmpty() && f.equals(plan.features);
+                Set<String> features = f == null || f.isEmpty() ? Set.of(ApiFeatures.TYPES) : f;
+                if (bonBuilders && !cm.isEnum) {
+                    bonRequired |= ungated;
+                    bonFeatures.addAll(features);
+                }
+                if (cm.vendorExtensions.containsKey(USES_SERDE_WITH)) {
+                    serdeWithRequired |= ungated;
+                    serdeWithFeatures.addAll(features);
+                }
+            }
+        }
+        boolean bonOptional = bonBuilders && !bonRequired;
+        boolean serdeWithOptional = Boolean.TRUE.equals(additionalProperties.get("serdeWith")) && !serdeWithRequired;
+        objs.put("bonOptional", bonOptional);
+        objs.put("serdeWithOptional", serdeWithOptional);
+        List<String> api = new ArrayList<>();
+        if (targets.client() && !targets.features() && !Boolean.TRUE.equals(objs.get(UploadParams.RUNTIME_REQUIRED))) {
+            api.add("\"dep:timvw-rust-runtime\"");
+        }
+        if (bonOptional && targets.client()) {
+            api.add("\"dep:bon\"");
+        }
+        objs.put("apiDeps", String.join(", ", api));
         List<Map<String, Object>> groups = new ArrayList<>();
         for (String f : plan.features) {
             Map<String, Object> g = new LinkedHashMap<>();
             g.put("name", f);
             g.put("selects", plan.selects.get(f));
-            g.put(UploadParams.TYPES_NEED_RUNTIME, uploadFeatures.contains(f) && !objs.containsKey(
-                    UploadParams.RUNTIME_REQUIRED));
+            List<String> deps = new ArrayList<>();
+            if (uploadFeatures.contains(f) && !objs.containsKey(UploadParams.RUNTIME_REQUIRED)) {
+                deps.add("\"dep:timvw-rust-runtime\"");
+            }
+            if (bonOptional && bonFeatures.contains(f)) {
+                deps.add("\"dep:bon\"");
+            }
+            if (serdeWithOptional && serdeWithFeatures.contains(f)) {
+                deps.add("\"dep:serde_with\"");
+            }
+            g.put("typesDeps", String.join(", ", deps));
             groups.add(g);
         }
         objs.put("apiFeatureGroups", groups);
@@ -1413,6 +1472,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
         List<String> types = new ArrayList<>(plan.features.stream().map(f -> f + ApiFeatures.TYPES_SUFFIX).toList());
         if (uploadFeatures.contains(ApiFeatures.TYPES) && !objs.containsKey(UploadParams.RUNTIME_REQUIRED)) {
             types.add("dep:timvw-rust-runtime");
+        }
+        if (bonOptional && bonFeatures.contains(ApiFeatures.TYPES)) {
+            types.add("dep:bon");
+        }
+        if (serdeWithOptional && serdeWithFeatures.contains(ApiFeatures.TYPES)) {
+            types.add("dep:serde_with");
         }
         objs.put("apiFeaturesTypes", types);
         if (webhookModule != null) {
@@ -2333,15 +2398,23 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
             try {
                 Map<String, Object> plan = ServerRules.plan(openAPI, op, spec, models, success, errors, cfg,
-                        this::getTypeDeclaration);
+                        this::getTypeDeclaration, media -> serverOperationFor(op, spec, media));
                 for (Object r : (List<?>) plan.get("responses")) {
                     if (Boolean.TRUE.equals(((Map<?, ?>) r).get("once"))) {
                         serverStreams = true;
                     }
                 }
-                Object body = plan.get("body");
-                if (body != null && Boolean.TRUE.equals(((Map<?, ?>) body).get("multipart"))) {
-                    serverMultipart = true;
+                Map<?, ?> body = (Map<?, ?>) plan.get("body");
+                if (body != null) {
+                    if (Boolean.TRUE.equals(body.get("multipart")) || Boolean.TRUE.equals(body.get("multipartEnum"))) {
+                        serverMultipart = true;
+                    }
+                    if (body.get("form") != null) {
+                        serverForms = true;
+                    }
+                    if (body.get("enum") != null) {
+                        serverBodyEnums = true;
+                    }
                 }
                 served.add(plan);
             } catch (ServerRules.Unsupported e) {
@@ -2361,5 +2434,25 @@ public class TimvwRustCodegen extends RustCodegenBase {
         module.put("operations", served);
         module.put("left", left);
         serverModules.put(classname, module);
+    }
+
+    /**
+     * The server's view of an operation whose request body has more than one kind of media type: the operation with
+     * only {@code media}, rendered as the client renders its function for that media type ({@code contentTypeMethods}).
+     */
+    private CodegenOperation serverOperationFor(CodegenOperation op, io.swagger.v3.oas.models.Operation spec,
+            String media) {
+        io.swagger.v3.oas.models.parameters.RequestBody body = spec.getRequestBody() == null ? null
+                : org.openapitools.codegen.utils.ModelUtils.getReferencedRequestBody(openAPI, spec.getRequestBody());
+        if (body == null || body.getContent() == null || !body.getContent().containsKey(media)) {
+            return null;
+        }
+        io.swagger.v3.oas.models.Operation restricted = ContentTypeMethods.restrict(openAPI, spec, null, body, media,
+                null);
+        CodegenOperation co = fromOperation(op.path, op.httpMethod, restricted, null);
+        if (multipartHelper && co.isMultipart && co.formParams != null && !co.formParams.isEmpty()) {
+            MultipartRules.classify(openAPI, co, unionModels, msg -> { });
+        }
+        return co;
     }
 }

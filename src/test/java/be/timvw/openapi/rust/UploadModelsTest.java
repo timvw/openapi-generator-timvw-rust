@@ -119,8 +119,8 @@ class UploadModelsTest {
     @Test
     void theTypesFeaturesWithUploadsDependOnTheRuntime() throws IOException {
         String cargo = Files.readString(features.resolve("Cargo.toml"));
-        assertTrue(cargo.contains("\ncontainers-types = [\"dep:timvw-rust-runtime\"]\n"), cargo);
-        assertTrue(cargo.contains("\ndocuments-types = [\"dep:timvw-rust-runtime\"]\n"), cargo);
+        assertTrue(cargo.contains("\ncontainers-types = [\"dep:timvw-rust-runtime\", \"dep:bon\"]\n"), cargo);
+        assertTrue(cargo.contains("\ndocuments-types = [\"dep:timvw-rust-runtime\", \"dep:bon\"]\n"), cargo);
     }
 
     /** {@code documents-types} alone compiles, holding uploads. Needs cargo. */

@@ -302,13 +302,29 @@ paths:
       operationId: searchPets
       tags: [Pets]
       requestBody:
+        required: true
         content:
           application/x-www-form-urlencoded:
             schema:
               type: object
+              required: [name]
               properties:
                 name:
                   type: string
+                limit:
+                  type: integer
+                kinds:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Kind'
+                ids:
+                  type: array
+                  items:
+                    type: integer
+            encoding:
+              ids:
+                style: form
+                explode: false
       responses:
         "200":
           description: the pets found
@@ -318,6 +334,70 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Pet'
+  /pets/import:
+    post:
+      operationId: importPet
+      tags: [Pets]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                source:
+                  type: string
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewPet'
+          application/sdp:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: what was imported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Imported'
+  /pets/filter:
+    get:
+      operationId: filterPets
+      tags: [Pets]
+      parameters:
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+      responses:
+        "204":
+          description: filtered
+  /pets/{petId}/events:
+    get:
+      operationId: petEvents
+      tags: [Pets]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: what happened to the pet, as events named by their type
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/PetEvent'
   /owners/{ownerName}/pets/{petName}:
     get:
       operationId: getOwnerPet
@@ -401,4 +481,41 @@ components:
       required: [message]
       properties:
         message:
+          type: string
+    Imported:
+      type: object
+      required: [via, detail]
+      properties:
+        via:
+          type: string
+        detail:
+          type: string
+    PetEvent:
+      oneOf:
+        - $ref: '#/components/schemas/PetBorn'
+        - $ref: '#/components/schemas/PetRenamed'
+      discriminator:
+        propertyName: type
+        mapping:
+          pet.born: '#/components/schemas/PetBorn'
+          pet.renamed: '#/components/schemas/PetRenamed'
+    PetBorn:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          enum: [pet.born]
+        name:
+          type: string
+    PetRenamed:
+      type: object
+      required: [type, from, to]
+      properties:
+        type:
+          type: string
+          enum: [pet.renamed]
+        from:
+          type: string
+        to:
           type: string

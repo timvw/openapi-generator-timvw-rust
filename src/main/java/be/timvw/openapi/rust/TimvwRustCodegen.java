@@ -420,6 +420,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private Targets targets = Targets.DEFAULT;
     /** With the server target: the served and left-out operations of each API module, by class name. */
     private final Map<String, Map<String, Object>> serverModules = new LinkedHashMap<>();
+    /** With the server target: an operation streams a response (an event stream or a binary body). */
+    private boolean serverStreams;
+    /** With the server target: an operation takes a multipart form. */
+    private boolean serverMultipart;
     /** With the server target: every typed headers struct, rendered into {@code src/headers.rs}. */
     private final List<Map<String, Object>> headerStructs = new ArrayList<>();
     /** A model holds a {@code timvw_rust_runtime::Upload}: a crate without the client still needs the runtime. */
@@ -1301,6 +1305,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
             List<Map<String, Object>> modules = new ArrayList<>(serverModules.values());
             modules.sort(java.util.Comparator.comparing(m -> String.valueOf(m.get("module"))));
             objs.put("serverModules", modules);
+            objs.put("serverStreams", serverStreams);
+            objs.put("serverMultipart", serverMultipart);
             objs.put("headerStructs", headerStructs);
             int served = 0;
             List<Object> left = new ArrayList<>();
@@ -2326,7 +2332,18 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 }
             }
             try {
-                served.add(ServerRules.plan(openAPI, op, spec, models, success, errors, cfg));
+                Map<String, Object> plan = ServerRules.plan(openAPI, op, spec, models, success, errors, cfg,
+                        this::getTypeDeclaration);
+                for (Object r : (List<?>) plan.get("responses")) {
+                    if (Boolean.TRUE.equals(((Map<?, ?>) r).get("once"))) {
+                        serverStreams = true;
+                    }
+                }
+                Object body = plan.get("body");
+                if (body != null && Boolean.TRUE.equals(((Map<?, ?>) body).get("multipart"))) {
+                    serverMultipart = true;
+                }
+                served.add(plan);
             } catch (ServerRules.Unsupported e) {
                 LOGGER.warn("{}: server: {} ({} {}) is not served: {}", GENERATOR_NAME, op.operationId,
                         op.httpMethod, op.path, e.getMessage());

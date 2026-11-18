@@ -1,25 +1,42 @@
 //! The server target end to end, on the crate generated from src/test/resources/server.yaml with
-//! `targets: [client, server]` and `responseFunctions`. `ServerTest` copies this file into that crate's tests/ and
+//! `targets: [client, server]`, `responseFunctions`, `typedEventStreams` and `contentTypeMethods`. `ServerTest` copies this file into that crate's tests/ and
 //! runs cargo. The generated router serves an implementation on a local port; the generated client calls it.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
+
+use futures_util::StreamExt;
 
 use server_fixture::apis::configuration::Configuration;
 use server_fixture::apis::{owners_api, pets_api, Error};
 use server_fixture::headers::{ListPetsErrorHeaders, ListPetsResponseHeaders};
-use server_fixture::models::{self, Kind, NewPet, Pet};
-use server_fixture::server::owners_api::{GetOwnerPetRequest, GetOwnerPetResponse};
-use server_fixture::server::pets_api::{
-    CreatePetRequest, CreatePetResponse, DeletePetRequest, DeletePetResponse, GetPetRequest, GetPetResponse,
-    ListPetsRequest, ListPetsResponse, UpdatePetRequest, UpdatePetResponse,
+use server_fixture::headers::GetPhotoResponseHeaders;
+use server_fixture::models::{self, Kind, NewPet, Pet, Photo};
+use server_fixture::server::owners_api::{
+    GetOwnerPetRequest, GetOwnerPetResponse, OwnerEventsRequest, OwnerEventsResponse,
 };
-use server_fixture::server::{self, ErrorHandler, OwnersApi, PetsApi, RequestError, ServerError};
+use server_fixture::server::pets_api::{
+    CreatePetRequest, CreatePetResponse, DeletePetRequest, DeletePetResponse, GetPetNameRequest, GetPetNameResponse,
+    GetPetRequest, GetPetResponse, GetPhotoRequest, GetPhotoResponse, ListPetsRequest, ListPetsResponse,
+    PetFeedRequest, PetFeedResponse, PutPhotoRequest, PutPhotoResponse, RenamePetRequest, RenamePetResponse,
+    UpdatePetRequest, UpdatePetResponse, UploadPhotoRequest, UploadPhotoResponse,
+};
+use server_fixture::server::{
+    self, Binary, ErrorHandler, EventStream, OwnersApi, PetsApi, RequestError, ServerError,
+};
 
 /// A pet store in memory, which records the last `list_pets` request.
 #[derive(Default)]
 struct Store {
     pets: Mutex<Vec<Pet>>,
+    photos: Mutex<HashMap<i64, axum::body::Bytes>>,
     last_list: Mutex<Option<ListPetsRequest>>,
+}
+
+impl Store {
+    fn pets(&self) -> Vec<Pet> {
+        self.pets.lock().unwrap().clone()
+    }
 }
 
 impl ErrorHandler for Store {}
@@ -91,6 +108,62 @@ impl PetsApi for Store {
         pets.retain(|p| p.id != request.pet_id);
         Ok(if pets.len() < before { DeletePetResponse::Status204 } else { DeletePetResponse::Status404 })
     }
+
+    async fn upload_photo(&self, request: UploadPhotoRequest) -> Result<UploadPhotoResponse, ServerError> {
+        let form = request.body;
+        self.photos.lock().unwrap().insert(request.pet_id, form.file.bytes.clone());
+        Ok(UploadPhotoResponse::Status200(Photo {
+            file_name: form.file.file_name.unwrap_or_default(),
+            content_type: form.file.content_type,
+            size: form.file.bytes.len() as i64,
+            caption: form.caption,
+            width: form.width,
+            tags: form.tags,
+            extras: form.extras.map(|extras| extras.len() as i64),
+            owner: form.owner.map(|owner| owner.name),
+        }))
+    }
+
+    async fn put_photo(&self, request: PutPhotoRequest) -> Result<PutPhotoResponse, ServerError> {
+        self.photos.lock().unwrap().insert(request.pet_id, request.body);
+        Ok(PutPhotoResponse::Status204)
+    }
+
+    async fn get_photo(&self, request: GetPhotoRequest) -> Result<GetPhotoResponse, ServerError> {
+        let Some(photo) = self.photos.lock().unwrap().get(&request.pet_id).cloned() else {
+            return Ok(GetPhotoResponse::Status404(format!("no photo of pet {}", request.pet_id)));
+        };
+        let headers = GetPhotoResponseHeaders { x_photo_size: Some(photo.len() as i64) };
+        // streamed in chunks of three bytes; a JPEG when the request asks for one
+        let chunks: Vec<Result<axum::body::Bytes, std::io::Error>> =
+            photo.chunks(3).map(|c| Ok(axum::body::Bytes::copy_from_slice(c))).collect();
+        let mut body = Binary::stream(futures_util::stream::iter(chunks));
+        if request.headers.get("accept").is_some_and(|v| v == "image/jpeg") {
+            body = body.content_type("image/jpeg");
+        }
+        Ok(GetPhotoResponse::Status200 { body, headers })
+    }
+
+    async fn get_pet_name(&self, request: GetPetNameRequest) -> Result<GetPetNameResponse, ServerError> {
+        let pet = self.pets().into_iter().find(|p| p.id == request.pet_id).ok_or_else(|| ServerError::new("no pet"))?;
+        Ok(GetPetNameResponse::Status200(pet.name))
+    }
+
+    async fn rename_pet(&self, request: RenamePetRequest) -> Result<RenamePetResponse, ServerError> {
+        let mut pets = self.pets.lock().unwrap();
+        let pet = pets.iter_mut().find(|p| p.id == request.pet_id).ok_or_else(|| ServerError::new("no pet"))?;
+        pet.name = request.body;
+        Ok(RenamePetResponse::Status204)
+    }
+
+    async fn pet_feed(&self, request: PetFeedRequest) -> Result<PetFeedResponse, ServerError> {
+        let stream = request.headers.get("accept").is_some_and(|v| v == "text/event-stream");
+        Ok(if stream {
+            PetFeedResponse::Status200Stream(EventStream::from_events(self.pets()).done())
+        } else {
+            PetFeedResponse::Status200(self.pets())
+        })
+    }
 }
 
 impl OwnersApi for Store {
@@ -101,6 +174,72 @@ impl OwnersApi for Store {
             kind: None,
         }))
     }
+
+    async fn owner_events(&self, request: OwnerEventsRequest) -> Result<OwnerEventsResponse, ServerError> {
+        let pets = self.pets();
+        // with `x-fail`, the stream fails after its first event
+        let fail = request.headers.contains_key("x-fail");
+        let events = futures_util::stream::iter(pets.into_iter().enumerate()).then(move |(i, pet)| async move {
+            if fail && i > 0 {
+                // after the first event has gone out
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                Err(ServerError::new("the feed broke"))
+            } else {
+                Ok(pet)
+            }
+        });
+        Ok(OwnerEventsResponse::Status200(EventStream::try_new(events)))
+    }
+}
+
+/// Implements the server's traits for a wrapper by calling those of what it holds.
+macro_rules! delegate {
+    ($wrapper:ty) => {
+        impl PetsApi for $wrapper {
+            async fn list_pets(&self, request: ListPetsRequest) -> Result<ListPetsResponse, ServerError> {
+                self.0.list_pets(request).await
+            }
+            async fn create_pet(&self, request: CreatePetRequest) -> Result<CreatePetResponse, ServerError> {
+                self.0.create_pet(request).await
+            }
+            async fn get_pet(&self, request: GetPetRequest) -> Result<GetPetResponse, ServerError> {
+                self.0.get_pet(request).await
+            }
+            async fn update_pet(&self, request: UpdatePetRequest) -> Result<UpdatePetResponse, ServerError> {
+                self.0.update_pet(request).await
+            }
+            async fn delete_pet(&self, request: DeletePetRequest) -> Result<DeletePetResponse, ServerError> {
+                self.0.delete_pet(request).await
+            }
+            async fn upload_photo(&self, request: UploadPhotoRequest) -> Result<UploadPhotoResponse, ServerError> {
+                self.0.upload_photo(request).await
+            }
+            async fn put_photo(&self, request: PutPhotoRequest) -> Result<PutPhotoResponse, ServerError> {
+                self.0.put_photo(request).await
+            }
+            async fn get_photo(&self, request: GetPhotoRequest) -> Result<GetPhotoResponse, ServerError> {
+                self.0.get_photo(request).await
+            }
+            async fn get_pet_name(&self, request: GetPetNameRequest) -> Result<GetPetNameResponse, ServerError> {
+                self.0.get_pet_name(request).await
+            }
+            async fn rename_pet(&self, request: RenamePetRequest) -> Result<RenamePetResponse, ServerError> {
+                self.0.rename_pet(request).await
+            }
+            async fn pet_feed(&self, request: PetFeedRequest) -> Result<PetFeedResponse, ServerError> {
+                self.0.pet_feed(request).await
+            }
+        }
+
+        impl OwnersApi for $wrapper {
+            async fn get_owner_pet(&self, request: GetOwnerPetRequest) -> Result<GetOwnerPetResponse, ServerError> {
+                self.0.get_owner_pet(request).await
+            }
+            async fn owner_events(&self, request: OwnerEventsRequest) -> Result<OwnerEventsResponse, ServerError> {
+                self.0.owner_events(request).await
+            }
+        }
+    };
 }
 
 /// Serves `api` on a local port; the client's configuration for it.
@@ -132,29 +271,7 @@ struct Shared(std::sync::Arc<Store>);
 
 impl ErrorHandler for Shared {}
 
-impl PetsApi for Shared {
-    async fn list_pets(&self, request: ListPetsRequest) -> Result<ListPetsResponse, ServerError> {
-        self.0.list_pets(request).await
-    }
-    async fn create_pet(&self, request: CreatePetRequest) -> Result<CreatePetResponse, ServerError> {
-        self.0.create_pet(request).await
-    }
-    async fn get_pet(&self, request: GetPetRequest) -> Result<GetPetResponse, ServerError> {
-        self.0.get_pet(request).await
-    }
-    async fn update_pet(&self, request: UpdatePetRequest) -> Result<UpdatePetResponse, ServerError> {
-        self.0.update_pet(request).await
-    }
-    async fn delete_pet(&self, request: DeletePetRequest) -> Result<DeletePetResponse, ServerError> {
-        self.0.delete_pet(request).await
-    }
-}
-
-impl OwnersApi for Shared {
-    async fn get_owner_pet(&self, request: GetOwnerPetRequest) -> Result<GetOwnerPetResponse, ServerError> {
-        self.0.get_owner_pet(request).await
-    }
-}
+delegate!(Shared);
 
 /// A JSON body, a 201 with the created model, and a declared error status with its model.
 #[tokio::test]
@@ -342,28 +459,7 @@ async fn a_custom_error_handler() {
             (http::StatusCode::SERVICE_UNAVAILABLE, error.to_string()).into_response()
         }
     }
-    impl PetsApi for Custom {
-        async fn list_pets(&self, request: ListPetsRequest) -> Result<ListPetsResponse, ServerError> {
-            self.0.list_pets(request).await
-        }
-        async fn create_pet(&self, request: CreatePetRequest) -> Result<CreatePetResponse, ServerError> {
-            self.0.create_pet(request).await
-        }
-        async fn get_pet(&self, request: GetPetRequest) -> Result<GetPetResponse, ServerError> {
-            self.0.get_pet(request).await
-        }
-        async fn update_pet(&self, request: UpdatePetRequest) -> Result<UpdatePetResponse, ServerError> {
-            self.0.update_pet(request).await
-        }
-        async fn delete_pet(&self, request: DeletePetRequest) -> Result<DeletePetResponse, ServerError> {
-            self.0.delete_pet(request).await
-        }
-    }
-    impl OwnersApi for Custom {
-        async fn get_owner_pet(&self, request: GetOwnerPetRequest) -> Result<GetOwnerPetResponse, ServerError> {
-            self.0.get_owner_pet(request).await
-        }
-    }
+    delegate!(Custom);
     use axum::response::IntoResponse;
 
     let configuration = serve(Custom(Store::default())).await;
@@ -394,4 +490,151 @@ fn the_headers_are_shared() {
     assert!(map.get("x-next").is_none());
     let read: pets_api::ListPetsResponseHeaders = ListPetsResponseHeaders::from_headers(&map);
     assert_eq!(read, written);
+}
+
+/// A `multipart/form-data` body: a file with its name and media type, text, an integer, a repeated text field, more
+/// files under one name, and a JSON part.
+#[tokio::test]
+async fn a_multipart_form() {
+    let (configuration, store) = seeded().await;
+    let photo = pets_api::upload_photo()
+        .configuration(&configuration)
+        .pet_id(1)
+        .file(timvw_rust_runtime::Upload::bytes(vec![1u8, 2, 3, 4]).file_name("tom.png").mime("image/png"))
+        .caption("on the sofa")
+        .width(640)
+        .tags(vec!["a".to_owned(), "b c".to_owned()])
+        .extras(vec![vec![5u8], vec![6u8, 7]])
+        .owner(NewPet { name: "Ann".to_owned(), kind: None })
+        .call()
+        .await
+        .unwrap();
+    assert_eq!(
+        photo,
+        Photo {
+            file_name: "tom.png".to_owned(),
+            content_type: Some("image/png".to_owned()),
+            size: 4,
+            caption: Some("on the sofa".to_owned()),
+            width: Some(640),
+            tags: Some(vec!["a".to_owned(), "b c".to_owned()]),
+            extras: Some(2),
+            owner: Some("Ann".to_owned()),
+        }
+    );
+    assert_eq!(store.photos.lock().unwrap()[&1].as_ref(), [1, 2, 3, 4]);
+
+    // only the required file
+    let photo = pets_api::upload_photo()
+        .configuration(&configuration)
+        .pet_id(2)
+        .file(vec![9u8])
+        .call()
+        .await
+        .unwrap();
+    assert_eq!((photo.size, photo.caption, photo.tags, photo.extras, photo.owner), (1, None, None, None, None));
+
+    // a field that does not decode, and a missing file: a 400 that names the field
+    let send = |form: timvw_rust_runtime::multipart::Form| {
+        let configuration = configuration.clone();
+        async move {
+            let url = format!("{}/pets/1/photo", configuration.base_path);
+            let content_type = format!("multipart/form-data; boundary={}", form.boundary());
+            let request = configuration
+                .client
+                .request(timvw_rust_runtime::Method::POST, &url)
+                .header("content-type", content_type)
+                .body(form.into_body())
+                .build()
+                .unwrap();
+            let response = configuration.client.execute(request).await.unwrap();
+            let status = response.status().as_u16();
+            (status, serde_json::from_str::<serde_json::Value>(&response.text().await.unwrap()).unwrap())
+        }
+    };
+    let file = || timvw_rust_runtime::multipart::Part::bytes(vec![1u8]).file_name("x.png");
+    let (status, body) = send(timvw_rust_runtime::multipart::Form::new().part("file", file()).text("width", "wide")).await;
+    assert_eq!(status, 400);
+    assert_eq!(body["error"]["location"], "body");
+    assert_eq!(body["error"]["name"], "width");
+    let (status, body) = send(timvw_rust_runtime::multipart::Form::new().text("caption", "no file")).await;
+    assert_eq!(status, 400);
+    assert_eq!(body["error"]["message"], "body parameter `file`: missing");
+    let (status, _) = send(timvw_rust_runtime::multipart::Form::new().part("file", file()).text("owner", "{")).await;
+    assert_eq!(status, 400);
+
+    // a list as one part per item (a client with `multipartHelper`)
+    let form = timvw_rust_runtime::multipart::Form::new().part("file", file()).text("tags", "x").text("tags", "[y");
+    let (status, body) = send(form).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["tags"], serde_json::json!(["x", "[y"]));
+}
+
+/// A binary request body, and a binary response streamed in chunks with the declared media type or another, its
+/// headers, and a text error.
+#[tokio::test]
+async fn binary_bodies() {
+    let (configuration, _) = seeded().await;
+    let png: Vec<u8> = (0u8..10).collect();
+    pets_api::put_photo().configuration(&configuration).pet_id(2).body(png.clone()).call().await.unwrap();
+
+    let response = pets_api::get_photo().configuration(&configuration).pet_id(2).call().await.unwrap();
+    assert_eq!(response.headers().get("content-type").unwrap(), "image/png");
+    assert_eq!(GetPhotoResponseHeaders::from_headers(response.headers()).x_photo_size, Some(10));
+    assert_eq!(response.bytes().await.unwrap().as_ref(), png.as_slice());
+
+    let options = timvw_rust_runtime::RequestOptions::new().header("accept", "image/jpeg").unwrap();
+    let response =
+        pets_api::get_photo().configuration(&configuration).pet_id(2).options(&options).call().await.unwrap();
+    assert_eq!(response.headers().get("content-type").unwrap(), "image/jpeg");
+
+    let error = pets_api::get_photo().configuration(&configuration).pet_id(1).call().await.unwrap_err();
+    let Error::ResponseError(content) = error else { panic!("not a response error: {error:?}") };
+    assert_eq!(content.status, 404);
+    assert_eq!(content.content, "no photo of pet 1");
+    assert_eq!(content.headers.get("content-type").unwrap(), "text/plain");
+}
+
+/// A text request body and a text response.
+#[tokio::test]
+async fn text_bodies() {
+    let (configuration, _) = seeded().await;
+    pets_api::rename_pet().configuration(&configuration).pet_id(1).body("Tom \"the cat\"").call().await.unwrap();
+    let name = pets_api::get_pet_name().configuration(&configuration).pet_id(1).call().await.unwrap();
+    assert_eq!(name, "Tom \"the cat\"");
+}
+
+/// Server-sent events read by the client's typed event streams: a stream on its own, one that fails half way, and
+/// a status with both JSON and a stream, ended with `[DONE]`.
+#[tokio::test]
+async fn event_streams() {
+    let (configuration, _) = seeded().await;
+    let events = owners_api::owner_events().configuration(&configuration).call().await.unwrap();
+    let pets: Vec<Pet> = events.map(Result::unwrap).collect().await;
+    assert_eq!(pets.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Tom", "Rex"]);
+
+    let options = timvw_rust_runtime::RequestOptions::new().header("x-fail", "1").unwrap();
+    let mut events = owners_api::owner_events().configuration(&configuration).options(&options).call().await.unwrap();
+    assert_eq!(events.next().await.unwrap().unwrap().name, "Tom");
+    assert!(events.next().await.unwrap().is_err(), "the stream ends with an error, not cleanly");
+
+    let pets = pets_api::pet_feed().configuration(&configuration).call().await.unwrap();
+    assert_eq!(pets.len(), 2);
+    let events = pets_api::pet_feed_stream().configuration(&configuration).call().await.unwrap();
+    let pets: Vec<Pet> = events.map(Result::unwrap).collect().await;
+    assert_eq!(pets.len(), 2);
+
+    // on the wire: a `data:` line per event, and `[DONE]`
+    let url = format!("{}/pets/feed", configuration.base_path);
+    let request = configuration
+        .client
+        .request(timvw_rust_runtime::Method::GET, &url)
+        .header("accept", "text/event-stream")
+        .build()
+        .unwrap();
+    let response = configuration.client.execute(request).await.unwrap();
+    assert_eq!(response.headers().get("content-type").unwrap(), "text/event-stream");
+    let text = response.text().await.unwrap();
+    assert!(text.starts_with("data: {\"id\":1,"), "{text}");
+    assert!(text.ends_with("\n\ndata: [DONE]\n\n"), "{text}");
 }

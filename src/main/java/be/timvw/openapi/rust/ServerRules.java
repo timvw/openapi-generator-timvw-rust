@@ -3,6 +3,7 @@ package be.timvw.openapi.rust;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.media.Content;
+import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.RequestBody;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import org.openapitools.codegen.CodegenModel;
@@ -18,24 +19,28 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The server target (slice 1 of docs/design/targets-and-server.md): what {@code server.mustache} renders for one
- * operation, or why the operation is left out.
+ * The server target (slices 1 and 2 of docs/design/targets-and-server.md): what {@code server.mustache} renders for
+ * one operation, or why the operation is left out.
  *
- * <p>An operation is served when its request body, if any, and every response are JSON (or have no content), and its
- * path and query parameters have a text form ({@link #parse}). The request struct holds the path and query parameters
- * as typed fields, the body as its type and the raw header map (header and cookie parameters are read from there).
- * The response enum has a variant per declared status: {@code Status200(body)}, {@code Status204}, a
- * {@code status} field for a range ({@code Status4XX}) and for {@code Default}, and a {@code headers} field holding the
- * operation's {@code <Operation>ResponseHeaders} (successes) or {@code <Operation>ErrorHeaders} (errors) where the
- * response declares headers.</p>
+ * <p>The request struct holds the path and query parameters as typed fields ({@link #parse}), the body and the raw
+ * header map (header and cookie parameters are read from there). The body is its model for JSON, a {@code String}
+ * for {@code text/*}, a {@code <Operation>Form} struct for {@code multipart/form-data} (a {@code FilePart} per file
+ * part), and the bytes for anything else. The response enum has a variant per declared status and kind of content:
+ * {@code Status200(body)}, {@code Status204}, a {@code status} field for a range ({@code Status4XX}) and for
+ * {@code Default}, and a {@code headers} field holding the operation's {@code <Operation>ResponseHeaders} (successes)
+ * or {@code <Operation>ErrorHeaders} (errors) where the response declares headers. A response's JSON is its
+ * model, an event stream an {@code EventStream} of the event type, {@code text/*} a {@code String} and anything else
+ * a {@code Binary}; a status with more than one kind has a variant for each, the first ({@code JSON} when there is
+ * one) unsuffixed and the others suffixed {@code Stream}, {@code Text} or {@code Binary}.</p>
  *
- * <p>Left out, with a comment in the server module and a warning: request bodies that are not JSON (multipart, forms,
- * files, text), responses that are not JSON (event streams, files, text), deepObject and object query parameters, and
- * a path parameter that is not a whole path segment.</p>
+ * <p>Left out, with a comment in the server module and a warning: urlencoded form bodies, request bodies of more than
+ * one kind, multipart fields that are unions with a file variant, deepObject and object query parameters, and a path
+ * parameter that is not a whole path segment.</p>
  */
 final class ServerRules {
 
@@ -54,6 +59,29 @@ final class ServerRules {
     private static final Set<String> TAKEN = Set.of("headers", "body");
 
     private ServerRules() {
+    }
+
+    /** The kinds of content the server reads and writes. */
+    enum Kind {
+        JSON, STREAM, TEXT, BINARY, MULTIPART, FORM
+    }
+
+    /** The kind of a media type. */
+    static Kind kind(String mediaType) {
+        String m = mediaType.toLowerCase(Locale.ROOT).split(";", 2)[0].trim();
+        if (isJson(m)) {
+            return Kind.JSON;
+        }
+        if (m.equals("text/event-stream")) {
+            return Kind.STREAM;
+        }
+        if (m.startsWith("multipart/")) {
+            return Kind.MULTIPART;
+        }
+        if (m.equals("application/x-www-form-urlencoded")) {
+            return Kind.FORM;
+        }
+        return m.startsWith("text/") ? Kind.TEXT : Kind.BINARY;
     }
 
     /** Whether a media type is JSON, as the client's {@code ContentType} reads a response. */
@@ -119,11 +147,12 @@ final class ServerRules {
      *                {@code null}
      * @param errors  its error headers struct, or {@code null}
      * @param cfg     the cfg predicate of the operation's items, or {@code null}
+     * @param typeOf  the Rust type of a schema, as the models name it
      * @throws Unsupported when the server cannot serve it yet, with the reason
      */
     static Map<String, Object> plan(OpenAPI openAPI, CodegenOperation op, Operation spec,
-            Map<String, CodegenModel> models, Map<String, Object> success, Map<String, Object> errors, String cfg)
-            throws Unsupported {
+            Map<String, CodegenModel> models, Map<String, Object> success, Map<String, Object> errors, String cfg,
+            Function<Schema<?>, String> typeOf) throws Unsupported {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", op.operationId);
         m.put("bare", bare(op.operationId));
@@ -204,32 +233,22 @@ final class ServerRules {
         RequestBody body = spec.getRequestBody() == null ? null
                 : ModelUtils.getReferencedRequestBody(openAPI, spec.getRequestBody());
         if (body != null && body.getContent() != null && !body.getContent().isEmpty()) {
-            String media = notJson(body.getContent());
-            if (media != null) {
-                throw new Unsupported("its request body is " + media);
-            }
-            if (op.bodyParam == null) {
-                throw new Unsupported("its request body has no type");
-            }
-            Map<String, Object> b = new LinkedHashMap<>();
-            boolean required = Boolean.TRUE.equals(body.getRequired());
-            String type = qualify(op.bodyParam.dataType, models);
-            b.put("type", required ? type : "Option<" + type + ">");
-            b.put("required", required);
-            b.put("doc", docLine(body.getDescription()));
-            m.put("body", b);
+            m.put("body", body(op, body, models));
         }
 
         List<Map<String, Object>> responses = new ArrayList<>();
         if (spec.getResponses() != null) {
             for (Map.Entry<String, ApiResponse> e : spec.getResponses().entrySet()) {
-                responses.add(response(openAPI, op, e.getKey(), e.getValue(), success, errors));
+                responses.addAll(response(openAPI, op, e.getKey(), e.getValue(), success, errors, typeOf));
             }
         }
         if (responses.isEmpty()) {
             throw new Unsupported("it declares no response");
         }
         m.put("responses", responses);
+        // a stream or a binary body is read once: the enum is not Clone
+        boolean cloned = responses.stream().allMatch(r -> !Boolean.TRUE.equals(r.get("once")));
+        m.put("derive", cloned ? "Clone, Debug" : "Debug");
         if (success != null) {
             m.put("successHeaders", success.get("name"));
         }
@@ -237,6 +256,108 @@ final class ServerRules {
             m.put("errorHeaders", errors.get("name"));
         }
         return m;
+    }
+
+    /** The request body: its type, how it is decoded, and the struct of a multipart form. */
+    private static Map<String, Object> body(CodegenOperation op, RequestBody body, Map<String, CodegenModel> models)
+            throws Unsupported {
+        Set<Kind> kinds = new java.util.LinkedHashSet<>();
+        for (String media : body.getContent().keySet()) {
+            kinds.add(kind(media));
+        }
+        if (kinds.size() > 1) {
+            throw new Unsupported("its request body has media types of more than one kind ("
+                    + String.join(", ", body.getContent().keySet()) + ")");
+        }
+        String media = body.getContent().keySet().iterator().next();
+        Kind kind = kinds.iterator().next();
+        boolean required = Boolean.TRUE.equals(body.getRequired());
+        Map<String, Object> b = new LinkedHashMap<>();
+        b.put("required", required);
+        b.put("doc", docLine(body.getDescription()));
+        String type;
+        switch (kind) {
+            case JSON:
+                if (op.bodyParam == null) {
+                    throw new Unsupported("its request body has no type");
+                }
+                type = qualify(op.bodyParam.dataType, models);
+                b.put("decode", required ? "super::json_body(&body)?" : "super::optional_json_body(&body)?");
+                b.put("bytes", true);
+                break;
+            case TEXT:
+                type = "String";
+                b.put("decode", required ? "super::text_body(&body)?" : "super::optional_text_body(&body)?");
+                b.put("bytes", true);
+                break;
+            case BINARY:
+                type = "axum::body::Bytes";
+                // the bytes themselves when required: `body` alone
+                if (!required) {
+                    b.put("decode", "super::optional_bytes(body)");
+                }
+                b.put("bytes", true);
+                break;
+            case MULTIPART:
+                if (!media.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
+                    throw new Unsupported("its request body is '" + media + "'");
+                }
+                type = op.operationIdCamelCase + "Form";
+                b.put("form", form(op, models));
+                b.put("multipart", true);
+                b.put("decode", required ? "form_" + bare(op.operationId) + "(&parts)?"
+                        : "parts.as_deref().map(form_" + bare(op.operationId) + ").transpose()?");
+                break;
+            default:
+                throw new Unsupported("its request body is '" + media + "'");
+        }
+        b.put("type", required ? type : "Option<" + type + ">");
+        return b;
+    }
+
+    /** The fields of a multipart form, each read from its parts. */
+    private static List<Map<String, Object>> form(CodegenOperation op, Map<String, CodegenModel> models)
+            throws Unsupported {
+        List<Map<String, Object>> fields = new ArrayList<>();
+        Set<String> names = new HashSet<>();
+        for (CodegenParameter p : list(op.formParams)) {
+            if (p.vendorExtensions.containsKey(MultipartRules.FILE_UNION)) {
+                throw new Unsupported("the multipart field '" + p.baseName + "' is a union with a file variant");
+            }
+            String dataType = p.dataType == null ? "" : p.dataType;
+            boolean array = p.isArray || dataType.startsWith("Vec<");
+            boolean file = p.isFile || dataType.contains(UploadParams.PATH) || dataType.contains(UploadParams.UPLOAD);
+            String name = literal(p.baseName);
+            String type;
+            String read;
+            if (file) {
+                type = array ? "Vec<super::FilePart>" : "super::FilePart";
+                read = "super::form_file" + (array ? "s" : "") + "(parts, \"" + name + "\")";
+            } else {
+                String item = qualify(array && p.items != null ? p.items.dataType : dataType, models);
+                String parse = array && p.items != null && p.items.isContainer ? null : parse(item, models);
+                type = array ? "Vec<" + item + ">" : item;
+                if (parse != null) {
+                    read = "super::form_" + (array ? "list" : "value") + "(parts, \"" + name + "\", |v| " + parse
+                            + ")?";
+                } else {
+                    read = "super::form_json" + (array ? "_list" : "") + "(parts, \"" + name + "\")?";
+                }
+            }
+            boolean required = p.required && !p.isNullable;
+            String field = p.paramName;
+            if (!names.add(bare(field))) {
+                throw new Unsupported("two multipart fields are named '" + bare(field) + "'");
+            }
+            Map<String, Object> f = new LinkedHashMap<>();
+            f.put("field", field);
+            f.put("name", name);
+            f.put("doc", docLine(p.unescapedDescription));
+            f.put("type", required ? type : "Option<" + type + ">");
+            f.put("decode", required ? "super::required(\"body\", \"" + name + "\", " + read + ")?" : read);
+            fields.add(f);
+        }
+        return fields;
     }
 
     private static Map<String, Object> field(CodegenParameter p, Set<String> fields) {
@@ -254,62 +375,132 @@ final class ServerRules {
         return f;
     }
 
-    /** The first media type of {@code content} that is not JSON, or {@code null}. */
-    private static String notJson(Content content) {
-        for (String media : content.keySet()) {
-            if (!isJson(media)) {
-                return "'" + media + "'";
-            }
-        }
-        return null;
-    }
-
+    /**
+     * The variants of one declared response: one when it has no content or one kind of content, one per kind
+     * otherwise.
+     */
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> response(OpenAPI openAPI, CodegenOperation op, String code, ApiResponse raw,
-            Map<String, Object> success, Map<String, Object> errors) throws Unsupported {
+    private static List<Map<String, Object>> response(OpenAPI openAPI, CodegenOperation op, String code,
+            ApiResponse raw, Map<String, Object> success, Map<String, Object> errors,
+            Function<Schema<?>, String> typeOf) throws Unsupported {
         ApiResponse response = ModelUtils.getReferencedApiResponse(openAPI, raw);
-        Map<String, Object> r = new LinkedHashMap<>();
         boolean isDefault = "default".equals(code);
         String upper = code.toUpperCase(Locale.ROOT);
         boolean range = upper.length() == 3 && upper.endsWith("XX");
         if (!isDefault && !range && !code.matches("[1-5][0-9][0-9]")) {
             throw new Unsupported("the response code '" + code + "' is not a status");
         }
-        r.put("code", code);
-        r.put("variant", isDefault ? "Default" : "Status" + upper);
-        r.put("withStatus", isDefault || range);
-        if (!isDefault && !range) {
-            r.put("status", code);
-        }
-        r.put("doc", docLine(response == null ? null : response.getDescription()));
-        Content content = response == null ? null : response.getContent();
-        if (content != null && !content.isEmpty()) {
-            String media = notJson(content);
-            if (media != null) {
-                throw new Unsupported("its " + code + " response is " + media);
-            }
-            String type = null;
-            for (CodegenResponse cr : list(op.responses)) {
-                if (isDefault ? cr.isDefault : code.equalsIgnoreCase(cr.code)) {
-                    type = cr.dataType;
-                }
-            }
-            r.put("bodyType", type == null || type.isEmpty() ? "serde_json::Value" : type);
-        }
+        String doc = docLine(response == null ? null : response.getDescription());
         // the struct of its class: successes 2xx and 3xx (default when there are none), errors the others
         boolean ok = code.startsWith("2") || code.startsWith("3");
         Map<String, Object> struct = ok ? success : errors;
         if (isDefault && success != null && ((List<String>) success.get("codes")).contains(code)) {
             struct = success;
         }
-        if (struct != null && ((List<String>) struct.get("codes")).contains(code)) {
-            r.put("headersType", "crate::headers::" + struct.get("name"));
+        String headersType = struct != null && ((List<String>) struct.get("codes")).contains(code)
+                ? "crate::headers::" + struct.get("name") : null;
+        String variant = isDefault ? "Default" : "Status" + upper;
+
+        Content content = response == null ? null : response.getContent();
+        List<Map<String, Object>> variants = new ArrayList<>();
+        if (content == null || content.isEmpty()) {
+            variants.add(variant(code, variant, doc, null, null, null, isDefault || range, headersType));
+            return variants;
         }
+        // one variant per kind, in the order declared, JSON first
+        Map<Kind, String> kinds = new LinkedHashMap<>();
+        for (String media : content.keySet()) {
+            Kind kind = kind(media);
+            if (kind == Kind.MULTIPART || kind == Kind.FORM) {
+                kind = Kind.BINARY;
+            }
+            kinds.putIfAbsent(kind, media);
+        }
+        List<Kind> order = new ArrayList<>(kinds.keySet());
+        if (order.remove(Kind.JSON)) {
+            order.add(0, Kind.JSON);
+        }
+        String firstMedia = content.keySet().iterator().next();
+        for (Kind kind : order) {
+            String media = kinds.get(kind);
+            String name = variant;
+            if (kind != order.get(0)) {
+                name += switch (kind) {
+                    case STREAM -> "Stream";
+                    case TEXT -> "Text";
+                    default -> "Binary";
+                };
+            }
+
+            String bodyType;
+            String encode;
+            switch (kind) {
+                case JSON: {
+                    String type = null;
+                    if (kind(firstMedia) == Kind.JSON) {
+                        for (CodegenResponse cr : list(op.responses)) {
+                            if (isDefault ? cr.isDefault : code.equalsIgnoreCase(cr.code)) {
+                                type = cr.dataType;
+                            }
+                        }
+                    } else {
+                        type = schemaType(content.get(media).getSchema(), typeOf);
+                    }
+                    bodyType = type == null || type.isEmpty() ? "serde_json::Value" : type;
+                    encode = "super::json_response(%s, %s, &body)";
+                    break;
+                }
+                case STREAM: {
+                    String type = schemaType(content.get(media).getSchema(), typeOf);
+                    bodyType = "super::EventStream<" + (type == null ? "serde_json::Value" : type) + ">";
+                    encode = "super::event_stream_response(%s, %s, body)";
+                    break;
+                }
+                case TEXT:
+                    bodyType = "String";
+                    encode = "super::text_response(%s, %s, body, \"" + literal(media) + "\")";
+                    break;
+                default:
+                    bodyType = "super::Binary";
+                    encode = "super::binary_response(%s, %s, body, \""
+                            + literal(media.contains("*") ? "application/octet-stream" : media) + "\")";
+                    break;
+            }
+            Map<String, Object> r = variant(code, name, doc, bodyType, encode, kind, isDefault || range,
+                    headersType);
+            if (order.size() > 1) {
+                r.put("media", media);
+            }
+            variants.add(r);
+        }
+        return variants;
+    }
+
+    /** The Rust type of a response's schema, or {@code null} when it has none. */
+    private static String schemaType(Schema<?> schema, Function<Schema<?>, String> typeOf) {
+        if (schema == null) {
+            return null;
+        }
+        String type = typeOf.apply(schema);
+        return type == null || type.isEmpty() ? null : type;
+    }
+
+    /** One variant of a response enum: its declaration, the pattern that binds its fields, and its encoding. */
+    private static Map<String, Object> variant(String code, String variant, String doc, String bodyType,
+            String encode, Kind kind, boolean withStatus, String headersType) {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("code", code);
+        r.put("variant", variant);
+        r.put("doc", doc);
+        r.put("withStatus", withStatus);
+        if (bodyType != null) {
+            r.put("bodyType", bodyType);
+        }
+        if (headersType != null) {
+            r.put("headersType", headersType);
+        }
+        r.put("once", kind == Kind.STREAM || kind == Kind.BINARY);
         // `Status200(body)` when the body is all it holds, `Status204` when it holds nothing, named fields otherwise
-        String variant = (String) r.get("variant");
-        String bodyType = (String) r.get("bodyType");
-        String headersType = (String) r.get("headersType");
-        boolean withStatus = isDefault || range;
         List<String> declared = new ArrayList<>();
         List<String> bound = new ArrayList<>();
         if (withStatus) {
@@ -336,7 +527,7 @@ final class ServerRules {
         }
         String status = withStatus ? "status" : "super::status(" + code + ")";
         String headers = headersType != null ? "headers.to_header_map()" : "http::HeaderMap::new()";
-        r.put("encode", bodyType != null ? "super::json_response(" + status + ", " + headers + ", &body)"
+        r.put("encode", bodyType != null ? String.format(encode, status, headers)
                 : "super::empty_response(" + status + ", " + headers + ")");
         return r;
     }

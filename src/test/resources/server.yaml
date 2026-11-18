@@ -168,17 +168,156 @@ paths:
           schema:
             type: integer
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
               type: object
+              required: [file]
               properties:
                 file:
                   type: string
                   format: binary
+                caption:
+                  type: string
+                width:
+                  type: integer
+                tags:
+                  type: array
+                  items:
+                    type: string
+                extras:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                owner:
+                  $ref: '#/components/schemas/NewPet'
+      responses:
+        "200":
+          description: what the server received
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Photo'
+    put:
+      operationId: putPhoto
+      tags: [Pets]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
       responses:
         "204":
-          description: uploaded
+          description: stored
+    get:
+      operationId: getPhoto
+      tags: [Pets]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: the photo
+          headers:
+            X-Photo-Size:
+              schema:
+                type: integer
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: no photo
+          content:
+            text/plain:
+              schema:
+                type: string
+  /pets/{petId}/name:
+    get:
+      operationId: getPetName
+      tags: [Pets]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: the pet's name
+          content:
+            text/plain:
+              schema:
+                type: string
+    put:
+      operationId: renamePet
+      tags: [Pets]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "204":
+          description: renamed
+  /pets/feed:
+    get:
+      operationId: petFeed
+      tags: [Pets]
+      responses:
+        "200":
+          description: the pets, as a list or as a stream
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pet'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/Pet'
+  /pets/search:
+    post:
+      operationId: searchPets
+      tags: [Pets]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: the pets found
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pet'
   /owners/{ownerName}/pets/{petName}:
     get:
       operationId: getOwnerPet
@@ -235,6 +374,28 @@ components:
           type: string
         kind:
           $ref: '#/components/schemas/Kind'
+    Photo:
+      type: object
+      required: [fileName, size]
+      properties:
+        fileName:
+          type: string
+        contentType:
+          type: string
+        size:
+          type: integer
+        caption:
+          type: string
+        width:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        extras:
+          type: integer
+        owner:
+          type: string
     Error:
       type: object
       required: [message]

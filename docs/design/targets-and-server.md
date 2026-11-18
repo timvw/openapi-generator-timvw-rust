@@ -1,7 +1,8 @@
 # Design: targets, and a server
 
-Status: slice 1 is implemented (`targets`, the Cargo features `client` and `server`, and an axum server for JSON
-operations; see the [server guide](../guides/server.md)). Slices 2 to 4 are proposed.
+Status: slices 1 and 2 are implemented (`targets`, the Cargo features `client` and `server`, and an axum server for
+JSON, text, binary and multipart bodies and server-sent events; see the [server guide](../guides/server.md)).
+Slices 3 and 4 are proposed.
 
 `timvw-rust` renders an HTTP client and its models. This page proposes a `targets` option that picks what the
 generator renders: the models, a client, a server, or more than one of them in one crate. It also describes the
@@ -155,19 +156,27 @@ let app: axum::Router = server::router(MyImpl::new());
    - `400` for requests that do not decode.
 
    Tested end to end: a server generated from the test specs answers the client generated from the same spec.
-2. **Streaming and files:**
-   - server-sent events, typed;
-   - multipart into `Upload`;
-   - binary and text responses.
+2. **Streaming and files** (implemented):
+   - server-sent events, typed: an `EventStream<Event>` variant, suffixed `Stream` next to a JSON one;
+   - multipart into a form struct per operation, a `FilePart` per file. Not `Upload`: that is what a client sends,
+     and it has no way to read its bytes back; a server receives the bytes, the file name and the media type;
+   - text (`String`) and binary (`Binary`: bytes or a stream, media type settable) responses, and text and binary
+     (`Bytes`) request bodies.
+
+   Left for later: urlencoded form bodies, request bodies that declare more than one kind of media type (OpenAI's
+   JSON-or-multipart operations; the request struct would need a body enum chosen by `Content-Type`), and multipart
+   fields that are unions with a file variant.
 3. **`modelsCrate`, and the first real use:** a mock OpenAI server for openai-ergonomic's tests, generated from
    openai-client-base's spec, with its models from `openai-client-base`.
 4. **Later:** authentication schemes, validation, and webhooks sent by the server.
 
 ## Open questions
 
-- **Names:** where the server's runtime pieces go (the decoding error type, the event-stream encoder). They could
-  join the runtime crate behind a `server` feature, or form a crate of their own. This waits for the rename and move
-  of `timvw-rust-runtime` and the generator to genai-rs.
+- **Names:** where the server's runtime pieces go (the decoding error type, the event-stream encoder, `Binary`,
+  `FilePart`). Decided for now: they are generated into `src/server.rs`, as slice 1's `RequestError` and
+  `ServerError` are, so a server-only crate depends on axum, `http` and (when it streams) `futures-util`, not on
+  `timvw-rust-runtime`. They can move to a runtime crate behind a `server` feature once the runtime and the generator
+  move to genai-rs; the generated names would stay re-exported from `server`.
 - **`Send`:** an `impl Future + Send` trait cannot be implemented with non-`Send` state. axum needs `Send`, so the
   server requires it. WebAssembly is client-only.
 - **One crate or two:** `["client", "server"]` in one crate is convenient for small APIs. For openai-client-base, a

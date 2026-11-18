@@ -17,9 +17,39 @@ multipart unions too; 0.29 in model fields, and removes the reqwest-middleware s
 well (`targets`); 0.32 serves event streams, files, text and multipart forms; 0.33 renders dates with jiff
 (`dateTimeLibrary`); 0.34 serves bodies of several media types, urlencoded forms and named events; 0.35 renders a server with the
 models of another crate (`modelsCrate`) and default methods that answer `501` (`serverDefaultMethods`); 0.36 replaces `useChrono` and `dateTimeLibrary` with
-`dateLibrary`, jiff by default. The
+`dateLibrary`, jiff by default; 0.37 serves
+deepObject query parameters, multipart file unions and paths with a fixed query. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.37.0
+
+The server serves what 0.36 left out, and so every operation of the OpenAI spec (388 with openai-client-base's
+options):
+
+- **deepObject query parameters** are read into their type (`HashMap<String, String>`, a model) from the pairs the
+  client's `parse_deep_object` writes: `metadata[key]=value`, `created[gt]=10`, `created[tags][0]=a`, each value read
+  as the type at its place asks. A value that does not fit is a `400`.
+- **A query parameter of a union of scalars** (OpenAI's `order`: `asc` or `desc`) is read from its text, as the
+  union's JSON string, else as JSON.
+- **A multipart field whose union has a file variant** (OpenAI's videos and skills: a file or a reference) is an enum
+  of its own, `<Operation><Field>`, with a `FilePart` for a file, a `Vec<FilePart>` for an array of files (parts named
+  `files[]` when the spec says so) and the union's other variants; it was decoded as JSON, so a file was a `400`.
+- **Paths with a fixed query** (`/responses/{response_id}?beta=true`) are routed on their path: one handler per path
+  and method calls the operation whose fixed query the request has, else the one without a fixed query, else answers
+  `404`. They were routed on a path with `?beta=true` in it, which no request matches. The generated handlers
+  (`handle_<operation>`) are `pub(super)`, for that dispatch.
+
+[`deepObjectQueryParameters`](options.md#deepobjectqueryparameters) and
+[`resetQueryParameterStyle`](options.md#resetqueryparameterstyle) apply to every target (they were the client's): they
+decide how query parameters go on the wire, so a server takes the client's values.
+
+A server-only crate with [`apiFeatures`](options.md#apifeatures) whose models hold an upload (a file union) makes
+`timvw-rust-runtime` optional, enabled by the `<group>-types` features of those models, as a client crate does; it
+was always on, and a feature set without those models got cargo's `unused_dependencies` warning.
+
+Breaking for a server implementation without `serverDefaultMethods`: the operations newly served are methods of the
+traits, and a multipart field of a file union changes type from the union to its enum.
 
 ## 0.36.0
 

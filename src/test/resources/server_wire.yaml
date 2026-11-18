@@ -1,0 +1,205 @@
+openapi: 3.1.0
+info:
+  title: Server wire shapes
+  description: >-
+    What the server reads as the client writes it: paths with a fixed query, deepObject query parameters, a query
+    parameter of a union, and multipart fields whose union has a file variant (OpenAI's responses?beta=true, list
+    filters on metadata, order, videos and skills).
+  version: 1.0.0
+paths:
+  /notes/{noteId}:
+    get:
+      operationId: getNote
+      tags: [Notes]
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        "200":
+          description: the note
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+    delete:
+      operationId: deleteNote
+      tags: [Notes]
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        "204":
+          description: deleted
+  /notes/{noteId}?beta=true:
+    get:
+      operationId: betaGetNote
+      tags: [Beta]
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+        - name: include
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: the note, as the beta API returns it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+  /notes/count?beta=true:
+    get:
+      operationId: betaCountNotes
+      tags: [Beta]
+      responses:
+        "200":
+          description: how many notes there are
+          content:
+            application/json:
+              schema:
+                type: integer
+                format: int64
+  /notes:
+    get:
+      operationId: listNotes
+      tags: [Notes]
+      parameters:
+        - name: metadata
+          in: query
+          description: Exact matches, `metadata[key]=value`.
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+        - name: created
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            $ref: '#/components/schemas/Range'
+        - name: order
+          in: query
+          schema:
+            oneOf:
+              - type: string
+                enum: [asc]
+                default: asc
+                x-stainless-const: true
+              - type: string
+                enum: [desc]
+                default: desc
+                x-stainless-const: true
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: what the server read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listed'
+  /notes/{noteId}/attachments:
+    post:
+      operationId: attach
+      tags: [Notes]
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [source]
+              properties:
+                source:
+                  description: The file to attach, or a reference to a stored one.
+                  oneOf:
+                    - $ref: '#/components/schemas/Reference'
+                    - type: string
+                      format: binary
+                files:
+                  description: The files of a directory, sent as `files[]`, or one zip file.
+                  oneOf:
+                    - type: array
+                      items:
+                        type: string
+                        format: binary
+                    - type: string
+                      format: binary
+                caption:
+                  type: string
+      responses:
+        "200":
+          description: what the server received
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attached'
+components:
+  parameters:
+    NoteId:
+      name: noteId
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    Note:
+      type: object
+      required: [id, beta]
+      properties:
+        id:
+          type: string
+        beta:
+          type: boolean
+        include:
+          type: string
+    Range:
+      type: object
+      properties:
+        gt:
+          type: integer
+          format: int64
+        lt:
+          type: integer
+          format: int64
+        tags:
+          type: array
+          items:
+            type: string
+    Listed:
+      type: object
+      required: [metadata]
+      properties:
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        created:
+          $ref: '#/components/schemas/Range'
+        order:
+          type: string
+        limit:
+          type: integer
+    Reference:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+    Attached:
+      type: object
+      required: [source, files]
+      properties:
+        source:
+          type: string
+          description: '"file <name> (<size> bytes)" or "reference <id>"'
+        files:
+          type: array
+          items:
+            type: string
+        caption:
+          type: string

@@ -406,6 +406,24 @@ paths:
       responses:
         "204":
           description: filtered
+  /pets/{petId}.json:
+    get:
+      operationId: getPetJson
+      tags: [Pets]
+      description: a path parameter that is not a whole path segment, which the server leaves out
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: the pet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
   /pets/{petId}/events:
     get:
       operationId: petEvents

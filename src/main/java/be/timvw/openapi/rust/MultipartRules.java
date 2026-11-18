@@ -205,6 +205,18 @@ final class MultipartRules {
         return name;
     }
 
+    /**
+     * The name of the parts of the multipart field {@code name} of the operation when it holds an array of files, as the
+     * client sends them ({@link #arrayPartName}): the server reads them under the same name.
+     */
+    static String filesPartName(OpenAPI openAPI, CodegenOperation op, String name) {
+        MediaType media = multipartMedia(openAPI, op);
+        Schema<?> root = media == null ? null : resolve(openAPI, media.getSchema());
+        Schema<?> property = root == null || root.getProperties() == null ? null
+                : resolve(openAPI, root.getProperties().get(name));
+        return arrayPartName(openAPI, name, root, property);
+    }
+
     private static String rule(OpenAPI openAPI, Schema<?> schema, Encoding encoding, boolean required) {
         if (schema == null || hasBinary(openAPI, schema, new HashSet<>())) {
             return STOCK;

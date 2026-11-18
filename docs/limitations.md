@@ -18,10 +18,11 @@ mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed i
 
 ## Generated server
 
-- **Not every operation is served.** A multipart field that is a union with a file variant, a request body that is
-  both a multipart and an urlencoded form, a deepObject or object query parameter, or a path parameter that is not a
-  whole segment leaves the operation out of the server, with a comment and a warning
-  ([guide](guides/server.md#what-the-server-does-not-serve-yet)).
+- **Not every operation is served.** A request body that is both a multipart and an urlencoded form, a query
+  parameter whose type has no text form (an object that is not deepObject), a path parameter that is not a whole
+  segment, or a second operation with the same path, method and fixed query leaves the operation out of the server,
+  with a comment and a warning ([guide](guides/server.md#what-the-server-does-not-serve-yet)). Every operation of the
+  OpenAI spec is served.
 - **Bodies are read whole.** A request body, a multipart form included, is held in memory before the implementation
   is called, within axum's body limit; a response can stream (`EventStream`, `Binary::stream`).
 - **No authentication, no validation.** Credentials are in the request's `HeaderMap` for axum middleware to check;

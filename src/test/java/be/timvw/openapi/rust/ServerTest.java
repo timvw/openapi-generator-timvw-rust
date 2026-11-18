@@ -101,15 +101,17 @@ class ServerTest {
         assertEquals("timvw-rust: option 'responseFunctions' applies to the client, and 'client' is not in targets "
                 + "[server]; remove the option or add 'client' to targets", e.getMessage());
         e = assertThrows(IllegalArgumentException.class, () -> generate(out,
-                Map.of(TimvwRustCodegen.TARGETS, "models", TimvwRustCodegen.WEBHOOK_MODULE, "webhooks")));
-        assertContains(e.getMessage(), "option 'webhookModule' applies to the client");
+                Map.of(TimvwRustCodegen.TARGETS, "models", TimvwRustCodegen.WEBHOOK_MODULE, "webhooks",
+                        TimvwRustCodegen.WEBHOOK_MODULE_REEXPORT, "true")));
+        assertContains(e.getMessage(), "option 'webhookModuleReexport' applies to the client");
         e = assertThrows(IllegalArgumentException.class, () -> generate(out,
                 Map.of(TimvwRustCodegen.SERVER_FRAMEWORK, "axum")));
         assertEquals("timvw-rust: option 'serverFramework' applies to the server, and 'server' is not in targets "
                 + "[client]; remove the option or add 'server' to targets", e.getMessage());
         // the options of the models apply to every target
         generate(out, Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.VALIDATE_METHODS, "false",
-                TimvwRustCodegen.API_FEATURES, "true", RustCodegenBase.USE_CHRONO, "true"));
+                TimvwRustCodegen.API_FEATURES, "true", RustCodegenBase.USE_CHRONO, "true",
+                TimvwRustCodegen.WEBHOOK_MODULE, "webhooks"));
     }
 
     @Test
@@ -426,6 +428,80 @@ class ServerTest {
                 + "PartialEq)]\npub struct ListPetsResponseHeaders {");
     }
 
+
+    // ---------------------------------------------------------------- modelsCrate
+
+    @Test
+    void modelsCrateNeedsTheServerAloneAndAVersionOrPath() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> generate(out,
+                Map.of(TimvwRustCodegen.TARGETS, "client|server", TimvwRustCodegen.MODELS_CRATE, "models_fixture",
+                        TimvwRustCodegen.MODELS_CRATE_VERSION, "^1")));
+        assertContains(e.getMessage(), "option 'modelsCrate' needs targets [\"server\"]");
+        e = assertThrows(IllegalArgumentException.class, () -> generate(out,
+                Map.of(TimvwRustCodegen.MODELS_CRATE, "models_fixture")));
+        assertContains(e.getMessage(), "option 'modelsCrate' applies to the server");
+        e = assertThrows(IllegalArgumentException.class, () -> generate(out,
+                Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.MODELS_CRATE, "models_fixture")));
+        assertContains(e.getMessage(), "option 'modelsCrate' needs 'modelsCrateVersion'");
+        e = assertThrows(IllegalArgumentException.class, () -> generate(out,
+                Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.MODELS_CRATE_PATH, "../models")));
+        assertContains(e.getMessage(), "option 'modelsCratePath' is set without 'modelsCrate'");
+        e = assertThrows(IllegalArgumentException.class, () -> generate(out,
+                Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.MODELS_CRATE, "not a crate",
+                        TimvwRustCodegen.MODELS_CRATE_VERSION, "^1")));
+        assertContains(e.getMessage(), "which is not a crate name");
+    }
+
+    @Test
+    void modelsCrateRendersNoModelsAndReExportsTheCratesModels() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.MODELS_CRATE, "models-fixture",
+                TimvwRustCodegen.MODELS_CRATE_VERSION, "^0.35"));
+        Map<String, String> files = files(out);
+        assertFalse(files.keySet().stream().anyMatch(f -> f.startsWith("src/models/") || f.startsWith("docs/")),
+                files.keySet().toString());
+        String lib = files.get("src/lib.rs");
+        assertContains(lib, "pub use models_fixture::models;\n");
+        assertFalse(lib.contains("pub mod models;") || lib.contains("serde_repr"), lib);
+        String cargo = files.get("Cargo.toml");
+        assertContains(cargo, "models-fixture = { version = \"^0.35\" }\n");
+        for (String dependency : List.of("bon", "serde_with", "serde_repr", "regex", "uuid", "timvw-rust-runtime")) {
+            assertFalse(cargo.contains(dependency + " ="), dependency + " in:\n" + cargo);
+        }
+        // the date library stays for the server's own code: the X-Next response header is a date-time
+        assertContains(cargo, "chrono = ");
+        assertContains(files.get("README.md"), "The models are [`models-fixture`](https://docs.rs/models-fixture)");
+        assertContains(files.get("src/server.rs"), "use crate::models;");
+    }
+
+    @Test
+    void modelsCrateGroupsEnableTheCratesTypesFeatures() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.API_FEATURES, "true",
+                TimvwRustCodegen.MODELS_CRATE, "models-fixture", TimvwRustCodegen.MODELS_CRATE_VERSION, "^0.35",
+                TimvwRustCodegen.MODELS_CRATE_PATH, "../models"));
+        String cargo = read(out, "Cargo.toml");
+        assertContains(cargo, "models-fixture = { version = \"^0.35\", path = \"../models\", "
+                + "default-features = false }\n");
+        assertContains(cargo, "pets-types = [\"models-fixture/pets-types\"]\n");
+        assertContains(cargo, "\"models-fixture/types\",\n]");
+        assertFalse(cargo.contains("dep:bon") || cargo.contains("dep:serde_with"), cargo);
+    }
+
+
+    @Test
+    void serverDefaultMethodsAnswerNotImplemented() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.SERVER_DEFAULT_METHODS, "true"));
+        String server = read(out, "src/server.rs");
+        assertContains(server, ") -> impl std::future::Future<Output = Result<ListPetsResponse, super::ServerError>> + "
+                + "Send {\n            let _ = request;\n            std::future::ready(Err(super::ServerError::"
+                + "not_implemented(\"list_pets\")))\n        }\n");
+        generate(out.resolve("required"), Map.of(TimvwRustCodegen.TARGETS, "server"));
+        assertContains(read(out.resolve("required"), "src/server.rs"),
+                ") -> impl std::future::Future<Output = Result<ListPetsResponse, super::ServerError>> + Send;\n");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> generate(out,
+                Map.of(TimvwRustCodegen.SERVER_DEFAULT_METHODS, "true")));
+        assertContains(e.getMessage(), "option 'serverDefaultMethods' applies to the server");
+    }
+
     // ---------------------------------------------------------------- with cargo
 
     /**
@@ -493,6 +569,104 @@ class ServerTest {
                 "pets", "--", "-D", "warnings");
         assertNotNull(pets, "cargo did not finish");
         assertTrue(pets.contains("Finished") && !pets.contains("warning:"), pets);
+    }
+
+    /**
+     * A server with {@code modelsCrate} uses the models of a client crate generated from the same spec: its models
+     * are the client's types, and it builds without a warning, with and without API features.
+     */
+    @Test
+    void aServerUsesTheModelsOfTheClientCrate() throws IOException, InterruptedException {
+        Assumptions.assumeTrue(cargo(out, 30, "--version") != null, "no cargo");
+        for (boolean gated : List.of(false, true)) {
+            Path dir = out.resolve(gated ? "gated" : "plain");
+            Map<String, Object> client = new LinkedHashMap<>(Map.of("packageName", "models_fixture"));
+            Map<String, Object> server = new LinkedHashMap<>(Map.of(TimvwRustCodegen.TARGETS, "server",
+                    TimvwRustCodegen.MODELS_CRATE, "models_fixture",
+                    TimvwRustCodegen.MODELS_CRATE_PATH, "../models"));
+            if (gated) {
+                client.put(TimvwRustCodegen.API_FEATURES, "true");
+                server.put(TimvwRustCodegen.API_FEATURES, "true");
+            }
+            generate(dir.resolve("models"), client);
+            generate(dir.resolve("server"), server);
+            Files.writeString(dir.resolve("Cargo.toml"), "[workspace]\nmembers = [\"models\", \"server\"]\n"
+                    + "resolver = \"2\"\n");
+            Path manifest = dir.resolve("server/Cargo.toml");
+            Files.writeString(manifest, Files.readString(manifest) + """
+
+                    [dev-dependencies]
+                    models_fixture = { path = "../models" }
+                    """);
+            Files.createDirectories(dir.resolve("server/tests"));
+            Files.writeString(dir.resolve("server/tests/same_models.rs"), """
+                    // The server's models are the client crate's: no conversion between them.
+                    #[test]
+                    fn the_models_are_the_client_crates() {
+                        fn same(pet: models_fixture::models::Pet) -> server_fixture::models::Pet {
+                            pet
+                        }
+                        let _ = same;
+                    }
+                    """);
+            String test = cargo(dir, 900, "test", "-p", "server_fixture", "--test", "same_models");
+            assertNotNull(test, "cargo did not finish");
+            assertTrue(test.contains("test result: ok."), test);
+            String clippy = cargo(dir, 900, "clippy", "-p", "server_fixture", "--", "-D", "warnings");
+            assertNotNull(clippy, "cargo did not finish");
+            assertTrue(clippy.contains("Finished") && !clippy.contains("warning:"), clippy);
+            if (gated) {
+                String pets = cargo(dir, 900, "clippy", "-p", "server_fixture", "--no-default-features",
+                        "--features", "pets", "--", "-D", "warnings");
+                assertNotNull(pets, "cargo did not finish");
+                assertTrue(pets.contains("Finished") && !pets.contains("warning:"), pets);
+            }
+            String tree = cargo(dir, 300, "tree", "-p", "server_fixture", "-e", "normal", "--depth", "1");
+            assertNotNull(tree);
+            assertFalse(tree.contains("bon v") || tree.contains("serde_with v"), tree);
+        }
+    }
+
+    /** With {@code serverDefaultMethods}, an implementation of no method answers every operation with a 501. */
+    @Test
+    void anImplementationOfNoMethodAnswersNotImplemented() throws IOException, InterruptedException {
+        Assumptions.assumeTrue(cargo(out, 30, "--version") != null, "no cargo");
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.SERVER_DEFAULT_METHODS, "true"));
+        Path manifest = out.resolve("Cargo.toml");
+        Files.writeString(manifest, Files.readString(manifest) + """
+
+                [dev-dependencies]
+                axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json"] }
+                tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+                tower = { version = "0.5", features = ["util"] }
+                """);
+        Files.createDirectories(out.resolve("tests"));
+        Files.writeString(out.resolve("tests/not_implemented.rs"), """
+                use server_fixture::server;
+                use tower::ServiceExt;
+
+                #[derive(Clone)]
+                struct Nothing;
+
+                impl server::ErrorHandler for Nothing {}
+                impl server::PetsApi for Nothing {}
+                impl server::OwnersApi for Nothing {}
+
+                #[tokio::test]
+                async fn every_operation_is_not_implemented() {
+                    let request = axum::http::Request::get("/pets").body(axum::body::Body::empty()).unwrap();
+                    let response = server::router(Nothing).oneshot(request).await.unwrap();
+                    assert_eq!(response.status(), 501);
+                    let body = axum::body::to_bytes(response.into_body(), 1 << 20).await.unwrap();
+                    assert_eq!(&body[..], br#"{"error":{"message":"list_pets is not implemented"}}"#);
+                }
+                """);
+        String test = cargo(out, 900, "test", "--test", "not_implemented");
+        assertNotNull(test, "cargo did not finish");
+        assertTrue(test.contains("test result: ok. 1 passed"), test);
+        String clippy = cargo(out, 900, "clippy", "--all-targets", "--", "-D", "warnings");
+        assertNotNull(clippy, "cargo did not finish");
+        assertTrue(clippy.contains("Finished") && !clippy.contains("warning:"), clippy);
     }
 
     /** What cargo printed, or {@code null} when it cannot run or does not finish in time. */

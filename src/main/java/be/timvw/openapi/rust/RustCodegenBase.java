@@ -150,6 +150,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
      * ({@code dateTimeLibrary}).
      */
     private boolean usesDateTypes = false;
+    /**
+     * The models come from another crate ({@code modelsCrate}): the crate depends on uuid or the date library only
+     * for what its own code (parameters, responses, headers) uses.
+     */
+    protected boolean externalModels = false;
 
     public RustCodegenBase() {
         super();
@@ -1258,10 +1263,10 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             }
         }
 
-        if (!hasUUIDs && modelsUseUuid(allModels)) {
+        if (!hasUUIDs && !externalModels && modelsUseUuid(allModels)) {
             hasUUIDs = true;
         }
-        if (useChrono && !usesDateTypes && modelsUseDates(allModels)) {
+        if (useChrono && !usesDateTypes && !externalModels && modelsUseDates(allModels)) {
             usesDateTypes = true;
         }
 

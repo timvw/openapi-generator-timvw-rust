@@ -29,7 +29,7 @@ Value types:
 
 | Group | Options |
 | --- | --- |
-| [Targets](#targets) | `targets`, `serverFramework`, `serverValidation` |
+| [Targets](#targets) | `targets`, `serverFramework`, `serverDefaultMethods`, `serverValidation`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
 | [The crate](#the-crate) | `packageName`, `packageVersion`, `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, `userAgentFromPackage`, `apiLintAllows` |
 | [HTTP stack and runtime](#http-stack-and-runtime) | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
 | [Cargo features](#cargo-features) | `apiFeatures`, `apiFeaturesFile` |
@@ -69,6 +69,59 @@ which runs [src/test/rust/server.rs](../src/test/rust/server.rs) (the client cal
 string, default `axum`, server only. The framework the server is rendered for; `axum` is the only one.
 
 Tests: [`ServerTest`](../src/test/java/be/timvw/openapi/rust/ServerTest.java) (`theServerOptionsTakeTheirOneValue`).
+
+### `serverDefaultMethods`
+
+boolean, default `false`, server only. Every method of the server's traits gets a default that answers `501 Not
+Implemented` (`ServerError::not_implemented("<operation>")`), so an implementation implements only the operations it
+serves: a mock, or a server that grows one operation at a time. Without it, a trait method has no default, and a
+missing method fails to compile.
+
+```json
+{ "targets": ["server"], "serverDefaultMethods": true }
+```
+
+Tests: [`ServerTest`](../src/test/java/be/timvw/openapi/rust/ServerTest.java) (`serverDefaultMethodsAnswerNotImplemented`,
+`anImplementationOfNoMethodAnswersNotImplemented`).
+
+### `modelsCrate`
+
+string, unset by default, server only (`targets` is `["server"]`). The crate whose models the server uses instead of
+rendering its own: typically the client crate generated from the same spec. The server's `models` module re-exports
+`<crate>::models`, so the client and the server share their types. Needs
+[`modelsCrateVersion`](#modelscrateversion) or [`modelsCratePath`](#modelscratepath), or both.
+
+```json
+{
+  "targets": ["server"],
+  "modelsCrate": "openai-client-base",
+  "modelsCrateVersion": "0.35",
+  "apiFeaturesFile": "scripts/api-features.yaml"
+}
+```
+
+- **The same spec and model options.** The models crate must have been generated from the same spec, by the same
+  generator version, with the same model options ([options per target](guides/server.md#options-per-target)): the
+  server names its types and expects their shapes. The generator cannot check that; a mismatch fails to compile.
+- **Cargo features.** With `apiFeatures`, the server depends on the crate with `default-features = false`, and each
+  group's `<group>-types` feature enables the crate's `<group>-types` (`types` its `types`): use the same
+  `apiFeaturesFile` and `webhookModule`, so the groups have the same names. Without `apiFeatures`, the crate's
+  default features are used.
+- **Dependencies.** No model files, model docs, `bon`, `serde_with`, `serde_repr` or `regex`; `uuid` and the date
+  library only for what the server's own code (parameters, typed headers) uses.
+
+Tests: [`ServerTest`](../src/test/java/be/timvw/openapi/rust/ServerTest.java) (`modelsCrate*`,
+`aServerUsesTheModelsOfTheClientCrate`).
+
+### `modelsCrateVersion`
+
+string, unset by default; needs `modelsCrate`. The version requirement of the models crate, e.g. `0.35`.
+
+### `modelsCratePath`
+
+string, unset by default; needs `modelsCrate`. The path of the models crate relative to the generated crate, for a
+workspace that holds both. With `modelsCrateVersion` as well, the path is used in the workspace and the version when
+the server is published.
 
 ### `serverValidation`
 
@@ -610,7 +663,8 @@ Tests: [`SpecRulesTest`](../src/test/java/be/timvw/openapi/rust/SpecRulesTest.ja
 
 string, unset by default. The tag given to webhook operations, generated into an API module of their own
 (`webhookModule=Webhooks` gives `webhooks_api`). Unset, webhooks go into the module of their tag, after its path
-operations.
+operations. With `apiFeatures`, the tag is also the group, and so the Cargo feature, of the webhook payload models;
+a server with [`modelsCrate`](#modelscrate) sets it as its models crate does.
 
 Rule: [`openapi.webhooks`](mapping/openapi.md#openapiwebhooks). Tests:
 [`WebhooksTest`](../src/test/java/be/timvw/openapi/rust/WebhooksTest.java),

@@ -75,10 +75,18 @@ Not served yet:
 {{/serverLeft}}
 
 {{/serverTarget}}
+{{^modelsCrate}}
 ## Documentation For Models
 
 {{#models}}{{#model}} - [{{{classname}}}]({{{modelDocPath}}}{{{classname}}}.md)
 {{/model}}{{/models}}
+{{/modelsCrate}}
+{{#modelsCrate}}
+## Models
+
+The models are [`{{{modelsCrate}}}`](https://docs.rs/{{{modelsCrate}}})'s (`{{{externCrateName}}}::models` re-exports
+`{{{modelsCrateIdent}}}::models`), generated from the same spec with the same model options.
+{{/modelsCrate}}
 
 {{#apiFeatures}}
 ## Cargo features

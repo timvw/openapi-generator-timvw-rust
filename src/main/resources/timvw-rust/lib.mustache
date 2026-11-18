@@ -4,7 +4,9 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
+{{^modelsCrate}}
 extern crate serde_repr;
+{{/modelsCrate}}
 extern crate serde;
 extern crate serde_json;
 extern crate url;
@@ -15,7 +17,13 @@ extern crate url;
 {{/clientCfg}}
 pub mod apis;
 {{/clientTarget}}
+{{^modelsCrate}}
 pub mod models;
+{{/modelsCrate}}
+{{#modelsCrate}}
+/// The models, from [`{{{modelsCrateIdent}}}`].
+pub use {{{modelsCrateIdent}}}::models;
+{{/modelsCrate}}
 {{#serverTarget}}
 {{#headersCfg}}
 #[cfg({{{.}}})]

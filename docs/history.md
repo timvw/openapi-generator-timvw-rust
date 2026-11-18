@@ -15,9 +15,26 @@ credentials in `SecretString`s, adds headers and query parameters per call and a
 (`apiFeatures`); 0.27 takes file parameters as `timvw_rust_runtime::Upload`s, streamed and retried; 0.28 takes them in
 multipart unions too; 0.29 in model fields, and removes the reqwest-middleware stack; 0.31 renders the models alone or an axum server as
 well (`targets`); 0.32 serves event streams, files, text and multipart forms; 0.33 renders dates with jiff
-(`dateTimeLibrary`); 0.34 serves bodies of several media types, urlencoded forms and named events. The
+(`dateTimeLibrary`); 0.34 serves bodies of several media types, urlencoded forms and named events; 0.35 renders a server with the
+models of another crate (`modelsCrate`) and default methods that answer `501` (`serverDefaultMethods`). The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.35.0
+
+[`modelsCrate`](options.md#modelscrate) renders a server (`targets: ["server"]`) with the models of another crate,
+typically the client crate generated from the same spec: `models` re-exports `<crate>::models`, no model is rendered,
+and with `apiFeatures` each group's `<group>-types` enables the crate's. [`modelsCrateVersion`](options.md#modelscrateversion)
+and [`modelsCratePath`](options.md#modelscratepath) say where the crate comes from.
+
+[`serverDefaultMethods`](options.md#serverdefaultmethods) gives every trait method a default returning
+`ServerError::not_implemented`, which the default `ErrorHandler::server_error` answers with a `501`: a mock or a
+partial server implements only the operations it serves. `ServerError::not_implemented` and
+`ServerError::not_implemented_operation` are there without the option too.
+
+[`webhookModule`](options.md#webhookmodule) is a model option now (it was the client's): it names the API group, and
+so the Cargo feature, of the webhook payload models. A server's helpers that only some operations use no longer
+warn as dead code when the enabled features compile none of those operations.
 
 ## 0.34.0
 

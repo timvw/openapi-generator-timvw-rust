@@ -174,6 +174,12 @@ let app: axum::Router = server::router(MyImpl::new());
 3. **`modelsCrate`, and the first real use:** a mock OpenAI server for openai-ergonomic's tests, generated from
    openai-client-base's spec, with its models from `openai-client-base`. Planned in
    [a mock OpenAI server](openai-mock-server.md), which compares LiteLLM and Bifrost.
+
+   Implemented in the generator: `modelsCrate` (with `modelsCrateVersion` and `modelsCratePath`), and
+   `serverDefaultMethods`, a default per trait method that answers `501`, so a mock implements only what it scripts.
+   `webhookModule` moved to the model options: it names the Cargo feature of the webhook payloads, which the server
+   must name as its models crate does. On the OpenAI spec with openai-client-base's model options, 380 operations are
+   served and 8 left out.
 4. **Later:** authentication schemes, validation, and webhooks sent by the server.
 
 ## Open questions

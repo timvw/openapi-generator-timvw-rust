@@ -312,8 +312,22 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public static final String TARGETS = "targets";
     /** The server's framework: only {@code axum}. */
     public static final String SERVER_FRAMEWORK = "serverFramework";
+    /**
+     * Every method of the server's traits has a default that answers {@code 501} ({@code ServerError::not_implemented}):
+     * an implementation implements the operations it serves, e.g. a mock.
+     */
+    public static final String SERVER_DEFAULT_METHODS = "serverDefaultMethods";
     /** The server validates requests with the models' {@code Validate}: not supported yet, only {@code false}. */
     public static final String SERVER_VALIDATION = "serverValidation";
+    /**
+     * With the server target: the crate whose models the server uses, instead of rendering its own (the client crate
+     * generated from the same spec with the same model options).
+     */
+    public static final String MODELS_CRATE = "modelsCrate";
+    /** With {@code modelsCrate}: the version requirement of the models crate. */
+    public static final String MODELS_CRATE_VERSION = "modelsCrateVersion";
+    /** With {@code modelsCrate}: the path of the models crate, relative to the generated crate. */
+    public static final String MODELS_CRATE_PATH = "modelsCratePath";
     /** The one framework the server is rendered for. */
     static final String AXUM = "axum";
     /** Set on a typed headers struct the client re-exports from {@code crate::headers} (a crate with a server). */
@@ -567,8 +581,22 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         + "an axum server, [\"models\"] the models only, [\"client\", \"server\"] both, behind the "
                         + "Cargo features client and server. An option of a target that is not listed fails "
                         + "generation"));
+        cliOptions.add(CliOption.newString(MODELS_CRATE,
+                "With the server target (alone): the crate whose models the server uses instead of rendering its "
+                        + "own, e.g. the client crate generated from the same spec with the same model options. The "
+                        + "generated code refers to <crate>::models; with apiFeatures, the group features enable the "
+                        + "crate's <group>-types features"));
+        cliOptions.add(CliOption.newString(MODELS_CRATE_VERSION,
+                "With modelsCrate: the version requirement of the models crate, e.g. ^0.35"));
+        cliOptions.add(CliOption.newString(MODELS_CRATE_PATH,
+                "With modelsCrate: the path of the models crate, relative to the generated crate (a workspace "
+                        + "member); with modelsCrateVersion as well, the version is what crates.io resolves"));
         cliOptions.add(new CliOption(SERVER_FRAMEWORK, "With the server target: the server's framework; only axum")
                 .defaultValue(AXUM));
+        cliOptions.add(CliOption.newBoolean(SERVER_DEFAULT_METHODS,
+                "With the server target: every trait method has a default that answers 501 Not Implemented, so an "
+                        + "implementation (a mock, a partial server) implements only the operations it serves",
+                false));
         cliOptions.add(CliOption.newBoolean(SERVER_VALIDATION,
                 "With the server target: validate requests with the models' Validate. Not supported yet: only false",
                 false));
@@ -886,6 +914,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     + "not validate requests; set it to false or remove it", GENERATOR_NAME, SERVER_VALIDATION));
         }
 
+        modelsCrate();
+        additionalProperties.put(SERVER_DEFAULT_METHODS, additionalProperties.containsKey(SERVER_DEFAULT_METHODS)
+                && convertPropertyToBooleanAndWriteBack(SERVER_DEFAULT_METHODS));
         setLibrary(REQWEST_LIBRARY);
         super.processOpts();
 
@@ -1006,6 +1037,66 @@ public class TimvwRustCodegen extends RustCodegenBase {
             supportingFiles.add(new SupportingFile("server.mustache", "src", "server.rs"));
             supportingFiles.add(new SupportingFile("headers.mustache", "src", "headers.rs"));
         }
+        if (externalModels) {
+            // The models are another crate's: no model files, model docs or model support files (validation).
+            modelTemplateFiles.clear();
+            modelDocTemplateFiles.clear();
+            supportingFiles.removeIf(f -> f.getFolder() != null
+                    && f.getFolder().replace('\\', '/').equals(modelFolder));
+        }
+    }
+
+    /**
+     * {@code modelsCrate}, {@code modelsCrateVersion} and {@code modelsCratePath}: the server uses another crate's
+     * models. Only a server: a client renders its own models, as does a crate of models only.
+     */
+    private void modelsCrate() {
+        String name = stringOption(MODELS_CRATE);
+        String version = stringOption(MODELS_CRATE_VERSION);
+        String path = stringOption(MODELS_CRATE_PATH);
+        if (name == null) {
+            for (String option : List.of(MODELS_CRATE_VERSION, MODELS_CRATE_PATH)) {
+                if (stringOption(option) != null) {
+                    throw new IllegalArgumentException(String.format("%s: option '%s' is set without '%s'; set "
+                            + "'%s' to the crate whose models the server uses, or remove '%s'", GENERATOR_NAME,
+                            option, MODELS_CRATE, MODELS_CRATE, option));
+                }
+            }
+            return;
+        }
+        if (targets.client() || !targets.server()) {
+            throw new IllegalArgumentException(String.format("%s: option '%s' needs %s [\"server\"] (it is %s): a "
+                    + "client or a crate of models renders its own models", GENERATOR_NAME, MODELS_CRATE, TARGETS,
+                    targets.names()));
+        }
+        if (!name.matches("[A-Za-z][A-Za-z0-9_-]*")) {
+            throw new IllegalArgumentException(String.format("%s: option '%s' is '%s', which is not a crate name",
+                    GENERATOR_NAME, MODELS_CRATE, name));
+        }
+        if (version == null && path == null) {
+            throw new IllegalArgumentException(String.format("%s: option '%s' needs '%s' (a version requirement, "
+                    + "e.g. ^0.35) or '%s' (a path)", GENERATOR_NAME, MODELS_CRATE, MODELS_CRATE_VERSION,
+                    MODELS_CRATE_PATH));
+        }
+        externalModels = true;
+        additionalProperties.put(MODELS_CRATE, name);
+        additionalProperties.put("modelsCrateIdent", name.replace('-', '_'));
+        if (version != null) {
+            additionalProperties.put(MODELS_CRATE_VERSION, version);
+        }
+        if (path != null) {
+            additionalProperties.put(MODELS_CRATE_PATH, path.replace('\\', '/'));
+        }
+    }
+
+    /** The option's value, trimmed; {@code null} when it is not set or empty. */
+    private String stringOption(String option) {
+        Object value = additionalProperties.get(option);
+        if (value == null || String.valueOf(value).isBlank()) {
+            additionalProperties.remove(option);
+            return null;
+        }
+        return String.valueOf(value).trim();
     }
 
     /** The key of {@code additionalProperties} equal to {@code option} ignoring case, or {@code null}. */
@@ -1282,7 +1373,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         boolean runtimeRequired = objs.containsKey(UploadParams.RUNTIME_REQUIRED)
                 || (!apiFeatures && modelsUseRuntime);
         // the client's runtime: optional with apiFeatures or the target features, unless an ungated model needs it
-        objs.put("runtimeDependency", targets.client() || modelsUseRuntime);
+        objs.put("runtimeDependency", targets.client() || (modelsUseRuntime && !externalModels));
         objs.put("runtimeOptional", targets.client() && (apiFeatures || targets.features()) && !runtimeRequired);
         // `_api` (apiFeatures) enables the runtime when it is the client's alone; the `client` feature does otherwise
         objs.put("apiRuntime", targets.client() && !targets.features() && !runtimeRequired);
@@ -1435,8 +1526,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 }
             }
         }
-        boolean bonOptional = bonBuilders && !bonRequired;
-        boolean serdeWithOptional = Boolean.TRUE.equals(additionalProperties.get("serdeWith")) && !serdeWithRequired;
+        // models from another crate: no bon or serde_with here, the groups enable that crate's features instead
+        boolean bonOptional = bonBuilders && !bonRequired && !externalModels;
+        boolean serdeWithOptional = Boolean.TRUE.equals(additionalProperties.get("serdeWith")) && !serdeWithRequired
+                && !externalModels;
         objs.put("bonOptional", bonOptional);
         objs.put("serdeWithOptional", serdeWithOptional);
         List<String> api = new ArrayList<>();
@@ -1453,7 +1546,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             g.put("name", f);
             g.put("selects", plan.selects.get(f));
             List<String> deps = new ArrayList<>();
-            if (uploadFeatures.contains(f) && !objs.containsKey(UploadParams.RUNTIME_REQUIRED)) {
+            if (externalModels) {
+                deps.add("\"" + additionalProperties.get(MODELS_CRATE) + "/" + f + ApiFeatures.TYPES_SUFFIX + "\"");
+            } else if (uploadFeatures.contains(f) && !objs.containsKey(UploadParams.RUNTIME_REQUIRED)) {
                 deps.add("\"dep:timvw-rust-runtime\"");
             }
             if (bonOptional && bonFeatures.contains(f)) {
@@ -1470,7 +1565,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
         full.add(ApiFeatures.TYPES);
         objs.put("apiFeaturesFull", full);
         List<String> types = new ArrayList<>(plan.features.stream().map(f -> f + ApiFeatures.TYPES_SUFFIX).toList());
-        if (uploadFeatures.contains(ApiFeatures.TYPES) && !objs.containsKey(UploadParams.RUNTIME_REQUIRED)) {
+        if (externalModels) {
+            types.add(additionalProperties.get(MODELS_CRATE) + "/" + ApiFeatures.TYPES);
+        } else if (uploadFeatures.contains(ApiFeatures.TYPES) && !objs.containsKey(UploadParams.RUNTIME_REQUIRED)) {
             types.add("dep:timvw-rust-runtime");
         }
         if (bonOptional && bonFeatures.contains(ApiFeatures.TYPES)) {
@@ -1557,6 +1654,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
      */
     @Override
     public void postProcess() {
+        if (externalModels) {
+            // no models were written: the steps below work on them
+            super.postProcess();
+            return;
+        }
         java.nio.file.Path models = java.nio.file.Paths.get(outputFolder, "src", "models");
         try {
             checkStructJsonModels(models, structJsonModels, modelFiles);

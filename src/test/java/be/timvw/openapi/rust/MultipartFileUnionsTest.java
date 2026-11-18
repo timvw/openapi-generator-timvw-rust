@@ -107,9 +107,9 @@ class MultipartFileUnionsTest {
     @Test
     void theTypesFeaturesWithUploadsDependOnTheRuntime() throws IOException {
         String cargo = Files.readString(features.resolve("Cargo.toml"));
-        assertTrue(cargo.contains("\nvideos-types = [\"dep:timvw-rust-runtime\"]\n"), cargo);
-        assertTrue(cargo.contains("\nskills-types = [\"dep:timvw-rust-runtime\"]\n"), cargo);
-        assertTrue(cargo.contains("\nplain-types = []\n"), cargo);
+        assertTrue(cargo.contains("\nvideos-types = [\"dep:timvw-rust-runtime\", \"dep:bon\"]\n"), cargo);
+        assertTrue(cargo.contains("\nskills-types = [\"dep:timvw-rust-runtime\", \"dep:bon\"]\n"), cargo);
+        assertTrue(cargo.contains("\nplain-types = [\"dep:bon\"]\n"), cargo);
         assertTrue(cargo.contains("optional = true }"), cargo);
     }
 

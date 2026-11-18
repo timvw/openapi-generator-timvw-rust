@@ -163,9 +163,14 @@ let app: axum::Router = server::router(MyImpl::new());
    - text (`String`) and binary (`Binary`: bytes or a stream, media type settable) responses, and text and binary
      (`Bytes`) request bodies.
 
-   Left for later: urlencoded form bodies, request bodies that declare more than one kind of media type (OpenAI's
-   JSON-or-multipart operations; the request struct would need a body enum chosen by `Content-Type`), and multipart
-   fields that are unions with a file variant.
+   Then (implemented): urlencoded form bodies into the same form struct; a request body that declares more than one
+   kind of media type (OpenAI's JSON-or-multipart operations, and `create_realtime_call`'s multipart-or-SDP) as an
+   enum chosen by `Content-Type`, a variant per kind named as the client's `contentTypeMethods` function, and `415`
+   for another media type; an `event:` line naming each event by its schema's discriminator, as OpenAI writes a
+   Responses stream.
+
+   Left for later: multipart fields that are unions with a file variant (OpenAI's videos and skills: a file or a JSON
+   reference), deepObject query parameters.
 3. **`modelsCrate`, and the first real use:** a mock OpenAI server for openai-ergonomic's tests, generated from
    openai-client-base's spec, with its models from `openai-client-base`. Planned in
    [a mock OpenAI server](openai-mock-server.md), which compares LiteLLM and Bifrost.

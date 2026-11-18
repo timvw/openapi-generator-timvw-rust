@@ -158,8 +158,8 @@ class ServerTest {
         assertContains(cargo, "[features]\ndefault = []\n");
         assertContains(files.get("src/lib.rs"), "pub mod models;\npub mod headers;\npub mod server;\n");
         assertContains(files.get("README.md"), "# Rust API server for server_fixture");
-        assertContains(files.get("README.md"), "- `search_pets` (**POST** /pets/search): its request body is "
-                + "'application/x-www-form-urlencoded'");
+        assertContains(files.get("README.md"), "- `filter_pets` (**GET** /pets/filter): the query parameter 'filter' "
+                + "is a deepObject");
     }
 
     @Test
@@ -233,10 +233,10 @@ class ServerTest {
     void whatTheServerCannotServeIsLeftOutWithAComment() throws IOException {
         generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
         String server = read(out, "src/server.rs");
-        assertContains(server, "    // Not served: `search_pets` (POST /pets/search): its request body is "
-                + "'application/x-www-form-urlencoded'.\n");
-        assertFalse(server.contains("fn search_pets("), server);
-        assertFalse(server.contains("SearchPetsRequest"), server);
+        assertContains(server, "    // Not served: `filter_pets` (GET /pets/filter): the query parameter 'filter' is a "
+                + "deepObject.\n");
+        assertFalse(server.contains("fn filter_pets("), server);
+        assertFalse(server.contains("FilterPetsRequest"), server);
     }
 
     @Test
@@ -246,7 +246,7 @@ class ServerTest {
         assertContains(server, "    #[derive(Debug)]\n    pub enum OwnerEventsResponse {\n        /// `200`: a stream of pets\n"
                 + "        Status200(super::EventStream<models::Pet>),\n    }\n");
         assertContains(server, "OwnerEventsResponse::Status200(body) => super::event_stream_response(super::status(200), "
-                + "http::HeaderMap::new(), body),");
+                + "http::HeaderMap::new(), body, None),");
         assertContains(server, "pub struct EventStream<T> {");
         assertContains(server, "line.extend_from_slice(b\"\\n\\n\");");
         assertContains(server, "b\"data: [DONE]\\n\\n\"");
@@ -299,11 +299,53 @@ class ServerTest {
         assertContains(server, "            file: super::required(\"body\", \"file\", super::form_file(parts, \"file\"))?,\n"
                 + "            caption: super::form_value(parts, \"caption\", |v| Some(v.to_owned()))?,\n"
                 + "            width: super::form_value(parts, \"width\", |v| v.parse::<i64>().ok())?,\n"
-                + "            tags: super::form_list(parts, \"tags\", |v| Some(v.to_owned()))?,\n"
+                + "            tags: super::form_list(parts, \"tags\", None, |v| Some(v.to_owned()))?,\n"
                 + "            extras: super::form_files(parts, \"extras\"),\n"
                 + "            owner: super::form_json(parts, \"owner\")?,\n");
         assertContains(server, "        let parts = match super::multipart_parts(request).await {");
         assertContains(server, "pub struct FilePart {");
+    }
+
+    @Test
+    void discriminatedEventsAreNamedByTheirDiscriminator() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
+        String server = read(out, "src/server.rs");
+        assertContains(server, "PetEventsResponse::Status200(body) => super::event_stream_response(super::status(200), "
+                + "http::HeaderMap::new(), body, Some(\"type\")),");
+        assertContains(server, "line.extend_from_slice(b\"event: \");");
+    }
+
+    @Test
+    void aBodyOfSeveralMediaTypesIsAnEnumChosenByContentType() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
+        String server = read(out, "src/server.rs");
+        assertContains(server, "        /// The request body\n        pub body: ImportPetBody,\n");
+        // a variant per kind, named as the client's function for it; a string sent as application/sdp is text
+        assertContains(server, "    pub enum ImportPetBody {\n        /// `multipart/form-data`\n"
+                + "        Multipart(ImportPetForm),\n        /// `application/json`\n        Json(models::NewPet),\n"
+                + "        /// `application/sdp`\n        Sdp(String),\n    }\n");
+        assertContains(server, "        if super::media_matches(&media_type, &[\"multipart/form-data\"]) {\n"
+                + "            let parts = super::multipart_parts(request).await?;\n"
+                + "            return Ok(ImportPetBody::Multipart(form_import_pet(&parts)?));\n        }\n");
+        assertContains(server, "            return Ok(ImportPetBody::Sdp(super::text_body(&bytes)?));\n");
+        assertContains(server, "        Err(super::RequestError::unsupported_media_type(Some(&media_type)))\n");
+        assertContains(server, "        let body = match body_import_pet(request).await {");
+        assertContains(server, "    pub struct ImportPetForm {\n        /// `file`\n        pub file: super::FilePart,\n");
+        assertContains(server, "http::StatusCode::UNSUPPORTED_MEDIA_TYPE");
+    }
+
+    @Test
+    void anUrlencodedBodyIsAFormStruct() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
+        String server = read(out, "src/server.rs");
+        assertContains(server, "    /// The `application/x-www-form-urlencoded` body of [`PetsApi::search_pets`]: a field per "
+                + "property.\n");
+        assertContains(server, "    pub struct SearchPetsForm {\n        /// `name`\n        pub name: String,\n");
+        // a pair per item by default; joined by a comma with explode: false
+        assertContains(server, "            kinds: super::form_list(parts, \"kinds\", None, ");
+        assertContains(server, "            ids: super::form_list(parts, \"ids\", Some(\",\"), |v| v.parse::<i64>().ok())?,\n");
+        assertContains(server, "            body: form_search_pets(&super::form_pairs(&body))?,\n");
+        assertContains(server, "fn form_pairs(body: &[u8]) -> Vec<FormPart> {");
     }
 
     @Test

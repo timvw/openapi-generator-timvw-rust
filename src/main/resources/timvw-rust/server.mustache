@@ -13,11 +13,14 @@
 //! ```
 //!
 //! A request whose path or query parameters or body do not decode is answered by
-//! [`ErrorHandler::invalid_request`] (a `400` with a JSON error body by default) without calling the
-//! implementation; an implementation's error by [`ErrorHandler::server_error`] (a `500`).
+//! [`ErrorHandler::invalid_request`] (a `400` with a JSON error body by default, a `415` for a body of a media type
+//! the operation does not take) without calling the implementation; an implementation's error by
+//! [`ErrorHandler::server_error`] (a `500`).
 //!
 //! A request body is its model for JSON, a `String` for text, the bytes for anything else, and a form struct for
-//! `multipart/form-data`, with a `FilePart` per file. A response is its model for JSON, an `EventStream` of the
+//! `multipart/form-data` (with a `FilePart` per file) and `application/x-www-form-urlencoded`. A body the spec gives
+//! more than one kind of media type is an enum with a variant per kind, chosen by the request's `Content-Type`. A
+//! response is its model for JSON, an `EventStream` of the
 //! event type for `text/event-stream`, a `String` for text and a `Binary` for anything else. Bodies are read whole,
 //! within axum's limit (2 MB by default; raise it with the router's `axum::extract::DefaultBodyLimit` layer).
 
@@ -55,19 +58,46 @@ impl<E: std::error::Error + Send + Sync + 'static> From<E> for ServerError {
     }
 }
 
-/// A request the server cannot decode: a path or query parameter that is missing or does not parse as its type, or
-/// a body that is not the JSON of its type.
+/// A request the server cannot decode: a path or query parameter that is missing or does not parse as its type, a
+/// body that is not the JSON of its type, or a body of a media type the operation does not take.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RequestError {
+    status: http::StatusCode,
     location: &'static str,
     name: Option<String>,
     message: String,
 }
 
 impl RequestError {
-    /// An error of the request's `location` (`path`, `query` or `body`), at the parameter `name` if any.
+    /// An error of the request's `location` (`path`, `query` or `body`), at the parameter `name` if any: a `400`.
     pub fn new(location: &'static str, name: Option<&str>, message: impl Into<String>) -> Self {
-        RequestError { location, name: name.map(str::to_owned), message: message.into() }
+        RequestError {
+            status: http::StatusCode::BAD_REQUEST,
+            location,
+            name: name.map(str::to_owned),
+            message: message.into(),
+        }
+    }
+
+    /// A body of a media type the operation does not take (`None`: the request has no `Content-Type`): a `415`.
+    pub fn unsupported_media_type(media_type: Option<&str>) -> Self {
+        let message = match media_type {
+            Some(media_type) => format!("the media type '{media_type}' is not one the operation takes"),
+            None => "the request has no Content-Type".to_owned(),
+        };
+        RequestError::new("body", None, message).with_status(http::StatusCode::UNSUPPORTED_MEDIA_TYPE)
+    }
+
+    /// The same error, answered with this status.
+    pub fn with_status(mut self, status: http::StatusCode) -> Self {
+        self.status = status;
+        self
+    }
+
+    /// The status the default [`ErrorHandler::invalid_request`] answers with: `400`, `415` for a media type the
+    /// operation does not take, `413` for a body over the limit.
+    pub fn status(&self) -> http::StatusCode {
+        self.status
     }
 
     /// Where in the request: `path`, `query` or `body`.
@@ -100,7 +130,8 @@ impl std::error::Error for RequestError {}
 /// How the server answers what the implementation does not: a request that does not decode, and an implementation's
 /// error. Both methods have a default; implement the trait with `impl ErrorHandler for MyApi {}` to keep them.
 pub trait ErrorHandler {
-    /// The response to a request that does not decode. By default a `400` with the JSON body
+    /// The response to a request that does not decode. By default the error's [`status`](RequestError::status) (a
+    /// `400`, or a `415` for a body of a media type the operation does not take) with the JSON body
     /// `{"error": {"message": "...", "location": "query", "name": "limit"}}` (`name` only for a parameter).
     fn invalid_request(&self, error: RequestError) -> axum::response::Response {
         let mut body = serde_json::Map::new();
@@ -109,7 +140,7 @@ pub trait ErrorHandler {
         if let Some(name) = error.name() {
             body.insert("name".to_owned(), serde_json::Value::String(name.to_owned()));
         }
-        error_response(http::StatusCode::BAD_REQUEST, body)
+        error_response(error.status(), body)
     }
 
     /// The response to an implementation's error. By default a `500` with the JSON body
@@ -294,7 +325,9 @@ fn text_response(
 {{#serverStreams}}
 
 /// A stream of server-sent events, each the JSON of a `T` in a `data:` line, as the client's typed event streams read
-/// them. [`EventStream::done`] ends the stream with `data: [DONE]`, for clients that wait for it.
+/// them; when the spec's event schema has a discriminator, an `event:` line names each event by it (as OpenAI names
+/// a Responses stream's events by their `type`). [`EventStream::done`] ends the stream with `data: [DONE]`, for
+/// clients that wait for it.
 ///
 /// An error of the stream, or an event that does not serialize, ends the response abruptly: the client sees the body
 /// fail, not a clean end.
@@ -397,20 +430,33 @@ impl std::fmt::Debug for Binary {
     }
 }
 
-/// The events of `body` as `text/event-stream`, with this status and these headers.
+/// The events of `body` as `text/event-stream`, with this status and these headers; each named by its `name`
+/// property (an `event:` line) when there is one.
 #[allow(dead_code)]
 fn event_stream_response<T: serde::Serialize + Send + 'static>(
     status: http::StatusCode,
     headers: http::HeaderMap,
     body: EventStream<T>,
+    name: Option<&'static str>,
 ) -> axum::response::Response {
     use futures_util::StreamExt;
 
     type BoxError = Box<dyn std::error::Error + Send + Sync>;
     let done = body.done;
-    let events = body.events.map(|event| -> Result<axum::body::Bytes, BoxError> {
+    let events = body.events.map(move |event| -> Result<axum::body::Bytes, BoxError> {
         let event = event.map_err(|error| error.0)?;
-        let mut line = b"data: ".to_vec();
+        let mut line = Vec::new();
+        if let Some(name) = name {
+            // read from its JSON value, then written as it serializes (a value's object keys would be sorted)
+            let value = serde_json::to_value(&event)?;
+            let named = value.get(name).and_then(serde_json::Value::as_str);
+            if let Some(named) = named.filter(|n| !n.contains(['\n', '\r'])) {
+                line.extend_from_slice(b"event: ");
+                line.extend_from_slice(named.as_bytes());
+                line.push(b'\n');
+            }
+        }
+        line.extend_from_slice(b"data: ");
         serde_json::to_writer(&mut line, &event)?;
         line.extend_from_slice(b"\n\n");
         Ok(line.into())
@@ -442,7 +488,37 @@ fn binary_response(
     response
 }
 {{/serverStreams}}
-{{#serverMultipart}}
+{{#serverBodyEnums}}
+
+/// The request's media type (`Content-Type` without its parameters, in lower case), if it has one.
+fn media_type(headers: &http::HeaderMap) -> Option<String> {
+    let value = headers.get(http::header::CONTENT_TYPE)?.to_str().ok()?;
+    let essence = value.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
+    (!essence.is_empty()).then_some(essence)
+}
+
+/// Whether the media type `actual` is one of `declared`: the same, in the range a declared `type/*` or `*/*` covers,
+/// or JSON when a declared one is.
+fn media_matches(actual: &str, declared: &[&str]) -> bool {
+    let json = |m: &str| m.starts_with("application/") && m.contains("json");
+    declared.iter().any(|d| {
+        *d == actual
+            || *d == "*/*"
+            || d.strip_suffix("/*").is_some_and(|t| actual.split('/').next() == Some(t))
+            || (json(d) && json(actual))
+    })
+}
+
+/// The whole body of `request`, within axum's limit.
+async fn request_bytes(request: axum::extract::Request) -> Result<axum::body::Bytes, RequestError> {
+    use axum::extract::FromRequest;
+
+    axum::body::Bytes::from_request(request, &())
+        .await
+        .map_err(|rejection| RequestError::new("body", None, rejection.body_text()).with_status(rejection.status()))
+}
+{{/serverBodyEnums}}
+{{#serverForms}}
 
 /// A file of a `multipart/form-data` request: its bytes, with the file name and media type the client gave.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -455,7 +531,7 @@ pub struct FilePart {
     pub bytes: axum::body::Bytes,
 }
 
-/// One part of a `multipart/form-data` request.
+/// One part of a `multipart/form-data` request, or one pair of an `application/x-www-form-urlencoded` one.
 struct FormPart {
     name: String,
     file_name: Option<String>,
@@ -476,6 +552,26 @@ impl FormPart {
         std::str::from_utf8(&self.bytes).map_err(|_| RequestError::new("body", Some(&self.name), "not UTF-8"))
     }
 }
+
+/// The pairs of an `application/x-www-form-urlencoded` body, as parts.
+#[allow(dead_code)]
+fn form_pairs(body: &[u8]) -> Vec<FormPart> {
+    url::form_urlencoded::parse(body)
+        .map(|(name, value)| FormPart {
+            name: name.into_owned(),
+            file_name: None,
+            content_type: None,
+            bytes: axum::body::Bytes::from(value.into_owned()),
+        })
+        .collect()
+}
+
+/// The pairs of an `application/x-www-form-urlencoded` body, or `None` for an empty one.
+#[allow(dead_code)]
+fn optional_form_pairs(body: &[u8]) -> Option<Vec<FormPart>> {
+    (!body.is_empty()).then(|| form_pairs(body))
+}
+{{#serverMultipart}}
 
 /// The parts of a `multipart/form-data` request.
 #[allow(dead_code)]
@@ -513,6 +609,7 @@ async fn optional_multipart_parts(request: axum::extract::Request) -> Result<Opt
     }
     multipart_parts(request).await.map(Some)
 }
+{{/serverMultipart}}
 
 /// The first file part named `name`.
 #[allow(dead_code)]
@@ -539,18 +636,29 @@ fn form_value<T>(parts: &[FormPart], name: &str, parse: impl Fn(&str) -> Option<
     }
 }
 
-/// The items of the parts named `name`, read by `parse`: one per part, or the items of one part that holds a JSON
-/// array (how a client without `multipartHelper` sends a list); `None` when there is none.
+/// The items of the parts named `name`, read by `parse`: one per part, the items of one part that holds a JSON
+/// array (how a client without `multipartHelper` sends a list), or with a `separator` the items of each part split
+/// by it (an urlencoded list the client joins); `None` when there is none.
 #[allow(dead_code)]
 fn form_list<T>(
     parts: &[FormPart],
     name: &str,
+    separator: Option<&str>,
     parse: impl Fn(&str) -> Option<T>,
 ) -> Result<Option<Vec<T>>, RequestError> {
     let named: Vec<&FormPart> = parts.iter().filter(|p| p.name == name).collect();
     let mut texts = Vec::new();
     match named.as_slice() {
         [] => return Ok(None),
+        _ if separator.is_some() => {
+            let separator = separator.unwrap_or_default();
+            for part in named {
+                let text = part.text()?;
+                if !text.is_empty() {
+                    texts.extend(text.split(separator).map(str::to_owned));
+                }
+            }
+        }
         [one] if one.bytes.starts_with(b"[") => {
             let items: Vec<serde_json::Value> =
                 serde_json::from_slice(&one.bytes).map_err(|e| RequestError::new("body", Some(name), e.to_string()))?;
@@ -600,7 +708,7 @@ fn form_json_list<T: serde::de::DeserializeOwned>(
         _ => named.iter().map(|part| serde_json::from_slice(&part.bytes).map_err(invalid)).collect::<Result<_, _>>().map(Some),
     }
 }
-{{/serverMultipart}}
+{{/serverForms}}
 {{#serverModules}}
 
 /// The operations of the `{{{module}}}` API module.
@@ -666,10 +774,42 @@ pub mod {{{module}}} {
         pub headers: http::HeaderMap,
     }
     {{#body}}
-    {{#multipart}}
+    {{#enum}}
 
-    /// The `multipart/form-data` body of [`{{{trait}}}::{{{name}}}`]: a field per property, a [`FilePart`](super::FilePart)
-    /// per file.
+    /// The request body of [`{{{trait}}}::{{{name}}}`], one of the media types the spec gives it: a variant per kind,
+    /// chosen by the request's `Content-Type`.
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    #[derive(Clone, Debug)]
+    pub enum {{{enum}}} {
+        {{#variants}}
+        /// `{{{media}}}`
+        {{{variant}}}({{{type}}}),
+        {{/variants}}
+    }
+
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    async fn body_{{{bare}}}(request: axum::extract::Request) -> Result<{{{type}}}, super::RequestError> {
+        let Some(media_type) = super::media_type(request.headers()) else {
+            let bytes = super::request_bytes(request).await?;
+            return if bytes.is_empty() { {{{missing}}} } else { Err(super::RequestError::unsupported_media_type(None)) };
+        };
+        {{#variants}}
+        if super::media_matches(&media_type, &[{{{declared}}}]) {
+            {{{read}}}
+            return Ok({{{value}}});
+        }
+        {{/variants}}
+        Err(super::RequestError::unsupported_media_type(Some(&media_type)))
+    }
+    {{/enum}}
+    {{#hasForm}}
+
+    /// The `{{{formMedia}}}` body of [`{{{trait}}}::{{{name}}}`]: a field per property{{#fileParts}}, a
+    /// [`FilePart`](super::FilePart) per file{{/fileParts}}.
     {{#cfg}}
     #[cfg({{{.}}})]
     {{/cfg}}
@@ -691,7 +831,7 @@ pub mod {{{module}}} {
             {{/form}}
         })
     }
-    {{/multipart}}
+    {{/hasForm}}
     {{/body}}
 
     /// The responses of [`{{{trait}}}::{{{name}}}`], one per status the spec declares.
@@ -741,6 +881,9 @@ pub mod {{{module}}} {
         {{#multipart}}
         request: axum::extract::Request,
         {{/multipart}}
+        {{#enum}}
+        request: axum::extract::Request,
+        {{/enum}}
         {{/body}}
     ) -> axum::response::Response
     where
@@ -762,8 +905,14 @@ pub mod {{{module}}} {
             Err(error) => return api.invalid_request(error),
         };
         {{/multipart}}
+        {{#enum}}
+        let body = match body_{{{bare}}}(request).await {
+            Ok(body) => body,
+            Err(error) => return api.invalid_request(error),
+        };
+        {{/enum}}
         {{/body}}
-        let request = match decode_{{{bare}}}({{#hasPath}}&path, {{/hasPath}}{{#hasQuery}}&query, {{/hasQuery}}{{#body}}{{#bytes}}body, {{/bytes}}{{#multipart}}parts, {{/multipart}}{{/body}}headers) {
+        let request = match decode_{{{bare}}}({{#hasPath}}&path, {{/hasPath}}{{#hasQuery}}&query, {{/hasQuery}}{{#body}}{{#bytes}}body, {{/bytes}}{{#multipart}}parts, {{/multipart}}{{#enum}}body, {{/enum}}{{/body}}headers) {
             Ok(request) => request,
             Err(error) => return api.invalid_request(error),
         };
@@ -790,6 +939,9 @@ pub mod {{{module}}} {
         {{#multipart}}
         parts: {{^required}}Option<{{/required}}Vec<super::FormPart>{{^required}}>{{/required}},
         {{/multipart}}
+        {{#enum}}
+        body: {{{type}}},
+        {{/enum}}
         {{/body}}
         headers: http::HeaderMap,
     ) -> Result<{{{camel}}}Request, super::RequestError> {

@@ -18,9 +18,9 @@ mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed i
 
 ## Generated server
 
-- **Not every operation is served.** An urlencoded form body, a request body with media types of more than one kind,
-  a multipart field that is a union with a file variant, a deepObject or object query parameter, or a path parameter
-  that is not a whole segment leaves the operation out of the server, with a comment and a warning
+- **Not every operation is served.** A multipart field that is a union with a file variant, a request body that is
+  both a multipart and an urlencoded form, a deepObject or object query parameter, or a path parameter that is not a
+  whole segment leaves the operation out of the server, with a comment and a warning
   ([guide](guides/server.md#what-the-server-does-not-serve-yet)).
 - **Bodies are read whole.** A request body, a multipart form included, is held in memory before the implementation
   is called, within axum's body limit; a response can stream (`EventStream`, `Binary::stream`).

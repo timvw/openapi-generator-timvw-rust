@@ -93,6 +93,9 @@ import static org.openapitools.codegen.utils.StringUtils.underscore;
  */
 public abstract class RustCodegenBase extends DefaultCodegen implements CodegenConfig {
 
+    /** On a model: one of its fields is (de)serialized with serde_with. */
+    static final String USES_SERDE_WITH = "x-rust-uses-serde-with";
+
     private static final Logger LOGGER = LoggerFactory.getLogger("org.openapitools.codegen.timvw.RustCodegenBase");
 
     /** Classpath directory holding every template the generator renders. */
@@ -1160,6 +1163,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         // nullable and not required is a double Option, deserialized with serde_with
         if (property.isNullable && !property.required) {
             additionalProperties.put("serdeWith", true);
+            model.vendorExtensions.put(USES_SERDE_WITH, true);
         }
 
         // Mustache has no OR: the template asks for this flag instead
@@ -1169,6 +1173,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         // option, as serde_as does not work with serde_with's
         if (property.isByteArray) {
             additionalProperties.put("serdeWith", true);
+            model.vendorExtensions.put(USES_SERDE_WITH, true);
             if (property.isNullable && !property.required) {
                 additionalProperties.put("serdeAsDoubleOption", true);
             }

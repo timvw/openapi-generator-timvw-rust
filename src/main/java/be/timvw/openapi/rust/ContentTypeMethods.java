@@ -216,8 +216,11 @@ final class ContentTypeMethods {
         return methods;
     }
 
-    /** A copy of the operation whose request body and method response hold only the given media types. */
-    private static Operation restrict(OpenAPI openAPI, Operation operation, ApiResponse methodResponse,
+    /**
+     * A copy of the operation whose request body and method response hold only the given media types; the responses
+     * as they are when {@code shape} is {@code null}.
+     */
+    static Operation restrict(OpenAPI openAPI, Operation operation, ApiResponse methodResponse,
             RequestBody body, String request, Shape shape) {
         Operation copy = new Operation()
                 .tags(operation.getTags())

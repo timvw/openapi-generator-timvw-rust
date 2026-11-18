@@ -29,8 +29,9 @@ import java.util.regex.Pattern;
  *
  * <p>The request struct holds the path and query parameters as typed fields ({@link #parse}), the body and the raw
  * header map (header and cookie parameters are read from there). The body is its model for JSON, a {@code String}
- * for {@code text/*}, a {@code <Operation>Form} struct for {@code multipart/form-data} (a {@code FilePart} per file
- * part), and the bytes for anything else. The response enum has a variant per declared status and kind of content:
+ * for {@code text/*} (and a string that is not binary), a {@code <Operation>Form} struct for
+ * {@code multipart/form-data} (a {@code FilePart} per file part) and {@code application/x-www-form-urlencoded}, and
+ * the bytes for anything else; a body of more than one kind is an {@code <Operation>Body} enum, a variant per kind. The response enum has a variant per declared status and kind of content:
  * {@code Status200(body)}, {@code Status204}, a {@code status} field for a range ({@code Status4XX}) and for
  * {@code Default}, and a {@code headers} field holding the operation's {@code <Operation>ResponseHeaders} (successes)
  * or {@code <Operation>ErrorHeaders} (errors) where the response declares headers. A response's JSON is its
@@ -38,8 +39,8 @@ import java.util.regex.Pattern;
  * a {@code Binary}; a status with more than one kind has a variant for each, the first ({@code JSON} when there is
  * one) unsuffixed and the others suffixed {@code Stream}, {@code Text} or {@code Binary}.</p>
  *
- * <p>Left out, with a comment in the server module and a warning: urlencoded form bodies, request bodies of more than
- * one kind, multipart fields that are unions with a file variant, deepObject and object query parameters, and a path
+ * <p>Left out, with a comment in the server module and a warning: multipart fields that are unions with a file variant,
+ * a body that is both a multipart and an urlencoded form, deepObject and object query parameters, and a path
  * parameter that is not a whole path segment.</p>
  */
 final class ServerRules {
@@ -152,7 +153,7 @@ final class ServerRules {
      */
     static Map<String, Object> plan(OpenAPI openAPI, CodegenOperation op, Operation spec,
             Map<String, CodegenModel> models, Map<String, Object> success, Map<String, Object> errors, String cfg,
-            Function<Schema<?>, String> typeOf) throws Unsupported {
+            Function<Schema<?>, String> typeOf, Function<String, CodegenOperation> forMedia) throws Unsupported {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", op.operationId);
         m.put("bare", bare(op.operationId));
@@ -233,7 +234,7 @@ final class ServerRules {
         RequestBody body = spec.getRequestBody() == null ? null
                 : ModelUtils.getReferencedRequestBody(openAPI, spec.getRequestBody());
         if (body != null && body.getContent() != null && !body.getContent().isEmpty()) {
-            m.put("body", body(op, body, models));
+            m.put("body", body(openAPI, op, body, models, forMedia));
         }
 
         List<Map<String, Object>> responses = new ArrayList<>();
@@ -258,66 +259,192 @@ final class ServerRules {
         return m;
     }
 
-    /** The request body: its type, how it is decoded, and the struct of a multipart form. */
-    private static Map<String, Object> body(CodegenOperation op, RequestBody body, Map<String, CodegenModel> models)
-            throws Unsupported {
-        Set<Kind> kinds = new java.util.LinkedHashSet<>();
-        for (String media : body.getContent().keySet()) {
-            kinds.add(kind(media));
+    /**
+     * The request body: its type, how it is decoded, and the struct of a form. A body of one kind of media type is
+     * that kind's type; a body of more than one kind is an enum, {@code <Operation>Body}, with a variant per kind named
+     * as the client names its function for that media type ({@code Json}, {@code Multipart}, {@code Form},
+     * {@code Text}, {@code Bytes}, or the subtype: {@code Sdp}), chosen by the request's {@code Content-Type}.
+     *
+     * @param forMedia the operation as it is with only this request media type
+     */
+    private static Map<String, Object> body(OpenAPI openAPI, CodegenOperation op, RequestBody body,
+            Map<String, CodegenModel> models, Function<String, CodegenOperation> forMedia) throws Unsupported {
+        // the media types of each kind, in the order declared; a string that is not binary is text whatever its media
+        // type (application/sdp), as the client sends it
+        Map<Kind, List<String>> kinds = new LinkedHashMap<>();
+        for (Map.Entry<String, io.swagger.v3.oas.models.media.MediaType> entry : body.getContent().entrySet()) {
+            String media = entry.getKey();
+            Kind kind = kind(media);
+            if (kind == Kind.STREAM || kind == Kind.BINARY && plainString(openAPI, entry.getValue().getSchema())) {
+                kind = Kind.TEXT;
+            }
+            kinds.computeIfAbsent(kind, k -> new ArrayList<>()).add(media);
         }
-        if (kinds.size() > 1) {
-            throw new Unsupported("its request body has media types of more than one kind ("
-                    + String.join(", ", body.getContent().keySet()) + ")");
+        if (kinds.containsKey(Kind.MULTIPART) && kinds.containsKey(Kind.FORM)) {
+            throw new Unsupported("its request body is both a multipart and an urlencoded form");
         }
-        String media = body.getContent().keySet().iterator().next();
-        Kind kind = kinds.iterator().next();
         boolean required = Boolean.TRUE.equals(body.getRequired());
         Map<String, Object> b = new LinkedHashMap<>();
         b.put("required", required);
         b.put("doc", docLine(body.getDescription()));
-        String type;
+        if (kinds.size() == 1) {
+            Kind kind = kinds.keySet().iterator().next();
+            String media = kinds.get(kind).get(0);
+            String type = one(op, op.operationIdCamelCase, kind, media, models, b);
+            switch (kind) {
+                case JSON:
+                    b.put("decode", required ? "super::json_body(&body)?" : "super::optional_json_body(&body)?");
+                    b.put("bytes", true);
+                    break;
+                case TEXT:
+                    b.put("decode", required ? "super::text_body(&body)?" : "super::optional_text_body(&body)?");
+                    b.put("bytes", true);
+                    break;
+                case BINARY:
+                    // the bytes themselves when required: `body` alone
+                    if (!required) {
+                        b.put("decode", "super::optional_bytes(body)");
+                    }
+                    b.put("bytes", true);
+                    break;
+                case MULTIPART:
+                    b.put("multipart", true);
+                    b.put("decode", required ? "form_" + bare(op.operationId) + "(&parts)?"
+                            : "parts.as_deref().map(form_" + bare(op.operationId) + ").transpose()?");
+                    break;
+                default:
+                    b.put("decode", required ? "form_" + bare(op.operationId) + "(&super::form_pairs(&body))?"
+                            : "super::optional_form_pairs(&body).as_deref().map(form_" + bare(op.operationId)
+                                    + ").transpose()?");
+                    b.put("bytes", true);
+                    break;
+            }
+            b.put("type", required ? type : "Option<" + type + ">");
+            return b;
+        }
+
+        // more than one kind: an enum, read by the request's Content-Type
+        String enumType = op.operationIdCamelCase + "Body";
+        List<Map<String, Object>> variants = new ArrayList<>();
+        Set<String> names = new HashSet<>();
+        for (Map.Entry<Kind, List<String>> e : kinds.entrySet()) {
+            Kind kind = e.getKey();
+            String media = e.getValue().get(0);
+            String name = camel(ContentTypeMethods.requestSuffix(media));
+            if (!names.add(name)) {
+                throw new Unsupported("two of its request media types are named '" + name + "'");
+            }
+            CodegenOperation own = forMedia.apply(media);
+            if (own == null) {
+                throw new Unsupported("its request body '" + media + "' has no type");
+            }
+            String type = one(own, op.operationIdCamelCase, kind, media, models, b);
+            String value;
+            String read;
+            switch (kind) {
+                case JSON:
+                    read = "let bytes = super::request_bytes(request).await?;";
+                    value = "super::json_body(&bytes)?";
+                    break;
+                case TEXT:
+                    read = "let bytes = super::request_bytes(request).await?;";
+                    value = "super::text_body(&bytes)?";
+                    break;
+                case BINARY:
+                    read = "let bytes = super::request_bytes(request).await?;";
+                    value = "bytes";
+                    break;
+                case MULTIPART:
+                    b.put("multipartEnum", true);
+                    read = "let parts = super::multipart_parts(request).await?;";
+                    value = "form_" + bare(op.operationId) + "(&parts)?";
+                    break;
+                default:
+                    read = "let bytes = super::request_bytes(request).await?;";
+                    value = "form_" + bare(op.operationId) + "(&super::form_pairs(&bytes))?";
+                    break;
+            }
+            Map<String, Object> v = new LinkedHashMap<>();
+            v.put("variant", name);
+            v.put("type", type);
+            v.put("media", String.join(", ", e.getValue()));
+            List<String> quoted = new ArrayList<>();
+            for (String m : e.getValue()) {
+                quoted.add("\"" + literal(m.toLowerCase(Locale.ROOT).split(";", 2)[0].trim()) + "\"");
+            }
+            v.put("declared", String.join(", ", quoted));
+            v.put("read", read);
+            String variant = enumType + "::" + name + "(" + value + ")";
+            v.put("value", required ? variant : "Some(" + variant + ")");
+            variants.add(v);
+        }
+        b.put("enum", enumType);
+        b.put("variants", variants);
+        b.put("missing", required ? "Err(super::RequestError::new(\"body\", None, \"missing\"))" : "Ok(None)");
+        b.put("type", required ? enumType : "Option<" + enumType + ">");
+        return b;
+    }
+
+    /** The type of a body of one kind; a form's struct goes into {@code b}. */
+    private static String one(CodegenOperation op, String camel, Kind kind, String media,
+            Map<String, CodegenModel> models, Map<String, Object> b) throws Unsupported {
         switch (kind) {
             case JSON:
                 if (op.bodyParam == null) {
                     throw new Unsupported("its request body has no type");
                 }
-                type = qualify(op.bodyParam.dataType, models);
-                b.put("decode", required ? "super::json_body(&body)?" : "super::optional_json_body(&body)?");
-                b.put("bytes", true);
-                break;
+                return qualify(op.bodyParam.dataType, models);
             case TEXT:
-                type = "String";
-                b.put("decode", required ? "super::text_body(&body)?" : "super::optional_text_body(&body)?");
-                b.put("bytes", true);
-                break;
+                return "String";
             case BINARY:
-                type = "axum::body::Bytes";
-                // the bytes themselves when required: `body` alone
-                if (!required) {
-                    b.put("decode", "super::optional_bytes(body)");
-                }
-                b.put("bytes", true);
-                break;
+                return "axum::body::Bytes";
             case MULTIPART:
                 if (!media.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
                     throw new Unsupported("its request body is '" + media + "'");
                 }
-                type = op.operationIdCamelCase + "Form";
-                b.put("form", form(op, models));
-                b.put("multipart", true);
-                b.put("decode", required ? "form_" + bare(op.operationId) + "(&parts)?"
-                        : "parts.as_deref().map(form_" + bare(op.operationId) + ").transpose()?");
-                break;
+                b.put("form", form(op, models, false));
+                b.put("formMedia", "multipart/form-data");
+                b.put("hasForm", true);
+                b.put("fileParts", true);
+                return camel + "Form";
+            case FORM:
+                b.put("form", form(op, models, true));
+                b.put("formMedia", "application/x-www-form-urlencoded");
+                b.put("hasForm", true);
+                return camel + "Form";
             default:
                 throw new Unsupported("its request body is '" + media + "'");
         }
-        b.put("type", required ? type : "Option<" + type + ">");
-        return b;
     }
 
-    /** The fields of a multipart form, each read from its parts. */
-    private static List<Map<String, Object>> form(CodegenOperation op, Map<String, CodegenModel> models)
-            throws Unsupported {
+    /** Whether a body's schema is a string that is not binary: text, whatever its media type. */
+    static boolean plainString(OpenAPI openAPI, Schema<?> schema) {
+        Schema<?> resolved = schema == null ? null : ModelUtils.getReferencedSchema(openAPI, schema);
+        if (resolved == null || !"string".equals(ModelUtils.getType(resolved))) {
+            return false;
+        }
+        String format = resolved.getFormat();
+        return format == null || !(format.equals("binary") || format.equals("byte"));
+    }
+
+    /** {@code json} as {@code Json}, {@code x_png} as {@code XPng}. */
+    static String camel(String snake) {
+        StringBuilder out = new StringBuilder();
+        for (String part : snake.split("_")) {
+            if (!part.isEmpty()) {
+                out.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+            }
+        }
+        String name = out.toString();
+        return name.isEmpty() || !Character.isLetter(name.charAt(0)) ? "Body" + name : name;
+    }
+
+    /**
+     * The fields of a form, each read from its parts: the parts of a multipart form, or the pairs of an urlencoded one
+     * ({@code urlencoded}), where a file cannot be and a list the client joins is split.
+     */
+    private static List<Map<String, Object>> form(CodegenOperation op, Map<String, CodegenModel> models,
+            boolean urlencoded) throws Unsupported {
         List<Map<String, Object>> fields = new ArrayList<>();
         Set<String> names = new HashSet<>();
         for (CodegenParameter p : list(op.formParams)) {
@@ -327,6 +454,9 @@ final class ServerRules {
             String dataType = p.dataType == null ? "" : p.dataType;
             boolean array = p.isArray || dataType.startsWith("Vec<");
             boolean file = p.isFile || dataType.contains(UploadParams.PATH) || dataType.contains(UploadParams.UPLOAD);
+            if (file && urlencoded) {
+                throw new Unsupported("the urlencoded form field '" + p.baseName + "' is a file");
+            }
             String name = literal(p.baseName);
             String type;
             String read;
@@ -337,9 +467,14 @@ final class ServerRules {
                 String item = qualify(array && p.items != null ? p.items.dataType : dataType, models);
                 String parse = array && p.items != null && p.items.isContainer ? null : parse(item, models);
                 type = array ? "Vec<" + item + ">" : item;
+                String separator = "None";
+                if (urlencoded && array && p.vendorExtensions.containsKey(TimvwRustCodegen.FORM_JOINED)) {
+                    separator = "Some(\"" + literal(String.valueOf(
+                            p.vendorExtensions.getOrDefault(TimvwRustCodegen.FORM_SEPARATOR, ","))) + "\")";
+                }
                 if (parse != null) {
-                    read = "super::form_" + (array ? "list" : "value") + "(parts, \"" + name + "\", |v| " + parse
-                            + ")?";
+                    read = array ? "super::form_list(parts, \"" + name + "\", " + separator + ", |v| " + parse + ")?"
+                            : "super::form_value(parts, \"" + name + "\", |v| " + parse + ")?";
                 } else {
                     read = "super::form_json" + (array ? "_list" : "") + "(parts, \"" + name + "\")?";
                 }
@@ -347,7 +482,7 @@ final class ServerRules {
             boolean required = p.required && !p.isNullable;
             String field = p.paramName;
             if (!names.add(bare(field))) {
-                throw new Unsupported("two multipart fields are named '" + bare(field) + "'");
+                throw new Unsupported("two form fields are named '" + bare(field) + "'");
             }
             Map<String, Object> f = new LinkedHashMap<>();
             f.put("field", field);
@@ -451,9 +586,12 @@ final class ServerRules {
                     break;
                 }
                 case STREAM: {
-                    String type = schemaType(content.get(media).getSchema(), typeOf);
+                    Schema<?> schema = content.get(media).getSchema();
+                    String type = schemaType(schema, typeOf);
                     bodyType = "super::EventStream<" + (type == null ? "serde_json::Value" : type) + ">";
-                    encode = "super::event_stream_response(%s, %s, body)";
+                    String event = eventName(openAPI, schema);
+                    encode = "super::event_stream_response(%s, %s, body, "
+                            + (event == null ? "None" : "Some(\"" + literal(event).replace("%", "%%") + "\")") + ")";
                     break;
                 }
                 case TEXT:
@@ -474,6 +612,23 @@ final class ServerRules {
             variants.add(r);
         }
         return variants;
+    }
+
+    /**
+     * The property that names an event of this schema, written as the event's {@code event:} line: its
+     * discriminator's, as OpenAI names the events of a Responses stream by their {@code type}. {@code null} when the
+     * schema has no discriminator: only {@code data:} lines, as for chat completions.
+     */
+    static String eventName(OpenAPI openAPI, Schema<?> schema) {
+        if (schema == null) {
+            return null;
+        }
+        Schema<?> resolved = ModelUtils.getReferencedSchema(openAPI, schema);
+        if (resolved == null || resolved.getDiscriminator() == null) {
+            return null;
+        }
+        String name = resolved.getDiscriminator().getPropertyName();
+        return name == null || name.isBlank() ? null : name;
     }
 
     /** The Rust type of a response's schema, or {@code null} when it has none. */

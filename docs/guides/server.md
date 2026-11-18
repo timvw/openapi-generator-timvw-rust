@@ -135,6 +135,8 @@ authentication) and other routes to it as usual.
 | `text/event-stream` | not served | `server::EventStream<Event>` |
 | `text/*` | `String` | `String`, sent as the declared media type |
 | `multipart/form-data` | `<Operation>Form`, a field per property | as anything else |
+| `application/x-www-form-urlencoded` | `<Operation>Form`, a field per property | as anything else |
+| a string that is not binary, whatever its media type (`application/sdp`) | `String` | as its media type |
 | anything else (`application/octet-stream`, `image/png`, `audio/*`, ...) | `axum::body::Bytes` | `server::Binary` |
 
 An optional body is an `Option`: `None` when the request has none (for JSON also `null`, for multipart a request
@@ -156,7 +158,10 @@ pub enum PetFeedResponse {
 ```
 
 **Server-sent events.** An `EventStream<T>` writes each event as a `data:` line holding its JSON, which is what the
-client's [typed event streams](../options.md#typedeventstreams) decode. `EventStream::new(stream)` takes a
+client's [typed event streams](../options.md#typedeventstreams) decode. When the event schema has a discriminator, an
+`event:` line before it names the event by the discriminator's value (`event: response.created`), as OpenAI writes a
+Responses stream; the client reads the `data:` line alone, as before. Without one (chat completions), events have no
+name. `EventStream::new(stream)` takes a
 `Stream<Item = T>`, `try_new` a `Stream<Item = Result<T, ServerError>>`, and `from_events` an iterator;
 `.done()` ends the stream with `data: [DONE]`, for clients that wait for it. An error of the stream ends the response
 abruptly, so the client sees the body fail rather than end:
@@ -174,26 +179,47 @@ async fn pet_feed(&self, request: PetFeedRequest) -> Result<PetFeedResponse, Ser
 media type the spec declares, or `application/octet-stream` for a range such as `audio/*`; `.content_type("audio/wav")`
 sets another, which a range or a response with several binary types needs.
 
-**Multipart forms.** `<Operation>Form` has a field per property of the body's schema: a `server::FilePart` (its
+**A body of several media types.** A request body that declares media types of more than one kind (a multipart form
+or JSON, say, or OpenAI's `create_realtime_call`: a multipart form or `application/sdp`) is an enum,
+`<Operation>Body`, with a variant per kind, named as the client names its function for that media type with
+[`contentTypeMethods`](../options.md#contenttypemethods): `Json`, `Multipart`, `Form`, `Text`, `Bytes`, or the
+subtype (`Sdp`). The server picks the variant by the request's `Content-Type` (JSON under any JSON media type); a
+`Content-Type` the operation does not take, or none with a body, is a `415`:
+
+<!-- not compiled: generated code (src/server.rs of a crate generated from src/test/resources/server.yaml) -->
+```rust
+pub enum ImportPetBody {
+    /// `multipart/form-data`
+    Multipart(ImportPetForm),
+    /// `application/json`
+    Json(models::NewPet),
+    /// `application/sdp`
+    Sdp(String),
+}
+```
+
+**Multipart and urlencoded forms.** `<Operation>Form` has a field per property of the body's schema: a `server::FilePart` (its
 `bytes`, `file_name` and `content_type`) per file, `Vec<FilePart>` for a list of files, the typed value of a text part
 (`String`, numbers, enums, ...), a `Vec` for a list (one part per item, or one part holding a JSON array: the client
-sends the latter without [`multipartHelper`](../options.md#multiparthelper)), and the model of a JSON part. A part
+sends the latter without [`multipartHelper`](../options.md#multiparthelper)), and the model of a JSON part. An
+urlencoded form reads its pairs the same way, with no files; a list whose `encoding` has `explode: false` is one pair
+holding the items joined by `,` (`|` for `pipeDelimited`, a space for `spaceDelimited`), as the client sends it. A part
 that does not decode is a `400` whose `location` is `body` and `name` the field.
 
 ### Requests that do not decode, and errors
 
 A path or query parameter that is missing or does not parse as its type, or a body that does not decode (JSON that is
-not of its model, text that is not UTF-8, a multipart field that is missing or does not parse), is answered without
-calling the implementation, by `ErrorHandler::invalid_request`. An implementation's `Err` is
+not of its model, text that is not UTF-8, a form field that is missing or does not parse, a media type the operation
+does not take), is answered without calling the implementation, by `ErrorHandler::invalid_request`. An implementation's `Err` is
 answered by `ErrorHandler::server_error`. Both have a default:
 
 | | Status | Body |
 | --- | --- | --- |
-| `invalid_request` | `400` | ``{"error": {"message": "query parameter `limit`: invalid value 'x'", "location": "query", "name": "limit"}}`` |
+| `invalid_request` | the error's `status()`: `400`, `415` for a media type the operation does not take, `413` for a body over the limit | ``{"error": {"message": "query parameter `limit`: invalid value 'x'", "location": "query", "name": "limit"}}`` |
 | `server_error` | `500` | `{"error": {"message": "internal server error"}}`; the error is not shown to the caller |
 
-Implement either method to answer otherwise; `RequestError` has the `location` (`path`, `query` or `body`), the
-parameter's `name` and the `message`.
+Implement either method to answer otherwise; `RequestError` has the `status`, the `location` (`path`, `query` or
+`body`), the parameter's `name` and the `message`.
 
 ### What the server does not serve yet
 
@@ -201,13 +227,12 @@ An operation the server cannot serve is left out of the trait and the router, wi
 line in the crate's README and a warning when generating:
 
 ```text
-timvw-rust: server: search_pets (POST /pets/search) is not served: its request body is 'application/x-www-form-urlencoded'
+timvw-rust: server: filter_pets (GET /pets/filter) is not served: the query parameter 'filter' is a deepObject
 ```
 
-Left out for now: `application/x-www-form-urlencoded` bodies, a request body that declares media types of more than
-one kind (JSON and multipart, say), a multipart field that is a union with a file variant, a query parameter in
-deepObject style or of an object type, and a path parameter that is not a whole path segment
-(`/files/{name}.json`). Webhooks are the client's: the server does not send them. `modelsCrate`, authentication and
+Left out for now: a multipart field that is a union with a file variant (a file or a JSON reference, say), a request
+body that is both a multipart and an urlencoded form, a query parameter in deepObject style or of an object type, and
+a path parameter that is not a whole path segment (`/files/{name}.json`). Webhooks are the client's: the server does not send them. `modelsCrate`, authentication and
 validation are the next slices of the design.
 
 ## Cargo features

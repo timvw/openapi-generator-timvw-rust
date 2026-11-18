@@ -11,15 +11,17 @@ use server_fixture::apis::configuration::Configuration;
 use server_fixture::apis::{owners_api, pets_api, Error};
 use server_fixture::headers::{ListPetsErrorHeaders, ListPetsResponseHeaders};
 use server_fixture::headers::GetPhotoResponseHeaders;
-use server_fixture::models::{self, Kind, NewPet, Pet, Photo};
+use server_fixture::models::{self, Imported, Kind, NewPet, Pet, PetBorn, PetEvent, PetRenamed, Photo};
 use server_fixture::server::owners_api::{
     GetOwnerPetRequest, GetOwnerPetResponse, OwnerEventsRequest, OwnerEventsResponse,
 };
 use server_fixture::server::pets_api::{
     CreatePetRequest, CreatePetResponse, DeletePetRequest, DeletePetResponse, GetPetNameRequest, GetPetNameResponse,
-    GetPetRequest, GetPetResponse, GetPhotoRequest, GetPhotoResponse, ListPetsRequest, ListPetsResponse,
-    PetFeedRequest, PetFeedResponse, PutPhotoRequest, PutPhotoResponse, RenamePetRequest, RenamePetResponse,
-    UpdatePetRequest, UpdatePetResponse, UploadPhotoRequest, UploadPhotoResponse,
+    GetPetRequest, GetPetResponse, GetPhotoRequest, GetPhotoResponse, ImportPetBody, ImportPetRequest,
+    ImportPetResponse, ListPetsRequest, ListPetsResponse, PetEventsRequest, PetEventsResponse, PetFeedRequest,
+    PetFeedResponse, PutPhotoRequest, PutPhotoResponse, RenamePetRequest, RenamePetResponse, SearchPetsForm,
+    SearchPetsRequest, SearchPetsResponse, UpdatePetRequest, UpdatePetResponse, UploadPhotoRequest,
+    UploadPhotoResponse,
 };
 use server_fixture::server::{
     self, Binary, ErrorHandler, EventStream, OwnersApi, PetsApi, RequestError, ServerError,
@@ -31,6 +33,7 @@ struct Store {
     pets: Mutex<Vec<Pet>>,
     photos: Mutex<HashMap<i64, axum::body::Bytes>>,
     last_list: Mutex<Option<ListPetsRequest>>,
+    last_search: Mutex<Option<SearchPetsForm>>,
 }
 
 impl Store {
@@ -164,6 +167,40 @@ impl PetsApi for Store {
             PetFeedResponse::Status200(self.pets())
         })
     }
+
+    async fn search_pets(&self, request: SearchPetsRequest) -> Result<SearchPetsResponse, ServerError> {
+        let form = request.body;
+        *self.last_search.lock().unwrap() = Some(form.clone());
+        let pets = self
+            .pets()
+            .into_iter()
+            .filter(|p| p.name.contains(&form.name))
+            .filter(|p| form.kinds.as_ref().is_none_or(|kinds| p.kind.is_some_and(|k| kinds.contains(&k))))
+            .filter(|p| form.ids.as_ref().is_none_or(|ids| ids.contains(&p.id)))
+            .take(form.limit.map_or(usize::MAX, |l| l as usize))
+            .collect();
+        Ok(SearchPetsResponse::Status200(pets))
+    }
+
+    async fn import_pet(&self, request: ImportPetRequest) -> Result<ImportPetResponse, ServerError> {
+        let (via, detail) = match request.body {
+            ImportPetBody::Multipart(form) => {
+                ("multipart", format!("{} bytes from {}", form.file.bytes.len(), form.source.unwrap_or_default()))
+            }
+            ImportPetBody::Json(pet) => ("json", pet.name),
+            ImportPetBody::Sdp(sdp) => ("sdp", sdp),
+        };
+        Ok(ImportPetResponse::Status200(Imported { via: via.to_owned(), detail }))
+    }
+
+    async fn pet_events(&self, request: PetEventsRequest) -> Result<PetEventsResponse, ServerError> {
+        let born = PetBorn::new(models::pet_born::Type::PetBorn, format!("pet {}", request.pet_id));
+        let renamed = PetRenamed::new(models::pet_renamed::Type::PetRenamed, "Tom".to_owned(), "Tom II".to_owned());
+        Ok(PetEventsResponse::Status200(EventStream::from_events([
+            PetEvent::PetBorn(born),
+            PetEvent::PetRenamed(renamed),
+        ])))
+    }
 }
 
 impl OwnersApi for Store {
@@ -228,6 +265,15 @@ macro_rules! delegate {
             }
             async fn pet_feed(&self, request: PetFeedRequest) -> Result<PetFeedResponse, ServerError> {
                 self.0.pet_feed(request).await
+            }
+            async fn search_pets(&self, request: SearchPetsRequest) -> Result<SearchPetsResponse, ServerError> {
+                self.0.search_pets(request).await
+            }
+            async fn import_pet(&self, request: ImportPetRequest) -> Result<ImportPetResponse, ServerError> {
+                self.0.import_pet(request).await
+            }
+            async fn pet_events(&self, request: PetEventsRequest) -> Result<PetEventsResponse, ServerError> {
+                self.0.pet_events(request).await
             }
         }
 
@@ -637,4 +683,128 @@ async fn event_streams() {
     let text = response.text().await.unwrap();
     assert!(text.starts_with("data: {\"id\":1,"), "{text}");
     assert!(text.ends_with("\n\ndata: [DONE]\n\n"), "{text}");
+}
+
+/// A body of three media types (a multipart form, JSON, `application/sdp`): the server reads each by its
+/// `Content-Type`, as the client's function for it sends it, and answers another media type with a `415`.
+#[tokio::test]
+async fn a_body_of_several_media_types() {
+    let (configuration, _) = seeded().await;
+    let imported = pets_api::import_pet()
+        .configuration(&configuration)
+        .file(vec![1u8, 2, 3])
+        .source("a shelter")
+        .call()
+        .await
+        .unwrap();
+    assert_eq!((imported.via.as_str(), imported.detail.as_str()), ("multipart", "3 bytes from a shelter"));
+    let imported = pets_api::import_pet_json()
+        .configuration(&configuration)
+        .new_pet(&NewPet { name: "Felix".to_owned(), kind: None })
+        .call()
+        .await
+        .unwrap();
+    assert_eq!((imported.via.as_str(), imported.detail.as_str()), ("json", "Felix"));
+    let sdp = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n";
+    let imported = pets_api::import_pet_sdp().configuration(&configuration).body(sdp).call().await.unwrap();
+    assert_eq!((imported.via.as_str(), imported.detail.as_str()), ("sdp", sdp));
+
+    let send = |content_type: Option<&'static str>, body: &'static str| {
+        let configuration = configuration.clone();
+        async move {
+            let url = format!("{}/pets/import", configuration.base_path);
+            let mut builder = configuration.client.request(timvw_rust_runtime::Method::POST, &url).body(body);
+            if let Some(content_type) = content_type {
+                builder = builder.header("content-type", content_type);
+            }
+            let response = configuration.client.execute(builder.build().unwrap()).await.unwrap();
+            let status = response.status().as_u16();
+            (status, serde_json::from_str::<serde_json::Value>(&response.text().await.unwrap()).unwrap())
+        }
+    };
+    // JSON under another JSON media type, with parameters
+    let (status, body) = send(Some("application/merge-patch+json; charset=utf-8"), r#"{"name":"Rex"}"#).await;
+    assert_eq!((status, body["detail"].as_str()), (200, Some("Rex")));
+    // a media type the operation does not take, and none at all: a 415
+    let (status, body) = send(Some("image/png"), "png").await;
+    assert_eq!(status, 415);
+    assert_eq!(body["error"]["location"], "body");
+    assert!(body["error"]["message"].as_str().unwrap().contains("image/png"), "{body}");
+    let (status, _) = send(None, "v=0").await;
+    assert_eq!(status, 415);
+    // no body at all for a required one: a 400
+    let (status, body) = send(None, "").await;
+    assert_eq!((status, body["error"]["message"].as_str()), (400, Some("body: missing")));
+    // the right media type, a body that does not decode: a 400
+    let (status, _) = send(Some("application/json"), "{").await;
+    assert_eq!(status, 400);
+}
+
+/// An `application/x-www-form-urlencoded` body into its form struct: a list sent as a pair per item, and one the
+/// spec joins (`explode: false`).
+#[tokio::test]
+async fn an_urlencoded_form() {
+    let (configuration, store) = seeded().await;
+    let pets = pets_api::search_pets()
+        .configuration(&configuration)
+        .name("e")
+        .limit(5)
+        .kinds(vec![Kind::Dog, Kind::Cat])
+        .ids(vec![2, 3])
+        .call()
+        .await
+        .unwrap();
+    assert_eq!(pets.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Rex"]);
+    let form = store.last_search.lock().unwrap().clone().unwrap();
+    assert_eq!(
+        (form.name.as_str(), form.limit, form.kinds, form.ids),
+        ("e", Some(5), Some(vec![Kind::Dog, Kind::Cat]), Some(vec![2, 3]))
+    );
+
+    let pets = pets_api::search_pets().configuration(&configuration).name("T").call().await.unwrap();
+    assert_eq!(pets.len(), 1);
+    let form = store.last_search.lock().unwrap().clone().unwrap();
+    assert_eq!((form.limit, form.kinds, form.ids), (None, None, None));
+
+    // a required field missing, and one that does not parse: a 400 that names it
+    let send = |body: &'static str| {
+        let configuration = configuration.clone();
+        async move {
+            let url = format!("{}/pets/search", configuration.base_path);
+            let builder = configuration
+                .client
+                .request(timvw_rust_runtime::Method::POST, &url)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(body);
+            let response = configuration.client.execute(builder.build().unwrap()).await.unwrap();
+            let status = response.status().as_u16();
+            (status, serde_json::from_str::<serde_json::Value>(&response.text().await.unwrap()).unwrap())
+        }
+    };
+    let (status, body) = send("limit=1").await;
+    assert_eq!((status, body["error"]["name"].as_str()), (400, Some("name")));
+    let (status, body) = send("name=x&ids=1,two").await;
+    assert_eq!((status, body["error"]["name"].as_str()), (400, Some("ids")));
+}
+
+/// Events whose schema has a discriminator are named by it (`event: pet.born`), as OpenAI names a Responses
+/// stream's events; the client reads them as before.
+#[tokio::test]
+async fn named_events() {
+    let (configuration, _) = seeded().await;
+    let events = pets_api::pet_events().configuration(&configuration).pet_id(7).call().await.unwrap();
+    let events: Vec<PetEvent> = events.map(Result::unwrap).collect().await;
+    assert!(matches!(&events[..], [PetEvent::PetBorn(b), PetEvent::PetRenamed(r)] if b.name == "pet 7" && r.to == "Tom II"));
+
+    let url = format!("{}/pets/7/events", configuration.base_path);
+    let request = configuration.client.request(timvw_rust_runtime::Method::GET, &url).build().unwrap();
+    let text = configuration.client.execute(request).await.unwrap().text().await.unwrap();
+    assert!(text.starts_with("event: pet.born\ndata: {\"type\":\"pet.born\",\"name\":\"pet 7\"}\n\n"), "{text}");
+    assert!(text.contains("\n\nevent: pet.renamed\ndata: {"), "{text}");
+
+    // events without a discriminator have no name
+    let url = format!("{}/owners/events", configuration.base_path);
+    let request = configuration.client.request(timvw_rust_runtime::Method::GET, &url).build().unwrap();
+    let text = configuration.client.execute(request).await.unwrap().text().await.unwrap();
+    assert!(text.starts_with("data: {"), "{text}");
 }

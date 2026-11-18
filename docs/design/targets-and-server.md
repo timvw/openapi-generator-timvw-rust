@@ -167,7 +167,8 @@ let app: axum::Router = server::router(MyImpl::new());
    JSON-or-multipart operations; the request struct would need a body enum chosen by `Content-Type`), and multipart
    fields that are unions with a file variant.
 3. **`modelsCrate`, and the first real use:** a mock OpenAI server for openai-ergonomic's tests, generated from
-   openai-client-base's spec, with its models from `openai-client-base`.
+   openai-client-base's spec, with its models from `openai-client-base`. Planned in
+   [a mock OpenAI server](openai-mock-server.md), which compares LiteLLM and Bifrost.
 4. **Later:** authentication schemes, validation, and webhooks sent by the server.
 
 ## Open questions

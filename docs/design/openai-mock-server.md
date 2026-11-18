@@ -1,8 +1,9 @@
 # Design: a mock OpenAI server, compared with LiteLLM and Bifrost
 
-Status: proposed. This is the plan for slice 3 of [targets and a server](targets-and-server.md): a mock OpenAI server
-generated from openai-client-base's spec, with its models from `openai-client-base` (`modelsCrate`), for
-openai-ergonomic's tests.
+Status: implemented, as [openai-mock-server](https://github.com/genai-rs/openai-mock-server). This was the plan for
+slice 3 of [targets and a server](targets-and-server.md): a mock OpenAI server generated from OpenAI's spec, for
+openai-ergonomic's tests. One thing was decided differently from the plan below, see
+[what was built](#what-was-built): the mock generates its own models, and shares only the spec with the client.
 
 Before building it, this page looks at two OpenAI-compatible gateways that serve the same API by hand:
 [LiteLLM](https://github.com/BerriAI/litellm)'s proxy (Python, with a Rust gateway in progress) and
@@ -126,8 +127,9 @@ For a mock, the operations that matter are the ones openai-ergonomic wraps and t
 **What it buys:**
 - **Coverage:** every operation in the spec gets a route, a typed request and a typed response, the same day the
   spec changes. Both gateways add routes by hand, and the table above shows how long that list is.
-- **Shared types:** the mock and the client share the models (`modelsCrate`), so they cannot disagree on a field
-  name, an enum value or an event type. A test then fails on behaviour, not on fixtures that went stale.
+- **Types from the spec:** the mock and the client are generated from the same spec, so they agree on field names,
+  enum values and event types wherever their spec revisions do. A test then fails on behaviour, not on fixtures
+  that went stale. (The plan was to share the models crate, `modelsCrate`; see [what was built](#what-was-built).)
 - **Headers and statuses come from the spec,** as typed values, not strings.
 
 **What we would miss, and should copy:**
@@ -185,3 +187,29 @@ on the same server is the useful next step, and closer to what tests need than a
    - authentication schemes;
    - recording: forward to OpenAI once, store the typed exchange, replay it, re-record on demand;
    - spec-based checks of the mock's answers.
+
+## What was built
+
+The plan above put the server in a crate next to openai-client-base, with the client's models (`modelsCrate`). That
+was built first, and then undone:
+
+- **The spec is the contract.** A client and a server share the OpenAPI spec, not a crate. A server that depends on
+  the client crate for its models takes the client's manifest, features and version with it, and a release of one
+  forces a release of the other. Each repository generates its own types from the spec and records the revision it
+  used.
+- **No server crate.** A published `openai-server-base` only serves someone who implements an OpenAI-compatible
+  server, and nobody does yet. The generated server is a module of the mock (`src/generated`: `server`, `headers`,
+  `models`), regenerated there. If a proxy or a gateway is built one day, it generates its own server from the spec
+  the same way.
+- **One repository, one crate:** [genai-rs/openai-mock-server](https://github.com/genai-rs/openai-mock-server).
+  `scripts/generate.sh` runs the generator with `targets: ["server"]` and `serverDefaultMethods` into a scratch
+  directory and keeps the three modules; the generated `lib.rs`, manifest and docs are not used. A script checks the
+  hand-written `Cargo.toml` against the generated one (API features, dependencies).
+- **Cargo features** are the generated API groups. The default set is the groups the mock scripts, which keeps a
+  test build short; everything else answers `501` from a fallback.
+- **The cost:** a crate that tests with both compiles two sets of OpenAI models, the client's and the mock's (the
+  mock's only for its default groups). And the two can be on different spec revisions, as a real client and server
+  are.
+
+`modelsCrate` stays an option of the generator for an API where a shared models crate is wanted; genai-rs does not
+use it.

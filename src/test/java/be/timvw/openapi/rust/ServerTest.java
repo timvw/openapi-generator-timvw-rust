@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code targets} and the axum server (slice 1 of docs/design/targets-and-server.md) on
+ * {@code targets} and the axum server (slices 1 and 2 of docs/design/targets-and-server.md) on
  * src/test/resources/server.yaml. src/test/rust/server.rs runs the server generated with {@code ["client", "server"]}
  * on a local port and calls it with the client of the same crate; {@link #theClientCallsTheServer} runs it and clippy
  * with cargo.
@@ -152,13 +152,14 @@ class ServerTest {
         assertFalse(files.keySet().stream().anyMatch(f -> f.startsWith("src/apis/")), files.keySet().toString());
         String cargo = files.get("Cargo.toml");
         assertFalse(cargo.contains("timvw-rust-runtime ="), cargo);
-        assertContains(cargo, "axum = { version = \"^0.8\", default-features = false }\n"
+        assertContains(cargo, "axum = { version = \"^0.8\", default-features = false, features = [\"multipart\"] }\n"
+                + "futures-util = { version = \"^0.3\", default-features = false, features = [\"std\"] }\n"
                 + "http = { version = \"^1\" }\n");
         assertContains(cargo, "[features]\ndefault = []\n");
         assertContains(files.get("src/lib.rs"), "pub mod models;\npub mod headers;\npub mod server;\n");
         assertContains(files.get("README.md"), "# Rust API server for server_fixture");
-        assertContains(files.get("README.md"), "- `upload_photo` (**POST** /pets/{petId}/photo): its request body is "
-                + "'multipart/form-data'");
+        assertContains(files.get("README.md"), "- `search_pets` (**POST** /pets/search): its request body is "
+                + "'application/x-www-form-urlencoded'");
     }
 
     @Test
@@ -202,8 +203,8 @@ class ServerTest {
                 + "\"verbose\", |v| v.parse::<bool>().ok())?)?,");
         assertContains(server, "tags: super::query_list(query, \"tags\", None, |v| Some(v.to_owned()))?,");
         assertContains(server, "ids: super::query_list(query, \"ids\", Some(\",\"), |v| v.parse::<i64>().ok())?,");
-        assertContains(server, "body: super::json_body(body)?,");
-        assertContains(server, "body: super::optional_json_body(body)?,");
+        assertContains(server, "body: super::json_body(&body)?,");
+        assertContains(server, "body: super::optional_json_body(&body)?,");
     }
 
     @Test
@@ -232,12 +233,113 @@ class ServerTest {
     void whatTheServerCannotServeIsLeftOutWithAComment() throws IOException {
         generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
         String server = read(out, "src/server.rs");
-        assertContains(server, "    // Not served: `upload_photo` (POST /pets/{petId}/photo): its request body is "
-                + "'multipart/form-data'. The server serves operations whose\n    // request body and responses are JSON.\n");
-        assertContains(server, "    // Not served: `owner_events` (GET /owners/events): its 200 response is "
-                + "'text/event-stream'.");
-        assertFalse(server.contains("fn upload_photo("), server);
-        assertFalse(server.contains("OwnerEventsRequest"), server);
+        assertContains(server, "    // Not served: `search_pets` (POST /pets/search): its request body is "
+                + "'application/x-www-form-urlencoded'.\n");
+        assertFalse(server.contains("fn search_pets("), server);
+        assertFalse(server.contains("SearchPetsRequest"), server);
+    }
+
+    @Test
+    void anEventStreamIsATypedStreamOfItsEvents() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
+        String server = read(out, "src/server.rs");
+        assertContains(server, "    #[derive(Debug)]\n    pub enum OwnerEventsResponse {\n        /// `200`: a stream of pets\n"
+                + "        Status200(super::EventStream<models::Pet>),\n    }\n");
+        assertContains(server, "OwnerEventsResponse::Status200(body) => super::event_stream_response(super::status(200), "
+                + "http::HeaderMap::new(), body),");
+        assertContains(server, "pub struct EventStream<T> {");
+        assertContains(server, "line.extend_from_slice(b\"\\n\\n\");");
+        assertContains(server, "b\"data: [DONE]\\n\\n\"");
+    }
+
+    @Test
+    void aStatusWithJsonAndAStreamHasAVariantForEach() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
+        String server = read(out, "src/server.rs");
+        assertContains(server, "    pub enum PetFeedResponse {\n"
+                + "        /// `200`, `application/json`: the pets, as a list or as a stream\n"
+                + "        Status200(Vec<models::Pet>),\n"
+                + "        /// `200`, `text/event-stream`: the pets, as a list or as a stream\n"
+                + "        Status200Stream(super::EventStream<models::Pet>),\n    }\n");
+    }
+
+    @Test
+    void binaryAndTextResponses() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
+        String server = read(out, "src/server.rs");
+        assertContains(server, "        Status200 { body: super::Binary, headers: crate::headers::GetPhotoResponseHeaders },\n"
+                + "        /// `404`: no photo\n        Status404(String),\n");
+        assertContains(server, "GetPhotoResponse::Status200 { body, headers } => super::binary_response(super::status(200), "
+                + "headers.to_header_map(), body, \"image/png\"),");
+        assertContains(server, "GetPhotoResponse::Status404(body) => super::text_response(super::status(404), "
+                + "http::HeaderMap::new(), body, \"text/plain\"),");
+        assertContains(server, "        Status200(String),\n");
+        assertContains(server, "pub struct Binary {");
+        // a body read once: the enum is not Clone
+        assertContains(server, "    #[derive(Debug)]\n    pub enum GetPhotoResponse {");
+        assertContains(server, "    #[derive(Clone, Debug)]\n    pub enum GetPetNameResponse {");
+    }
+
+    @Test
+    void binaryTextAndMultipartRequestBodies() throws IOException {
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
+        String server = read(out, "src/server.rs");
+        assertContains(server, "    pub struct PutPhotoRequest {\n        /// `petId`, a path parameter\n        pub pet_id: i64,\n"
+                + "        /// The request body\n        pub body: axum::body::Bytes,\n");
+        assertContains(server, "            body,\n            headers,\n");
+        assertContains(server, "    pub struct RenamePetRequest {\n        /// `petId`, a path parameter\n        pub pet_id: i64,\n"
+                + "        /// The request body\n        pub body: String,\n");
+        assertContains(server, "body: super::text_body(&body)?,");
+        assertContains(server, "        /// The request body\n        pub body: UploadPhotoForm,\n");
+        assertContains(server, "    pub struct UploadPhotoForm {\n        /// `file`\n        pub file: super::FilePart,\n"
+                + "        /// `caption`\n        pub caption: Option<String>,\n        /// `width`\n"
+                + "        pub width: Option<i64>,\n        /// `tags`\n        pub tags: Option<Vec<String>>,\n"
+                + "        /// `extras`\n        pub extras: Option<Vec<super::FilePart>>,\n        /// `owner`\n"
+                + "        pub owner: Option<models::NewPet>,\n    }\n");
+        assertContains(server, "            file: super::required(\"body\", \"file\", super::form_file(parts, \"file\"))?,\n"
+                + "            caption: super::form_value(parts, \"caption\", |v| Some(v.to_owned()))?,\n"
+                + "            width: super::form_value(parts, \"width\", |v| v.parse::<i64>().ok())?,\n"
+                + "            tags: super::form_list(parts, \"tags\", |v| Some(v.to_owned()))?,\n"
+                + "            extras: super::form_files(parts, \"extras\"),\n"
+                + "            owner: super::form_json(parts, \"owner\")?,\n");
+        assertContains(server, "        let parts = match super::multipart_parts(request).await {");
+        assertContains(server, "pub struct FilePart {");
+    }
+
+    @Test
+    void aJsonOnlyServerNeedsNoMoreDependencies() throws IOException {
+        Path spec = out.resolve("json.yaml");
+        Files.writeString(spec, """
+                openapi: 3.0.3
+                info:
+                  title: Json
+                  version: 1.0.0
+                paths:
+                  /ping:
+                    get:
+                      operationId: ping
+                      responses:
+                        "200":
+                          description: pong
+                          content:
+                            application/json:
+                              schema:
+                                type: string
+                """);
+        Path dir = out.resolve("crate");
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("packageName", "json_fixture");
+        props.put(TimvwRustCodegen.TARGETS, "server");
+        new DefaultGenerator().opts(new CodegenConfigurator()
+                .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
+                .setInputSpec(spec.toString())
+                .setOutputDir(dir.toString())
+                .setAdditionalProperties(props)
+                .toClientOptInput()).generate();
+        String cargo = read(dir, "Cargo.toml");
+        assertContains(cargo, "axum = { version = \"^0.8\", default-features = false }\nhttp = { version = \"^1\" }\n");
+        String server = read(dir, "src/server.rs");
+        assertFalse(server.contains("pub struct EventStream") || server.contains("pub struct FilePart"), server);
     }
 
     @Test
@@ -246,13 +348,15 @@ class ServerTest {
                 TimvwRustCodegen.RESPONSE_FUNCTIONS, "true"));
         String cargo = read(out, "Cargo.toml");
         assertContains(cargo, ", optional = true }\naxum = { version = \"^0.8\", default-features = false, "
-                + "optional = true }\nhttp = { version = \"^1\", optional = true }\n");
+                + "features = [\"multipart\"], optional = true }\nfutures-util = { version = \"^0.3\", "
+                + "default-features = false, features = [\"std\"], optional = true }\n"
+                + "http = { version = \"^1\", optional = true }\n");
         assertContains(cargo, "default = [\"native-tls\", \"retry\", \"client\", \"server\"]\n"
                 + "native-tls = [\"timvw-rust-runtime?/native-tls\"]\n");
         // chrono: only the typed headers (X-Next) use it, which the models do not compile
         assertContains(cargo, "chrono = { version = \"^0.4\",  features = [\"serde\"], optional = true }\n");
         assertContains(cargo, "client = [\"dep:timvw-rust-runtime\", \"dep:http\", \"dep:chrono\"]\n"
-                + "server = [\"dep:axum\", \"dep:http\", \"dep:chrono\"]\n");
+                + "server = [\"dep:axum\", \"dep:http\", \"dep:futures-util\", \"dep:chrono\"]\n");
         String lib = read(out, "src/lib.rs");
         assertContains(lib, "#[cfg(feature = \"client\")]\npub mod apis;\npub mod models;\n"
                 + "#[cfg(any(feature = \"client\", feature = \"server\"))]\npub mod headers;\n"
@@ -290,13 +394,15 @@ class ServerTest {
     void theClientCallsTheServer() throws IOException, InterruptedException {
         Assumptions.assumeTrue(cargo(out, 30, "--version") != null, "no cargo");
         generate(out, Map.of(TimvwRustCodegen.TARGETS, List.of("client", "server"),
-                TimvwRustCodegen.RESPONSE_FUNCTIONS, "true"));
+                TimvwRustCodegen.RESPONSE_FUNCTIONS, "true", TimvwRustCodegen.TYPED_EVENT_STREAMS, "true",
+                TimvwRustCodegen.CONTENT_TYPE_METHODS, "true"));
         Path manifest = out.resolve("Cargo.toml");
         Files.writeString(manifest, Files.readString(manifest) + """
 
                 [dev-dependencies]
                 axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json"] }
-                tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+                futures-util = "0.3"
+                tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
                 """);
         Files.createDirectories(out.resolve("tests"));
         Files.copy(Path.of("src/test/rust/server.rs"), out.resolve("tests/server.rs"),

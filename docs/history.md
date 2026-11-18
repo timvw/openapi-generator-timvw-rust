@@ -14,9 +14,22 @@ mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` c
 credentials in `SecretString`s, adds headers and query parameters per call and a Cargo feature per API group
 (`apiFeatures`); 0.27 takes file parameters as `timvw_rust_runtime::Upload`s, streamed and retried; 0.28 takes them in
 multipart unions too; 0.29 in model fields, and removes the reqwest-middleware stack; 0.31 renders the models alone or an axum server as
-well (`targets`). The
+well (`targets`); 0.32 serves event streams, files, text and multipart forms. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.32.0
+
+The server (`targets: ["server"]`) serves the operations 0.31 left out for their media types: a `text/event-stream`
+response is an `EventStream` of its event type, written as the `data:` lines the client's typed event streams read
+(`.done()` adds `data: [DONE]`); a `multipart/form-data` body is a form struct per operation with a `FilePart` per
+file; a `text/*` body or response is a `String`; anything else is the bytes of a request and a `Binary` (bytes or a
+stream, media type settable) of a response. A status with JSON and an event stream has a variant for each
+(`Status200`, `Status200Stream`). The server-only crate gets `futures-util` when it streams and axum's `multipart`
+feature when it reads forms; it still needs no `timvw-rust-runtime`. With both targets and `typedEventStreams`,
+`futures-core` is the `client` feature's. Still left out: urlencoded forms, request bodies of more than one kind and
+multipart file unions. On the OpenAI spec, 369 operations are served and 19 left out. See the
+[server guide](guides/server.md#request-and-response-bodies).
 
 ## 0.31.0
 

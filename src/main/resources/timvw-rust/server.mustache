@@ -12,9 +12,14 @@
 //! let app: axum::Router = server::router(MyApi);
 //! ```
 //!
-//! A request whose path or query parameters or JSON body do not decode is answered by
+//! A request whose path or query parameters or body do not decode is answered by
 //! [`ErrorHandler::invalid_request`] (a `400` with a JSON error body by default) without calling the
 //! implementation; an implementation's error by [`ErrorHandler::server_error`] (a `500`).
+//!
+//! A request body is its model for JSON, a `String` for text, the bytes for anything else, and a form struct for
+//! `multipart/form-data`, with a `FilePart` per file. A response is its model for JSON, an `EventStream` of the
+//! event type for `text/event-stream`, a `String` for text and a `Binary` for anything else. Bodies are read whole,
+//! within axum's limit (2 MB by default; raise it with the router's `axum::extract::DefaultBodyLimit` layer).
 
 {{#serverModules}}
 pub use self::{{{module}}}::{{{trait}}};
@@ -253,6 +258,349 @@ fn optional_json_body<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<Opt
     // `null` is no body too: what a client sends for one it does not have
     serde_json::from_slice(body).map_err(|e| RequestError::new("body", None, e.to_string()))
 }
+
+#[allow(dead_code)]
+fn text_body(body: &[u8]) -> Result<String, RequestError> {
+    String::from_utf8(body.to_vec()).map_err(|_| RequestError::new("body", None, "not UTF-8"))
+}
+
+#[allow(dead_code)]
+fn optional_text_body(body: &[u8]) -> Result<Option<String>, RequestError> {
+    if body.is_empty() {
+        return Ok(None);
+    }
+    text_body(body).map(Some)
+}
+
+#[allow(dead_code)]
+fn optional_bytes(body: axum::body::Bytes) -> Option<axum::body::Bytes> {
+    (!body.is_empty()).then_some(body)
+}
+
+/// `body` as text of this media type, with this status and these headers.
+#[allow(dead_code)]
+fn text_response(
+    status: http::StatusCode,
+    headers: http::HeaderMap,
+    body: String,
+    content_type: &'static str,
+) -> axum::response::Response {
+    let mut response = axum::response::Response::new(axum::body::Body::from(body));
+    *response.status_mut() = status;
+    response.headers_mut().extend(headers);
+    response.headers_mut().insert(http::header::CONTENT_TYPE, http::HeaderValue::from_static(content_type));
+    response
+}
+{{#serverStreams}}
+
+/// A stream of server-sent events, each the JSON of a `T` in a `data:` line, as the client's typed event streams read
+/// them. [`EventStream::done`] ends the stream with `data: [DONE]`, for clients that wait for it.
+///
+/// An error of the stream, or an event that does not serialize, ends the response abruptly: the client sees the body
+/// fail, not a clean end.
+pub struct EventStream<T> {
+    events: std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<T, ServerError>> + Send>>,
+    done: bool,
+}
+
+impl<T: Send + 'static> EventStream<T> {
+    /// The events of `stream`.
+    pub fn new<S>(stream: S) -> Self
+    where
+        S: futures_util::Stream<Item = T> + Send + 'static,
+    {
+        Self::try_new(futures_util::StreamExt::map(stream, Ok))
+    }
+
+    /// The events of `stream`, which can fail: an error ends the response.
+    pub fn try_new<S>(stream: S) -> Self
+    where
+        S: futures_util::Stream<Item = Result<T, ServerError>> + Send + 'static,
+    {
+        EventStream { events: Box::pin(stream), done: false }
+    }
+
+    /// The events of `events`, all known up front.
+    pub fn from_events<I>(events: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        I::IntoIter: Send + 'static,
+    {
+        Self::new(futures_util::stream::iter(events))
+    }
+
+    /// Ends the stream with `data: [DONE]` after its events.
+    pub fn done(mut self) -> Self {
+        self.done = true;
+        self
+    }
+}
+
+impl<T> std::fmt::Debug for EventStream<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EventStream").field("done", &self.done).finish_non_exhaustive()
+    }
+}
+
+/// A body that is not JSON or text: bytes held in memory or a stream of chunks, sent with the media type the spec
+/// declares unless [`Binary::content_type`] sets another.
+pub struct Binary {
+    body: axum::body::Body,
+    content_type: Option<http::HeaderValue>,
+}
+
+impl Binary {
+    /// Bytes held in memory: the response has a `Content-Length`.
+    pub fn bytes(bytes: impl Into<axum::body::Bytes>) -> Self {
+        Binary { body: axum::body::Body::from(bytes.into()), content_type: None }
+    }
+
+    /// A stream of chunks, sent as they come (chunked). An error of the stream ends the response abruptly.
+    pub fn stream<S, B, E>(stream: S) -> Self
+    where
+        S: futures_util::Stream<Item = Result<B, E>> + Send + 'static,
+        B: Into<axum::body::Bytes> + 'static,
+        E: Into<Box<dyn std::error::Error + Send + Sync>> + 'static,
+    {
+        Binary { body: axum::body::Body::from_stream(stream), content_type: None }
+    }
+
+    /// The media type of the body, instead of the one the spec declares (needed when it declares a range such as
+    /// `audio/*`, or more than one). A value that is not a valid header value is ignored.
+    pub fn content_type(mut self, content_type: &str) -> Self {
+        self.content_type = http::HeaderValue::from_str(content_type).ok();
+        self
+    }
+}
+
+impl From<axum::body::Bytes> for Binary {
+    fn from(bytes: axum::body::Bytes) -> Self {
+        Binary::bytes(bytes)
+    }
+}
+
+impl From<Vec<u8>> for Binary {
+    fn from(bytes: Vec<u8>) -> Self {
+        Binary::bytes(bytes)
+    }
+}
+
+impl From<&'static [u8]> for Binary {
+    fn from(bytes: &'static [u8]) -> Self {
+        Binary::bytes(bytes)
+    }
+}
+
+impl std::fmt::Debug for Binary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Binary").field("content_type", &self.content_type).finish_non_exhaustive()
+    }
+}
+
+/// The events of `body` as `text/event-stream`, with this status and these headers.
+#[allow(dead_code)]
+fn event_stream_response<T: serde::Serialize + Send + 'static>(
+    status: http::StatusCode,
+    headers: http::HeaderMap,
+    body: EventStream<T>,
+) -> axum::response::Response {
+    use futures_util::StreamExt;
+
+    type BoxError = Box<dyn std::error::Error + Send + Sync>;
+    let done = body.done;
+    let events = body.events.map(|event| -> Result<axum::body::Bytes, BoxError> {
+        let event = event.map_err(|error| error.0)?;
+        let mut line = b"data: ".to_vec();
+        serde_json::to_writer(&mut line, &event)?;
+        line.extend_from_slice(b"\n\n");
+        Ok(line.into())
+    });
+    let end = futures_util::stream::iter(
+        done.then(|| Ok::<_, BoxError>(axum::body::Bytes::from_static(b"data: [DONE]\n\n"))),
+    );
+    let mut response = axum::response::Response::new(axum::body::Body::from_stream(events.chain(end)));
+    *response.status_mut() = status;
+    response.headers_mut().extend(headers);
+    response.headers_mut().insert(http::header::CONTENT_TYPE, http::HeaderValue::from_static("text/event-stream"));
+    response.headers_mut().insert(http::header::CACHE_CONTROL, http::HeaderValue::from_static("no-cache"));
+    response
+}
+
+/// `body` with this status and these headers, as its own media type or else `content_type`.
+#[allow(dead_code)]
+fn binary_response(
+    status: http::StatusCode,
+    headers: http::HeaderMap,
+    body: Binary,
+    content_type: &'static str,
+) -> axum::response::Response {
+    let mut response = axum::response::Response::new(body.body);
+    *response.status_mut() = status;
+    response.headers_mut().extend(headers);
+    let content_type = body.content_type.unwrap_or_else(|| http::HeaderValue::from_static(content_type));
+    response.headers_mut().insert(http::header::CONTENT_TYPE, content_type);
+    response
+}
+{{/serverStreams}}
+{{#serverMultipart}}
+
+/// A file of a `multipart/form-data` request: its bytes, with the file name and media type the client gave.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FilePart {
+    /// The part's file name (`filename` of its `Content-Disposition`), when it has one.
+    pub file_name: Option<String>,
+    /// The part's `Content-Type`, when it has one.
+    pub content_type: Option<String>,
+    /// The file.
+    pub bytes: axum::body::Bytes,
+}
+
+/// One part of a `multipart/form-data` request.
+struct FormPart {
+    name: String,
+    file_name: Option<String>,
+    content_type: Option<String>,
+    bytes: axum::body::Bytes,
+}
+
+impl FormPart {
+    fn file(&self) -> FilePart {
+        FilePart {
+            file_name: self.file_name.clone(),
+            content_type: self.content_type.clone(),
+            bytes: self.bytes.clone(),
+        }
+    }
+
+    fn text(&self) -> Result<&str, RequestError> {
+        std::str::from_utf8(&self.bytes).map_err(|_| RequestError::new("body", Some(&self.name), "not UTF-8"))
+    }
+}
+
+/// The parts of a `multipart/form-data` request.
+#[allow(dead_code)]
+async fn multipart_parts(request: axum::extract::Request) -> Result<Vec<FormPart>, RequestError> {
+    use axum::extract::FromRequest;
+
+    let mut multipart = axum::extract::Multipart::from_request(request, &())
+        .await
+        .map_err(|rejection| RequestError::new("body", None, rejection.body_text()))?;
+    let mut parts = Vec::new();
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => return Ok(parts),
+            Err(error) => return Err(RequestError::new("body", None, error.body_text())),
+        };
+        let name = field.name().unwrap_or_default().to_owned();
+        let file_name = field.file_name().map(str::to_owned);
+        let content_type = field.content_type().map(str::to_owned);
+        let bytes = field.bytes().await.map_err(|error| RequestError::new("body", Some(&name), error.body_text()))?;
+        parts.push(FormPart { name, file_name, content_type, bytes });
+    }
+}
+
+/// The parts of a `multipart/form-data` request, or `None` for a request without one.
+#[allow(dead_code)]
+async fn optional_multipart_parts(request: axum::extract::Request) -> Result<Option<Vec<FormPart>>, RequestError> {
+    let multipart = request
+        .headers()
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("multipart/"));
+    if !multipart {
+        return Ok(None);
+    }
+    multipart_parts(request).await.map(Some)
+}
+
+/// The first file part named `name`.
+#[allow(dead_code)]
+fn form_file(parts: &[FormPart], name: &str) -> Option<FilePart> {
+    parts.iter().find(|p| p.name == name).map(FormPart::file)
+}
+
+/// The file parts named `name`; `None` when there is none.
+#[allow(dead_code)]
+fn form_files(parts: &[FormPart], name: &str) -> Option<Vec<FilePart>> {
+    let files: Vec<FilePart> = parts.iter().filter(|p| p.name == name).map(FormPart::file).collect();
+    (!files.is_empty()).then_some(files)
+}
+
+/// The text of the first part named `name`, read by `parse`; `None` when there is none.
+#[allow(dead_code)]
+fn form_value<T>(parts: &[FormPart], name: &str, parse: impl Fn(&str) -> Option<T>) -> Result<Option<T>, RequestError> {
+    match parts.iter().find(|p| p.name == name) {
+        None => Ok(None),
+        Some(part) => {
+            let v = part.text()?;
+            parse(v).map(Some).ok_or_else(|| RequestError::new("body", Some(name), format!("invalid value '{v}'")))
+        }
+    }
+}
+
+/// The items of the parts named `name`, read by `parse`: one per part, or the items of one part that holds a JSON
+/// array (how a client without `multipartHelper` sends a list); `None` when there is none.
+#[allow(dead_code)]
+fn form_list<T>(
+    parts: &[FormPart],
+    name: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> Result<Option<Vec<T>>, RequestError> {
+    let named: Vec<&FormPart> = parts.iter().filter(|p| p.name == name).collect();
+    let mut texts = Vec::new();
+    match named.as_slice() {
+        [] => return Ok(None),
+        [one] if one.bytes.starts_with(b"[") => {
+            let items: Vec<serde_json::Value> =
+                serde_json::from_slice(&one.bytes).map_err(|e| RequestError::new("body", Some(name), e.to_string()))?;
+            for item in items {
+                texts.push(match item {
+                    serde_json::Value::String(text) => text,
+                    other => other.to_string(),
+                });
+            }
+        }
+        _ => {
+            for part in named {
+                texts.push(part.text()?.to_owned());
+            }
+        }
+    }
+    let mut items = Vec::new();
+    for v in texts {
+        items.push(parse(&v).ok_or_else(|| RequestError::new("body", Some(name), format!("invalid item '{v}'")))?);
+    }
+    Ok(Some(items))
+}
+
+/// The JSON of the first part named `name`; `None` when there is none.
+#[allow(dead_code)]
+fn form_json<T: serde::de::DeserializeOwned>(parts: &[FormPart], name: &str) -> Result<Option<T>, RequestError> {
+    match parts.iter().find(|p| p.name == name) {
+        None => Ok(None),
+        Some(part) => serde_json::from_slice(&part.bytes)
+            .map(Some)
+            .map_err(|e| RequestError::new("body", Some(name), e.to_string())),
+    }
+}
+
+/// The items of the parts named `name`, each JSON: one per part, or the items of one part that holds a JSON array;
+/// `None` when there is none.
+#[allow(dead_code)]
+fn form_json_list<T: serde::de::DeserializeOwned>(
+    parts: &[FormPart],
+    name: &str,
+) -> Result<Option<Vec<T>>, RequestError> {
+    let named: Vec<&FormPart> = parts.iter().filter(|p| p.name == name).collect();
+    let invalid = |e: serde_json::Error| RequestError::new("body", Some(name), e.to_string());
+    match named.as_slice() {
+        [] => Ok(None),
+        [one] if one.bytes.starts_with(b"[") => serde_json::from_slice(&one.bytes).map(Some).map_err(invalid),
+        _ => named.iter().map(|part| serde_json::from_slice(&part.bytes).map_err(invalid)).collect::<Result<_, _>>().map(Some),
+    }
+}
+{{/serverMultipart}}
 {{#serverModules}}
 
 /// The operations of the `{{{module}}}` API module.
@@ -277,8 +625,7 @@ pub mod {{{module}}} {
     }
     {{#left}}
 
-    // Not served: `{{{name}}}` ({{{httpMethod}}} {{{path}}}): {{{reason}}}. The server serves operations whose
-    // request body and responses are JSON.
+    // Not served: `{{{name}}}` ({{{httpMethod}}} {{{path}}}): {{{reason}}}.
     {{/left}}
 
     // A route per operation, each a statement of its own so that a Cargo feature can leave it out.
@@ -318,15 +665,43 @@ pub mod {{{module}}} {
         /// The request's headers, with its header and cookie parameters and credentials.
         pub headers: http::HeaderMap,
     }
+    {{#body}}
+    {{#multipart}}
+
+    /// The `multipart/form-data` body of [`{{{trait}}}::{{{name}}}`]: a field per property, a [`FilePart`](super::FilePart)
+    /// per file.
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    #[derive(Clone, Debug)]
+    pub struct {{{camel}}}Form {
+        {{#form}}
+        /// `{{{name}}}`{{#doc}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/doc}}
+        pub {{{field}}}: {{{type}}},
+        {{/form}}
+    }
+
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    fn form_{{{bare}}}(parts: &[super::FormPart]) -> Result<{{{camel}}}Form, super::RequestError> {
+        Ok({{{camel}}}Form {
+            {{#form}}
+            {{{field}}}: {{{decode}}},
+            {{/form}}
+        })
+    }
+    {{/multipart}}
+    {{/body}}
 
     /// The responses of [`{{{trait}}}::{{{name}}}`], one per status the spec declares.
     {{#cfg}}
     #[cfg({{{.}}})]
     {{/cfg}}
-    #[derive(Clone, Debug)]
+    #[derive({{{derive}}})]
     pub enum {{{camel}}}Response {
         {{#responses}}
-        /// `{{{code}}}`{{#doc}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/doc}}
+        /// `{{{code}}}`{{#media}}, `{{{.}}}`{{/media}}{{#doc}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/doc}}
         {{{declaration}}},
         {{/responses}}
     }
@@ -360,7 +735,12 @@ pub mod {{{module}}} {
         {{/hasQuery}}
         headers: http::HeaderMap,
         {{#body}}
+        {{#bytes}}
         body: axum::body::Bytes,
+        {{/bytes}}
+        {{#multipart}}
+        request: axum::extract::Request,
+        {{/multipart}}
         {{/body}}
     ) -> axum::response::Response
     where
@@ -375,7 +755,15 @@ pub mod {{{module}}} {
         {{#hasQuery}}
         let query = super::query_pairs(query.as_deref());
         {{/hasQuery}}
-        let request = match decode_{{{bare}}}({{#hasPath}}&path, {{/hasPath}}{{#hasQuery}}&query, {{/hasQuery}}{{#body}}&body, {{/body}}headers) {
+        {{#body}}
+        {{#multipart}}
+        let parts = match super::{{^required}}optional_{{/required}}multipart_parts(request).await {
+            Ok(parts) => parts,
+            Err(error) => return api.invalid_request(error),
+        };
+        {{/multipart}}
+        {{/body}}
+        let request = match decode_{{{bare}}}({{#hasPath}}&path, {{/hasPath}}{{#hasQuery}}&query, {{/hasQuery}}{{#body}}{{#bytes}}body, {{/bytes}}{{#multipart}}parts, {{/multipart}}{{/body}}headers) {
             Ok(request) => request,
             Err(error) => return api.invalid_request(error),
         };
@@ -396,7 +784,12 @@ pub mod {{{module}}} {
         query: &[(String, String)],
         {{/hasQuery}}
         {{#body}}
-        body: &[u8],
+        {{#bytes}}
+        body: axum::body::Bytes,
+        {{/bytes}}
+        {{#multipart}}
+        parts: {{^required}}Option<{{/required}}Vec<super::FormPart>{{^required}}>{{/required}},
+        {{/multipart}}
         {{/body}}
         headers: http::HeaderMap,
     ) -> Result<{{{camel}}}Request, super::RequestError> {
@@ -408,7 +801,7 @@ pub mod {{{module}}} {
             {{{field}}}: {{#required}}super::required("query", "{{{name}}}", {{/required}}super::query_{{#list}}list{{/list}}{{^list}}value{{/list}}(query, "{{{name}}}", {{#list}}{{#separator}}Some("{{{.}}}"){{/separator}}{{^separator}}None{{/separator}}, {{/list}}|v| {{{parse}}})?{{#required}})?{{/required}},
             {{/queryParams}}
             {{#body}}
-            body: super::{{#required}}json_body{{/required}}{{^required}}optional_json_body{{/required}}(body)?,
+            body{{#decode}}: {{{.}}}{{/decode}},
             {{/body}}
             headers,
         })

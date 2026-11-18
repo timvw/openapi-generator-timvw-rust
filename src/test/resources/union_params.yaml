@@ -39,6 +39,25 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/NullableMixed'
+        # An inline oneOf of single-value string enums (OpenAI's 3.0 list order) collapses to a string: plain text too.
+        - name: order
+          in: query
+          schema:
+            oneOf:
+              - type: string
+                enum: [asc]
+              - type: string
+                enum: [desc]
+        - name: sort
+          in: query
+          required: true
+          schema:
+            nullable: true
+            oneOf:
+              - type: string
+                enum: [asc]
+              - type: string
+                enum: [desc]
         - name: X-Status
           in: header
           schema:

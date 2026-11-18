@@ -69,6 +69,21 @@ class UnionParamsTest {
         assertFalse(api.contains("serde_json::to_string(param_value)"), api);
     }
 
+    /**
+     * In a 3.0 spec an inline oneOf of single-value string enums collapses to a {@code &str}: it is a string, sent as
+     * its text once, not as its JSON ({@code "asc"} with the quotes) and then again as its text.
+     */
+    @Test
+    void aCollapsedStringUnionIsSentAsItsText() throws IOException {
+        String api = api();
+        assertTrue(api.contains("order: Option<&str>"), api);
+        assertTrue(api.contains("req_builder = req_builder.query(&[(\"order\", &param_value.to_string())]);"), api);
+        assertTrue(api.contains("req_builder = req_builder.query(&[(\"sort\", &param_value.to_string())]);"), api);
+        assertFalse(api.contains("(\"order\", &serde_json::to_string"), api);
+        assertFalse(api.contains("(\"sort\", &serde_json::to_string"), api);
+        assertTrue(api.indexOf("(\"order\",") == api.lastIndexOf("(\"order\","), api);
+    }
+
     @Test
     void uuidAndDateVariantsPrintTheirText() throws IOException {
         String ref = Files.readString(out.resolve("src/models/model_ref.rs"));

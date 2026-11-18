@@ -18,9 +18,17 @@ well (`targets`); 0.32 serves event streams, files, text and multipart forms; 0.
 (`dateTimeLibrary`); 0.34 serves bodies of several media types, urlencoded forms and named events; 0.35 renders a server with the
 models of another crate (`modelsCrate`) and default methods that answer `501` (`serverDefaultMethods`); 0.36 replaces `useChrono` and `dateTimeLibrary` with
 `dateLibrary`, jiff by default; 0.37 serves
-deepObject query parameters, multipart file unions and paths with a fixed query. The
+deepObject query parameters, multipart file unions and paths with a fixed query; 0.37.1 sends a collapsed string
+union parameter as its text. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.37.1
+
+- **A collapsed string union parameter goes out as its text.** In a 3.0 spec, an inline `oneOf` of single-value
+  string enums (`asc` or `desc`) collapses to a `&str`, but the client still sent it as its JSON, quoted
+  (`order=%22asc%22`), and as a query parameter twice. It is a string now: `order=asc`, once. OpenAI's spec is 3.1,
+  where the union is kept as a type with a text form, so openai-client-base is not affected.
 
 ## 0.37.0
 

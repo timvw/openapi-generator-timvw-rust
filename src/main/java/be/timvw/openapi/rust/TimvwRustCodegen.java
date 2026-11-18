@@ -1922,6 +1922,16 @@ public class TimvwRustCodegen extends RustCodegenBase {
         p.vendorExtensions.put(TO_TEXT, chronoDateTime ? "to_rfc3339" : "to_string");
         if (!p.isArray && "String".equals(p.dataType)) {
             p.vendorExtensions.put(STR, true);
+            if (p.isModel) {
+                // A composed schema that renders as a plain string (in a 3.0 spec, an inline oneOf of single-value
+                // string enums collapses to one) is a string: sent as its text, not its JSON ("asc", not "\"asc\""),
+                // and once, not once per flag the composed schema left set.
+                p.isModel = false;
+                p.isEnum = false;
+                p.isEnumRef = false;
+                p.isPrimitiveType = true;
+                p.isString = true;
+            }
         }
         if (dateTime) {
             p.vendorExtensions.put(RFC3339, true);

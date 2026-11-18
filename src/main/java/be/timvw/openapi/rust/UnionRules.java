@@ -338,9 +338,11 @@ final class UnionRules {
                 boolean box = model != null && !model.isEnum && Boolean.TRUE.equals(v.vendorExtensions.get(BoxRules.BOX));
                 v.vendorExtensions.put(PAYLOAD, box ? "Box<" + v.dataType + ">" : v.dataType);
                 // A scalar with a text form of its own prints as that text: a string, a uuid (hyphenated), a date
-                // (YYYY-MM-DD), an enum or a union; a date-time as RFC 3339, which its Display is not.
+                // (YYYY-MM-DD), a jiff timestamp (RFC 3339), an enum or a union; a chrono date-time as RFC 3339,
+                // which its Display is not.
                 boolean plain = "String".equals(v.dataType) || "uuid::Uuid".equals(v.dataType)
-                        || "chrono::NaiveDate".equals(v.dataType)
+                        || "chrono::NaiveDate".equals(v.dataType) || "jiff::civil::Date".equals(v.dataType)
+                        || "jiff::Timestamp".equals(v.dataType)
                         || (model != null && (model.isEnum || unions.containsKey(target)));
                 if (plain) {
                     v.vendorExtensions.put(PLAIN_DISPLAY, true);

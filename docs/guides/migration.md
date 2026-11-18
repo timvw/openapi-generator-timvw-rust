@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [From chrono to jiff](#from-chrono-to-jiff): the `dateTimeLibrary` option (0.33), for a crate that moves off chrono.
 - [From 0.29 to 0.30](#from-029-to-030): a required nullable `stringProperties` property is an `Option<String>`; unknown `stringProperties`/`fileProperties` entries fail generation; the new option `optionalProperties`.
 - [From 0.28 to 0.29](#from-028-to-029): `httpStack` and reqwest-middleware removed; `Error::Io` removed; models' file fields hold `Upload`s; per-call options without builders and a per-call base URL; runtime 0.4.
 - [From 0.27 to 0.28](#from-027-to-028): multipart unions with a file variant hold `Upload`s; runtime 0.3.1 and its `TimeoutLayer`.
@@ -14,6 +15,25 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## From chrono to jiff
+
+`dateTimeLibrary=jiff` (since 0.33; the default stays `chrono`) changes the types of `date` and `date-time`, so it is
+a breaking change for the generated crate's users. Nothing else changes.
+
+| | chrono (before) | jiff (after) |
+| --- | --- | --- |
+| `date-time` | `chrono::DateTime<chrono::FixedOffset>` | `jiff::Timestamp` |
+| `date` | `chrono::NaiveDate` | `jiff::civil::Date` |
+| Parse | `DateTime::parse_from_rfc3339(s)?` | `s.parse::<jiff::Timestamp>()?` |
+| Now | `chrono::Utc::now().into()` | `jiff::Timestamp::now()` |
+| Format | `t.to_rfc3339()` | `t.to_string()` (RFC 3339, UTC) |
+| From a `SystemTime` | `chrono::DateTime::<chrono::Utc>::from(t).into()` | `jiff::Timestamp::try_from(t)?` |
+| Seconds since the epoch | `t.timestamp()` | `t.as_second()` |
+
+What a user notices: a timestamp no longer keeps the offset it was received with, only the instant, and it is
+written in UTC (`Z`). Code that still holds chrono values converts through RFC 3339 text:
+`t.to_rfc3339().parse::<jiff::Timestamp>()?`.
 
 ## From 0.29 to 0.30
 

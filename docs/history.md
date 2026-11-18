@@ -14,9 +14,18 @@ mappings; 0.25 sends through a tower service from the new `timvw-rust-runtime` c
 credentials in `SecretString`s, adds headers and query parameters per call and a Cargo feature per API group
 (`apiFeatures`); 0.27 takes file parameters as `timvw_rust_runtime::Upload`s, streamed and retried; 0.28 takes them in
 multipart unions too; 0.29 in model fields, and removes the reqwest-middleware stack; 0.31 renders the models alone or an axum server as
-well (`targets`); 0.32 serves event streams, files, text and multipart forms. The
+well (`targets`); 0.32 serves event streams, files, text and multipart forms; 0.33 renders dates with jiff
+(`dateTimeLibrary`). The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.33.0
+
+The `dateTimeLibrary` option picks the date library: `chrono` (the default, unchanged) or `jiff`, whose
+`jiff::Timestamp` and `jiff::civil::Date` read and write RFC 3339 with serde and are sent as text with their
+`Display`. chrono is unmaintained ([RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543)); a crate
+can now move off it. A `date-time` path parameter of either library is percent-encoded. See
+[`dateTimeLibrary`](options.md#datetimelibrary) and the [migration note](guides/migration.md#from-chrono-to-jiff).
 
 ## 0.32.0
 

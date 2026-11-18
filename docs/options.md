@@ -33,7 +33,7 @@ Value types:
 | [The crate](#the-crate) | `packageName`, `packageVersion`, `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, `userAgentFromPackage`, `apiLintAllows` |
 | [HTTP stack and runtime](#http-stack-and-runtime) | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
 | [Cargo features](#cargo-features) | `apiFeatures`, `apiFeaturesFile` |
-| [Types and naming](#types-and-naming) | `useChrono`, `bonBuilders`, `titleNaming`, `typedEnumParameters`, `deprecatedAttributes` |
+| [Types and naming](#types-and-naming) | `useChrono`, `dateTimeLibrary`, `bonBuilders`, `titleNaming`, `typedEnumParameters`, `deprecatedAttributes` |
 | [Functions and modules](#functions-and-modules) | `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `validateMethods` |
 | [Helpers](#helpers) | `multipartHelper`, `pruneAllHelpers` |
 | [Adapting a spec](#adapting-a-spec) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `webhookModule`, `webhookModuleReexport` |
@@ -251,8 +251,8 @@ Guide: [groups from a file](guides/api-features.md#groups-from-a-file-apifeature
 
 ### `useChrono`
 
-boolean, default `true`. `date` and `date-time` are `chrono::NaiveDate` and `chrono::DateTime<chrono::FixedOffset>`;
-`false` renders both as `String` and drops the `chrono` dependency (openai-client-base sets it).
+boolean, default `true`. `date` and `date-time` are the types of a date library ([`dateTimeLibrary`](#datetimelibrary));
+`false` renders both as `String` and drops the dependency (openai-client-base sets it).
 
 ```bash
 --additional-properties=useChrono=false
@@ -261,6 +261,32 @@ boolean, default `true`. `date` and `date-time` are `chrono::NaiveDate` and `chr
 Rule: [`schema.format.date-time`](mapping/schema.md#schemaformatdate-time). Tests:
 [`TimvwRustCodegenTest`](../src/test/java/be/timvw/openapi/rust/TimvwRustCodegenTest.java) (`useChronoFalseRendersDatesAsStrings`),
 [`DateParamsTest`](../src/test/java/be/timvw/openapi/rust/DateParamsTest.java).
+
+### `dateTimeLibrary`
+
+`chrono` (default) or `jiff`: the library whose types `date` and `date-time` are, with `useChrono` (setting both
+`dateTimeLibrary` and `useChrono=false` fails generation).
+
+| | `date` | `date-time` | Text (parameters, headers) |
+| --- | --- | --- | --- |
+| `chrono` | `chrono::NaiveDate` | `chrono::DateTime<chrono::FixedOffset>` | `to_rfc3339()`, the offset as sent |
+| `jiff` | `jiff::civil::Date` | `jiff::Timestamp` | `Display`, RFC 3339 in UTC (`Z`) |
+
+Both read any RFC 3339 offset and write RFC 3339 through serde. A `jiff::Timestamp` is an instant: the offset it was
+received with is not kept (`2026-01-02T03:04:05+01:00` is written back as `2026-01-02T02:04:05Z`). The crate depends
+on `jiff` with `default-features = false` and the `std` and `serde` features; add jiff's time zone features in your
+own crate to work with zoned times. jiff builds on `wasm32-unknown-unknown` as chrono does.
+[RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543) marks chrono unmaintained; `jiff` is the
+choice for new crates (langfuse-client-base sets it).
+
+```bash
+--additional-properties=dateTimeLibrary=jiff
+```
+
+Rule: [`schema.format.date-time`](mapping/schema.md#schemaformatdate-time). Tests:
+[`TimvwRustCodegenTest`](../src/test/java/be/timvw/openapi/rust/TimvwRustCodegenTest.java) (`dateTimeLibraryPicksTheDateTypes`),
+[`DateParamsTest`](../src/test/java/be/timvw/openapi/rust/DateParamsTest.java) (`whatItDoesAtRunTimeWithJiff`),
+[`JiffDatesTest`](../src/test/java/be/timvw/openapi/rust/JiffDatesTest.java).
 
 ### `bonBuilders`
 

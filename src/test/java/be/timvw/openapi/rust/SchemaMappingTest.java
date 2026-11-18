@@ -29,6 +29,9 @@ class SchemaMappingTest {
     @TempDir
     static Path noChrono;
 
+    @TempDir
+    static Path jiff;
+
     /**
      * Options every mapping test starts from. The former baseline options are always on and cannot be set, so it is
      * empty: the mapping is what the generator renders without options.
@@ -41,6 +44,9 @@ class SchemaMappingTest {
         Map<String, Object> strings = new LinkedHashMap<>(BASELINE);
         strings.put("useChrono", "false");
         generate(noChrono, strings);
+        Map<String, Object> jiffDates = new LinkedHashMap<>(BASELINE);
+        jiffDates.put("dateTimeLibrary", "jiff");
+        generate(jiff, jiffDates);
     }
 
     private static void generate(Path output, Map<String, Object> options) {
@@ -86,6 +92,15 @@ class SchemaMappingTest {
         assertContains(model(noChrono, "thing"), "pub born_on: Option<String>,");
         assertContains(Files.readString(out.resolve("Cargo.toml")), "chrono = ");
         assertFalse(Files.readString(noChrono.resolve("Cargo.toml")).contains("chrono"));
+    }
+
+    @Test
+    void datesAreJiffWithDateTimeLibraryJiff() throws IOException {
+        assertContains(model(jiff, "thing"), "pub created_at: Option<jiff::Timestamp>,");
+        assertContains(model(jiff, "thing"), "pub born_on: Option<jiff::civil::Date>,");
+        String cargo = Files.readString(jiff.resolve("Cargo.toml"));
+        assertContains(cargo, "jiff = { version = \"^1\", default-features = false, features = [\"std\", \"serde\"] }");
+        assertFalse(cargo.contains("chrono"), cargo);
     }
 
     @Test

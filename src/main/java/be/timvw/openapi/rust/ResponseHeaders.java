@@ -34,7 +34,7 @@ import java.util.regex.Pattern;
  * a {@code ResponseContent} ({@code header.schema.typed-error}).</p>
  *
  * <p>A header is typed as a parameter of its schema is: {@code getTypeDeclaration}, so integers, numbers, booleans,
- * {@code uuid}, {@code date}/{@code date-time} (chrono, with {@code useChrono}), enum components and arrays of those
+ * {@code uuid}, {@code date}/{@code date-time} (chrono or jiff, with {@code useChrono}), enum components and arrays of those
  * (the simple style, comma-separated). What has no text form (an object, a map, a union, a free-form value, a nested
  * array) is the header's text. Hop-by-hop headers ({@link #SKIPPED}) and {@code Content-Type}, which the
  * specification says to ignore, get no field, and neither does a name that is not an HTTP token (warned). Two headers
@@ -62,7 +62,7 @@ final class ResponseHeaders {
             "transfer-encoding", "upgrade", "content-type");
 
     private static final Set<String> PARSED = Set.of("i32", "i64", "f32", "f64", "bool", "uuid::Uuid",
-            "chrono::NaiveDate");
+            "chrono::NaiveDate", "jiff::civil::Date", "jiff::Timestamp");
     /** An HTTP field name (RFC 9110 {@code token}); any other name cannot be looked up in a header map. */
     private static final Pattern TOKEN = Pattern.compile("[!#$%&'*+.^_`|~0-9A-Za-z-]+");
     private static final String DATE_TIME = "chrono::DateTime<chrono::FixedOffset>";

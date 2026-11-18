@@ -319,8 +319,13 @@ offset it was received with is not kept (`2026-01-02T03:04:05+01:00` is written 
 jiff's time zone features in your own crate to work with zoned times. Both build on `wasm32-unknown-unknown`. The crate
 depends on the library only when the API uses a `date` or `date-time`. `chrono` logs a warning:
 [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543) marks it unmaintained. `string` keeps dates as
-text, with no date dependency (openai-client-base sets it; langfuse-client-base sets `jiff`). Any other value
-fails generation. It replaces `useChrono` and `dateTimeLibrary`, which [fail generation](#not-options) now.
+text, with no date dependency. Any other value fails generation. It replaces `useChrono` and `dateTimeLibrary`,
+which [fail generation](#not-options) now. openai-client-base and langfuse-client-base set `jiff`.
+
+With `jiff`, a **Unix timestamp** is a `jiff::Timestamp` too: a model property that is an `integer` or a `number`
+with `format: unixtime` (OpenAI's `created_at`). On the wire it stays a number of seconds, through the serde
+functions the crate gets in `models::unix_time`
+([`schema.format.unixtime`](mapping/schema.md#schemaformatunixtime)). With `chrono` and `string` it stays the number.
 
 ```bash
 --additional-properties=dateLibrary=string

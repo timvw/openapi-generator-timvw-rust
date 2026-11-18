@@ -1,0 +1,84 @@
+openapi: 3.1.0
+info:
+  title: Unix time
+  description: Unix timestamps (format unixtime) in every shape a model property takes, and where they stay numbers.
+  version: 1.0.0
+servers:
+  - url: http://localhost
+paths:
+  /events:
+    post:
+      operationId: storeEvent
+      tags: [events]
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: integer
+            format: unixtime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+      responses:
+        '200':
+          description: The event, as it was read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+components:
+  schemas:
+    Event:
+      type: object
+      required: [created_at, expires_at, completed_at, sequence]
+      properties:
+        created_at:
+          description: An integer of seconds.
+          type: integer
+          format: unixtime
+          minimum: 0
+        expires_at:
+          description: Required, and null when it never expires.
+          type: [integer, 'null']
+          format: unixtime
+        updated_at:
+          description: Optional.
+          type: integer
+          format: unixtime
+        cancelled_at:
+          description: Optional, and null to clear it.
+          anyOf:
+            - type: integer
+              format: unixtime
+            - type: 'null'
+        completed_at:
+          description: A number, which keeps the fraction of a second.
+          type: number
+          format: unixtime
+        started_at:
+          description: An optional number that can be null.
+          type: [number, 'null']
+          format: unixtime
+        sequence:
+          description: An integer that is no time.
+          type: integer
+          format: int64
+        history:
+          description: Items keep their number.
+          type: array
+          items:
+            type: integer
+            format: unixtime
+        window:
+          type: object
+          required: [opens_at]
+          properties:
+            opens_at:
+              type: integer
+              format: unixtime
+            closes_at:
+              type: integer
+              format: unixtime

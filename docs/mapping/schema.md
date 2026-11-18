@@ -34,6 +34,16 @@ user needs it: `dateLibrary=string`. `email`, `uri` and `decimal` stay `String`.
 | Options | `dateLibrary`: `jiff` (the default), `chrono` (unmaintained, a warning) or `string`, with which both are `String`, sent as they are, and the crate has no date dependency (openai-client-base sets `string`; langfuse-client-base sets `jiff`). Stock uses chrono (`useChrono`, default `true`) and sends a parameter with chrono's `Display` |
 | Tests | [`SchemaMappingTest#datesAreJiffByDefault`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L88), [`#datesAreChronoWithDateLibraryChrono`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L97), [`#datesAreStringsWithDateLibraryString`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L106), [`DateParamsTest#aDateTimeIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L77), [`#aDateIsSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L114), [`#aDateTimeFormFieldIsSentInRfc3339`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L96), [`#withStringTheyAreSentAsTheyAre`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L126), [`#whatItDoesAtRunTime`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L155), [`DateParamsTest#withJiffTheyAreSentWithDisplay`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L139), [`#whatItDoesAtRunTimeWithJiff`](../../src/test/java/be/timvw/openapi/rust/DateParamsTest.java#L183) |
 
+### `schema.format.unixtime`
+
+| | |
+| --- | --- |
+| OpenAPI | a model property of `type: integer` or `type: number` with `format: unixtime`, required or not, nullable or not (`type: [integer, 'null']`, `anyOf` with `null`) |
+| Rust | with `dateLibrary=jiff` (the default) a `jiff::Timestamp`: `Option<jiff::Timestamp>` when optional or nullable, `Option<Option<jiff::Timestamp>>` when both. With `chrono` or `string`, and everywhere but a property (an array item, a map value, a parameter, a header, a union variant), the number: `i64` or `f64` |
+| Wire | a number of seconds since the epoch, through `#[serde(with = "...")]` and the modules of `models::unix_time`, which the crate gets when a property needs them and which are public, for your own types: `unix_time`, `unix_time::option` and `unix_time::double_option` write whole seconds as an integer (an `integer` schema; a fraction of a second is dropped), `unix_time::fractional` and its `option` and `double_option` keep the fraction (a `number` schema; an integer when there is none). All read an integer or a number with a fraction, so `1700000000.0` is understood. A value outside the years -9999 to 9999 fails to decode, with the value in the message: milliseconds do. `minimum` and `maximum` are not checked by `validateMethods` |
+| Options | `dateLibrary`. A model named `UnixTime` fails generation: its module is the functions' |
+| Tests | [`UnixTimeTest#aPropertyIsATimestampWithJiff`](../../src/test/java/be/timvw/openapi/rust/UnixTimeTest.java#L54), [`#itStaysANumberWithChronoAndString`](../../src/test/java/be/timvw/openapi/rust/UnixTimeTest.java#L88), [`#theClientCallsTheServer`](../../src/test/java/be/timvw/openapi/rust/UnixTimeTest.java#L129), [`#aModelNamedUnixTimeFailsGeneration`](../../src/test/java/be/timvw/openapi/rust/UnixTimeTest.java#L104) |
+
 ### `schema.format.uuid`
 
 | | |
@@ -68,9 +78,9 @@ user needs it: `dateLibrary=string`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | `type: integer` |
-| Rust | `i64`; `format: int32` gives `i32`. Every other format (`int64`, `unixtime`, none, unknown, `int8`, `int16`, `uint8` to `uint64`) gives `i64`. Bounds (`minimum`, `maximum`) never pick a type, and nothing is unsigned or `NonZero`. This holds everywhere an integer appears: fields, items, map values, parameters, multipart fields, responses, constructors, builders and union variants |
+| Rust | `i64`; `format: int32` gives `i32`. Every other format (`int64`, `unixtime` outside of a [timestamp property](#schemaformatunixtime), none, unknown, `int8`, `int16`, `uint8` to `uint64`) gives `i64`. Bounds (`minimum`, `maximum`) never pick a type, and nothing is unsigned or `NonZero`. This holds everywhere an integer appears: fields, items, map values, parameters, multipart fields, responses, constructors, builders and union variants |
 | Options | always (stock renders `i32` unless `format: int64`, and `i8`/`i16` and `u8` to `u64` for the sized formats). Bounds never pick a type: stock's `preferUnsignedInt` and `bestFitInt` are rejected |
-| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L73), [`IntegersAsI64Test#onlyInt32StaysI32OnModelFields`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L64), [`#sizedAndUnsignedFormatsAreI64`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L72), [`#containerItemsFollowTheRule`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L84), [`#pathQueryAndHeaderParametersFollowTheRule`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L120) |
+| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L73), [`IntegersAsI64Test#onlyInt32StaysI32OnModelFields`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L65), [`#sizedAndUnsignedFormatsAreI64`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L73), [`#containerItemsFollowTheRule`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L85), [`#pathQueryAndHeaderParametersFollowTheRule`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L121) |
 
 ### `schema.type.integer-with-float-format`
 
@@ -87,7 +97,7 @@ user needs it: `dateLibrary=string`. `email`, `uri` and `decimal` stay `String`.
 | --- | --- |
 | OpenAPI | `type: number` |
 | Rust | `f64`; `format: float` gives `f32` |
-| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L73), [`IntegersAsI64Test#numbersAreUntouched`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L99) |
+| Tests | [`SchemaMappingTest#scalarsAndFormats`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L73), [`IntegersAsI64Test#numbersAreUntouched`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L100) |
 
 ### `schema.type.boolean`
 
@@ -289,7 +299,7 @@ user needs it: `dateLibrary=string`. `email`, `uri` and `decimal` stay `String`.
 | OpenAPI | `type: integer` (any `format`) with `enum`: a component, an inline enum property, or the items or values of lists and maps holding an inline enum at any depth |
 | Rust | `#[repr(i64)]` enum through `serde_repr`, variants `Variant1 = 1`, ... The innermost items decide: `type: array, items: {type: integer, enum: [1, 2]}` is `Vec<<Property>>` of such an enum, typed in its containers as [`schema.additionalProperties`](#schemaadditionalproperties) describes |
 | Wire | a JSON number: `[1]` and `{"a": 2}` decode, and serialize back as numbers. An open integer enum's `Unknown` is `i64::MAX`, so one that lists `9223372036854775807` fails generation, naming the schema |
-| Tests | [`SchemaMappingTest#anIntegerEnumIsReprI64`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L208), [`IntegersAsI64Test#integerEnumsKeepTheirRendering`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L106), [`SmallFixesTest#anIntegerInlineEnumIsAnIntegerEnumAtAnyDepth`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L267) |
+| Tests | [`SchemaMappingTest#anIntegerEnumIsReprI64`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L208), [`IntegersAsI64Test#integerEnumsKeepTheirRendering`](../../src/test/java/be/timvw/openapi/rust/IntegersAsI64Test.java#L107), [`SmallFixesTest#anIntegerInlineEnumIsAnIntegerEnumAtAnyDepth`](../../src/test/java/be/timvw/openapi/rust/SmallFixesTest.java#L267) |
 | Gap | `type: number` with `enum` is a string enum (`#[serde(rename = "1.5")]`), which a JSON number does not decode to: `serde_repr` takes integers only |
 
 ### `schema.enum.from-str`

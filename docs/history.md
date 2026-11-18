@@ -19,9 +19,25 @@ well (`targets`); 0.32 serves event streams, files, text and multipart forms; 0.
 models of another crate (`modelsCrate`) and default methods that answer `501` (`serverDefaultMethods`); 0.36 replaces `useChrono` and `dateTimeLibrary` with
 `dateLibrary`, jiff by default; 0.37 serves
 deepObject query parameters, multipart file unions and paths with a fixed query; 0.37.1 sends a collapsed string
-union parameter as its text. The
+union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.38.0
+
+- **Breaking: a Unix timestamp is a `jiff::Timestamp`.** With `dateLibrary=jiff` (the default), a model property of
+  `type: integer` or `type: number` with `format: unixtime` (OpenAI's `created_at`, `expires_at`) is a
+  `jiff::Timestamp`, an `Option` of one when it is optional or nullable. The JSON stays a number of seconds: the crate
+  gets public serde functions in `models::unix_time`, named by `#[serde(with = "...")]` on each field. An `integer`
+  is written as whole seconds, a `number` keeps its fraction, and both read either. A value that is no time in
+  seconds (milliseconds) fails to decode. With `chrono` and `string`, and for array items, map values, parameters,
+  headers and union variants, the number stays. See the
+  [migration guide](guides/migration.md#unix-timestamps-are-jifftimestamps) and
+  [`schema.format.unixtime`](mapping/schema.md#schemaformatunixtime).
+
+  What the servers send was checked first: OpenAI answers with integers of seconds in chat completions, responses
+  (also where its spec says `number`), models and streams, and Ollama's OpenAI-compatible endpoints write Go
+  `time.Unix()` integers everywhere, so nothing needs a more lenient reading.
 
 ## 0.37.1
 

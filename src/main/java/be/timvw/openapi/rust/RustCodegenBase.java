@@ -1151,6 +1151,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             for (List<CodegenProperty> vars : Arrays.asList(cm.vars, cm.allVars, cm.requiredVars, cm.optionalVars,
                     cm.readOnlyVars, cm.readWriteVars, cm.parentVars, cm.nonNullableVars)) {
                 if (vars != null) {
+                    vars.forEach(this::unixTime);
                     vars.stream().filter(cp -> cp.isEnum).forEach(cp -> {
                         cp.vendorExtensions.put(INLINE_ENUM_TYPE, inlineEnumType(cp));
                         if (isIntegerEnum(cp)) {
@@ -1174,6 +1175,12 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     public void postProcessModelProperty(CodegenModel model, CodegenProperty property) {
         super.postProcessModelProperty(model, property);
 
+        // a Unix timestamp is a jiff::Timestamp, with the crate's own serde (models::unix_time)
+        if (unixTime(property)) {
+            property.vendorExtensions.put("isMandatory", !property.isNullable && property.required);
+            return;
+        }
+
         // nullable and not required is a double Option, deserialized with serde_with
         if (property.isNullable && !property.required) {
             additionalProperties.put("serdeWith", true);
@@ -1192,6 +1199,61 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                 additionalProperties.put("serdeAsDoubleOption", true);
             }
         }
+    }
+
+    /** The format of a Unix timestamp: an {@code integer} or a {@code number} of seconds since the epoch. */
+    static final String UNIX_TIME_FORMAT = "unixtime";
+    /** A struct field's whole {@code #[serde(...)]} attribute, when it is a Unix timestamp. */
+    static final String UNIX_TIME_SERDE = "x-rust-unix-time-serde";
+    /** The same for a field of an inline variant, which is at most one {@code Option}. */
+    static final String UNIX_TIME_VARIANT_SERDE = "x-rust-unix-time-variant-serde";
+    /** The module of the serde functions, as a model file names it. */
+    static final String UNIX_TIME_MODULE = "super::unix_time";
+
+    /**
+     * With {@code dateLibrary=jiff}, a model property that is an {@code integer} or a {@code number} of format
+     * {@code unixtime} is a {@code jiff::Timestamp}: on the wire it stays a number of seconds, through the serde
+     * functions of {@code models::unix_time} (an {@code integer} is written as whole seconds, a {@code number} keeps
+     * its fraction; both read either). Only a property itself: an array item, a map value, a parameter, a header and
+     * a union variant of that format keep their number, as does everything with chrono or {@code string}. Bounds
+     * ({@code minimum}, {@code maximum}) are dropped: they are a number's. Answers whether the property is one, and
+     * marks it the first time.
+     */
+    private boolean unixTime(CodegenProperty property) {
+        if (property.vendorExtensions.containsKey(UNIX_TIME_SERDE)) {
+            return true;
+        }
+        boolean integer = property.isInteger || property.isLong || property.isShort;
+        boolean number = property.isNumber || property.isFloat || property.isDouble;
+        if (!"jiff".equals(dateLibrary) || !UNIX_TIME_FORMAT.equals(property.dataFormat) || !(integer || number)
+                || property.isEnum || property.isContainer || property.isArray || property.isMap) {
+            return false;
+        }
+        property.dataType = "jiff::Timestamp";
+        property.datatypeWithEnum = property.dataType;
+        property.isInteger = false;
+        property.isLong = false;
+        property.isShort = false;
+        property.isNumber = false;
+        property.isFloat = false;
+        property.isDouble = false;
+        property.isNumeric = false;
+        property.setMinimum(null);
+        property.setMaximum(null);
+        property.setMultipleOf(null);
+
+        String module = UNIX_TIME_MODULE + (integer ? "" : "::fractional");
+        boolean optional = !property.required;
+        String rename = "rename = \"" + property.baseName + "\"";
+        String skip = optional ? ", default, skip_serializing_if = \"Option::is_none\"" : "";
+        String shape = optional && property.isNullable ? "::double_option"
+                : optional || property.isNullable ? "::option" : "";
+        property.vendorExtensions.put(UNIX_TIME_SERDE,
+                "#[serde(" + rename + skip + ", with = \"" + module + shape + "\")]");
+        property.vendorExtensions.put(UNIX_TIME_VARIANT_SERDE, "#[serde(" + rename + skip + ", with = \"" + module
+                + (optional || property.isNullable ? "::option" : "") + "\")]");
+        additionalProperties.put("unixTime", true);
+        return true;
     }
 
     // ---- operations --------------------------------------------------------------------------------------------------
@@ -1220,6 +1282,17 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
 
     @Override
     public OperationsMap postProcessOperationsWithModels(OperationsMap objs, List<ModelMap> allModels) {
+        // models::unix_time is the module of the Unix timestamps' serde functions
+        if (Boolean.TRUE.equals(additionalProperties.get("unixTime"))) {
+            for (ModelMap map : allModels) {
+                if ("unix_time".equals(map.getModel().getClassFilename())) {
+                    throw new IllegalArgumentException(String.format(Locale.ROOT, "the model %s is the module "
+                            + "models::unix_time, which holds the serde functions of the Unix timestamps (format "
+                            + "unixtime): rename the model (modelNameMappings), or use dateLibrary=string",
+                            map.getModel().getClassname()));
+                }
+            }
+        }
         for (CodegenOperation operation : objs.getOperations().getOperation()) {
             Object grouped = operation.vendorExtensions.get(GROUP_PARAMETERS);
             if (grouped != null && !Boolean.FALSE.equals(grouped)) {

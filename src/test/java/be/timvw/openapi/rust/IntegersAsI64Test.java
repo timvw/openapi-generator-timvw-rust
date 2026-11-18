@@ -27,7 +27,8 @@ class IntegersAsI64Test {
 
     @BeforeAll
     static void generate() {
-        generate(on, Map.of());
+        // the integers themselves: with jiff a property of format unixtime is a timestamp (UnixTimeTest)
+        generate(on, Map.of(RustCodegenBase.DATE_LIBRARY, "string"));
     }
 
     private static void generate(Path output, Map<String, Object> options) {

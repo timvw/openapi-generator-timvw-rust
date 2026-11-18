@@ -146,7 +146,8 @@ class UnixTimeTest {
 
         String clippy = cargo(out, 900, "clippy", "--all-features", "--all-targets", "--", "-D", "warnings");
         assertNotNull(clippy, "cargo did not finish");
-        assertTrue(clippy.contains("Finished") && !clippy.contains("error"), clippy);
+        // not "error" alone: cargo prints the crates it checks, serde_path_to_error among them
+        assertTrue(clippy.contains("Finished") && !clippy.contains("error:") && !clippy.contains("error["), clippy);
 
         String sysroot = rustcSysroot(out);
         if (sysroot != null && Files.isDirectory(Path.of(sysroot, "lib", "rustlib", "wasm32-unknown-unknown"))) {

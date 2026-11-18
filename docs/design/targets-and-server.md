@@ -2,7 +2,8 @@
 
 Status: slices 1 and 2 are implemented (`targets`, the Cargo features `client` and `server`, and an axum server for
 JSON, text, binary and multipart bodies and server-sent events; see the [server guide](../guides/server.md)).
-Slices 3 and 4 are proposed.
+Slice 3 is implemented too, as [openai-mock-server](https://github.com/genai-rs/openai-mock-server). Slice 4 is
+proposed.
 
 `timvw-rust` renders an HTTP client and its models. This page proposes a `targets` option that picks what the
 generator renders: the models, a client, a server, or more than one of them in one crate. It also describes the
@@ -84,6 +85,10 @@ The models come from an existing crate instead of being rendered: the generated 
 features of the groups it renders. A mock server then uses the same Rust types as the client it is tested with,
 not a copy of them. The crate must have been generated from the same spec with the same model options; the
 generator cannot check that, so the guide must say so.
+
+genai-rs does not use it: its client and its mock server each generate their own models from the spec, in their own
+repositories, and share the spec only ([what was built](openai-mock-server.md#what-was-built)). The option is for
+an API where one team wants one models crate.
 
 ## The server, on axum
 
@@ -176,14 +181,15 @@ let app: axum::Router = server::router(MyImpl::new());
    operation whose fixed query the request has. `deepObjectQueryParameters` and `resetQueryParameterStyle` moved to
    the model options: they decide what goes on the wire, which client and server must agree on.
 3. **`modelsCrate`, and the first real use:** a mock OpenAI server for openai-ergonomic's tests, generated from
-   openai-client-base's spec, with its models from `openai-client-base`. Planned in
-   [a mock OpenAI server](openai-mock-server.md), which compares LiteLLM and Bifrost.
+   OpenAI's spec. Planned in [a mock OpenAI server](openai-mock-server.md), which compares LiteLLM and Bifrost, and
+   built as [openai-mock-server](https://github.com/genai-rs/openai-mock-server): one crate in its own repository,
+   with the generated server and its own models as modules. It does not use `modelsCrate`; the spec is what it
+   shares with the client.
 
    Implemented in the generator: `modelsCrate` (with `modelsCrateVersion` and `modelsCratePath`), and
    `serverDefaultMethods`, a default per trait method that answers `501`, so a mock implements only what it scripts.
    `webhookModule` moved to the model options: it names the Cargo feature of the webhook payloads, which the server
-   must name as its models crate does. On the OpenAI spec with openai-client-base's model options, all 388
-   operations are served.
+   must name as its models crate does. On the OpenAI spec, all 388 operations are served.
 4. **Later:** authentication schemes, validation, and webhooks sent by the server.
 
 ## Open questions
@@ -195,6 +201,6 @@ let app: axum::Router = server::router(MyImpl::new());
   move to genai-rs; the generated names would stay re-exported from `server`.
 - **`Send`:** an `impl Future + Send` trait cannot be implemented with non-`Send` state. axum needs `Send`, so the
   server requires it. WebAssembly is client-only.
-- **One crate or two:** `["client", "server"]` in one crate is convenient for small APIs. For openai-client-base, a
-  separate server crate with `modelsCrate` is likely the better fit. Both are supported; the guide recommends the
-  latter for large specs.
+- **One crate or two:** `["client", "server"]` in one crate is convenient for small APIs. For a large spec, a
+  separate server crate is the better fit, with `modelsCrate` or with its own models. genai-rs chose its own models,
+  in a separate repository: the spec is the contract, not a crate.

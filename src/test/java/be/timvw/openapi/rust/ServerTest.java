@@ -40,6 +40,8 @@ class ServerTest {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "server_fixture");
         props.putAll(options);
+        // server.rs writes chrono date-times; JiffDatesTest covers jiff, the default.
+        props.putIfAbsent(RustCodegenBase.DATE_LIBRARY, "chrono");
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(SPEC).toAbsolutePath().toString())
@@ -110,7 +112,7 @@ class ServerTest {
                 + "[client]; remove the option or add 'server' to targets", e.getMessage());
         // the options of the models apply to every target
         generate(out, Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.VALIDATE_METHODS, "false",
-                TimvwRustCodegen.API_FEATURES, "true", RustCodegenBase.USE_CHRONO, "true",
+                TimvwRustCodegen.API_FEATURES, "true", RustCodegenBase.DATE_LIBRARY, "chrono",
                 TimvwRustCodegen.WEBHOOK_MODULE, "webhooks"));
     }
 

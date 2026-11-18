@@ -643,7 +643,7 @@ mod migration {
             .call()
             .await?;
 
-        let since = chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05+01:00")?;
+        let since: jiff::Timestamp = "2026-01-02T03:04:05+01:00".parse()?;
         let recent = items_api::list_owner_items()
             .configuration(&configuration)
             .owner_id(owner_id)

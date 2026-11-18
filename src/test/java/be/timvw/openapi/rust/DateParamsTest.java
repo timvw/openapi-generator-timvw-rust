@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * src/test/resources/date_params.yaml: a {@code date-time} is sent in RFC 3339 ({@code to_rfc3339}), a {@code date}
  * as {@code YYYY-MM-DD}; form fields (urlencoded and multipart text parts) alike. What goes on the wire is in
  * src/test/rust/date_params.rs, which {@link #whatItDoesAtRunTime}
- * runs with cargo against a local server. With {@code dateTimeLibrary=jiff} they are {@code jiff::Timestamp} and
+ * runs with cargo against a local server. With {@code dateLibrary=jiff} they are {@code jiff::Timestamp} and
  * {@code jiff::civil::Date}, whose {@code Display} is already RFC 3339 and {@code YYYY-MM-DD}
  * (src/test/rust/date_params_jiff.rs).
  */
@@ -48,23 +48,16 @@ class DateParamsTest {
 
     @BeforeAll
     static void generate() {
-        generate(chrono, true, false);
-        generate(strings, false, false);
-        generate(helper, true, true);
-        generate(jiff, true, false, "jiff");
+        generate(chrono, "chrono", false);
+        generate(strings, "string", false);
+        generate(helper, "chrono", true);
+        generate(jiff, "jiff", false);
     }
 
-    private static void generate(Path output, boolean useChrono, boolean multipartHelper) {
-        generate(output, useChrono, multipartHelper, null);
-    }
-
-    private static void generate(Path output, boolean useChrono, boolean multipartHelper, String library) {
+    private static void generate(Path output, String dateLibrary, boolean multipartHelper) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "date_params_fixture");
-        props.put(RustCodegenBase.USE_CHRONO, String.valueOf(useChrono));
-        if (library != null) {
-            props.put(RustCodegenBase.DATE_TIME_LIBRARY, library);
-        }
+        props.put(RustCodegenBase.DATE_LIBRARY, dateLibrary);
         if (multipartHelper) {
             props.put(TimvwRustCodegen.MULTIPART_HELPER, "true");
         }
@@ -130,7 +123,7 @@ class DateParamsTest {
     }
 
     @Test
-    void withoutChronoTheyAreStringsSentAsTheyAre() throws IOException {
+    void withStringTheyAreSentAsTheyAre() throws IOException {
         String api = api(strings);
         assertFalse(api.contains("to_rfc3339"), api);
         assertTrue(api.contains("at=p_path_at,"), api);
@@ -183,7 +176,7 @@ class DateParamsTest {
     }
 
     /**
-     * Runs src/test/rust/date_params_jiff.rs on the crate with {@code dateTimeLibrary=jiff}, and checks it builds for
+     * Runs src/test/rust/date_params_jiff.rs on the crate with {@code dateLibrary=jiff}, and checks it builds for
      * {@code wasm32-unknown-unknown} when that target is installed. Needs cargo.
      */
     @Test

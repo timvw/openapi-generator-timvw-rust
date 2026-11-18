@@ -255,12 +255,12 @@ class UnknownOptionsTest {
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {
             // openai: scripts/generator-config.json
-            "packageName,packageVersion,useChrono,titleNaming,multipartHelper,apiLintAllows,"
+            "packageName,packageVersion,dateLibrary,titleNaming,multipartHelper,apiLintAllows,"
                     + "userAgentFromPackage,webhookModule,webhookModuleReexport,resetQueryParameterStyle,"
                     + "typedEventStreams,contentTypeMethods,preprocessedSpecFile,stringIdSchemas,stringIdProperties,"
                     + "stringProperties,fileProperties,deepObjectQueryParameters",
             // langfuse: scripts/generate-openapi-client.sh
-            "packageName,packageVersion,typedEnumParameters,deprecatedAttributes",
+            "packageName,packageVersion,dateLibrary,typedEnumParameters,deprecatedAttributes",
     })
     void theClientsOptionsAreAccepted(String keys) {
         List<CliOption> advertised = new TimvwRustCodegen().cliOptions();

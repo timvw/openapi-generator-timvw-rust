@@ -45,6 +45,8 @@ class UnionParamsTest {
     private static void generate(String spec, Path output) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "union_params_fixture");
+        // The wire forms below are chrono's (the offset as sent); JiffDatesTest covers jiff, the default.
+        props.put(RustCodegenBase.DATE_LIBRARY, "chrono");
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(spec).toAbsolutePath().toString())

@@ -27,10 +27,10 @@ class SchemaMappingTest {
     static Path out;
 
     @TempDir
-    static Path noChrono;
+    static Path strings;
 
     @TempDir
-    static Path jiff;
+    static Path chrono;
 
     /**
      * Options every mapping test starts from. The former baseline options are always on and cannot be set, so it is
@@ -41,12 +41,12 @@ class SchemaMappingTest {
     @BeforeAll
     static void generate() {
         generate(out, BASELINE);
-        Map<String, Object> strings = new LinkedHashMap<>(BASELINE);
-        strings.put("useChrono", "false");
-        generate(noChrono, strings);
-        Map<String, Object> jiffDates = new LinkedHashMap<>(BASELINE);
-        jiffDates.put("dateTimeLibrary", "jiff");
-        generate(jiff, jiffDates);
+        Map<String, Object> stringDates = new LinkedHashMap<>(BASELINE);
+        stringDates.put("dateLibrary", "string");
+        generate(strings, stringDates);
+        Map<String, Object> chronoDates = new LinkedHashMap<>(BASELINE);
+        chronoDates.put("dateLibrary", "chrono");
+        generate(chrono, chronoDates);
     }
 
     private static void generate(Path output, Map<String, Object> options) {
@@ -85,22 +85,29 @@ class SchemaMappingTest {
     }
 
     @Test
-    void datesAreChronoUnlessUseChronoIsOff() throws IOException {
-        assertContains(model(out, "thing"), "pub created_at: Option<chrono::DateTime<chrono::FixedOffset>>,");
-        assertContains(model(out, "thing"), "pub born_on: Option<chrono::NaiveDate>,");
-        assertContains(model(noChrono, "thing"), "pub created_at: Option<String>,");
-        assertContains(model(noChrono, "thing"), "pub born_on: Option<String>,");
-        assertContains(Files.readString(out.resolve("Cargo.toml")), "chrono = ");
-        assertFalse(Files.readString(noChrono.resolve("Cargo.toml")).contains("chrono"));
+    void datesAreJiffByDefault() throws IOException {
+        assertContains(model(out, "thing"), "pub created_at: Option<jiff::Timestamp>,");
+        assertContains(model(out, "thing"), "pub born_on: Option<jiff::civil::Date>,");
+        String cargo = Files.readString(out.resolve("Cargo.toml"));
+        assertContains(cargo, "jiff = { version = \"^1\", default-features = false, features = [\"std\", \"serde\"] }");
+        assertFalse(cargo.contains("chrono"), cargo);
     }
 
     @Test
-    void datesAreJiffWithDateTimeLibraryJiff() throws IOException {
-        assertContains(model(jiff, "thing"), "pub created_at: Option<jiff::Timestamp>,");
-        assertContains(model(jiff, "thing"), "pub born_on: Option<jiff::civil::Date>,");
-        String cargo = Files.readString(jiff.resolve("Cargo.toml"));
-        assertContains(cargo, "jiff = { version = \"^1\", default-features = false, features = [\"std\", \"serde\"] }");
-        assertFalse(cargo.contains("chrono"), cargo);
+    void datesAreChronoWithDateLibraryChrono() throws IOException {
+        assertContains(model(chrono, "thing"), "pub created_at: Option<chrono::DateTime<chrono::FixedOffset>>,");
+        assertContains(model(chrono, "thing"), "pub born_on: Option<chrono::NaiveDate>,");
+        String cargo = Files.readString(chrono.resolve("Cargo.toml"));
+        assertContains(cargo, "chrono = ");
+        assertFalse(cargo.contains("jiff"), cargo);
+    }
+
+    @Test
+    void datesAreStringsWithDateLibraryString() throws IOException {
+        assertContains(model(strings, "thing"), "pub created_at: Option<String>,");
+        assertContains(model(strings, "thing"), "pub born_on: Option<String>,");
+        String cargo = Files.readString(strings.resolve("Cargo.toml"));
+        assertFalse(cargo.contains("chrono") || cargo.contains("jiff"), cargo);
     }
 
     @Test

@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code dateTimeLibrary=jiff} on every test spec with a {@code date} or {@code date-time}: in models, parameters,
+ * {@code dateLibrary=jiff} on every test spec with a {@code date} or {@code date-time}: in models, parameters,
  * typed response headers, union variants, error responses and the server. The crate depends on jiff, not chrono, and
  * builds (with every feature, so the server and the client both). What goes on the wire is in
  * {@link DateParamsTest#whatItDoesAtRunTimeWithJiff}.
@@ -50,7 +50,7 @@ class JiffDatesTest {
     void buildsWithJiff(String spec, String options) throws IOException, InterruptedException {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "jiff_dates_fixture");
-        props.put(RustCodegenBase.DATE_TIME_LIBRARY, "jiff");
+        props.put(RustCodegenBase.DATE_LIBRARY, "jiff");
         for (String option : options.isEmpty() ? new String[0] : options.split(",")) {
             String key = option.substring(0, option.indexOf('='));
             String value = option.substring(option.indexOf('=') + 1);

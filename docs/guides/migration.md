@@ -1,6 +1,6 @@
 # Guide: migrating
 
-- [From chrono to jiff](#from-chrono-to-jiff): the `dateTimeLibrary` option (0.33), for a crate that moves off chrono.
+- [From chrono to jiff](#from-chrono-to-jiff): `dateLibrary` (0.36) replaces `useChrono` and `dateTimeLibrary`, and jiff is the default.
 - [From 0.29 to 0.30](#from-029-to-030): a required nullable `stringProperties` property is an `Option<String>`; unknown `stringProperties`/`fileProperties` entries fail generation; the new option `optionalProperties`.
 - [From 0.28 to 0.29](#from-028-to-029): `httpStack` and reqwest-middleware removed; `Error::Io` removed; models' file fields hold `Upload`s; per-call options without builders and a per-call base URL; runtime 0.4.
 - [From 0.27 to 0.28](#from-027-to-028): multipart unions with a file variant hold `Upload`s; runtime 0.3.1 and its `TimeoutLayer`.
@@ -18,8 +18,19 @@ The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_ex
 
 ## From chrono to jiff
 
-`dateTimeLibrary=jiff` (since 0.33; the default stays `chrono`) changes the types of `date` and `date-time`, so it is
-a breaking change for the generated crate's users. Nothing else changes.
+Since 0.36 one option, [`dateLibrary`](../options.md#datelibrary), picks the types of `date` and `date-time`: `jiff`
+(the default), `chrono` or `string`. It replaces `useChrono` and `dateTimeLibrary` (0.33), which now fail generation
+with a message that names the value to use:
+
+| Before 0.36 | Since 0.36 |
+| --- | --- |
+| neither (chrono) | nothing for jiff, or `dateLibrary=chrono` to keep chrono (a warning: it is unmaintained) |
+| `useChrono=false` | `dateLibrary=string` |
+| `dateTimeLibrary=jiff` | `dateLibrary=jiff`, or nothing |
+| `dateTimeLibrary=chrono` | `dateLibrary=chrono` |
+
+A crate that moves from chrono to jiff changes the types of `date` and `date-time`, so it is a breaking change for its
+users. Nothing else changes.
 
 | | chrono (before) | jiff (after) |
 | --- | --- | --- |
@@ -836,10 +847,12 @@ if let Some(items_api::CreateItemError::Status400(message)) = &response.entity {
 
 ### `date-time` parameters are sent in RFC 3339
 
-With `useChrono` (the default), a `date-time` path, query or header parameter or form field was written with chrono's
-`Display` (`2026-01-02 03:04:05 +01:00`). It is now written with `to_rfc3339()` (`2026-01-02T03:04:05+01:00`),
-URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. Signatures do not change:
+With chrono (then the default; `dateLibrary=chrono` now), a `date-time` path, query or header parameter or form field
+was written with chrono's `Display` (`2026-01-02 03:04:05 +01:00`). It is now written with `to_rfc3339()`
+(`2026-01-02T03:04:05+01:00`), URL-encoded in the path and the query. A `date` stays `YYYY-MM-DD`. Signatures do not
+change:
 
+<!-- not compiled: chrono types (dateLibrary=chrono) -->
 ```rust
 let since = chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05+01:00")?;
 let recent = items_api::list_owner_items()

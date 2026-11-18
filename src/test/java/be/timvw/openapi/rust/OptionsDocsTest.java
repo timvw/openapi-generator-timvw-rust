@@ -51,6 +51,8 @@ class OptionsDocsTest {
         names.add(TimvwRustCodegen.JSON_VALUE_SCHEMAS);
         names.add(TimvwRustCodegen.LEGACY_MODEL_REWRITES);
         names.add(TimvwRustCodegen.HTTP_STACK);
+        names.add(TimvwRustCodegen.USE_CHRONO);
+        names.add(TimvwRustCodegen.DATE_TIME_LIBRARY);
         return names;
     }
 

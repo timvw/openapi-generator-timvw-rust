@@ -58,8 +58,7 @@ class TimvwRustCodegenTest {
         Map<String, Object> props = c.additionalProperties();
         assertEquals("openapi", props.get(RustCodegenBase.PACKAGE_NAME));
         assertEquals("1.0.0", props.get(RustCodegenBase.PACKAGE_VERSION));
-        assertEquals(true, props.get(RustCodegenBase.USE_CHRONO));
-        assertEquals("chrono", props.get(RustCodegenBase.DATE_TIME_LIBRARY));
+        assertEquals("jiff", props.get(RustCodegenBase.DATE_LIBRARY));
         assertEquals(false, props.get(RustCodegenBase.USE_SERDE_PATH_TO_ERROR));
         assertEquals(false, props.get(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES));
         assertEquals(List.of("native-tls"), props.get(RustCodegenBase.REQWEST_DEFAULT_FEATURES));
@@ -69,51 +68,60 @@ class TimvwRustCodegenTest {
         }
         assertEquals("openapi", advertised.get(RustCodegenBase.PACKAGE_NAME));
         assertEquals("1.0.0", advertised.get(RustCodegenBase.PACKAGE_VERSION));
-        assertEquals("true", advertised.get(RustCodegenBase.USE_CHRONO));
-        assertEquals("chrono", advertised.get(RustCodegenBase.DATE_TIME_LIBRARY));
+        assertEquals("jiff", advertised.get(RustCodegenBase.DATE_LIBRARY));
         assertEquals("false", advertised.get(RustCodegenBase.USE_SERDE_PATH_TO_ERROR));
         assertEquals("false", advertised.get(RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES));
         assertEquals("native-tls", advertised.get(RustCodegenBase.REQWEST_DEFAULT_FEATURES));
     }
 
     @Test
-    void useChronoFalseRendersDatesAsStrings() {
-        TimvwRustCodegen c = codegen();
-        c.additionalProperties().put(RustCodegenBase.USE_CHRONO, "false");
-        c.processOpts();
-        assertEquals("String", c.typeMapping().get("date"));
-        assertEquals("String", c.typeMapping().get("DateTime"));
-    }
-
-    @Test
-    void dateTimeLibraryPicksTheDateTypes() {
-        TimvwRustCodegen chrono = codegen();
-        chrono.processOpts();
-        assertEquals("chrono::NaiveDate", chrono.typeMapping().get("date"));
-        assertEquals("chrono::DateTime<chrono::FixedOffset>", chrono.typeMapping().get("DateTime"));
+    void dateLibraryPicksTheDateTypes() {
         TimvwRustCodegen jiff = codegen();
-        jiff.additionalProperties().put(RustCodegenBase.DATE_TIME_LIBRARY, "jiff");
         jiff.processOpts();
         assertEquals("jiff::civil::Date", jiff.typeMapping().get("date"));
         assertEquals("jiff::Timestamp", jiff.typeMapping().get("DateTime"));
-        assertEquals("jiff", jiff.additionalProperties().get(RustCodegenBase.DATE_TIME_LIBRARY));
+        TimvwRustCodegen chrono = codegen();
+        chrono.additionalProperties().put(RustCodegenBase.DATE_LIBRARY, "chrono");
+        chrono.processOpts();
+        assertEquals("chrono::NaiveDate", chrono.typeMapping().get("date"));
+        assertEquals("chrono::DateTime<chrono::FixedOffset>", chrono.typeMapping().get("DateTime"));
+        assertEquals("chrono", chrono.additionalProperties().get(RustCodegenBase.DATE_LIBRARY));
+        TimvwRustCodegen string = codegen();
+        string.additionalProperties().put(RustCodegenBase.DATE_LIBRARY, "string");
+        string.processOpts();
+        assertEquals("String", string.typeMapping().get("date"));
+        assertEquals("String", string.typeMapping().get("DateTime"));
     }
 
     @Test
-    void dateTimeLibraryRejectsAnUnknownLibrary() {
+    void dateLibraryRejectsAnUnknownLibrary() {
         TimvwRustCodegen c = codegen();
-        c.additionalProperties().put(RustCodegenBase.DATE_TIME_LIBRARY, "time");
+        c.additionalProperties().put(RustCodegenBase.DATE_LIBRARY, "time");
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
-        assertEquals("dateTimeLibrary must be one of [chrono, jiff], not 'time'", e.getMessage());
+        assertEquals("dateLibrary must be one of [jiff, chrono, string], not 'time'", e.getMessage());
     }
 
     @Test
-    void dateTimeLibraryAndUseChronoFalseConflict() {
+    void useChronoWasReplacedByDateLibrary() {
+        TimvwRustCodegen off = codegen();
+        off.additionalProperties().put("useChrono", "false");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, off::processOpts);
+        assertEquals("timvw-rust: useChrono was replaced by dateLibrary: use dateLibrary=string instead (it was set "
+                + "to 'false'). See docs/guides/migration.md, \"From chrono to jiff\"", e.getMessage());
+        TimvwRustCodegen on = codegen();
+        on.additionalProperties().put("useChrono", true);
+        e = assertThrows(IllegalArgumentException.class, on::processOpts);
+        assertTrue(e.getMessage().contains("use dateLibrary=chrono (or leave it out for jiff, the default)"),
+                e.getMessage());
+    }
+
+    @Test
+    void dateTimeLibraryWasRenamedDateLibrary() {
         TimvwRustCodegen c = codegen();
-        c.additionalProperties().put(RustCodegenBase.DATE_TIME_LIBRARY, "jiff");
-        c.additionalProperties().put(RustCodegenBase.USE_CHRONO, "false");
+        c.additionalProperties().put("dateTimeLibrary", "jiff");
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, c::processOpts);
-        assertTrue(e.getMessage().startsWith("dateTimeLibrary has no effect with useChrono=false"), e.getMessage());
+        assertEquals("timvw-rust: dateTimeLibrary was renamed dateLibrary: use dateLibrary=jiff instead. See "
+                + "docs/guides/migration.md, \"From chrono to jiff\"", e.getMessage());
     }
 
     @Test

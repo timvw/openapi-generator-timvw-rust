@@ -33,6 +33,8 @@ class RequestBodiesTest {
     static void generate() {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "request_bodies");
+        // The wire forms below are chrono's (the offset as sent); JiffDatesTest covers jiff, the default.
+        props.put(RustCodegenBase.DATE_LIBRARY, "chrono");
         props.put(TimvwRustCodegen.WEBHOOK_MODULE, "Hooks");
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)

@@ -83,7 +83,7 @@ import static org.openapitools.codegen.utils.StringUtils.underscore;
 /**
  * The Rust language layer of {@code timvw-rust}: type mapping, identifier naming and escaping, the model and operation
  * post-processing the templates rely on, the supporting files and the crate options ({@code packageName},
- * {@code packageVersion}, {@code useChrono}, {@code useSerdePathToError}, {@code supportMultipleResponses},
+ * {@code packageVersion}, {@code dateLibrary}, {@code useSerdePathToError}, {@code supportMultipleResponses},
  * {@code reqwestDefaultFeatures}). It renders an async client on {@code timvw-rust-runtime} (tower), from the
  * templates under {@code timvw-rust/}.
  *
@@ -107,10 +107,12 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     public static final String PACKAGE_VERSION = CodegenConstants.PACKAGE_VERSION;
     public static final String EXTERN_CRATE_NAME = "externCrateName";
     public static final String USE_SERDE_PATH_TO_ERROR = "useSerdePathToError";
-    public static final String USE_CHRONO = "useChrono";
-    public static final String DATE_TIME_LIBRARY = "dateTimeLibrary";
-    /** The {@code dateTimeLibrary} values: the crate whose types {@code date} and {@code date-time} are. */
-    public static final List<String> DATE_TIME_LIBRARIES = List.of("chrono", "jiff");
+    public static final String DATE_LIBRARY = "dateLibrary";
+    /**
+     * The {@code dateLibrary} values: the crate whose types {@code date} and {@code date-time} are, or {@code string}
+     * for {@code String} and no date dependency. The first is the default.
+     */
+    public static final List<String> DATE_LIBRARIES = List.of("jiff", "chrono", "string");
     public static final String SUPPORT_MULTIPLE_RESPONSES = "supportMultipleResponses";
     public static final String REQWEST_DEFAULT_FEATURES = "reqwestDefaultFeatures";
     /** Cargo.toml {@code publish}, {@code repository}, {@code documentation} and {@code homepage} (as stock -g rust). */
@@ -138,8 +140,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     protected String modelFolder = "src/models";
 
     private boolean useSerdePathToError = false;
-    private boolean useChrono = true;
-    private String dateTimeLibrary = "chrono";
+    private String dateLibrary = "jiff";
     private boolean supportMultipleResponses = false;
     private List<String> reqwestDefaultFeatures = Arrays.asList("native-tls");
 
@@ -147,7 +148,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     private boolean hasUUIDs = false;
     /**
      * The API has at least one date or date-time: only then does the crate depend on the date library
-     * ({@code dateTimeLibrary}).
+     * ({@code dateLibrary}).
      */
     private boolean usesDateTypes = false;
     /**
@@ -218,9 +219,9 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         typeMapping.put("map", "std::collections::HashMap");
         typeMapping.put("UUID", "uuid::Uuid");
         typeMapping.put("URI", "String");
-        // chrono until processOpts reads useChrono and dateTimeLibrary
-        typeMapping.put("date", "chrono::NaiveDate");
-        typeMapping.put("DateTime", "chrono::DateTime<chrono::FixedOffset>");
+        // jiff (the default) until processOpts reads dateLibrary
+        typeMapping.put("date", "jiff::civil::Date");
+        typeMapping.put("DateTime", "jiff::Timestamp");
         typeMapping.put("password", "String");
         typeMapping.put("decimal", "String");
         // a file: a path (a timvw_rust_runtime::Upload for parameters and fields)
@@ -238,12 +239,10 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         cliOptions.add(CliOption.newBoolean(USE_SERDE_PATH_TO_ERROR,
                 "Decode responses through serde_path_to_error, so a decoding error names the path of the value",
                 false));
-        cliOptions.add(CliOption.newBoolean(USE_CHRONO,
-                "Represent date and date-time with a date library (dateTimeLibrary); with false both are String",
-                true));
-        cliOptions.add(new CliOption(DATE_TIME_LIBRARY,
-                "The date library, with useChrono: chrono (chrono::NaiveDate, chrono::DateTime<chrono::FixedOffset>) "
-                        + "or jiff (jiff::civil::Date, jiff::Timestamp)").defaultValue("chrono"));
+        cliOptions.add(new CliOption(DATE_LIBRARY,
+                "The types of date and date-time: jiff (jiff::civil::Date, jiff::Timestamp), chrono "
+                        + "(chrono::NaiveDate, chrono::DateTime<chrono::FixedOffset>; unmaintained, RUSTSEC-2026-0543) "
+                        + "or string (String, no date dependency)").defaultValue("jiff"));
         cliOptions.add(CliOption.newBoolean(SUPPORT_MULTIPLE_RESPONSES,
                 "An operation returns ResponseContent<<Operation>Success>, an enum of every 2xx response, instead of "
                         + "the decoded body of the first", false));
@@ -304,25 +303,20 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         }
         writePropertyBack(USE_SERDE_PATH_TO_ERROR, useSerdePathToError);
 
-        boolean libraryGiven = additionalProperties.containsKey(DATE_TIME_LIBRARY);
-        if (libraryGiven) {
-            String library = String.valueOf(additionalProperties.get(DATE_TIME_LIBRARY)).trim();
-            if (!DATE_TIME_LIBRARIES.contains(library)) {
-                throw new IllegalArgumentException("dateTimeLibrary must be one of " + DATE_TIME_LIBRARIES + ", not '"
+        if (additionalProperties.containsKey(DATE_LIBRARY)) {
+            String library = String.valueOf(additionalProperties.get(DATE_LIBRARY)).trim();
+            if (!DATE_LIBRARIES.contains(library)) {
+                throw new IllegalArgumentException("dateLibrary must be one of " + DATE_LIBRARIES + ", not '"
                         + library + "'");
             }
-            dateTimeLibrary = library;
+            dateLibrary = library;
         }
-        if (additionalProperties.containsKey(USE_CHRONO)) {
-            useChrono = convertPropertyToBoolean(USE_CHRONO);
-        }
-        if (libraryGiven && !useChrono) {
-            throw new IllegalArgumentException("dateTimeLibrary has no effect with useChrono=false, which makes dates "
-                    + "String: leave one of them out");
+        if ("chrono".equals(dateLibrary)) {
+            LOGGER.warn("dateLibrary=chrono: chrono is unmaintained (RUSTSEC-2026-0543); jiff, the default, replaces "
+                    + "it (docs/guides/migration.md, \"From chrono to jiff\")");
         }
         setDateTypes();
-        writePropertyBack(USE_CHRONO, useChrono);
-        writePropertyBack(DATE_TIME_LIBRARY, dateTimeLibrary);
+        additionalProperties.put(DATE_LIBRARY, dateLibrary);
 
         if (additionalProperties.containsKey(SUPPORT_MULTIPLE_RESPONSES)) {
             supportMultipleResponses = convertPropertyToBoolean(SUPPORT_MULTIPLE_RESPONSES);
@@ -375,15 +369,30 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
 
     /** The types of {@code date} and {@code date-time}: the date library's, or {@code String}. */
     private void setDateTypes() {
-        boolean jiff = "jiff".equals(dateTimeLibrary);
-        typeMapping.put("date", !useChrono ? "String" : jiff ? "jiff::civil::Date" : "chrono::NaiveDate");
-        typeMapping.put("DateTime", !useChrono ? "String"
-                : jiff ? "jiff::Timestamp" : "chrono::DateTime<chrono::FixedOffset>");
+        switch (dateLibrary) {
+            case "string" -> {
+                typeMapping.put("date", "String");
+                typeMapping.put("DateTime", "String");
+            }
+            case "chrono" -> {
+                typeMapping.put("date", "chrono::NaiveDate");
+                typeMapping.put("DateTime", "chrono::DateTime<chrono::FixedOffset>");
+            }
+            default -> {
+                typeMapping.put("date", "jiff::civil::Date");
+                typeMapping.put("DateTime", "jiff::Timestamp");
+            }
+        }
+    }
+
+    /** Whether {@code date} and {@code date-time} are a date library's types ({@code dateLibrary} is not string). */
+    private boolean usesDateLibrary() {
+        return !"string".equals(dateLibrary);
     }
 
     /** The path prefix of the date library's types ({@code chrono::} or {@code jiff::}). */
     private String datePrefix() {
-        return dateTimeLibrary + "::";
+        return dateLibrary + "::";
     }
 
     protected boolean isSupportMultipleResponses() {
@@ -1251,7 +1260,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                     .anyMatch(p -> p.isUuid || (p.items != null && p.items.isUuid)))) {
                 hasUUIDs = true;
             }
-            if (useChrono && !usesDateTypes && (usesType(operation, datePrefix())
+            if (usesDateLibrary() && !usesDateTypes && (usesType(operation, datePrefix())
                     || operation.allParams.stream().anyMatch(p -> p.isDate || p.isDateTime))) {
                 usesDateTypes = true;
             }
@@ -1274,12 +1283,12 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         if (!hasUUIDs && !externalModels && modelsUseUuid(allModels)) {
             hasUUIDs = true;
         }
-        if (useChrono && !usesDateTypes && !externalModels && modelsUseDates(allModels)) {
+        if (usesDateLibrary() && !usesDateTypes && !externalModels && modelsUseDates(allModels)) {
             usesDateTypes = true;
         }
 
         additionalProperties.put("hasUUIDs", hasUUIDs);
-        putDateTypes(useChrono && usesDateTypes);
+        putDateTypes(usesDateLibrary() && usesDateTypes);
         return objs;
     }
 
@@ -1292,7 +1301,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             hasUUIDs = true;
             additionalProperties.put("hasUUIDs", true);
         }
-        if (useChrono && types.stream().anyMatch(t -> t.contains(datePrefix())) && !usesDateTypes) {
+        if (usesDateLibrary() && types.stream().anyMatch(t -> t.contains(datePrefix())) && !usesDateTypes) {
             usesDateTypes = true;
             putDateTypes(true);
         }
@@ -1300,17 +1309,17 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
 
     /**
      * Whether the crate depends on the date library, for Cargo.toml: {@code usesDateTypes}, the library's name
-     * ({@code dateTimeLibrary}) and {@code dateTimeChrono} or {@code dateTimeJiff}.
+     * ({@code dateLibrary}) and {@code dateTimeChrono} or {@code dateTimeJiff}.
      */
     private void putDateTypes(boolean uses) {
         additionalProperties.put("usesDateTypes", uses);
-        additionalProperties.put("dateTimeChrono", uses && "chrono".equals(dateTimeLibrary));
-        additionalProperties.put("dateTimeJiff", uses && "jiff".equals(dateTimeLibrary));
+        additionalProperties.put("dateTimeChrono", uses && "chrono".equals(dateLibrary));
+        additionalProperties.put("dateTimeJiff", uses && "jiff".equals(dateLibrary));
     }
 
     /** The date library the crate depends on for {@code date} and {@code date-time}: chrono or jiff. */
-    protected String dateTimeLibrary() {
-        return dateTimeLibrary;
+    protected String dateLibrary() {
+        return dateLibrary;
     }
 
     /** Whether a model holds a {@code uuid::Uuid}. */

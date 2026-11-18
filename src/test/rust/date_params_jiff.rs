@@ -1,4 +1,4 @@
-//! What `date` and `date-time` parameters and form fields look like on the wire with `dateTimeLibrary=jiff`, on the
+//! What `date` and `date-time` parameters and form fields look like on the wire with `dateLibrary=jiff`, on the
 //! crate generated from src/test/resources/date_params.yaml. `DateParamsTest` copies this file into that crate's
 //! tests/ and runs cargo.
 //! A one-shot HTTP server on a local port answers each call with 204 and hands back the request it read.

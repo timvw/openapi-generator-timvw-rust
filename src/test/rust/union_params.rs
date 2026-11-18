@@ -137,3 +137,23 @@ async fn uuid_date_time_and_nullable_variants() {
         );
     }
 }
+
+/// An inline oneOf of single-value string enums collapses to a `&str` in a 3.0 spec: it goes out as its plain text
+/// (`asc`, not `"asc"`), once.
+#[tokio::test]
+async fn a_collapsed_string_union_is_plain_text() {
+    let (configuration, request) = serve().await;
+    default_api::list_vaults()
+        .configuration(&configuration)
+        .status(StatusFilter::Status(Status::Active))
+        .mixed(Mixed::Integer(1))
+        .order("asc")
+        .sort("desc")
+        .call()
+        .await
+        .unwrap();
+    assert_eq!(
+        request.await.unwrap().lines().next().unwrap(),
+        "GET /vaults/active?mixed=1&order=asc&sort=desc HTTP/1.1"
+    );
+}

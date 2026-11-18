@@ -239,7 +239,7 @@ dependencies the generator writes, which depend on the spec and the options:
 | `timvw-rust-runtime` | always, `default-features = false`; with its `fs` feature when a file is uploaded (a file parameter, a multipart union with a file variant, or a model with a file field), its `time` feature with `typedEventStreams` and an operation that streams |
 | `bon` | `bonBuilders` (the default) |
 | `serde_with` | a nullable optional property (`Option<Option<T>>`) or a `format: byte` property |
-| `chrono` | a `date` or `date-time` anywhere (model, parameter, union variant), with `useChrono` (the default) |
+| `chrono` or `jiff` | a `date` or `date-time` anywhere (model, parameter, union variant), with `useChrono` (the default); which one is `dateTimeLibrary`. jiff with `default-features = false, features = ["std", "serde"]` |
 | `uuid` | a `format: uuid` anywhere; its `js` feature too on `wasm32-unknown-unknown` (a `[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]` table) |
 | `regex` | a `pattern` that `validate()` checks |
 | `futures-core` | `typedEventStreams` with an operation that streams |

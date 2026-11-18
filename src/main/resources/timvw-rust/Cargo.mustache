@@ -62,9 +62,12 @@ regex = "^1.10"
 {{#hasUUIDs}}
 uuid = { version = "^1.8", features = ["serde", "v4"]{{#uuidOptional}}, optional = true{{/uuidOptional}} }
 {{/hasUUIDs}}
-{{#usesChronoTypes}}
-chrono = { version = "^0.4",  features = ["serde"]{{#chronoOptional}}, optional = true{{/chronoOptional}} }
-{{/usesChronoTypes}}
+{{#dateTimeChrono}}
+chrono = { version = "^0.4",  features = ["serde"]{{#dateTypesOptional}}, optional = true{{/dateTypesOptional}} }
+{{/dateTimeChrono}}
+{{#dateTimeJiff}}
+jiff = { version = "^1", default-features = false, features = ["std", "serde"]{{#dateTypesOptional}}, optional = true{{/dateTypesOptional}} }
+{{/dateTimeJiff}}
 {{#runtimeDependency}}
 timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFeatures}}, features = [{{{runtimeFeatures}}}]{{/runtimeFeatures}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#runtimeOptional}}, optional = true{{/runtimeOptional}} }
 {{/runtimeDependency}}

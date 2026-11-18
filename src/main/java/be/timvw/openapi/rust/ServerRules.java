@@ -52,7 +52,7 @@ final class ServerRules {
     }
 
     private static final Set<String> PARSED = Set.of("i32", "i64", "f32", "f64", "bool", "uuid::Uuid",
-            "chrono::NaiveDate");
+            "chrono::NaiveDate", "jiff::civil::Date", "jiff::Timestamp");
     private static final String DATE_TIME = "chrono::DateTime<chrono::FixedOffset>";
     private static final Pattern PATH_PARAM = Pattern.compile("\\{([^{}/]+)}");
     /** Field names the request struct uses itself. */

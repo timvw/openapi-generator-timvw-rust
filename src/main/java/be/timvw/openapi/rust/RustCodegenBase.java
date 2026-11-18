@@ -105,6 +105,9 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
     public static final String EXTERN_CRATE_NAME = "externCrateName";
     public static final String USE_SERDE_PATH_TO_ERROR = "useSerdePathToError";
     public static final String USE_CHRONO = "useChrono";
+    public static final String DATE_TIME_LIBRARY = "dateTimeLibrary";
+    /** The {@code dateTimeLibrary} values: the crate whose types {@code date} and {@code date-time} are. */
+    public static final List<String> DATE_TIME_LIBRARIES = List.of("chrono", "jiff");
     public static final String SUPPORT_MULTIPLE_RESPONSES = "supportMultipleResponses";
     public static final String REQWEST_DEFAULT_FEATURES = "reqwestDefaultFeatures";
     /** Cargo.toml {@code publish}, {@code repository}, {@code documentation} and {@code homepage} (as stock -g rust). */
@@ -133,13 +136,17 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
 
     private boolean useSerdePathToError = false;
     private boolean useChrono = true;
+    private String dateTimeLibrary = "chrono";
     private boolean supportMultipleResponses = false;
     private List<String> reqwestDefaultFeatures = Arrays.asList("native-tls");
 
     /** The API has at least one UUID: only then does the crate depend on {@code uuid}. */
     private boolean hasUUIDs = false;
-    /** The API has at least one date or date-time: only then does the crate depend on {@code chrono}. */
-    private boolean usesChronoTypes = false;
+    /**
+     * The API has at least one date or date-time: only then does the crate depend on the date library
+     * ({@code dateTimeLibrary}).
+     */
+    private boolean usesDateTypes = false;
 
     public RustCodegenBase() {
         super();
@@ -203,7 +210,7 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         typeMapping.put("map", "std::collections::HashMap");
         typeMapping.put("UUID", "uuid::Uuid");
         typeMapping.put("URI", "String");
-        // chrono until processOpts reads useChrono
+        // chrono until processOpts reads useChrono and dateTimeLibrary
         typeMapping.put("date", "chrono::NaiveDate");
         typeMapping.put("DateTime", "chrono::DateTime<chrono::FixedOffset>");
         typeMapping.put("password", "String");
@@ -224,8 +231,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                 "Decode responses through serde_path_to_error, so a decoding error names the path of the value",
                 false));
         cliOptions.add(CliOption.newBoolean(USE_CHRONO,
-                "Represent date as chrono::NaiveDate and date-time as chrono::DateTime<chrono::FixedOffset>; "
-                        + "with false both are String", true));
+                "Represent date and date-time with a date library (dateTimeLibrary); with false both are String",
+                true));
+        cliOptions.add(new CliOption(DATE_TIME_LIBRARY,
+                "The date library, with useChrono: chrono (chrono::NaiveDate, chrono::DateTime<chrono::FixedOffset>) "
+                        + "or jiff (jiff::civil::Date, jiff::Timestamp)").defaultValue("chrono"));
         cliOptions.add(CliOption.newBoolean(SUPPORT_MULTIPLE_RESPONSES,
                 "An operation returns ResponseContent<<Operation>Success>, an enum of every 2xx response, instead of "
                         + "the decoded body of the first", false));
@@ -286,10 +296,25 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         }
         writePropertyBack(USE_SERDE_PATH_TO_ERROR, useSerdePathToError);
 
-        if (additionalProperties.containsKey(USE_CHRONO)) {
-            setUseChrono(convertPropertyToBoolean(USE_CHRONO));
+        boolean libraryGiven = additionalProperties.containsKey(DATE_TIME_LIBRARY);
+        if (libraryGiven) {
+            String library = String.valueOf(additionalProperties.get(DATE_TIME_LIBRARY)).trim();
+            if (!DATE_TIME_LIBRARIES.contains(library)) {
+                throw new IllegalArgumentException("dateTimeLibrary must be one of " + DATE_TIME_LIBRARIES + ", not '"
+                        + library + "'");
+            }
+            dateTimeLibrary = library;
         }
+        if (additionalProperties.containsKey(USE_CHRONO)) {
+            useChrono = convertPropertyToBoolean(USE_CHRONO);
+        }
+        if (libraryGiven && !useChrono) {
+            throw new IllegalArgumentException("dateTimeLibrary has no effect with useChrono=false, which makes dates "
+                    + "String: leave one of them out");
+        }
+        setDateTypes();
         writePropertyBack(USE_CHRONO, useChrono);
+        writePropertyBack(DATE_TIME_LIBRARY, dateTimeLibrary);
 
         if (additionalProperties.containsKey(SUPPORT_MULTIPLE_RESPONSES)) {
             supportMultipleResponses = convertPropertyToBoolean(SUPPORT_MULTIPLE_RESPONSES);
@@ -340,10 +365,17 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         });
     }
 
-    private void setUseChrono(boolean useChrono) {
-        this.useChrono = useChrono;
-        typeMapping.put("date", useChrono ? "chrono::NaiveDate" : "String");
-        typeMapping.put("DateTime", useChrono ? "chrono::DateTime<chrono::FixedOffset>" : "String");
+    /** The types of {@code date} and {@code date-time}: the date library's, or {@code String}. */
+    private void setDateTypes() {
+        boolean jiff = "jiff".equals(dateTimeLibrary);
+        typeMapping.put("date", !useChrono ? "String" : jiff ? "jiff::civil::Date" : "chrono::NaiveDate");
+        typeMapping.put("DateTime", !useChrono ? "String"
+                : jiff ? "jiff::Timestamp" : "chrono::DateTime<chrono::FixedOffset>");
+    }
+
+    /** The path prefix of the date library's types ({@code chrono::} or {@code jiff::}). */
+    private String datePrefix() {
+        return dateTimeLibrary + "::";
     }
 
     protected boolean isSupportMultipleResponses() {
@@ -1203,15 +1235,15 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
                 }
             }
 
-            // A parameter, a success or an error response of uuid or chrono type (or an array or map of one): the
-            // crate depends on uuid or chrono, as it does for a model property.
+            // A parameter, a success or an error response of uuid or date type (or an array or map of one): the
+            // crate depends on uuid or the date library, as it does for a model property.
             if (!hasUUIDs && (usesType(operation, "uuid::Uuid") || operation.allParams.stream()
                     .anyMatch(p -> p.isUuid || (p.items != null && p.items.isUuid)))) {
                 hasUUIDs = true;
             }
-            if (useChrono && !usesChronoTypes && (usesType(operation, "chrono::")
+            if (useChrono && !usesDateTypes && (usesType(operation, datePrefix())
                     || operation.allParams.stream().anyMatch(p -> p.isDate || p.isDateTime))) {
-                usesChronoTypes = true;
+                usesDateTypes = true;
             }
 
             operation.httpMethod = operation.httpMethod.toUpperCase(Locale.ROOT);
@@ -1224,28 +1256,43 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         if (!hasUUIDs && modelsUseUuid(allModels)) {
             hasUUIDs = true;
         }
-        if (useChrono && !usesChronoTypes && modelsUseChrono(allModels)) {
-            usesChronoTypes = true;
+        if (useChrono && !usesDateTypes && modelsUseDates(allModels)) {
+            usesDateTypes = true;
         }
 
         additionalProperties.put("hasUUIDs", hasUUIDs);
-        additionalProperties.put("usesChronoTypes", useChrono && usesChronoTypes);
+        putDateTypes(useChrono && usesDateTypes);
         return objs;
     }
 
     /**
      * Rust types the generated code uses outside of models, parameters and responses (the typed response headers):
-     * a uuid or chrono one makes the crate depend on uuid or chrono.
+     * a uuid or date one makes the crate depend on uuid or the date library.
      */
     protected void noteTypes(java.util.Collection<String> types) {
         if (types.stream().anyMatch(t -> t.contains("uuid::Uuid")) && !hasUUIDs) {
             hasUUIDs = true;
             additionalProperties.put("hasUUIDs", true);
         }
-        if (useChrono && types.stream().anyMatch(t -> t.contains("chrono::")) && !usesChronoTypes) {
-            usesChronoTypes = true;
-            additionalProperties.put("usesChronoTypes", true);
+        if (useChrono && types.stream().anyMatch(t -> t.contains(datePrefix())) && !usesDateTypes) {
+            usesDateTypes = true;
+            putDateTypes(true);
         }
+    }
+
+    /**
+     * Whether the crate depends on the date library, for Cargo.toml: {@code usesDateTypes}, the library's name
+     * ({@code dateTimeLibrary}) and {@code dateTimeChrono} or {@code dateTimeJiff}.
+     */
+    private void putDateTypes(boolean uses) {
+        additionalProperties.put("usesDateTypes", uses);
+        additionalProperties.put("dateTimeChrono", uses && "chrono".equals(dateTimeLibrary));
+        additionalProperties.put("dateTimeJiff", uses && "jiff".equals(dateTimeLibrary));
+    }
+
+    /** The date library the crate depends on for {@code date} and {@code date-time}: chrono or jiff. */
+    protected String dateTimeLibrary() {
+        return dateTimeLibrary;
     }
 
     /** Whether a model holds a {@code uuid::Uuid}. */
@@ -1260,12 +1307,12 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         return false;
     }
 
-    /** Whether a model holds a chrono type. */
-    static boolean modelsUseChrono(List<ModelMap> allModels) {
+    /** Whether a model holds a date type (chrono's or jiff's). */
+    static boolean modelsUseDates(List<ModelMap> allModels) {
         for (ModelMap map : allModels) {
             CodegenModel m = map.getModel();
             if (m.getIsDate() || anyProperty(fieldsAndVariants(m), p -> p.isDate || p.isDateTime
-                    || (p.dataType != null && p.dataType.contains("chrono::")))) {
+                    || (p.dataType != null && (p.dataType.contains("chrono::") || p.dataType.contains("jiff::"))))) {
                 return true;
             }
         }

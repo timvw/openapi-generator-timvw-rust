@@ -251,9 +251,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String DISPLAY_ITEMS = "x-rust-display-items";
     /**
      * Set on every path, query, header, cookie and form parameter (an urlencoded field or a multipart text part): the
-     * method that writes its value, or each item of an array, as text. {@code to_rfc3339} for a {@code date-time}
-     * ({@code chrono::DateTime}, whose {@code Display} is not RFC 3339), {@code to_string} otherwise ({@code date} is
-     * {@code chrono::NaiveDate}, whose {@code Display} is {@code YYYY-MM-DD}).
+     * method that writes its value, or each item of an array, as text. {@code to_rfc3339} for a chrono
+     * {@code date-time} ({@code chrono::DateTime}, whose {@code Display} is not RFC 3339), {@code to_string} otherwise
+     * (a {@code date}'s {@code Display} is {@code YYYY-MM-DD}, a {@code jiff::Timestamp}'s RFC 3339).
      */
     static final String TO_TEXT = "x-rust-to-text";
     /** Set on a path, query, header, cookie or form parameter whose argument is a {@code &str}: it is its own text. */
@@ -272,7 +272,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String COOKIES = "x-rust-cookies";
     /** Set when an operation sends a {@code Cookie} header: {@code apis/mod.rs} then has {@code cookie_encode}. */
     static final String USES_COOKIES = "usesCookies";
-    /** Set on a path, query or header parameter whose value, or whose items, are a {@code chrono::DateTime}. */
+    /**
+     * Set on a path, query or header parameter whose value, or whose items, are a date-time ({@code chrono::DateTime}
+     * or {@code jiff::Timestamp}): in a path, its text is percent-encoded.
+     */
     static final String RFC3339 = "x-rust-rfc3339";
     /** Set on a property or model that the model template marks {@code #[deprecated]}. */
     static final String DEPRECATED = "x-rust-deprecated";
@@ -428,9 +431,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private final List<Map<String, Object>> headerStructs = new ArrayList<>();
     /** A model holds a {@code timvw_rust_runtime::Upload}: a crate without the client still needs the runtime. */
     private boolean modelsUseRuntime;
-    /** With the server target: whether the models use uuid and chrono, or only the API code does. */
+    /** With the server target: whether the models use uuid and the date library, or only the API code does. */
     private boolean modelsUseUuid;
-    private boolean modelsUseChrono;
+    private boolean modelsUseDates;
     private List<ApiFeatures.Group> apiFeatureGroups = List.of();
     /** With {@link #API_FEATURES}: the features of the operations and models, planned once the spec is final. */
     private ApiFeatures.Plan apiFeaturesPlan;
@@ -1287,15 +1290,15 @@ public class TimvwRustCodegen extends RustCodegenBase {
             objs.put("clientCfg", client);
         }
         if (targets.features()) {
-            // uuid and chrono only the client or the server use are enabled by their features
+            // uuid and the date library only the client or the server use are enabled by their features
             List<String> shared = new ArrayList<>();
             if (!modelsUseUuid && Boolean.TRUE.equals(additionalProperties.get("hasUUIDs"))) {
                 objs.put("uuidOptional", true);
                 shared.add("\"dep:uuid\"");
             }
-            if (!modelsUseChrono && Boolean.TRUE.equals(additionalProperties.get("usesChronoTypes"))) {
-                objs.put("chronoOptional", true);
-                shared.add("\"dep:chrono\"");
+            if (!modelsUseDates && Boolean.TRUE.equals(additionalProperties.get("usesDateTypes"))) {
+                objs.put("dateTypesOptional", true);
+                shared.add("\"dep:" + dateTimeLibrary() + "\"");
             }
             objs.put("targetDeps", shared.isEmpty() ? null : ", " + String.join(", ", shared));
             objs.put("serverCfg", "feature = \"server\"");
@@ -1582,7 +1585,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /**
      * Marks a request body that is only serialized, so its argument borrows it: a model, a {@code Vec} (as a slice),
      * a map or a {@code serde_json::Value}. A file ({@code PathBuf}) is opened, a string is already {@code &str}, and
-     * a boolean, number, date or date-time is {@code Copy} (chrono): those keep their type. A body whose type is
+     * a boolean, number, date or date-time is {@code Copy} (chrono, jiff): those keep their type. A body whose type is
      * {@code String} (a string enum without {@code typedEnumParameters}, {@code format: byte}) becomes {@code &str}.
      */
     static void markBodyRef(CodegenParameter p) {
@@ -1641,8 +1644,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
             return;
         }
         String type = p.isArray && p.items != null ? p.items.dataType : p.dataType;
-        boolean dateTime = type != null && type.startsWith("chrono::DateTime<");
-        p.vendorExtensions.put(TO_TEXT, dateTime ? "to_rfc3339" : "to_string");
+        // chrono's Display is not RFC 3339, so its date-times use to_rfc3339; a jiff::Timestamp's is
+        boolean chronoDateTime = type != null && type.startsWith("chrono::DateTime<");
+        boolean dateTime = chronoDateTime || "jiff::Timestamp".equals(type);
+        p.vendorExtensions.put(TO_TEXT, chronoDateTime ? "to_rfc3339" : "to_string");
         if (!p.isArray && "String".equals(p.dataType)) {
             p.vendorExtensions.put(STR, true);
         }
@@ -1695,11 +1700,6 @@ public class TimvwRustCodegen extends RustCodegenBase {
             op.vendorExtensions.put(COOKIES, true);
         }
         return cookies;
-    }
-
-    /** Whether a Rust type is one of chrono's date types (with {@code useChrono}). */
-    private static boolean isChrono(String type) {
-        return type != null && (type.startsWith("chrono::DateTime<") || type.equals("chrono::NaiveDate"));
     }
 
     /**
@@ -2282,7 +2282,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private void planServer(String classname, String file, List<CodegenOperation> operations,
             List<ModelMap> allModels) {
         modelsUseUuid = RustCodegenBase.modelsUseUuid(allModels);
-        modelsUseChrono = RustCodegenBase.modelsUseChrono(allModels);
+        modelsUseDates = RustCodegenBase.modelsUseDates(allModels);
         Map<String, CodegenModel> models = new HashMap<>();
         for (ModelMap mm : allModels) {
             if (mm.getModel() != null) {

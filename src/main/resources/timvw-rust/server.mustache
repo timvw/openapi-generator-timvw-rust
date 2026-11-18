@@ -190,8 +190,50 @@ where
     {{#serverModules}}
     let router = {{{module}}}::routes::<I>(router);
     {{/serverModules}}
+    {{#serverDispatch}}
+    let router = router.route("{{{route}}}", axum::routing::{{{method}}}({{{function}}}::<I>));
+    {{/serverDispatch}}
     router.with_state(std::sync::Arc::new(api))
 }
+{{#serverDispatch}}
+
+/// `{{{httpMethod}}} {{{route}}}`: the operation whose fixed query the request has ({{#branches}}`{{{name}}}`{{^last}}, {{/last}}{{/branches}}).
+// with Cargo features that leave every operation out, nothing reads the request
+#[allow(unused_variables)]
+async fn {{{function}}}<I>(
+    axum::extract::State(api): axum::extract::State<std::sync::Arc<I>>,
+    request: axum::extract::Request,
+) -> axum::response::Response
+where
+    I: {{#serverModules}}{{{module}}}::{{{trait}}} + {{/serverModules}}ErrorHandler + 'static,
+{
+    let query = query_pairs(request.uri().query());
+    {{#branches}}
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    {
+        if fixed_query(&query, &[{{#fixed}}("{{{name}}}", "{{{value}}}"){{^last}}, {{/last}}{{/fixed}}]) {
+            return axum::handler::Handler::call({{{module}}}::handle_{{{bare}}}::<I>, request, api).await;
+        }
+    }
+    {{/branches}}
+    let mut error = serde_json::Map::new();
+    error.insert(
+        "message".to_owned(),
+        serde_json::Value::String("no operation of this path has the query of the request".to_owned()),
+    );
+    error_response(http::StatusCode::NOT_FOUND, error)
+}
+{{/serverDispatch}}
+{{#hasServerDispatch}}
+
+/// Whether the query has every pair of a fixed query (`beta=true`).
+#[allow(dead_code)]
+fn fixed_query(query: &[(String, String)], fixed: &[(&str, &str)]) -> bool {
+    fixed.iter().all(|(name, value)| query.iter().any(|(k, v)| k == name && v == value))
+}
+{{/hasServerDispatch}}
 
 fn error_response(status: http::StatusCode, error: serde_json::Map<String, serde_json::Value>) -> axum::response::Response {
     let mut body = serde_json::Map::new();
@@ -294,6 +336,221 @@ fn query_list<T>(
     }
     Ok(Some(items))
 }
+
+{{#serverDeepObject}}
+/// The deepObject query parameter `name` read into `T`: `name[key]=value`, `name[a][b]=value` for a nested object and
+/// `name[a][0]=value` for the items of an array, as the client's `parse_deep_object` writes them. A value is text, read
+/// as the type at its place asks (a number, a boolean, `null` for `None`). `None` when the query does not have it.
+#[allow(dead_code)]
+fn query_deep<T: serde::de::DeserializeOwned>(query: &[(String, String)], name: &str) -> Result<Option<T>, RequestError> {
+    let mut root: Option<DeepValue> = None;
+    for (key, value) in query {
+        let Some(rest) = key.strip_prefix(name) else {
+            continue;
+        };
+        let mut path = Vec::new();
+        let mut rest = rest;
+        while let Some(inner) = rest.strip_prefix('[') {
+            let Some(end) = inner.find(']') else {
+                return Err(RequestError::new("query", Some(name), format!("invalid key '{key}'")));
+            };
+            path.push(inner[..end].to_owned());
+            rest = &inner[end + 1..];
+        }
+        if !rest.is_empty() {
+            // another parameter whose name starts with this one's
+            continue;
+        }
+        DeepValue::insert(&mut root, &path, value.clone())
+            .map_err(|()| RequestError::new("query", Some(name), format!("'{key}' conflicts with another key")))?;
+    }
+    match root {
+        None => Ok(None),
+        Some(root) => T::deserialize(root)
+            .map(Some)
+            .map_err(|e| RequestError::new("query", Some(name), e.to_string())),
+    }
+}
+
+/// The pairs of a deepObject query parameter as a tree: text at the leaves, keys in their order.
+#[derive(Debug)]
+enum DeepValue {
+    Text(String),
+    Map(Vec<(String, DeepValue)>),
+}
+
+impl DeepValue {
+    fn insert(node: &mut Option<DeepValue>, path: &[String], value: String) -> Result<(), ()> {
+        let Some((first, rest)) = path.split_first() else {
+            return match node {
+                None => {
+                    *node = Some(DeepValue::Text(value));
+                    Ok(())
+                }
+                Some(_) => Err(()),
+            };
+        };
+        let entries = match node.get_or_insert_with(|| DeepValue::Map(Vec::new())) {
+            DeepValue::Map(entries) => entries,
+            DeepValue::Text(_) => return Err(()),
+        };
+        let index = match entries.iter().position(|(key, _)| key == first) {
+            Some(index) => index,
+            None => {
+                entries.push((first.clone(), DeepValue::Map(Vec::new())));
+                let index = entries.len() - 1;
+                // a new entry starts empty: a leaf or a map, whatever the rest of the path makes it
+                let mut child = None;
+                DeepValue::insert(&mut child, rest, value)?;
+                entries[index].1 = child.unwrap_or(DeepValue::Map(Vec::new()));
+                return Ok(());
+            }
+        };
+        let mut child = Some(std::mem::replace(&mut entries[index].1, DeepValue::Map(Vec::new())));
+        let result = DeepValue::insert(&mut child, rest, value);
+        entries[index].1 = child.unwrap_or(DeepValue::Map(Vec::new()));
+        result
+    }
+
+    fn text(&self) -> Option<&str> {
+        match self {
+            DeepValue::Text(text) => Some(text),
+            DeepValue::Map(_) => None,
+        }
+    }
+
+    fn parsed<T: std::str::FromStr>(&self, what: &str) -> Result<T, serde::de::value::Error> {
+        let text = self.text().ok_or_else(|| serde::de::Error::custom(format!("expected {what}, found an object")))?;
+        text.parse().map_err(|_| serde::de::Error::custom(format!("expected {what}, found '{text}'")))
+    }
+}
+
+impl<'de> serde::de::IntoDeserializer<'de, serde::de::value::Error> for DeepValue {
+    type Deserializer = Self;
+
+    fn into_deserializer(self) -> Self {
+        self
+    }
+}
+
+impl<'de> serde::Deserializer<'de> for DeepValue {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        match self {
+            DeepValue::Text(text) => visitor.visit_string(text),
+            DeepValue::Map(entries) => {
+                visitor.visit_map(serde::de::value::MapDeserializer::new(entries.into_iter()))
+            }
+        }
+    }
+
+    fn deserialize_i8<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_i8(self.parsed::<i8>("a number")?)
+    }
+
+    fn deserialize_i16<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_i16(self.parsed::<i16>("a number")?)
+    }
+
+    fn deserialize_i32<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_i32(self.parsed::<i32>("a number")?)
+    }
+
+    fn deserialize_i64<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_i64(self.parsed::<i64>("a number")?)
+    }
+
+    fn deserialize_u8<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_u8(self.parsed::<u8>("a number")?)
+    }
+
+    fn deserialize_u16<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_u16(self.parsed::<u16>("a number")?)
+    }
+
+    fn deserialize_u32<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_u32(self.parsed::<u32>("a number")?)
+    }
+
+    fn deserialize_u64<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_u64(self.parsed::<u64>("a number")?)
+    }
+
+    fn deserialize_f32<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_f32(self.parsed::<f32>("a number")?)
+    }
+
+    fn deserialize_f64<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_f64(self.parsed::<f64>("a number")?)
+    }
+
+    fn deserialize_bool<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_bool(self.parsed::<bool>("a boolean")?)
+    }
+
+    fn deserialize_option<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        match self.text() {
+            Some("null") => visitor.visit_none(),
+            _ => visitor.visit_some(self),
+        }
+    }
+
+    fn deserialize_unit<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_unit()
+    }
+
+    fn deserialize_newtype_struct<V: serde::de::Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        visitor.visit_newtype_struct(self)
+    }
+
+    /// The items of an array: the entries of a map in the order of their index (`name[a][0]`, `name[a][1]`), or one
+    /// text as the only item.
+    fn deserialize_seq<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        match self {
+            DeepValue::Map(entries) => {
+                let mut items = Vec::new();
+                for (key, value) in entries {
+                    let index: usize = key
+                        .parse()
+                        .map_err(|_| serde::de::Error::custom(format!("expected an array index, found '{key}'")))?;
+                    items.push((index, value));
+                }
+                items.sort_by_key(|(index, _)| *index);
+                let items = items.into_iter().map(|(_, value)| value);
+                visitor.visit_seq(serde::de::value::SeqDeserializer::new(items))
+            }
+            text => visitor.visit_seq(serde::de::value::SeqDeserializer::new(std::iter::once(text))),
+        }
+    }
+
+    fn deserialize_tuple<V: serde::de::Visitor<'de>>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error> {
+        self.deserialize_seq(visitor)
+    }
+
+    fn deserialize_enum<V: serde::de::Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        match self {
+            DeepValue::Text(text) => {
+                visitor.visit_enum(serde::de::IntoDeserializer::<Self::Error>::into_deserializer(text))
+            }
+            DeepValue::Map(_) => Err(serde::de::Error::custom("expected a value of an enum, found an object")),
+        }
+    }
+
+    serde::forward_to_deserialize_any! {
+        i128 u128 char str string bytes byte_buf unit_struct tuple_struct map struct identifier ignored_any
+    }
+}
+{{/serverDeepObject}}
 
 /// A required parameter's value: an error when it is missing.
 #[allow(dead_code)]
@@ -739,6 +996,15 @@ fn form_json_list<T: serde::de::DeserializeOwned>(
         _ => named.iter().map(|part| serde_json::from_slice(&part.bytes).map_err(invalid)).collect::<Result<_, _>>().map(Some),
     }
 }
+
+/// A part that is not a file as a value of `T`: its JSON, else its text as a string.
+#[allow(dead_code)]
+fn part_value<T: serde::de::DeserializeOwned>(part: &FormPart) -> Option<T> {
+    serde_json::from_slice(&part.bytes).ok().or_else(|| {
+        let text = part.text().ok()?;
+        serde_json::from_value(serde_json::Value::String(text.to_owned())).ok()
+    })
+}
 {{/serverForms}}
 {{#serverModules}}
 
@@ -777,10 +1043,12 @@ pub mod {{{module}}} {
         I: {{{trait}}} + super::ErrorHandler + 'static,
     {
         {{#operations}}
+        {{^dispatched}}
         {{#cfg}}
         #[cfg({{{.}}})]
         {{/cfg}}
         let router = router.route("{{{route}}}", axum::routing::{{{method}}}(handle_{{{bare}}}::<I>));
+        {{/dispatched}}
         {{/operations}}
         router
     }
@@ -865,6 +1133,30 @@ pub mod {{{module}}} {
             {{/form}}
         })
     }
+    {{#fileUnions}}
+
+    /// `{{{name}}}` of the multipart body of [`{{{trait}}}::{{{bare}}}`]: a file, or a value of one of the other
+    /// variants of its union.
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    #[derive(Clone, Debug)]
+    pub enum {{{enum}}} {
+        {{#variants}}
+        {{#doc}}
+        /// {{#rustdoc}}{{{.}}}{{/rustdoc}}
+        {{/doc}}
+        {{{variant}}}({{{type}}}),
+        {{/variants}}
+    }
+
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    fn form_{{{function}}}(parts: &[super::FormPart]) -> Result<Option<{{{enum}}}>, super::RequestError> {
+{{{read}}}
+    }
+    {{/fileUnions}}
     {{/hasForm}}
     {{/body}}
 
@@ -896,7 +1188,7 @@ pub mod {{{module}}} {
     {{#cfg}}
     #[cfg({{{.}}})]
     {{/cfg}}
-    async fn handle_{{{bare}}}<I>(
+    pub(super) async fn handle_{{{bare}}}<I>(
         axum::extract::State(api): axum::extract::State<std::sync::Arc<I>>,
         {{#hasPath}}
         path: Result<
@@ -984,7 +1276,7 @@ pub mod {{{module}}} {
             {{{field}}}: super::path_value(path, "{{{position}}}", "{{{name}}}", |v| {{{parse}}})?,
             {{/pathParams}}
             {{#queryParams}}
-            {{{field}}}: {{#required}}super::required("query", "{{{name}}}", {{/required}}super::query_{{#list}}list{{/list}}{{^list}}value{{/list}}(query, "{{{name}}}", {{#list}}{{#separator}}Some("{{{.}}}"){{/separator}}{{^separator}}None{{/separator}}, {{/list}}|v| {{{parse}}})?{{#required}})?{{/required}},
+            {{{field}}}: {{{read}}},
             {{/queryParams}}
             {{#body}}
             body{{#decode}}: {{{.}}}{{/decode}},

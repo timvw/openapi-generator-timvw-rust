@@ -68,8 +68,8 @@ in `targets` fails the generation with an error naming the option and its target
 
 | Applies to | Options |
 | --- | --- |
-| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `apiFeatures`, `apiFeaturesFile`, the crate options |
-| The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `multipartHelper`, `userAgentFromPackage` |
+| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `apiFeatures`, `apiFeaturesFile`, the crate options |
+| The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `multipartHelper`, `userAgentFromPackage` |
 | The server | `serverFramework` (only `axum`), `serverValidation` |
 | To decide | `webhookModule` (the client verifies webhooks; a server could also send them), `validateMethods` (the models' `Validate`, which the server's validation would call) |
 
@@ -169,8 +169,12 @@ let app: axum::Router = server::router(MyImpl::new());
    for another media type; an `event:` line naming each event by its schema's discriminator, as OpenAI writes a
    Responses stream.
 
-   Left for later: multipart fields that are unions with a file variant (OpenAI's videos and skills: a file or a JSON
-   reference), deepObject query parameters.
+   Then (implemented): a multipart field whose union has a file variant (OpenAI's videos and skills: a file or a JSON
+   reference) as an enum of its own, a `FilePart` for a part with a file name; deepObject query parameters read into
+   their type from the `name[key]=value` pairs the client writes; a union query parameter from its text; and paths
+   with a fixed query (`/responses/{id}?beta=true`) routed on their path, one handler per path and method calling the
+   operation whose fixed query the request has. `deepObjectQueryParameters` and `resetQueryParameterStyle` moved to
+   the model options: they decide what goes on the wire, which client and server must agree on.
 3. **`modelsCrate`, and the first real use:** a mock OpenAI server for openai-ergonomic's tests, generated from
    openai-client-base's spec, with its models from `openai-client-base`. Planned in
    [a mock OpenAI server](openai-mock-server.md), which compares LiteLLM and Bifrost.
@@ -178,8 +182,8 @@ let app: axum::Router = server::router(MyImpl::new());
    Implemented in the generator: `modelsCrate` (with `modelsCrateVersion` and `modelsCratePath`), and
    `serverDefaultMethods`, a default per trait method that answers `501`, so a mock implements only what it scripts.
    `webhookModule` moved to the model options: it names the Cargo feature of the webhook payloads, which the server
-   must name as its models crate does. On the OpenAI spec with openai-client-base's model options, 380 operations are
-   served and 8 left out.
+   must name as its models crate does. On the OpenAI spec with openai-client-base's model options, all 388
+   operations are served.
 4. **Later:** authentication schemes, validation, and webhooks sent by the server.
 
 ## Open questions

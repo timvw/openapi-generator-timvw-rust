@@ -9,6 +9,7 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 import org.openapitools.codegen.CodegenModel;
 import org.openapitools.codegen.CodegenOperation;
 import org.openapitools.codegen.CodegenParameter;
+import org.openapitools.codegen.CodegenProperty;
 import org.openapitools.codegen.CodegenResponse;
 import org.openapitools.codegen.utils.ModelUtils;
 
@@ -39,9 +40,14 @@ import java.util.regex.Pattern;
  * a {@code Binary}; a status with more than one kind has a variant for each, the first ({@code JSON} when there is
  * one) unsuffixed and the others suffixed {@code Stream}, {@code Text} or {@code Binary}.</p>
  *
- * <p>Left out, with a comment in the server module and a warning: multipart fields that are unions with a file variant,
- * a body that is both a multipart and an urlencoded form, deepObject and object query parameters, and a path
- * parameter that is not a whole path segment.</p>
+ * <p>A deepObject query parameter ({@code name[key]=value}) is read into its type, as the client's
+ * {@code parse_deep_object} writes it; a multipart field whose union has a file variant is an
+ * {@code <Operation><Field>} enum of a {@code FilePart} (a part with a file name), its parts or one of the union's other
+ * variants; a path with a fixed query ({@code /responses/{id}?beta=true}) is routed on its path, and the operations that
+ * share a path and method are told apart by their fixed query ({@code serverDispatch} in {@code TimvwRustCodegen}).</p>
+ *
+ * <p>Left out, with a comment in the server module and a warning: a body that is both a multipart and an urlencoded
+ * form, a query parameter whose type has no text form, and a path parameter that is not a whole path segment.</p>
  */
 final class ServerRules {
 
@@ -107,8 +113,14 @@ final class ServerRules {
         }
         if (type.startsWith("models::") && !type.contains("<")) {
             CodegenModel cm = models.get(type.substring("models::".length()));
-            if (cm == null || !cm.isEnum) {
+            if (cm == null) {
                 return null;
+            }
+            if (!cm.isEnum) {
+                // a union (an order that is "asc" or "desc"): the text as a JSON string, else as JSON
+                boolean union = UnionRules.variantsOf(cm) != null || !cm.oneOf.isEmpty() || !cm.anyOf.isEmpty();
+                return union ? "serde_json::from_value::<" + type + ">(serde_json::Value::String(v.to_owned())).ok()"
+                        + ".or_else(|| serde_json::from_str::<" + type + ">(v).ok())" : null;
             }
             if (cm.isInteger || cm.isLong || "i64".equals(cm.dataType) || "i32".equals(cm.dataType)) {
                 return "v.parse::<i64>().ok().and_then(|n| serde_json::from_value::<" + type + ">(n.into()).ok())";
@@ -166,10 +178,34 @@ final class ServerRules {
             m.put("cfg", cfg);
         }
 
+        // a fixed query (`/responses/{id}?beta=true`) is not part of the route: the operations that share the route
+        // are told apart by it
+        String path = op.path;
+        List<Map<String, Object>> fixed = new ArrayList<>();
+        int question = path.indexOf('?');
+        if (question >= 0) {
+            for (String pair : path.substring(question + 1).split("&")) {
+                if (pair.isEmpty()) {
+                    continue;
+                }
+                String[] kv = pair.split("=", 2);
+                Map<String, Object> f = new LinkedHashMap<>();
+                f.put("name", literal(kv[0]));
+                f.put("value", literal(kv.length > 1 ? kv[1] : ""));
+                fixed.add(f);
+            }
+            path = path.substring(0, question);
+        }
+        if (!fixed.isEmpty()) {
+            fixed.get(fixed.size() - 1).put("last", true);
+        }
+        m.put("fixed", fixed);
+        m.put("fixedText", question >= 0 ? op.path.substring(question + 1) : "");
+
         // the route: every path parameter is a whole segment, named by its position
         Map<String, String> positions = new LinkedHashMap<>();
         List<String> segments = new ArrayList<>();
-        for (String segment : op.path.split("/", -1)) {
+        for (String segment : path.split("/", -1)) {
             if (segment.indexOf('{') < 0 && segment.indexOf('}') < 0) {
                 segments.add(segment);
                 continue;
@@ -205,9 +241,20 @@ final class ServerRules {
         m.put("hasPath", !pathParams.isEmpty());
 
         List<Map<String, Object>> queryParams = new ArrayList<>();
+        boolean deep = false;
         for (CodegenParameter p : list(op.queryParams)) {
+            boolean required = p.required && !p.isNullable;
+            String name = literal(p.baseName);
             if (p.isDeepObject) {
-                throw new Unsupported("the query parameter '" + p.baseName + "' is a deepObject");
+                // name[key]=value, nested name[a][b], array items name[a][0]: what the client's parse_deep_object writes
+                Map<String, Object> f = field(p, fields);
+                String type = qualify(p.dataType, models);
+                f.put("type", required ? type : "Option<" + type + ">");
+                String read = "super::query_deep(query, \"" + name + "\")?";
+                f.put("read", required ? "super::required(\"query\", \"" + name + "\", " + read + ")?" : read);
+                queryParams.add(f);
+                deep = true;
+                continue;
             }
             boolean array = p.isArray && p.items != null;
             String item = qualify(array ? p.items.dataType : p.dataType, models);
@@ -218,16 +265,20 @@ final class ServerRules {
             }
             Map<String, Object> f = field(p, fields);
             String type = array ? "Vec<" + item + ">" : item;
-            boolean required = p.required && !p.isNullable;
             f.put("type", required ? type : "Option<" + type + ">");
-            f.put("required", required);
-            f.put("list", array);
-            f.put("parse", parse);
-            if (array && !p.vendorExtensions.containsKey(TimvwRustCodegen.REPEAT)) {
-                f.put("separator", p.vendorExtensions.getOrDefault(TimvwRustCodegen.SEPARATOR, ","));
+            String read;
+            if (array) {
+                String separator = p.vendorExtensions.containsKey(TimvwRustCodegen.REPEAT) ? "None"
+                        : "Some(\"" + literal(String.valueOf(
+                                p.vendorExtensions.getOrDefault(TimvwRustCodegen.SEPARATOR, ","))) + "\")";
+                read = "super::query_list(query, \"" + name + "\", " + separator + ", |v| " + parse + ")?";
+            } else {
+                read = "super::query_value(query, \"" + name + "\", |v| " + parse + ")?";
             }
+            f.put("read", required ? "super::required(\"query\", \"" + name + "\", " + read + ")?" : read);
             queryParams.add(f);
         }
+        m.put("deepObject", deep);
         m.put("queryParams", queryParams);
         m.put("hasQuery", !queryParams.isEmpty());
 
@@ -290,7 +341,7 @@ final class ServerRules {
         if (kinds.size() == 1) {
             Kind kind = kinds.keySet().iterator().next();
             String media = kinds.get(kind).get(0);
-            String type = one(op, op.operationIdCamelCase, kind, media, models, b);
+            String type = one(openAPI, op, op.operationIdCamelCase, kind, media, models, b);
             switch (kind) {
                 case JSON:
                     b.put("decode", required ? "super::json_body(&body)?" : "super::optional_json_body(&body)?");
@@ -338,7 +389,7 @@ final class ServerRules {
             if (own == null) {
                 throw new Unsupported("its request body '" + media + "' has no type");
             }
-            String type = one(own, op.operationIdCamelCase, kind, media, models, b);
+            String type = one(openAPI, own, op.operationIdCamelCase, kind, media, models, b);
             String value;
             String read;
             switch (kind) {
@@ -386,7 +437,7 @@ final class ServerRules {
     }
 
     /** The type of a body of one kind; a form's struct goes into {@code b}. */
-    private static String one(CodegenOperation op, String camel, Kind kind, String media,
+    private static String one(OpenAPI openAPI, CodegenOperation op, String camel, Kind kind, String media,
             Map<String, CodegenModel> models, Map<String, Object> b) throws Unsupported {
         switch (kind) {
             case JSON:
@@ -402,13 +453,15 @@ final class ServerRules {
                 if (!media.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
                     throw new Unsupported("its request body is '" + media + "'");
                 }
-                b.put("form", form(op, models, false));
+                List<Map<String, Object>> unions = new ArrayList<>();
+                b.put("form", form(openAPI, op, camel, models, false, unions));
+                b.put("fileUnions", unions);
                 b.put("formMedia", "multipart/form-data");
                 b.put("hasForm", true);
                 b.put("fileParts", true);
                 return camel + "Form";
             case FORM:
-                b.put("form", form(op, models, true));
+                b.put("form", form(openAPI, op, camel, models, true, new ArrayList<>()));
                 b.put("formMedia", "application/x-www-form-urlencoded");
                 b.put("hasForm", true);
                 return camel + "Form";
@@ -441,17 +494,39 @@ final class ServerRules {
 
     /**
      * The fields of a form, each read from its parts: the parts of a multipart form, or the pairs of an urlencoded one
-     * ({@code urlencoded}), where a file cannot be and a list the client joins is split.
+     * ({@code urlencoded}), where a file cannot be and a list the client joins is split. A multipart field whose union
+     * has a file variant gets an enum of its own, added to {@code unions} ({@link #fileUnion}).
      */
-    private static List<Map<String, Object>> form(CodegenOperation op, Map<String, CodegenModel> models,
-            boolean urlencoded) throws Unsupported {
+    private static List<Map<String, Object>> form(OpenAPI openAPI, CodegenOperation op, String camel,
+            Map<String, CodegenModel> models, boolean urlencoded, List<Map<String, Object>> unions)
+            throws Unsupported {
         List<Map<String, Object>> fields = new ArrayList<>();
         Set<String> names = new HashSet<>();
         for (CodegenParameter p : list(op.formParams)) {
-            if (p.vendorExtensions.containsKey(MultipartRules.FILE_UNION)) {
-                throw new Unsupported("the multipart field '" + p.baseName + "' is a union with a file variant");
-            }
             String dataType = p.dataType == null ? "" : p.dataType;
+            CodegenModel union = models.get(dataType.replaceFirst("^models::", ""));
+            if (union != null && union.vendorExtensions.containsKey(UploadParams.FILE_UNION)) {
+                if (urlencoded) {
+                    throw new Unsupported("the urlencoded form field '" + p.baseName + "' is a file");
+                }
+                Map<String, Object> u = fileUnion(openAPI, op, camel, p, union, models);
+                unions.add(u);
+                String read = "form_" + u.get("function") + "(parts)?";
+                boolean required = p.required && !p.isNullable;
+                String field = p.paramName;
+                if (!names.add(bare(field))) {
+                    throw new Unsupported("two form fields are named '" + bare(field) + "'");
+                }
+                Map<String, Object> f = new LinkedHashMap<>();
+                f.put("field", field);
+                f.put("name", literal(p.baseName));
+                f.put("doc", docLine(p.unescapedDescription));
+                f.put("type", required ? (String) u.get("enum") : "Option<" + u.get("enum") + ">");
+                f.put("decode", required ? "super::required(\"body\", \"" + literal(p.baseName) + "\", " + read
+                        + ")?" : read);
+                fields.add(f);
+                continue;
+            }
             boolean array = p.isArray || dataType.startsWith("Vec<");
             boolean file = p.isFile || dataType.contains(UploadParams.PATH) || dataType.contains(UploadParams.UPLOAD);
             if (file && urlencoded) {
@@ -493,6 +568,97 @@ final class ServerRules {
             fields.add(f);
         }
         return fields;
+    }
+
+    /**
+     * The enum of a multipart field whose union has a file variant, {@code <Operation><Field>}: the union's variants, a
+     * file a {@code FilePart} and an array of files a {@code Vec<FilePart>}, the others their own type. A part with a
+     * file name is a file (the client always gives one); several, or parts named as the client names the parts of an
+     * array of files ({@code files[]}), are the array. Any other part is the first other variant its JSON, else its text,
+     * decodes into.
+     */
+    private static Map<String, Object> fileUnion(OpenAPI openAPI, CodegenOperation op, String camel,
+            CodegenParameter p, CodegenModel union, Map<String, CodegenModel> models) {
+        String fieldCamel = camel(bare(p.paramName));
+        String enumType = camel + fieldCamel;
+        List<Map<String, Object>> variants = new ArrayList<>();
+        String file = null;
+        String files = null;
+        List<String> values = new ArrayList<>();
+        for (CodegenProperty v : UnionRules.variants(union)) {
+            Map<String, Object> variant = new LinkedHashMap<>();
+            variant.put("variant", v.name);
+            variant.put("doc", docLine(v.description));
+            if (Boolean.TRUE.equals(v.vendorExtensions.get(UploadParams.UPLOAD_VARIANT))) {
+                variant.put("type", "super::FilePart");
+                file = v.name;
+            } else if (Boolean.TRUE.equals(v.vendorExtensions.get(UploadParams.UPLOADS_VARIANT))) {
+                variant.put("type", "Vec<super::FilePart>");
+                files = v.name;
+            } else {
+                String type = qualify(v.dataType, models);
+                variant.put("type", type);
+                values.add("if let Some(value) = super::part_value::<" + type + ">(part) {\n"
+                        + "            return Ok(Some(" + enumType + "::" + v.name + "(value)));\n        }");
+            }
+            variants.add(variant);
+        }
+        String name = literal(p.baseName);
+        String partsName = literal(MultipartRules.filesPartName(openAPI, op, p.baseName));
+        String i = "        ";
+        StringBuilder read = new StringBuilder();
+        // the file parts: a part with a file name, under the field's name or the name of the parts of an array
+        read.append(i).append("let files: Vec<&super::FormPart> = parts\n")
+                .append(i).append("    .iter()\n")
+                .append(i).append(partsName.equals(name)
+                        ? "    .filter(|p| p.file_name.is_some() && p.name == \"" + name + "\")\n"
+                        : "    .filter(|p| p.file_name.is_some() && (p.name == \"" + name + "\" || p.name == \""
+                                + partsName + "\"))\n")
+                .append(i).append("    .collect();\n");
+        if (file != null || files != null) {
+            read.append(i).append("if !files.is_empty() {\n");
+            String all = i + "    return Ok(Some(" + enumType + "::" + files
+                    + "(files.iter().map(|p| p.file()).collect())));\n";
+            if (files != null && file != null) {
+                read.append(i).append("    if files.len() > 1");
+                if (!partsName.equals(name)) {
+                    read.append(" || files.iter().any(|p| p.name != \"").append(name).append("\")");
+                }
+                read.append(" {\n").append("    ").append(all).append(i).append("    }\n");
+            } else if (files != null) {
+                read.append(all);
+            }
+            if (file != null) {
+                read.append(i).append("    return Ok(Some(").append(enumType).append("::").append(file)
+                        .append("(files[0].file())));\n");
+            }
+            read.append(i).append("}\n");
+        }
+        // any other part: the first other variant it decodes into
+        if (values.isEmpty()) {
+            read.append(i).append("if parts.iter().any(|p| p.name == \"").append(name).append("\") {\n")
+                    .append(i).append("    return Err(super::RequestError::new(\"body\", Some(\"").append(name)
+                    .append("\"), \"not a file\"));\n")
+                    .append(i).append("}\n")
+                    .append(i).append("Ok(None)");
+        } else {
+            read.append(i).append("let Some(part) = parts.iter().find(|p| p.name == \"").append(name)
+                    .append("\" && p.file_name.is_none()) else {\n")
+                    .append(i).append("    return Ok(None);\n")
+                    .append(i).append("};\n");
+            for (String value : values) {
+                read.append(i).append(value).append("\n");
+            }
+            read.append(i).append("Err(super::RequestError::new(\"body\", Some(\"").append(name)
+                    .append("\"), \"neither a file nor a value of its union\"))");
+        }
+        Map<String, Object> u = new LinkedHashMap<>();
+        u.put("enum", enumType);
+        u.put("name", name);
+        u.put("function", bare(op.operationId) + "_" + bare(p.paramName));
+        u.put("variants", variants);
+        u.put("read", read.toString());
+        return u;
     }
 
     private static Map<String, Object> field(CodegenParameter p, Set<String> fields) {

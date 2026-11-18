@@ -1369,8 +1369,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
             objs.put(WEBHOOK_MODULES_KEY, Arrays.asList(toApiFilename(webhookModule)));
         }
-        if (!targets.client() && modelsUseRuntime) {
-            // no client to make the runtime optional: the models' uploads need it whatever the features
+        if (!targets.client() && modelsUseRuntime && !apiFeatures) {
+            // no client and no API features to make the runtime optional: the models' uploads need it whatever the
+            // features (with apiFeatures, the groups whose models hold an upload enable it)
             objs.put(UploadParams.RUNTIME_REQUIRED, true);
         }
         if (apiFeatures) {
@@ -1397,7 +1398,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 || (!apiFeatures && modelsUseRuntime);
         // the client's runtime: optional with apiFeatures or the target features, unless an ungated model needs it
         objs.put("runtimeDependency", targets.client() || (modelsUseRuntime && !externalModels));
-        objs.put("runtimeOptional", targets.client() && (apiFeatures || targets.features()) && !runtimeRequired);
+        objs.put("runtimeOptional", (targets.client() ? apiFeatures || targets.features() : apiFeatures)
+                && !runtimeRequired);
         // `_api` (apiFeatures) enables the runtime when it is the client's alone; the `client` feature does otherwise
         objs.put("apiRuntime", targets.client() && !targets.features() && !runtimeRequired);
         String client = null;
@@ -1433,6 +1435,16 @@ public class TimvwRustCodegen extends RustCodegenBase {
             objs.put("serverForms", serverForms);
             objs.put("serverBodyEnums", serverBodyEnums);
             objs.put("headerStructs", headerStructs);
+            List<Map<String, Object>> dispatch = serverDispatch(modules);
+            objs.put("serverDispatch", dispatch);
+            objs.put("hasServerDispatch", !dispatch.isEmpty());
+            boolean deepObject = false;
+            for (Map<String, Object> m : modules) {
+                for (Object op : (List<?>) m.get("operations")) {
+                    deepObject |= Boolean.TRUE.equals(((Map<?, ?>) op).get("deepObject"));
+                }
+            }
+            objs.put("serverDeepObject", deepObject);
             int served = 0;
             List<Object> left = new ArrayList<>();
             for (Map<String, Object> m : modules) {
@@ -1443,6 +1455,76 @@ public class TimvwRustCodegen extends RustCodegenBase {
             objs.put("hasServerLeft", !left.isEmpty());
             LOGGER.info("{}: server: {} operations served, {} left out", GENERATOR_NAME, served, left.size());
         }
+    }
+
+    /**
+     * The routes that several operations share, or one operation with a fixed query ({@code /responses/{id}?beta=true}):
+     * one handler per path and method that calls the operation whose fixed query the request has, the operations with
+     * the most fixed pairs first and the one without a fixed query last. Those operations are marked
+     * {@code dispatched}, so that their module does not route them itself. Of two operations without a fixed query on
+     * one path and method, the second is left out.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> serverDispatch(List<Map<String, Object>> modules) {
+        Map<String, List<Map<String, Object>[]>> groups = new LinkedHashMap<>();
+        for (Map<String, Object> module : modules) {
+            for (Object o : (List<?>) module.get("operations")) {
+                Map<String, Object> op = (Map<String, Object>) o;
+                groups.computeIfAbsent(op.get("method") + " " + op.get("route"), k -> new ArrayList<>())
+                        .add(new Map[] {module, op});
+            }
+        }
+        List<Map<String, Object>> dispatch = new ArrayList<>();
+        for (List<Map<String, Object>[]> group : groups.values()) {
+            boolean fixed = group.stream().anyMatch(pair -> !((List<?>) pair[1].get("fixed")).isEmpty());
+            if (group.size() == 1 && !fixed) {
+                continue;
+            }
+            List<Map<String, Object>[]> ordered = new ArrayList<>(group);
+            ordered.sort(java.util.Comparator.comparingInt(pair -> -((List<?>) pair[1].get("fixed")).size()));
+            List<Map<String, Object>> branches = new ArrayList<>();
+            String plain = null;
+            for (Map<String, Object>[] pair : ordered) {
+                Map<String, Object> module = pair[0];
+                Map<String, Object> op = pair[1];
+                if (((List<?>) op.get("fixed")).isEmpty()) {
+                    if (plain != null) {
+                        // the same path, method and query as another operation: the request cannot tell them apart
+                        ((List<?>) module.get("operations")).remove(op);
+                        Map<String, Object> left = new LinkedHashMap<>();
+                        left.put("name", op.get("name"));
+                        left.put("httpMethod", op.get("httpMethod"));
+                        left.put("path", op.get("path"));
+                        left.put("reason", "it has the path and method of `" + plain + "`");
+                        ((List<Object>) module.get("left")).add(left);
+                        LOGGER.warn("{}: server: {} ({} {}) is not served: it has the path and method of {}",
+                                GENERATOR_NAME, op.get("name"), op.get("httpMethod"), op.get("path"), plain);
+                        continue;
+                    }
+                    plain = String.valueOf(op.get("name"));
+                }
+                op.put("dispatched", true);
+                Map<String, Object> branch = new LinkedHashMap<>();
+                branch.put("name", op.get("name"));
+                branch.put("module", module.get("module"));
+                branch.put("bare", op.get("bare"));
+                branch.put("fixed", op.get("fixed"));
+                if (op.get("cfg") != null) {
+                    branch.put("cfg", op.get("cfg"));
+                }
+                branches.add(branch);
+            }
+            branches.get(branches.size() - 1).put("last", true);
+            Map<String, Object> first = ordered.get(0)[1];
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put("function", "route_" + dispatch.size());
+            d.put("route", first.get("route"));
+            d.put("method", first.get("method"));
+            d.put("httpMethod", first.get("httpMethod"));
+            d.put("branches", branches);
+            dispatch.add(d);
+        }
+        return dispatch;
     }
 
     /**

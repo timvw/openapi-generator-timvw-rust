@@ -43,8 +43,6 @@ record Targets(boolean client, boolean server) {
                 TimvwRustCodegen.CONTENT_TYPE_METHODS,
                 TimvwRustCodegen.TYPED_EVENT_STREAMS,
                 TimvwRustCodegen.TYPED_ENUM_PARAMETERS,
-                TimvwRustCodegen.DEEP_OBJECT_QUERY_PARAMETERS,
-                TimvwRustCodegen.RESET_QUERY_PARAMETER_STYLE,
                 TimvwRustCodegen.MULTIPART_HELPER,
                 TimvwRustCodegen.USER_AGENT_FROM_PACKAGE,
                 TimvwRustCodegen.API_LINT_ALLOWS,
@@ -54,6 +52,8 @@ record Targets(boolean client, boolean server) {
                 TimvwRustCodegen.WEBHOOK_MODULE_REEXPORT)) {
             m.put(option, CLIENT);
         }
+        // deepObjectQueryParameters and resetQueryParameterStyle decide how query parameters go on the wire: the
+        // client sends them so and the server reads them so, so they belong to every target.
         m.put(TimvwRustCodegen.SERVER_FRAMEWORK, SERVER);
         m.put(TimvwRustCodegen.SERVER_VALIDATION, SERVER);
         m.put(TimvwRustCodegen.SERVER_DEFAULT_METHODS, SERVER);

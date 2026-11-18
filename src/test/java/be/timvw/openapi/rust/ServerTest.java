@@ -162,8 +162,8 @@ class ServerTest {
         assertContains(cargo, "[features]\ndefault = []\n");
         assertContains(files.get("src/lib.rs"), "pub mod models;\npub mod headers;\npub mod server;\n");
         assertContains(files.get("README.md"), "# Rust API server for server_fixture");
-        assertContains(files.get("README.md"), "- `filter_pets` (**GET** /pets/filter): the query parameter 'filter' "
-                + "is a deepObject");
+        assertContains(files.get("README.md"), "- `get_pet_json` (**GET** /pets/{petId}.json): the path segment "
+                + "'{petId}.json' is not one path parameter");
     }
 
     @Test
@@ -237,10 +237,10 @@ class ServerTest {
     void whatTheServerCannotServeIsLeftOutWithAComment() throws IOException {
         generate(out, Map.of(TimvwRustCodegen.TARGETS, "server"));
         String server = read(out, "src/server.rs");
-        assertContains(server, "    // Not served: `filter_pets` (GET /pets/filter): the query parameter 'filter' is a "
-                + "deepObject.\n");
-        assertFalse(server.contains("fn filter_pets("), server);
-        assertFalse(server.contains("FilterPetsRequest"), server);
+        assertContains(server, "    // Not served: `get_pet_json` (GET /pets/{petId}.json): the path segment "
+                + "'{petId}.json' is not one path parameter.\n");
+        assertFalse(server.contains("fn get_pet_json("), server);
+        assertFalse(server.contains("GetPetJsonRequest"), server);
     }
 
     @Test

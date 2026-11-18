@@ -16,7 +16,7 @@ use server_fixture::server::owners_api::{
     GetOwnerPetRequest, GetOwnerPetResponse, OwnerEventsRequest, OwnerEventsResponse,
 };
 use server_fixture::server::pets_api::{
-    AnswerPetRequest, AnswerPetResponse, CreatePetRequest, CreatePetResponse, DeletePetRequest, DeletePetResponse, GetPetNameRequest, GetPetNameResponse,
+    AnswerPetRequest, AnswerPetResponse, CreatePetRequest, FilterPetsRequest, FilterPetsResponse, CreatePetResponse, DeletePetRequest, DeletePetResponse, GetPetNameRequest, GetPetNameResponse,
     GetPetRequest, GetPetResponse, GetPhotoRequest, GetPhotoResponse, ImportPetBody, ImportPetRequest,
     ImportPetResponse, ListPetsRequest, ListPetsResponse, PetEventsRequest, PetEventsResponse, PetFeedRequest,
     PetFeedResponse, PutPhotoRequest, PutPhotoResponse, RenamePetRequest, RenamePetResponse, SearchPetsForm,
@@ -34,6 +34,7 @@ struct Store {
     photos: Mutex<HashMap<i64, axum::body::Bytes>>,
     last_list: Mutex<Option<ListPetsRequest>>,
     last_search: Mutex<Option<SearchPetsForm>>,
+    last_filter: Mutex<Option<FilterPetsRequest>>,
 }
 
 impl Store {
@@ -168,6 +169,11 @@ impl PetsApi for Store {
         })
     }
 
+    async fn filter_pets(&self, request: FilterPetsRequest) -> Result<FilterPetsResponse, ServerError> {
+        *self.last_filter.lock().unwrap() = Some(request);
+        Ok(FilterPetsResponse::Status204)
+    }
+
     async fn search_pets(&self, request: SearchPetsRequest) -> Result<SearchPetsResponse, ServerError> {
         let form = request.body;
         *self.last_search.lock().unwrap() = Some(form.clone());
@@ -273,6 +279,9 @@ macro_rules! delegate {
             }
             async fn search_pets(&self, request: SearchPetsRequest) -> Result<SearchPetsResponse, ServerError> {
                 self.0.search_pets(request).await
+            }
+            async fn filter_pets(&self, request: FilterPetsRequest) -> Result<FilterPetsResponse, ServerError> {
+                self.0.filter_pets(request).await
             }
             async fn import_pet(&self, request: ImportPetRequest) -> Result<ImportPetResponse, ServerError> {
                 self.0.import_pet(request).await
@@ -818,4 +827,16 @@ async fn named_events() {
     let request = configuration.client.request(timvw_rust_runtime::Method::GET, &url).build().unwrap();
     let text = configuration.client.execute(request).await.unwrap().text().await.unwrap();
     assert!(text.starts_with("data: {"), "{text}");
+}
+
+/// A deepObject query parameter (`filter[name]=Tom`) is read into its type.
+#[tokio::test]
+async fn deep_object_query_parameter() {
+    let (configuration, store) = seeded().await;
+    let filter = models::FilterPetsFilterParameter { name: Some("Tom".to_owned()) };
+    pets_api::filter_pets().configuration(&configuration).filter(filter.clone()).call().await.unwrap();
+    let request = store.last_filter.lock().unwrap().take().unwrap();
+    assert_eq!(request.filter, Some(filter));
+    pets_api::filter_pets().configuration(&configuration).call().await.unwrap();
+    assert_eq!(store.last_filter.lock().unwrap().take().unwrap().filter, None);
 }

@@ -622,7 +622,8 @@ Rule: [`schema.format.binary`](mapping/schema.md#schemaformatbinary). Tests:
 ### `deepObjectQueryParameters`
 
 list, empty by default. `<path>?<name>` object query parameters sent in deepObject style (`name[field]=value`), like
-those the spec declares `style: deepObject`; other object query parameters go as JSON strings.
+those the spec declares `style: deepObject`; other object query parameters go as JSON strings. It applies to every
+target: a server reads them as the client sends them, so give it the client's value.
 
 ```bash
 --additional-properties=deepObjectQueryParameters=/things?filter
@@ -640,7 +641,8 @@ Rule: [`parameter.in.query`](mapping/parameter.md#parameterinquery). Tests:
 ### `resetQueryParameterStyle`
 
 boolean, default `false`. The query parameters not sent in deepObject style get the default style (`form`, exploded),
-whatever the spec says: an array goes as one pair per item.
+whatever the spec says: an array goes as one pair per item. It applies to every target, as
+[`deepObjectQueryParameters`](#deepobjectqueryparameters) does.
 
 <!-- not compiled: generated code -->
 ```rust

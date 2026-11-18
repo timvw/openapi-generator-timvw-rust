@@ -37,13 +37,15 @@ option or add 'client' to targets
 
 | Applies to | Options |
 | --- | --- |
-| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `validateMethods`, `apiFeatures`, `apiFeaturesFile`, `pruneAllHelpers`, `unionPlanFile`, `preprocessedSpecFile`, the crate options |
-| The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `multipartHelper`, `userAgentFromPackage`, `apiLintAllows`, `webhookModuleReexport` |
+| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `validateMethods`, `apiFeatures`, `apiFeaturesFile`, `pruneAllHelpers`, `unionPlanFile`, `preprocessedSpecFile`, the crate options |
+| The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `multipartHelper`, `userAgentFromPackage`, `apiLintAllows`, `webhookModuleReexport` |
 | The server | `serverFramework` (only `axum`), `serverDefaultMethods`, `serverValidation` (only `false` for now), `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
 
 `validateMethods` generates the models' `Validate`, which a server's validation will call, so it belongs to the
 models. `webhookModule` names the group (and Cargo feature) of the webhook payload models, so it belongs to the models
 too; `webhookModuleReexport` places the client's webhook functions. The server does not send webhooks yet.
+`deepObjectQueryParameters` and `resetQueryParameterStyle` decide how query parameters go on the wire, so a server
+takes the client's values to read what that client sends.
 
 ## The server
 
@@ -95,6 +97,38 @@ pub enum ListPetsResponse {
   and the client reads (`from_headers`). In a crate with the client, `apis::<module>` re-exports them.
 - **ServerError** is an implementation's error: any `std::error::Error` converts into it with `?`, and
   `ServerError::new("...")` makes one from a message.
+
+### Query parameters
+
+A query parameter is read as the client writes it: a scalar or an enum from its text, a list from one pair per item
+(or the items of one pair joined by the separator its `style` names), and a union of scalars (OpenAI's `order`, `asc`
+or `desc`) from its text as the union's JSON string. A deepObject parameter is read into its type from the pairs the
+client's `parse_deep_object` writes: `metadata[key]=value` for a map, `created[gt]=10` for the fields of an object,
+`created[tags][0]=a` for the items of an array, read as the type at their place asks (a number, a boolean, `null` for
+`None`). Which object parameters are deepObject, and the style of the others, is what
+[`deepObjectQueryParameters`](../options.md#deepobjectqueryparameters) and
+[`resetQueryParameterStyle`](../options.md#resetqueryparameterstyle) say: give a server the client's values.
+
+<!-- not compiled: generated code (src/server.rs of a crate generated from src/test/resources/server_wire.yaml) -->
+```rust
+pub struct ListNotesRequest {
+    /// `metadata`, a query parameter: Exact matches, `metadata[key]=value`.
+    pub metadata: Option<std::collections::HashMap<String, String>>,
+    /// `created`, a query parameter
+    pub created: Option<models::Range>,
+    /// `order`, a query parameter
+    pub order: Option<models::ListNotesOrderParameter>,
+    // ...
+}
+```
+
+### Paths with a fixed query
+
+A path whose template ends in a query (OpenAI's `/responses/{response_id}?beta=true`, next to
+`/responses/{response_id}`) is routed on its path. The operations that share a path and a method are told apart by
+their fixed query: a request with `beta=true` goes to the beta operation, any other to the one without a fixed query.
+A request that has none of the fixed queries of a path that only has operations with one is a `404`. The other query
+parameters are read as usual; the fixed ones are not fields of the request.
 
 ### Serving it
 
@@ -206,6 +240,25 @@ urlencoded form reads its pairs the same way, with no files; a list whose `encod
 holding the items joined by `,` (`|` for `pipeDelimited`, a space for `spaceDelimited`), as the client sends it. A part
 that does not decode is a `400` whose `location` is `body` and `name` the field.
 
+A field whose union has a file variant (OpenAI's `create_video_extend`: a video file or a reference to one;
+`create_skill`: the files of a directory or one zip file) is an enum of its own, `<Operation><Field>`, with the union's
+variants: a file is a `FilePart`, an array of files a `Vec<FilePart>`, and every other variant its own type. A part with
+a file name is a file (the client always gives one); several, or parts named as the client names the parts of an array
+of files (`files[]`, when the spec says so), are the array. Another part is the first other variant its JSON, or its
+text, decodes into:
+
+<!-- not compiled: generated code (src/server.rs of a crate generated from src/test/resources/server_wire.yaml) -->
+```rust
+pub enum AttachSource {
+    Reference(models::Reference),
+    Text(super::FilePart),
+}
+pub enum AttachFiles {
+    ArrayOfStrings(Vec<super::FilePart>),
+    Text(super::FilePart),
+}
+```
+
 ### Requests that do not decode, and errors
 
 A path or query parameter that is missing or does not parse as its type, or a body that does not decode (JSON that is
@@ -248,13 +301,15 @@ An operation the server cannot serve is left out of the trait and the router, wi
 line in the crate's README and a warning when generating:
 
 ```text
-timvw-rust: server: filter_pets (GET /pets/filter) is not served: the query parameter 'filter' is a deepObject
+timvw-rust: server: get_pet_json (GET /pets/{petId}.json) is not served: the path segment '{petId}.json' is not one path parameter
 ```
 
-Left out for now: a multipart field that is a union with a file variant (a file or a JSON reference, say), a request
-body that is both a multipart and an urlencoded form, a query parameter in deepObject style or of an object type, and
-a path parameter that is not a whole path segment (`/files/{name}.json`). Webhooks are the client's: the server does not send them. Authentication and
-validation are the next slice of the design.
+Left out for now: a request body that is both a multipart and an urlencoded form, a query parameter whose type has no
+text form (an object that is not deepObject; [`deepObjectQueryParameters`](../options.md#deepobjectqueryparameters)
+makes it one), and a path parameter that is not a whole path segment (`/files/{name}.json`). Two operations with the
+same path, method and fixed query cannot be told apart: the second is left out. Every operation of the OpenAI spec is
+served. Webhooks are the client's: the server does not send them. Authentication and validation are the next slice of
+the design.
 
 ## Cargo features
 

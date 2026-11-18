@@ -150,6 +150,11 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
      * ({@code dateTimeLibrary}).
      */
     private boolean usesDateTypes = false;
+    /**
+     * The models come from another crate ({@code modelsCrate}): the crate depends on uuid or the date library only
+     * for what its own code (parameters, responses, headers) uses.
+     */
+    protected boolean externalModels = false;
 
     public RustCodegenBase() {
         super();
@@ -1256,12 +1261,20 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
             if (operation.producesTextPlain() && "String".equals(operation.returnType)) {
                 operation.vendorExtensions.put("x-supports-plain-text", Boolean.TRUE);
             }
+            // A string response of a media type that is neither JSON nor text/plain (application/sdp): the body is
+            // the string, whatever the Content-Type says.
+            if ("String".equals(operation.returnType) && operation.produces != null && operation.produces.stream()
+                    .map(m -> m.get("mediaType"))
+                    .anyMatch(m -> m != null && !isJsonMimeType(m) && !m.toLowerCase(Locale.ROOT).startsWith("text/plain"))) {
+                operation.vendorExtensions.put("x-supports-plain-text", Boolean.TRUE);
+                operation.vendorExtensions.put("x-string-response", Boolean.TRUE);
+            }
         }
 
-        if (!hasUUIDs && modelsUseUuid(allModels)) {
+        if (!hasUUIDs && !externalModels && modelsUseUuid(allModels)) {
             hasUUIDs = true;
         }
-        if (useChrono && !usesDateTypes && modelsUseDates(allModels)) {
+        if (useChrono && !usesDateTypes && !externalModels && modelsUseDates(allModels)) {
             usesDateTypes = true;
         }
 

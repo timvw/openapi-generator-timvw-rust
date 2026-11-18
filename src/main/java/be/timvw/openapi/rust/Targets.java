@@ -49,13 +49,17 @@ record Targets(boolean client, boolean server) {
                 TimvwRustCodegen.USER_AGENT_FROM_PACKAGE,
                 TimvwRustCodegen.API_LINT_ALLOWS,
                 // The webhooks are client functions (the client receives and verifies them); a server sending them
-                // is later work.
-                TimvwRustCodegen.WEBHOOK_MODULE,
+                // is later work. webhookModule itself belongs to the models: it names the API group, and so the
+                // Cargo feature, of the webhook payloads, which a server with modelsCrate must name the same way.
                 TimvwRustCodegen.WEBHOOK_MODULE_REEXPORT)) {
             m.put(option, CLIENT);
         }
         m.put(TimvwRustCodegen.SERVER_FRAMEWORK, SERVER);
         m.put(TimvwRustCodegen.SERVER_VALIDATION, SERVER);
+        m.put(TimvwRustCodegen.SERVER_DEFAULT_METHODS, SERVER);
+        m.put(TimvwRustCodegen.MODELS_CRATE, SERVER);
+        m.put(TimvwRustCodegen.MODELS_CRATE_VERSION, SERVER);
+        m.put(TimvwRustCodegen.MODELS_CRATE_PATH, SERVER);
         return m;
     }
 

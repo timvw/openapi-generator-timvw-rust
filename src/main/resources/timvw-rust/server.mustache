@@ -40,11 +40,34 @@ impl ServerError {
         ServerError(message.into().into())
     }
 
+    /// The error of an operation the implementation does not implement: the server answers it with a `501`.
+    pub fn not_implemented(operation: &'static str) -> Self {
+        ServerError(Box::new(NotImplemented(operation)))
+    }
+
+    /// The operation, if this is the error of one the implementation does not implement
+    /// ([`not_implemented`](Self::not_implemented)).
+    pub fn not_implemented_operation(&self) -> Option<&'static str> {
+        self.0.downcast_ref::<NotImplemented>().map(|n| n.0)
+    }
+
     /// The error it holds.
     pub fn inner(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
         &*self.0
     }
 }
+
+/// The error of an operation the implementation does not implement.
+#[derive(Debug)]
+struct NotImplemented(&'static str);
+
+impl std::fmt::Display for NotImplemented {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} is not implemented", self.0)
+    }
+}
+
+impl std::error::Error for NotImplemented {}
 
 impl std::fmt::Display for ServerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -144,10 +167,15 @@ pub trait ErrorHandler {
     }
 
     /// The response to an implementation's error. By default a `500` with the JSON body
-    /// `{"error": {"message": "internal server error"}}`: the error is not shown to the caller.
+    /// `{"error": {"message": "internal server error"}}`: the error is not shown to the caller. An operation the
+    /// implementation does not implement ([`ServerError::not_implemented`]) is a `501`, with the body
+    /// `{"error": {"message": "<operation> is not implemented"}}`.
     fn server_error(&self, error: ServerError) -> axum::response::Response {
-        let _ = error;
         let mut body = serde_json::Map::new();
+        if error.not_implemented_operation().is_some() {
+            body.insert("message".to_owned(), serde_json::Value::String(error.to_string()));
+            return error_response(http::StatusCode::NOT_IMPLEMENTED, body);
+        }
         body.insert("message".to_owned(), serde_json::Value::String("internal server error".to_owned()));
         error_response(http::StatusCode::INTERNAL_SERVER_ERROR, body)
     }
@@ -491,6 +519,7 @@ fn binary_response(
 {{#serverBodyEnums}}
 
 /// The request's media type (`Content-Type` without its parameters, in lower case), if it has one.
+#[allow(dead_code)]
 fn media_type(headers: &http::HeaderMap) -> Option<String> {
     let value = headers.get(http::header::CONTENT_TYPE)?.to_str().ok()?;
     let essence = value.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
@@ -499,6 +528,7 @@ fn media_type(headers: &http::HeaderMap) -> Option<String> {
 
 /// Whether the media type `actual` is one of `declared`: the same, in the range a declared `type/*` or `*/*` covers,
 /// or JSON when a declared one is.
+#[allow(dead_code)]
 fn media_matches(actual: &str, declared: &[&str]) -> bool {
     let json = |m: &str| m.starts_with("application/") && m.contains("json");
     declared.iter().any(|d| {
@@ -510,6 +540,7 @@ fn media_matches(actual: &str, declared: &[&str]) -> bool {
 }
 
 /// The whole body of `request`, within axum's limit.
+#[allow(dead_code)]
 async fn request_bytes(request: axum::extract::Request) -> Result<axum::body::Bytes, RequestError> {
     use axum::extract::FromRequest;
 
@@ -728,7 +759,10 @@ pub mod {{{module}}} {
         fn {{{name}}}(
             &self,
             request: {{{camel}}}Request,
-        ) -> impl std::future::Future<Output = Result<{{{camel}}}Response, super::ServerError>> + Send;
+        ) -> impl std::future::Future<Output = Result<{{{camel}}}Response, super::ServerError>> + Send{{^serverDefaultMethods}};{{/serverDefaultMethods}}{{#serverDefaultMethods}} {
+            let _ = request;
+            std::future::ready(Err(super::ServerError::not_implemented("{{{name}}}")))
+        }{{/serverDefaultMethods}}
         {{/operations}}
     }
     {{#left}}

@@ -35,6 +35,11 @@ homepage = "{{.}}"
 {{/homePageUrl}}
 
 [dependencies]
+{{#modelsCrate}}
+# The models: {{{modelsCrate}}}'s, generated from the same spec with the same model options.
+{{{modelsCrate}}} = { {{#modelsCrateVersion}}version = "{{{.}}}"{{/modelsCrateVersion}}{{#modelsCrateVersion}}{{#modelsCratePath}}, {{/modelsCratePath}}{{/modelsCrateVersion}}{{#modelsCratePath}}path = "{{{.}}}"{{/modelsCratePath}}{{#apiFeatures}}, {{/apiFeatures}}{{#apiFeatures}}default-features = false{{/apiFeatures}} }
+{{/modelsCrate}}
+{{^modelsCrate}}
 {{#bonBuilders}}
 {{^bonOptional}}
 bon = "^3"
@@ -43,10 +48,13 @@ bon = "^3"
 bon = { version = "^3", optional = true }
 {{/bonOptional}}
 {{/bonBuilders}}
+{{/modelsCrate}}
 serde = { version = "^1.0", features = ["derive"] }
+{{^modelsCrate}}
 {{#serdeWith}}
 serde_with = { version = "^3.8", default-features = false, features = ["base64", "std", "macros"]{{#serdeWithOptional}}, optional = true{{/serdeWithOptional}} }
 {{/serdeWith}}
+{{/modelsCrate}}
 serde_json = "^1.0"
 {{#typedEventStreams}}
 {{^targetFeatures}}
@@ -56,14 +64,18 @@ futures-core = "^0.3"
 futures-core = { version = "^0.3", optional = true }
 {{/targetFeatures}}
 {{/typedEventStreams}}
+{{^modelsCrate}}
 serde_repr = "^0.1"
+{{/modelsCrate}}
 {{#useSerdePathToError}}
 serde_path_to_error = "^0.1"
 {{/useSerdePathToError}}
 url = "^2.5"
+{{^modelsCrate}}
 {{#validationRegex}}
 regex = "^1.10"
 {{/validationRegex}}
+{{/modelsCrate}}
 {{#hasUUIDs}}
 uuid = { version = "^1.8", features = ["serde", "v4"]{{#uuidOptional}}, optional = true{{/uuidOptional}} }
 {{/hasUUIDs}}

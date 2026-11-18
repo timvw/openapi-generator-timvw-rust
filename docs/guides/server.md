@@ -38,12 +38,12 @@ option or add 'client' to targets
 | Applies to | Options |
 | --- | --- |
 | The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `useChrono`, `dateTimeLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `validateMethods`, `apiFeatures`, `apiFeaturesFile`, `pruneAllHelpers`, `unionPlanFile`, `preprocessedSpecFile`, the crate options |
-| The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `multipartHelper`, `userAgentFromPackage`, `apiLintAllows`, `webhookModule`, `webhookModuleReexport` |
-| The server | `serverFramework` (only `axum`), `serverValidation` (only `false` for now) |
+| The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `multipartHelper`, `userAgentFromPackage`, `apiLintAllows`, `webhookModuleReexport` |
+| The server | `serverFramework` (only `axum`), `serverDefaultMethods`, `serverValidation` (only `false` for now), `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
 
 `validateMethods` generates the models' `Validate`, which a server's validation will call, so it belongs to the
-models. `webhookModule` and `webhookModuleReexport` place the client's webhook functions; the server does not send
-webhooks yet.
+models. `webhookModule` names the group (and Cargo feature) of the webhook payload models, so it belongs to the models
+too; `webhookModuleReexport` places the client's webhook functions. The server does not send webhooks yet.
 
 ## The server
 
@@ -216,10 +216,31 @@ answered by `ErrorHandler::server_error`. Both have a default:
 | | Status | Body |
 | --- | --- | --- |
 | `invalid_request` | the error's `status()`: `400`, `415` for a media type the operation does not take, `413` for a body over the limit | ``{"error": {"message": "query parameter `limit`: invalid value 'x'", "location": "query", "name": "limit"}}`` |
-| `server_error` | `500` | `{"error": {"message": "internal server error"}}`; the error is not shown to the caller |
+| `server_error` | `500`; `501` for `ServerError::not_implemented` | `{"error": {"message": "internal server error"}}`, the error not shown to the caller; `{"error": {"message": "list_pets is not implemented"}}` |
 
 Implement either method to answer otherwise; `RequestError` has the `status`, the `location` (`path`, `query` or
-`body`), the parameter's `name` and the `message`.
+`body`), the parameter's `name` and the `message`, and `ServerError::not_implemented_operation` says whether an error
+is a `not_implemented` one.
+
+With [`serverDefaultMethods`](../options.md#serverdefaultmethods), every trait method has a default returning
+`ServerError::not_implemented`, so an implementation of a few methods serves those, and answers every other operation
+with a `501`:
+
+```rust,ignore
+#[derive(Clone)]
+struct Mock;
+
+impl server::ErrorHandler for Mock {}
+impl server::ChatApi for Mock {
+    async fn create_chat_completion(
+        &self,
+        request: server::chat_api::CreateChatCompletionRequest,
+    ) -> Result<server::chat_api::CreateChatCompletionResponse, server::ServerError> {
+        todo!()
+    }
+}
+impl server::FilesApi for Mock {} // every operation: 501
+```
 
 ### What the server does not serve yet
 
@@ -232,8 +253,8 @@ timvw-rust: server: filter_pets (GET /pets/filter) is not served: the query para
 
 Left out for now: a multipart field that is a union with a file variant (a file or a JSON reference, say), a request
 body that is both a multipart and an urlencoded form, a query parameter in deepObject style or of an object type, and
-a path parameter that is not a whole path segment (`/files/{name}.json`). Webhooks are the client's: the server does not send them. `modelsCrate`, authentication and
-validation are the next slices of the design.
+a path parameter that is not a whole path segment (`/files/{name}.json`). Webhooks are the client's: the server does not send them. Authentication and
+validation are the next slice of the design.
 
 ## Cargo features
 
@@ -257,5 +278,18 @@ of `apiFeatures` alone.
 ## One crate or two
 
 `["client", "server"]` in one crate suits a small API, and tests where the client calls the server
-([src/test/rust/server.rs](../../src/test/rust/server.rs) does). For a large spec, a server crate of its own with the
-models of an existing client crate (`modelsCrate`) is planned.
+([src/test/rust/server.rs](../../src/test/rust/server.rs) does). For a large spec, a server crate of its own uses the
+models of the existing client crate with [`modelsCrate`](../options.md#modelscrate): generate it from the same spec
+with the same model options (drop the client's options, keep `apiFeaturesFile` and `webhookModule`), so the client
+and the server share their types and Cargo features.
+
+```json
+{
+  "packageName": "my-api-server",
+  "targets": ["server"],
+  "modelsCrate": "my-api-client",
+  "modelsCrateVersion": "1",
+  "modelsCratePath": "..",
+  "apiFeaturesFile": "scripts/api-features.yaml"
+}
+```

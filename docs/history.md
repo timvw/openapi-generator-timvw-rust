@@ -23,6 +23,12 @@ union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s. T
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
+## 0.38.1
+
+- The release of 0.38.0 stopped at a test of its own (an assertion that took the crate name
+  `serde_path_to_error` for an error), after its image was pushed and before Maven Central: 0.38.0 is an image only,
+  and 0.38.1 is the same generator, on Maven Central too.
+
 ## 0.38.0
 
 - **Breaking: a Unix timestamp is a `jiff::Timestamp`.** With `dateLibrary=jiff` (the default), a model property of

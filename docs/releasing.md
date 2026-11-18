@@ -25,19 +25,20 @@ workflow's `GITHUB_TOKEN`. The pom's version on `main` stays a `-SNAPSHOT`, and 
 ## The runtime
 
 `timvw-rust-runtime` (`runtime/`) is released with [release-plz](https://release-plz.dev) by
-`.github/workflows/runtime-release.yml` (`Release runtime`), configured in `runtime/release-plz.toml`:
+`.github/workflows/release-plz.yml` (`Release runtime`), which calls the
+[release workflow the genai-rs crates share](https://github.com/genai-rs/.github/blob/main/docs/release.md),
+configured in `runtime/release-plz.toml`:
 
 1. A push to `main` that changes `runtime/` opens or updates a release PR (`chore(runtime): release
-   timvw-rust-runtime <version>`): the version bump and `runtime/CHANGELOG.md`. Running the workflow by hand with
-   `release_action=prepare` does the same.
+   timvw-rust-runtime <version>`): the version bump and `runtime/CHANGELOG.md`.
 2. Review the PR (the changelog comes from the conventional commits; edit it there) and merge it once CI is green.
-3. Run the `Release runtime` workflow on `main` with `release_action=publish`. It publishes to crates.io, tags
-   `timvw-rust-runtime-v<version>` (which the generator's `Release` workflow, `v*`, ignores) and creates a GitHub
-   release.
+3. The merge publishes to crates.io, tags `timvw-rust-runtime-v<version>` (which the generator's `Release` workflow,
+   `v*`, ignores) and creates a GitHub release.
 
-Secrets: `CARGO_REGISTRY_TOKEN` (crates.io, scoped to the crate). `BOT_APP_ID` and `BOT_PRIVATE_KEY`, a GitHub App's,
-are optional: with them release-plz acts as the app, so its release PR triggers CI (a PR opened with the workflow's
-`GITHUB_TOKEN` does not); without them it uses `GITHUB_TOKEN`.
+It publishes through crates.io [Trusted Publishing](https://github.com/genai-rs/.github/blob/main/docs/trusted-publishing.md):
+the crate trusts `release-plz.yml` in this repo, so no crates.io token is stored. Secrets: `BOT_APP_ID` and
+`BOT_PRIVATE_KEY`, a GitHub App's, so the release PR triggers CI (a PR opened with the workflow's `GITHUB_TOKEN` does
+not).
 
 ## After a release
 

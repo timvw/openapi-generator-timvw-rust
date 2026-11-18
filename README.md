@@ -112,7 +112,7 @@ built and tested against the openapi-generator version in its image tag (`-og<ve
 | [Type mapping](docs/type-mapping.md), [mapping rules](docs/mapping/README.md) | what each OpenAPI construct becomes: one overview table, and the rules per specification object, each with its tests |
 | [Known limitations](docs/limitations.md) | what the generator and the runtime do not do yet |
 | [Comparison](docs/comparison/README.md) | stock `-g rust`, timvw-rust and progenitor side by side on one spec |
-| [Decisions](docs/decisions.md), design notes: [decoding and ownership](docs/design/partial-decoding-and-ownership.md), [targets and a server](docs/design/targets-and-server.md) (slices 1 and 2 implemented) | the mapping changes of 0.21, each with what others do; design notes with measurements and proposals |
+| [Decisions](docs/decisions.md), design notes: [decoding and ownership](docs/design/partial-decoding-and-ownership.md), [targets and a server](docs/design/targets-and-server.md) (slices 1 and 2 implemented), [a mock OpenAI server](docs/design/openai-mock-server.md) (proposed) | the mapping changes of 0.21, each with what others do; design notes with measurements and proposals |
 | [History](docs/history.md) | how the generator got here, release by release |
 | [Development](docs/development.md), [releasing](docs/releasing.md) | building and testing, CI, the layout; releasing the generator and the runtime |
 

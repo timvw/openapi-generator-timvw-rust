@@ -1,0 +1,32 @@
+name: Release runtime
+
+# release-plz for the timvw-rust-runtime crate in runtime/, with the release workflow the genai-rs crates share
+# (https://github.com/genai-rs/.github/blob/main/docs/release.md): a push to main that changes runtime/ opens or
+# updates the release PR, and publishes the version crates.io does not have yet, so merging the release PR
+# publishes. Tags are timvw-rust-runtime-v<version>, which the generator's release (v*) ignores.
+#
+# crates.io trusts this workflow file by name (Trusted Publishing): renaming it means changing the crate's trusted
+# publisher on crates.io. Secrets: BOT_APP_ID and BOT_PRIVATE_KEY (a GitHub App, so the release PR triggers CI).
+
+on:
+  push:
+    branches: [main]
+    paths: ["runtime/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  # The OIDC token crates.io Trusted Publishing checks.
+  id-token: write
+
+jobs:
+  release-plz:
+    uses: genai-rs/.github/.github/workflows/release-plz.yml@main
+    with:
+      manifest-path: runtime/Cargo.toml
+      config: runtime/release-plz.toml
+    # Named, not inherited: the shared workflow belongs to another owner.
+    secrets:
+      BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
+      BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}

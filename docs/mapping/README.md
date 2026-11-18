@@ -52,8 +52,8 @@ options are rejected, see
 generation; so is the former `boxResponseError` (`ResponseError` holds a `Box`).
 
 openai-client-base also sets `multipartHelper`, `typedEventStreams`, `contentTypeMethods` and
-`useChrono=false`; langfuse-client-base also sets `typedEnumParameters`, `deprecatedAttributes` and
-`dateTimeLibrary=jiff`. The **Options**
+`dateLibrary=string`; langfuse-client-base also sets `typedEnumParameters`, `deprecatedAttributes` and
+`dateLibrary=jiff`. The **Options**
 entry describes those and every other option as a variation of what the generator renders without options.
 
 ## HTTP library

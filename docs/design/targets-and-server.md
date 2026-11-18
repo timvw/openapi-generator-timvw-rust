@@ -68,7 +68,7 @@ in `targets` fails the generation with an error naming the option and its target
 
 | Applies to | Options |
 | --- | --- |
-| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `useChrono`, `dateTimeLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `apiFeatures`, `apiFeaturesFile`, the crate options |
+| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `apiFeatures`, `apiFeaturesFile`, the crate options |
 | The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `multipartHelper`, `userAgentFromPackage` |
 | The server | `serverFramework` (only `axum`), `serverValidation` |
 | To decide | `webhookModule` (the client verifies webhooks; a server could also send them), `validateMethods` (the models' `Validate`, which the server's validation would call) |

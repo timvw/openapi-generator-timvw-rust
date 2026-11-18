@@ -125,12 +125,12 @@ class UuidParamsTest {
         assertTrue(api(responseOnly).contains("Result<Vec<uuid::Uuid>, Error<ListIdsError>>"), api(responseOnly));
     }
 
-    /** chrono alike: a date-time only in an error response makes the crate depend on it. */
+    /** The date library alike: a date-time only in an error response makes the crate depend on it (jiff). */
     @Test
-    void theCrateDependsOnChronoWhenOnlyAResponseUsesIt() throws IOException {
+    void theCrateDependsOnTheDateLibraryWhenOnlyAResponseUsesIt() throws IOException {
         String cargo = Files.readString(dateTimeErrorOnly.resolve("Cargo.toml"));
-        assertTrue(cargo.contains("\nchrono = "), cargo);
-        assertTrue(api(dateTimeErrorOnly).contains("chrono::DateTime<chrono::FixedOffset>"), api(dateTimeErrorOnly));
+        assertTrue(cargo.contains("\njiff = "), cargo);
+        assertTrue(api(dateTimeErrorOnly).contains("jiff::Timestamp"), api(dateTimeErrorOnly));
     }
 
     /**

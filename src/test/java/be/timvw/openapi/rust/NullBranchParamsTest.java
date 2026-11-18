@@ -39,6 +39,8 @@ class NullBranchParamsTest {
     static void generate() {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("packageName", "null_branch_params_fixture");
+        // The wire forms below are chrono's (the offset as sent); JiffDatesTest covers jiff, the default.
+        props.put(RustCodegenBase.DATE_LIBRARY, "chrono");
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(SPEC).toAbsolutePath().toString())

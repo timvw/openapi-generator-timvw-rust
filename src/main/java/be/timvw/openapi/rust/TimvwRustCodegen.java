@@ -192,6 +192,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * an error rather than ignored.
      */
     public static final String HTTP_STACK = "httpStack";
+    /** Removed: {@code useChrono=false} is {@code dateLibrary=string}. */
+    public static final String USE_CHRONO = "useChrono";
+    /** Removed: renamed {@code dateLibrary}. */
+    public static final String DATE_TIME_LIBRARY = "dateTimeLibrary";
     /** The version requirement of {@code timvw-rust-runtime} in the generated Cargo.toml. */
     public static final String RUNTIME_VERSION = "runtimeVersion";
     /**
@@ -891,6 +895,23 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     + "'%s')", GENERATOR_NAME, rewritesKey, "x-rust-uses-models", additionalProperties.get(rewritesKey)));
         }
 
+        String useChronoKey = keyIgnoringCase(USE_CHRONO);
+        if (useChronoKey != null) {
+            Object value = additionalProperties.get(useChronoKey);
+            String instead = "false".equalsIgnoreCase(String.valueOf(value).trim()) ? "dateLibrary=string"
+                    : "dateLibrary=chrono (or leave it out for jiff, the default)";
+            throw new IllegalArgumentException(String.format("%s: %s was replaced by %s: use %s instead (it was set to "
+                    + "'%s'). See docs/guides/migration.md, \"From chrono to jiff\"", GENERATOR_NAME, useChronoKey,
+                    DATE_LIBRARY, instead, value));
+        }
+        String dateTimeLibraryKey = keyIgnoringCase(DATE_TIME_LIBRARY);
+        if (dateTimeLibraryKey != null) {
+            Object value = additionalProperties.get(dateTimeLibraryKey);
+            throw new IllegalArgumentException(String.format("%s: %s was renamed %s: use %s=%s instead. See "
+                    + "docs/guides/migration.md, \"From chrono to jiff\"", GENERATOR_NAME, dateTimeLibraryKey,
+                    DATE_LIBRARY, DATE_LIBRARY, value));
+        }
+
         // After the options with a message of their own, so those keep it; the removed options get theirs below.
         List<String> notSuggested = new ArrayList<>(ALWAYS_ON);
         notSuggested.addAll(FIXED_VALUES.keySet());
@@ -898,6 +919,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
         notSuggested.add(JSON_VALUE_SCHEMAS);
         notSuggested.add(LEGACY_MODEL_REWRITES);
         notSuggested.add(HTTP_STACK);
+        notSuggested.add(USE_CHRONO);
+        notSuggested.add(DATE_TIME_LIBRARY);
         UnknownOptions.check(GENERATOR_NAME, additionalProperties.keySet(), cliOptions(), List.of(), notSuggested);
 
         targets = Targets.parse(additionalProperties.get(TARGETS));
@@ -1395,7 +1418,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
             }
             if (!modelsUseDates && Boolean.TRUE.equals(additionalProperties.get("usesDateTypes"))) {
                 objs.put("dateTypesOptional", true);
-                shared.add("\"dep:" + dateTimeLibrary() + "\"");
+                shared.add("\"dep:" + dateLibrary() + "\"");
             }
             objs.put("targetDeps", shared.isEmpty() ? null : ", " + String.join(", ", shared));
             objs.put("serverCfg", "feature = \"server\"");

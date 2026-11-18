@@ -34,7 +34,7 @@ import java.util.regex.Pattern;
  * a {@code ResponseContent} ({@code header.schema.typed-error}).</p>
  *
  * <p>A header is typed as a parameter of its schema is: {@code getTypeDeclaration}, so integers, numbers, booleans,
- * {@code uuid}, {@code date}/{@code date-time} (chrono or jiff, with {@code useChrono}), enum components and arrays of those
+ * {@code uuid}, {@code date}/{@code date-time} (jiff or chrono, with {@code dateLibrary}), enum components and arrays of those
  * (the simple style, comma-separated). What has no text form (an object, a map, a union, a free-form value, a nested
  * array) is the header's text. Hop-by-hop headers ({@link #SKIPPED}) and {@code Content-Type}, which the
  * specification says to ignore, get no field, and neither does a name that is not an HTTP token (warned). Two headers

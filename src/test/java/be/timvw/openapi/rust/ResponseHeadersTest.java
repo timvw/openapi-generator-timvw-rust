@@ -47,6 +47,8 @@ class ResponseHeadersTest {
     private static void generate(String spec, Path output, Map<String, Object> options) {
         Map<String, Object> props = new LinkedHashMap<>(options);
         props.put("packageName", "response_headers");
+        // The wire forms below are chrono's (the offset as sent); JiffDatesTest covers jiff, the default.
+        props.putIfAbsent(RustCodegenBase.DATE_LIBRARY, "chrono");
         new DefaultGenerator().opts(new CodegenConfigurator()
                 .setGeneratorName(TimvwRustCodegen.GENERATOR_NAME)
                 .setInputSpec(Path.of(spec).toAbsolutePath().toString())
@@ -392,7 +394,7 @@ class ResponseHeadersTest {
     }
 
     @Test
-    void withoutChronoDatesAreText(@TempDir Path dir) throws IOException {
+    void withDateLibraryStringDatesAreText(@TempDir Path dir) throws IOException {
         String text = generated(dir, """
                 openapi: 3.0.3
                 info: {title: dates, version: 1.0.0}
@@ -406,11 +408,12 @@ class ResponseHeadersTest {
                           headers:
                             X-At: {schema: {type: string, format: date-time}}
                             X-Day: {schema: {type: string, format: date}}
-                """, "useChrono=false");
+                """, "dateLibrary=string");
         String s = struct(text, "GetAResponseHeaders");
         assertContains(s, "pub x_at: Option<String>,");
         assertContains(s, "pub x_day: Option<String>,");
-        assertFalse(Files.readString(dir.resolve("out/Cargo.toml")).contains("chrono"));
+        String cargo = Files.readString(dir.resolve("out/Cargo.toml"));
+        assertFalse(cargo.contains("chrono") || cargo.contains("jiff"), cargo);
     }
 
     @Test

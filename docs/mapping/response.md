@@ -31,7 +31,7 @@ Tests are in `src/test/java/be/timvw/openapi/rust/`; a test is named `Class#meth
 | OpenAPI | a success response with `application/octet-stream` (or another binary media type) and `format: binary` |
 | Rust | `timvw_rust_runtime::Response`, to read as bytes or a stream ([`schema.format.binary`](schema.md#schemaformatbinary)) |
 | Library | `timvw_rust_runtime::Response` |
-| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L122) |
+| Tests | [`SchemaMappingTest#binaryIsAFileToSendOrAResponseToRead`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L129) |
 
 ### `response.content.none`
 

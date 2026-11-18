@@ -266,8 +266,8 @@ if let Some(request_id) = &headers.x_request_id {
 ```
 
 - **Types.** A header is typed as a parameter of its schema is: `i64` (`i32` for `int32`), `f64`, `bool`,
-  `String`, `uuid::Uuid`, `chrono::DateTime<chrono::FixedOffset>` (RFC 3339) and `chrono::NaiveDate` (with
-  `useChrono`), an enum component (`models::Status`), or a `Vec` of those for an array, sent as a comma-separated
+  `String`, `uuid::Uuid`, `jiff::Timestamp` (RFC 3339) and `jiff::civil::Date` (or chrono's, with
+  `dateLibrary=chrono`), an enum component (`models::Status`), or a `Vec` of those for an array, sent as a comma-separated
   list. An inline enum, and a schema without a text form (an object, a map), is the header's text.
 - **Lenient.** A header that is missing, or whose value does not parse as the field's type, is `None`; reading the
   headers never fails. Names are matched ignoring case. A value an enum does not list is `None`, except for an

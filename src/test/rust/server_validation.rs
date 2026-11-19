@@ -129,6 +129,15 @@ async fn each_media_type_of_a_body_is_checked() {
 }
 
 #[tokio::test]
+async fn only_the_media_type_with_keywords_is_checked() {
+    let (status, body) = call(post("/notes", "application/json", r#"{"name": ""}"#)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["errors"][0]["path"], "body.name");
+    let (status, _) = call(post("/notes", "text/plain", "")).await;
+    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+}
+
+#[tokio::test]
 async fn an_operation_without_keywords_is_not_checked() {
     let (status, _) = call(get("/health")).await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);

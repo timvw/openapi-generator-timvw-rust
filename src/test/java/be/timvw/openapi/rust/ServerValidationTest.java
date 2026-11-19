@@ -98,6 +98,8 @@ class ServerValidationTest {
         // a form struct and a body enum check what they hold
         assertContains(server, "    impl crate::models::validation::Validate for SearchItemsForm {\n");
         assertContains(server, "    impl crate::models::validation::Validate for ImportItemBody {\n");
+        // one variant of several to check: an if let
+        assertContains(server, "            if let PostNoteBody::Json(value) = self {\n");
         // the handler checks a request after decoding it, and only where there is something to check
         assertContains(server, """
                         if let Err(errors) = crate::models::validation::Validate::validate(&request) {
@@ -105,7 +107,7 @@ class ServerValidationTest {
                         }
                 """);
         assertFalse(server.contains("Validate for HealthRequest"), server);
-        assertEquals(5, server.split("Validate::validate\\(&request\\)", -1).length - 1);
+        assertEquals(6, server.split("Validate::validate\\(&request\\)", -1).length - 1);
         // our own models have no pattern: the server's own regex dependency
         assertContains(Files.readString(out.resolve("Cargo.toml")), "regex = { version = \"^1.10\" }\n");
     }

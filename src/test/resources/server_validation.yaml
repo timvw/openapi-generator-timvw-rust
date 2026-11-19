@@ -125,6 +125,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Item'
+  /notes:
+    post:
+      operationId: postNote
+      tags: [Items]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewItem'
+          text/plain:
+            schema:
+              type: string
+      responses:
+        '204':
+          description: Only the JSON body has something to check.
   /health:
     get:
       operationId: health

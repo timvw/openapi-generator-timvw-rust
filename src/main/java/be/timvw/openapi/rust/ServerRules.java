@@ -370,6 +370,8 @@ final class ServerRules {
             return !checks.value("body", (String) b.get("type"), "path").isEmpty();
         }
         List<String> arms = new ArrayList<>();
+        List<String> patterns = new ArrayList<>();
+        List<List<String>> bodies = new ArrayList<>();
         int variants = 0;
         for (Map<String, Object> v : (List<Map<String, Object>>) b.get("variants")) {
             variants++;
@@ -378,13 +380,26 @@ final class ServerRules {
                     ? (form ? List.of(VALIDATION + "Validate::validate_into(value, path, errors);") : List.of())
                     : checks.binding("value", type);
             if (!lines.isEmpty()) {
-                StringBuilder arm = new StringBuilder(b.get("enum") + "::" + v.get("variant") + "(value) => {\n");
+                String pattern = b.get("enum") + "::" + v.get("variant") + "(value)";
+                StringBuilder arm = new StringBuilder(pattern + " => {\n");
                 lines.forEach(l -> arm.append("    ").append(l).append('\n'));
                 arms.add(arm.append("}").toString());
+                patterns.add(pattern);
+                bodies.add(lines);
             }
         }
         if (arms.isEmpty()) {
             return false;
+        }
+        if (arms.size() == 1 && variants > 1) {
+            // one variant to check of several: an if let, not a match with one arm (clippy::single_match)
+            List<String> single = new ArrayList<>();
+            single.add("if let " + patterns.get(0) + " = self {");
+            bodies.get(0).forEach(l -> single.add("    " + l));
+            single.add("}");
+            b.put("enumValidate", indent(single, 12));
+            b.put("enumValidates", true);
+            return true;
         }
         List<String> match = new ArrayList<>();
         match.add("match self {");

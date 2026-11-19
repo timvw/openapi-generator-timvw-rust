@@ -77,10 +77,10 @@ class StringFirstUnionsTest {
     @Test
     void aRequiredNullableStringFirstUnionIsAnOptionOfTheUnion() throws IOException {
         String reply = model(unions, "reply");
-        assertContains(reply, "    #[serde(rename = \"instructions\", deserialize_with = \"Option::deserialize\")]\n"
+        assertContains(reply, "    #[serde(rename = \"instructions\", default)]\n"
                 + "    pub instructions: Option<models::ReplyAllOfInstructions>,\n");
         // the same convention as a required nullable string
-        assertContains(reply, "    #[serde(rename = \"note\", deserialize_with = \"Option::deserialize\")]\n"
+        assertContains(reply, "    #[serde(rename = \"note\", default)]\n"
                 + "    pub note: Option<String>,\n");
         String instructions = model(unions, "reply_all_of_instructions");
         assertContains(instructions, "    Text(String),\n");
@@ -100,7 +100,7 @@ class StringFirstUnionsTest {
         for (Path output : List.of(strings, strings30)) {
             assertContains(model(output, "create_reply"), "    pub input: Option<String>,\n");
             String reply = model(output, "reply");
-            assertContains(reply, "    #[serde(rename = \"instructions\", deserialize_with = \"Option::deserialize\")]\n"
+            assertContains(reply, "    #[serde(rename = \"instructions\", default)]\n"
                     + "    pub instructions: Option<String>,\n");
             assertFalse(reply.contains("pub instructions: String,"), reply);
             assertFalse(Files.exists(output.resolve("src/models/reply_all_of_instructions.rs")));

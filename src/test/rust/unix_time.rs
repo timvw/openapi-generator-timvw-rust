@@ -127,9 +127,14 @@ fn what_is_refused() {
     assert!(read(json!("2023-11-14T22:13:20Z")).unwrap_err().contains("a Unix timestamp, in seconds"));
     assert!(read(json!(null)).is_err());
     assert!(read(json!(u64::MAX)).is_err());
-    // a required field that can be null must still be there
-    let missing = serde_json::from_value::<Event>(json!({"created_at": 0, "completed_at": 0, "sequence": 7}));
-    assert!(missing.unwrap_err().to_string().contains("expires_at"));
+    // a required field that can be null reads as None when it is missing, and is written as null
+    let missing = serde_json::from_value::<Event>(json!({"created_at": 0, "completed_at": 0, "sequence": 7}))
+        .expect("a missing required nullable field is None");
+    assert_eq!(missing.expires_at, None);
+    assert_eq!(serde_json::to_value(&missing).unwrap()["expires_at"], json!(null));
+    // a required field that cannot be null must still be there
+    let missing = serde_json::from_value::<Event>(json!({"expires_at": null, "completed_at": 0, "sequence": 7}));
+    assert!(missing.unwrap_err().to_string().contains("created_at"));
 }
 
 /// The serde modules are public: a type of your own can name them.

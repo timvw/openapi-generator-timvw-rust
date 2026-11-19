@@ -81,7 +81,7 @@ class OptionalPropertiesTest {
         assertContains(model(required, "output_text"), "    pub logprobs: Vec<f64>,\n");
         assertContains(model(required, "usage"), "    pub cache_write_tokens: i64,\n");
         assertContains(model(required, "reply"),
-                "    #[serde(rename = \"access_programs\", deserialize_with = \"Option::deserialize\")]\n"
+                "    #[serde(rename = \"access_programs\", default)]\n"
                         + "    pub access_programs: Option<Vec<String>>,\n");
     }
 

@@ -576,7 +576,8 @@ pub access_programs: Option<Option<Vec<String>>>,
 
 The property schema is left as it is, so a required nullable property becomes an optional nullable one and follows
 [`schema.nullable`](mapping/schema.md#schemanullable): `Option<Option<T>>` through `serde_with::rust::double_option`
-(`None` when absent, `Some(None)` for `null`). An entry that is not `Schema.property`, or names no property declared or
+(`None` when absent, `Some(None)` for `null`). A required nullable property already decodes when it is missing
+([`schema.nullable`](mapping/schema.md#schemanullable)), as `None`; list it only to leave it out of a request too. An entry that is not `Schema.property`, or names no property declared or
 required by the schema or its inline `allOf` parts, fails generation, naming the entry. A property only a referenced
 `allOf` part (`$ref`) declares is addressed through that schema: the change then applies to every schema that
 references it. [`preprocessedSpecFile`](#preprocessedspecfile) shows the changed `required` lists.

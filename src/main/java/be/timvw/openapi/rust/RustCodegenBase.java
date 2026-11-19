@@ -1245,7 +1245,9 @@ public abstract class RustCodegenBase extends DefaultCodegen implements CodegenC
         String module = UNIX_TIME_MODULE + (integer ? "" : "::fractional");
         boolean optional = !property.required;
         String rename = "rename = \"" + property.baseName + "\"";
-        String skip = optional ? ", default, skip_serializing_if = \"Option::is_none\"" : "";
+        // a required nullable one is written as null when None, and read as None when missing as well
+        String skip = optional ? ", default, skip_serializing_if = \"Option::is_none\""
+                : property.isNullable ? ", default" : "";
         String shape = optional && property.isNullable ? "::double_option"
                 : optional || property.isNullable ? "::option" : "";
         property.vendorExtensions.put(UNIX_TIME_SERDE,

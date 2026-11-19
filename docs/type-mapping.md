@@ -43,7 +43,7 @@ Each of these is a rule with its tests in [mapping/schema.md](mapping/schema.md)
 | required property | `T` | |
 | optional property | `Option<T>`, `skip_serializing_if = "Option::is_none"` | |
 | `nullable: true` (or `type: [T, null]`), optional | `Option<Option<T>>` through `serde_with::rust::double_option`: `None` leaves the field out, `Some(None)` sends `null` | |
-| `nullable: true`, required | `Option<T>` that must be present | |
+| `nullable: true`, required | `Option<T>`: `None` sends `null`, and a missing field decodes as `None` | |
 | list items or map values that can be null (`nullable: true`, `type: [T, null]`, a `null` branch, or a `$ref` to a nullable schema) | `Vec<Option<T>>`, `HashMap<String, Option<T>>`, at any depth. `None` is sent as `null`. A `serde_json::Value` (which holds `null`) and the items of a parameter or form field stay as they are | |
 | nullable property that is a union | `Option<Option<U>>` (optional) or `Option<U>` (required), like any nullable field, so a request can send `null` | |
 | a property referencing a model | the model, by value | always: `Box<T>` only on a reference that closes a cycle (`parent: Option<Box<ThreadNode>>`); stock boxes every model reference |

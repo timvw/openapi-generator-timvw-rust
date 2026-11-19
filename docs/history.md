@@ -20,12 +20,13 @@ models of another crate (`modelsCrate`) and default methods that answer `501` (`
 `dateLibrary`, jiff by default; 0.37 serves
 deepObject query parameters, multipart file unions and paths with a fixed query; 0.37.1 sends a collapsed string
 union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s; 0.39 decodes a missing required nullable
-field as `None`; 0.40 validates and authenticates the server's requests (`serverValidation`, `serverAuthentication`),
-sends its webhooks (`serverWebhooks`), sends a client's webhook functions to `base_path` itself, and keeps rustdoc from trying every builder's `IsComplete` on every type. The
+field as `None`; 0.40 validates and authenticates the server's requests (`serverValidation`, `serverAuthentication`)
+and keeps rustdoc from trying every builder's `IsComplete` on every type; 0.41 sends the server's webhooks
+(`serverWebhooks`) and a client's webhook functions to `base_path` itself. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
-## 0.40.0
+## 0.41.0
 
 - **Breaking: a client's webhook function sends to `base_path` itself.** A webhook of the spec (`webhooks`, OpenAPI
   3.1) posted to `{base_path}/{webhook name}`; it now posts to `base_path`, the whole URL a receiver registers (as in
@@ -38,6 +39,9 @@ client repositories' scripts.
   re-exported `StandardWebhooksLayer`) and retry it. A receiver checks it with the re-exported `verify`. The crate
   then depends on `timvw-rust-runtime` 0.4.2 with `webhooks`. See the
   [server guide](guides/server.md#webhooks-serverwebhooks) and the [design](design/server-webhooks.md).
+
+## 0.40.0
+
 - **rustdoc no longer tries every builder's `IsComplete` on every type.** bon's finish function (`build()` of a
   model's builder, `call()` of a function's) requires `S: <state module>::IsComplete`, a trait with a blanket impl,
   one per builder. That bound makes the trait reachable from the public API, so rustdoc tried each of those blanket

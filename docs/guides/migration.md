@@ -1,6 +1,6 @@
 # Guide: migrating
 
-- [Webhook functions send to `base_path`](#webhook-functions-send-to-base_path) (0.40): a client's webhook functions `POST` to the endpoint's whole URL.
+- [Webhook functions send to `base_path`](#webhook-functions-send-to-base_path) (0.41): a client's webhook functions `POST` to the endpoint's whole URL.
 - [Unix timestamps are `jiff::Timestamp`s](#unix-timestamps-are-jifftimestamps) (0.38): properties of `format: unixtime`, with `dateLibrary=jiff`.
 - [From chrono to jiff](#from-chrono-to-jiff): `dateLibrary` (0.36) replaces `useChrono` and `dateTimeLibrary`, and jiff is the default.
 - [From 0.29 to 0.30](#from-029-to-030): a required nullable `stringProperties` property is an `Option<String>`; unknown `stringProperties`/`fileProperties` entries fail generation; the new option `optionalProperties`.

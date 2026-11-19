@@ -376,7 +376,7 @@ list_models().configuration(&config).limit(10).order("desc").call().await?;
 list_models(&config, Some(10), Some("desc"), None, None).await?; // the last: per-call RequestOptions
 ```
 
-The builders' `build()` and `call()` are the generator's (since 0.39.1): bon's own finish function is private, and the
+The builders' `build()` and `call()` are the generator's (since 0.40): bon's own finish function is private, and the
 public one requires each required member to be set (`S::Model: IsSet`) instead of bon's `IsComplete`. That trait has
 a blanket impl per builder, and its bound made every one of them reachable, so rustdoc tried each of them on each type
 of the crate. openai-client-base's docs took more than 40 minutes and 24 GB that way, and

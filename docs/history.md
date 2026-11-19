@@ -20,12 +20,12 @@ models of another crate (`modelsCrate`) and default methods that answer `501` (`
 `dateLibrary`, jiff by default; 0.37 serves
 deepObject query parameters, multipart file unions and paths with a fixed query; 0.37.1 sends a collapsed string
 union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s; 0.39 decodes a missing required nullable
-field as `None`, and validates and authenticates the server's requests (`serverValidation`, `serverAuthentication`); 0.39.1
-keeps rustdoc from trying every builder's `IsComplete` on every type. The
+field as `None`; 0.40 validates and authenticates the server's requests (`serverValidation`, `serverAuthentication`)
+and keeps rustdoc from trying every builder's `IsComplete` on every type. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
-## 0.39.1
+## 0.40.0
 
 - **rustdoc no longer tries every builder's `IsComplete` on every type.** bon's finish function (`build()` of a
   model's builder, `call()` of a function's) requires `S: <state module>::IsComplete`, a trait with a blanket impl,
@@ -36,22 +36,6 @@ client repositories' scripts.
   private now (`build_internal`, `call_internal`), and the generator adds the public `build()` and `call()`, bounded
   by the state of each required member (`S::Model: IsSet`) instead. Calls do not change. openai-client-base's docs
   take about a minute and 9.5 GB (macOS, peak RSS), still more than docs.rs's default. See [`bonBuilders`](options.md#bonbuilders).
-
-## 0.39.0
-
-- **A required nullable field that is missing decodes as `None`.** A model property that is required and nullable is
-  an `Option<T>` that is written as `null` when `None`, as before, and now also reads as `None` when the body leaves it
-  out, as it reads `null` (`#[serde(default)]`; it was `deserialize_with = "Option::deserialize"`, which made the field
-  mandatory). Strict on output, lenient on input: servers leave out fields that their spec requires as nullable, as
-  OpenAI's `gpt-5-mini` does with the `logprobs` of a chat completion choice, and the whole body failed to decode
-  (`` missing field `logprobs` ``). Unix timestamps (`with = "super::unix_time::option"`) and the fields of inline
-  variants (which already read a missing field as `None`) follow the same rule. A required field that cannot be null
-  still has to be there. The types and `new()` do not change; the axum server reads such a field of a request the same
-  way. OpenAI's Python SDK (`Optional[T] = None`) and async-openai (a plain `Option<T>`) accept a missing field too; stock `-g rust` makes them
-  mandatory as 0.38 did. [`optionalProperties`](options.md#optionalproperties) is no longer needed to decode a body
-  without a required nullable property, only to leave it out of a request.
-  See [`schema.nullable`](mapping/schema.md#schemanullable).
-
 - **The server validates requests (`serverValidation`).** The option, reserved until now, checks every request that
   decodes against the spec's validation keywords before the implementation is called: its path and query parameters
   (`query.limit`), the fields of a form body and the models of a JSON body (`body.messages[0].content`), with the
@@ -69,6 +53,21 @@ client repositories' scripts.
   `WWW-Authenticate` challenge by default). Without the option nothing changes. See the
   [server guide](guides/server.md#authentication-serverauthentication) and the
   [design](design/server-authentication.md), which compares LiteLLM, Bifrost and `rust-axum`.
+
+## 0.39.0
+
+- **A required nullable field that is missing decodes as `None`.** A model property that is required and nullable is
+  an `Option<T>` that is written as `null` when `None`, as before, and now also reads as `None` when the body leaves it
+  out, as it reads `null` (`#[serde(default)]`; it was `deserialize_with = "Option::deserialize"`, which made the field
+  mandatory). Strict on output, lenient on input: servers leave out fields that their spec requires as nullable, as
+  OpenAI's `gpt-5-mini` does with the `logprobs` of a chat completion choice, and the whole body failed to decode
+  (`` missing field `logprobs` ``). Unix timestamps (`with = "super::unix_time::option"`) and the fields of inline
+  variants (which already read a missing field as `None`) follow the same rule. A required field that cannot be null
+  still has to be there. The types and `new()` do not change; the axum server reads such a field of a request the same
+  way. OpenAI's Python SDK (`Optional[T] = None`) and async-openai (a plain `Option<T>`) accept a missing field too; stock `-g rust` makes them
+  mandatory as 0.38 did. [`optionalProperties`](options.md#optionalproperties) is no longer needed to decode a body
+  without a required nullable property, only to leave it out of a request.
+  See [`schema.nullable`](mapping/schema.md#schemanullable).
 
 ## 0.38.1
 

@@ -33,6 +33,9 @@ time = ["dep:tokio", "tokio/time", "dep:gloo-timers", "dep:web-time"]
 # `Response::into_async_read`. On WebAssembly, where there is no file system, only `Upload::path` and `From<PathBuf>`
 # remain, for code that names a path (a generated model with a file variant): such an upload fails when sent.
 fs = ["dep:tokio", "tokio/fs", "tokio/io-util", "dep:mime_guess"]
+# `webhooks::{StandardWebhooksLayer, verify}`: signs what a client sends as Standard Webhooks (as OpenAI sends its
+# webhooks), and checks what a receiver gets.
+webhooks = ["dep:hmac", "dep:sha2", "dep:web-time"]
 # `trace::TraceLayer`: logs each request, its status and duration (and each retry) with `tracing`.
 tracing = ["dep:tracing", "dep:web-time"]
 
@@ -52,9 +55,11 @@ sync_wrapper = { version = "1", features = ["futures"] }
 tower = { version = "0.5.2", default-features = false, features = ["util"] }
 url = "2.5"
 
+hmac = { version = "0.13", optional = true }
 httpdate = { version = "1", optional = true }
 mime_guess = { version = "2", optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["stream"], optional = true }
+sha2 = { version = "0.11", optional = true }
 tracing = { version = "0.1.40", default-features = false, features = ["std"], optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

@@ -35,6 +35,8 @@ mod timer;
 #[cfg(feature = "tracing")]
 pub mod trace;
 mod upload;
+#[cfg(feature = "webhooks")]
+pub mod webhooks;
 
 pub use body::Body;
 pub use client::{Client, HttpService};

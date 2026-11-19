@@ -46,7 +46,7 @@ class GenerationTest {
     @Test
     void modelStructsDeriveBonBuilderAndEnumsDoNot() throws IOException {
         String widget = read("src/models/widget.rs");
-        assertTrue(widget.contains("#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]\npub struct Widget {"), widget);
+        assertTrue(widget.contains("#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]\n#[builder(state_mod = widget_builder, finish_fn(vis = \"\", name = build_internal))]\npub struct Widget {"), widget);
         String kind = read("src/models/widget_kind.rs");
         assertFalse(kind.contains("bon::Builder"), kind);
     }
@@ -54,13 +54,13 @@ class GenerationTest {
     @Test
     void apiFunctionsGetBonBuilderAfterDeprecated() throws IOException {
         String api = read("src/apis/widgets_api.rs");
-        assertTrue(api.contains("#[bon::builder]\npub async fn widgets_list("), api);
-        assertTrue(api.contains("#[bon::builder]\npub async fn widgets_create("), api);
+        assertTrue(api.contains("#[bon::builder(state_mod = widgets_list_builder, finish_fn(vis = \"\", name = call_internal))]\npub async fn widgets_list("), api);
+        assertTrue(api.contains("#[bon::builder(state_mod = widgets_create_builder, finish_fn(vis = \"\", name = call_internal))]\npub async fn widgets_create("), api);
         // openapi-generator 7.25 marks deprecated operations; the attribute must stay directly above the builder one.
         if (api.contains("#[deprecated]")) {
-            assertTrue(api.contains("#[deprecated]\n#[bon::builder]\npub async fn widgets_create("), api);
+            assertTrue(api.contains("#[deprecated]\n#[bon::builder(state_mod = widgets_create_builder, finish_fn(vis = \"\", name = call_internal))]\npub async fn widgets_create("), api);
         }
-        assertEquals(2, api.split("#\\[bon::builder]", -1).length - 1);
+        assertEquals(2, api.split("#\\[bon::builder\\(", -1).length - 1);
     }
 
     @Test

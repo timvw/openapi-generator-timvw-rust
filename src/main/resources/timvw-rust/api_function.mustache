@@ -24,7 +24,7 @@
 #[deprecated]
 {{/isDeprecated}}
 {{#bonBuilders}}
-#[bon::builder]
+#[bon::builder(state_mod = {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-response}}_builder, finish_fn(vis = "", name = call_internal))]
 {{/bonBuilders}}
 pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-response}}(configuration: &configuration::Configuration, {{#allParams}}{{#vendorExtensions.x-rust-builder-attr}}{{{.}}} {{/vendorExtensions.x-rust-builder-attr}}{{{paramName}}}: {{!
 ### Option Start
@@ -44,19 +44,7 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
 ### Per-call headers, query parameters and base URL
 }}{{#allParams.0}}, {{/allParams.0}}{{{vendorExtensions.x-rust-options-param}}}: Option<&timvw_rust_runtime::RequestOptions>{{!
 ### Function return type
-}}) -> Result<{{#x-rust-as-response}}super::ApiResponse<{{{x-rust-response-type}}}>{{/x-rust-as-response}}{{^x-rust-as-response}}{{!
-### Response File Support
-}}{{#isResponseFile}}timvw_rust_runtime::Response{{/isResponseFile}}{{!
-### Regular Responses
-}}{{^isResponseFile}}{{!
-### Multi response support
-}}{{#vendorExtensions.x-rust-event-stream}}super::sse::EventStream<{{{returnType}}}, {{{vendorExtensions.x-rust-error-enum}}}>{{/vendorExtensions.x-rust-event-stream}}{{!
-### (a stream method returns the stream, also with supportMultipleResponses)
-}}{{^vendorExtensions.x-rust-event-stream}}{{#supportMultipleResponses}}ResponseContent<{{{operationIdCamelCase}}}Success>{{/supportMultipleResponses}}{{!
-### Regular return type
-}}{{^supportMultipleResponses}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/supportMultipleResponses}}{{/vendorExtensions.x-rust-event-stream}}{{/isResponseFile}}{{/x-rust-as-response}}{{!
-### Error Type
-}}, Error<{{{vendorExtensions.x-rust-error-enum}}}>> {
+}}) -> {{>api_function_return}} {
     {{#allParams.0}}
     // add a prefix to parameters to efficiently prevent name collisions
     {{/allParams.0}}
@@ -790,4 +778,31 @@ pub async fn {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-respo
     }
 }
     {{/vendorExtensions.x-rust-event-stream}}
+{{#bonBuilders}}
+
+{{#vendorExtensions.x-rust-operation-cfg}}
+#[cfg({{{.}}})]
+{{/vendorExtensions.x-rust-operation-cfg}}
+{{!-- bon's own call() is private: it requires IsComplete, a trait with a blanket impl that rustdoc would try on every
+type of the crate. This one requires the state of each required parameter instead (BonNames). The lifetimes are those
+of the parameters that borrow, in order: the configuration, the &str and borrowed bodies, the request options. --}}
+#[allow(deprecated)]
+impl<S: {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-response}}_builder::State> {{#bonPascal}}{{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-response}}{{/bonPascal}}Builder<'_, {{#allParams}}{{#vendorExtensions.x-rust-body-ref}}'_, {{/vendorExtensions.x-rust-body-ref}}{{^vendorExtensions.x-rust-body-ref}}{{#isString}}{{^isUuid}}'_, {{/isUuid}}{{/isString}}{{/vendorExtensions.x-rust-body-ref}}{{/allParams}}'_, S>
+where
+    S::Configuration: {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-response}}_builder::IsSet,
+{{#allParams}}
+{{#required}}
+{{^isNullable}}
+    S::{{#bonPascal}}{{{paramName}}}{{/bonPascal}}: {{{operationId}}}{{#x-rust-as-response}}_response{{/x-rust-as-response}}_builder::IsSet,
+{{/isNullable}}
+{{/required}}
+{{/allParams}}
+{
+    /// Finishes building and performs the requested action.
+    #[inline(always)]
+    pub async fn call(self) -> {{>api_function_return}} {
+        self.call_internal().await
+    }
+}
+{{/bonBuilders}}
 

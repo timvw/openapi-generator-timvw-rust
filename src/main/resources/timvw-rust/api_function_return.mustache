@@ -1,0 +1,15 @@
+{{!
+### The return type of an API function (and of the call() of its builder)
+}}Result<{{#x-rust-as-response}}super::ApiResponse<{{{x-rust-response-type}}}>{{/x-rust-as-response}}{{^x-rust-as-response}}{{!
+### Response File Support
+}}{{#isResponseFile}}timvw_rust_runtime::Response{{/isResponseFile}}{{!
+### Regular Responses
+}}{{^isResponseFile}}{{!
+### Multi response support
+}}{{#vendorExtensions.x-rust-event-stream}}super::sse::EventStream<{{{returnType}}}, {{{vendorExtensions.x-rust-error-enum}}}>{{/vendorExtensions.x-rust-event-stream}}{{!
+### (a stream method returns the stream, also with supportMultipleResponses)
+}}{{^vendorExtensions.x-rust-event-stream}}{{#supportMultipleResponses}}ResponseContent<{{{operationIdCamelCase}}}Success>{{/supportMultipleResponses}}{{!
+### Regular return type
+}}{{^supportMultipleResponses}}{{^returnType}}(){{/returnType}}{{{returnType}}}{{/supportMultipleResponses}}{{/vendorExtensions.x-rust-event-stream}}{{/isResponseFile}}{{/x-rust-as-response}}{{!
+### Error Type
+}}, Error<{{{vendorExtensions.x-rust-error-enum}}}>>

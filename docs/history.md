@@ -20,9 +20,22 @@ models of another crate (`modelsCrate`) and default methods that answer `501` (`
 `dateLibrary`, jiff by default; 0.37 serves
 deepObject query parameters, multipart file unions and paths with a fixed query; 0.37.1 sends a collapsed string
 union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s; 0.39 decodes a missing required nullable
-field as `None`, and validates and authenticates the server's requests (`serverValidation`, `serverAuthentication`). The
+field as `None`, and validates and authenticates the server's requests (`serverValidation`, `serverAuthentication`); 0.39.1
+keeps rustdoc from trying every builder's `IsComplete` on every type. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.39.1
+
+- **rustdoc no longer tries every builder's `IsComplete` on every type.** bon's finish function (`build()` of a
+  model's builder, `call()` of a function's) requires `S: <state module>::IsComplete`, a trait with a blanket impl,
+  one per builder. That bound makes the trait reachable from the public API, so rustdoc tried each of those blanket
+  impls on each struct and enum it documents: the number of builders times the number of types. For
+  openai-client-base (3,200 builders, 8,700 types) the docs took more than 40 minutes and 24 GB, where docs.rs allows
+  15 minutes and 6 GB. bon's finish function is
+  private now (`build_internal`, `call_internal`), and the generator adds the public `build()` and `call()`, bounded
+  by the state of each required member (`S::Model: IsSet`) instead. Calls do not change. openai-client-base's docs
+  take about a minute and 9.5 GB (macOS, peak RSS), still more than docs.rs's default. See [`bonBuilders`](options.md#bonbuilders).
 
 ## 0.39.0
 

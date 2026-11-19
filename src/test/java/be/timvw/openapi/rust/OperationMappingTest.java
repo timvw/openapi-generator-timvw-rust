@@ -67,7 +67,7 @@ class OperationMappingTest {
     @Test
     void anOperationIsAnAsyncFunctionWithABuilder() throws IOException {
         String items = read("src/apis/items_api.rs");
-        assertContains(items, "#[bon::builder]\npub async fn create_item(configuration: &configuration::Configuration, "
+        assertContains(items, "#[bon::builder(state_mod = create_item_builder, finish_fn(vis = \"\", name = call_internal))]\npub async fn create_item(configuration: &configuration::Configuration, "
                 + "item: &models::Item, options: Option<&timvw_rust_runtime::RequestOptions>) -> Result<models::Item, Error<CreateItemError>> {");
     }
 
@@ -81,7 +81,7 @@ class OperationMappingTest {
 
     @Test
     void aDeprecatedOperationIsDeprecated() throws IOException {
-        assertContains(read("src/apis/items_api.rs"), "#[deprecated]\n#[bon::builder]\npub async fn delete_item(");
+        assertContains(read("src/apis/items_api.rs"), "#[deprecated]\n#[bon::builder(state_mod = delete_item_builder, finish_fn(vis = \"\", name = call_internal))]\npub async fn delete_item(");
     }
 
     @Test

@@ -1072,6 +1072,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
 
         additionalProperties.put(RUSTDOC_LAMBDA,
                 (Mustache.Lambda) (fragment, out) -> out.write(RustDoc.wrapBareUrls(fragment.execute())));
+        additionalProperties.put(BonNames.PASCAL_LAMBDA,
+                (Mustache.Lambda) (fragment, out) -> out.write(BonNames.pascal(fragment.execute().trim())));
+        additionalProperties.put(BonNames.SNAKE_LAMBDA,
+                (Mustache.Lambda) (fragment, out) -> out.write(BonNames.snake(fragment.execute().trim())));
 
         additionalProperties.put(TARGETS, targets.names());
         additionalProperties.put("clientTarget", targets.client());

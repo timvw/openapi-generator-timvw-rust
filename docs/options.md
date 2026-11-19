@@ -32,7 +32,7 @@ Value types:
 | [Targets](#targets) | `targets`, `serverFramework`, `serverDefaultMethods`, `serverValidation`, `serverAuthentication`, `serverWebhooks`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
 | [The crate](#the-crate) | `packageName`, `packageVersion`, `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, `userAgentFromPackage`, `apiLintAllows` |
 | [HTTP stack and runtime](#http-stack-and-runtime) | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
-| [Cargo features](#cargo-features) | `apiFeatures`, `apiFeaturesFile` |
+| [Cargo features](#cargo-features) | `apiFeatures`, `apiFeaturesFile`, `splitCrates` |
 | [Types and naming](#types-and-naming) | `dateLibrary`, `bonBuilders`, `titleNaming`, `typedEnumParameters`, `deprecatedAttributes` |
 | [Functions and modules](#functions-and-modules) | `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `validateMethods` |
 | [Helpers](#helpers) | `multipartHelper`, `pruneAllHelpers` |
@@ -346,6 +346,24 @@ responses: { tags: [Responses, Conversations] }
 
 Guide: [groups from a file](guides/api-features.md#groups-from-a-file-apifeaturesfile). Tests:
 [`ApiFeaturesTest`](../src/test/java/be/timvw/openapi/rust/ApiFeaturesTest.java) (`theFileFormat`).
+
+### `splitCrates`
+
+boolean, default `false`; implies `apiFeatures`, for the client target alone. Writes a Cargo workspace instead of one
+crate, so that no crate needs the memory of the whole to compile or document: `<packageName>` (the facade, at the
+output's root, with the paths and features of the single crate), `crates/common` (`<packageName>-common`: the models
+several crates use, configuration, errors, helpers), a crate per `crate` of `apiFeaturesFile` (a group without one is
+a crate of its own) and `crates/untagged` (`<packageName>-untagged`: the models of `types` alone).
+
+```yaml
+# api-features.yaml
+administration: { paths: [/organization], crate: administration }
+chat-completion: { tags: [Chat], crate: chat }
+embedding: { tags: [Embeddings], crate: chat }
+```
+
+Guide: [split crates](guides/split-crates.md). Tests:
+[`SplitCratesTest`](../src/test/java/be/timvw/openapi/rust/SplitCratesTest.java).
 
 ## Types and naming
 

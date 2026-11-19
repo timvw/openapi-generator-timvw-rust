@@ -91,6 +91,9 @@ built and tested against the openapi-generator version in its image tag (`-og<ve
   spec's constraints ([validation](docs/guides/validation.md)).
 - A Cargo feature per tag or group of operations, with types-only twins (`apiFeatures`,
   [guide](docs/guides/api-features.md)).
+- For a very large spec, a workspace of smaller crates behind one facade crate with the same paths and features, so
+  that each crate compiles and documents in a fraction of the memory (`splitCrates`,
+  [guide](docs/guides/split-crates.md)).
 - A crate that builds for WebAssembly (`wasm32-unknown-unknown`) as it is
   ([guide](docs/guides/http-stack.md#webassembly)).
 - Optionally an [axum](https://docs.rs/axum) server with the same models, which can authenticate requests with the spec's

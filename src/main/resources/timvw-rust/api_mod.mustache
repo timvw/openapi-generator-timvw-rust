@@ -161,6 +161,7 @@ impl From<&str> for ContentType {
     }
 }
 
+{{^splitCrates}}
 {{#apiInfo}}
 {{#apis}}
 {{#x-rust-module-cfg}}
@@ -169,6 +170,7 @@ impl From<&str> for ContentType {
 pub mod {{{classFilename}}};
 {{/apis}}
 {{/apiInfo}}
+{{/splitCrates}}
 
 pub mod configuration;
 {{#responseFunctions}}
@@ -187,9 +189,9 @@ pub(crate) mod multipart_helper;
 
 pub mod sse;
 
-{{/typedEventStreams}}{{#webhookModules}}
+{{/typedEventStreams}}{{^splitCrates}}{{#webhookModules}}
 {{#webhookModuleCfg}}
 #[cfg({{{.}}})]
 {{/webhookModuleCfg}}
 pub mod {{{.}}};
-{{/webhookModules}}
+{{/webhookModules}}{{/splitCrates}}

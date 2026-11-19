@@ -1,0 +1,36 @@
+[package]
+name = "{{{splitCratePackage}}}"
+description = "{{{splitCrateDescription}}}"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+{{#repositoryUrl}}
+repository.workspace = true
+{{/repositoryUrl}}
+{{#homePageUrl}}
+homepage.workspace = true
+{{/homePageUrl}}
+readme = "README.md"
+{{#publishRustRegistry}}
+publish = ["{{.}}"]
+{{/publishRustRegistry}}
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+{{#splitCrateDependencies}}
+{{{.}}}
+{{/splitCrateDependencies}}
+{{>cargo_dependencies}}
+
+[features]
+default = []
+{{#splitCrateFeatures}}
+{{{.}}}
+{{/splitCrateFeatures}}
+
+[lints]
+workspace = true

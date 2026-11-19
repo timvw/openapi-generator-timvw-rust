@@ -31,7 +31,12 @@ use serde::Deserialize;
 /// ```
 /// use std::borrow::Cow;
 ///
+{{^splitCrates}}
 /// use {{{x-rust-crate}}}::apis::ApiResponse;
+{{/splitCrates}}
+{{#splitCrates}}
+/// # use {{{x-rust-crate}}}::apis::ApiResponse;
+{{/splitCrates}}
 /// use serde::Deserialize;
 ///
 /// // What a `_response` function returns; built by hand here, it comes from the server in use.

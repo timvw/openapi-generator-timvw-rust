@@ -1,5 +1,6 @@
 {{#models}}
 {{#model}}
+{{^vendorExtensions.x-rust-split-elsewhere}}
 {{#vendorExtensions.x-rust-model-cfg}}
 #[cfg({{{.}}})]
 {{/vendorExtensions.x-rust-model-cfg}}
@@ -8,6 +9,7 @@ pub mod {{{classFilename}}};
 #[cfg({{{.}}})]
 {{/vendorExtensions.x-rust-model-cfg}}
 pub use self::{{{classFilename}}}::{{{classname}}};
+{{/vendorExtensions.x-rust-split-elsewhere}}
 {{/model}}
 {{/models}}
 {{#validateMethods}}

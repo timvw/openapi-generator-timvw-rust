@@ -157,6 +157,17 @@ components:
       properties:
         a:
           type: string
+    # Required and nullable, as OpenAI's chat completion choice and its logprobs, which some models leave out
+    Choice:
+      type: object
+      required: [index, logprobs]
+      properties:
+        index:
+          type: integer
+        logprobs:
+          anyOf:
+            - $ref: '#/components/schemas/Obj'
+            - type: 'null'
     NestedAny:
       oneOf:
         - $ref: '#/components/schemas/Obj'

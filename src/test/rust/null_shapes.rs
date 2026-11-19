@@ -4,7 +4,7 @@
 
 use null_shapes_fixture::apis::configuration::Configuration;
 use null_shapes_fixture::apis::default_api;
-use null_shapes_fixture::models::{Holder, Refs, TextOrNullRef, Uni, Wrapped};
+use null_shapes_fixture::models::{Choice, Holder, Refs, TextOrNullRef, Uni, Wrapped};
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -48,6 +48,31 @@ fn null_and_values_round_trip_in_every_position() {
     // absent optional fields stay absent
     assert_eq!(holder.null_opt, None);
     assert_eq!(serde_json::to_value(&holder).unwrap(), json);
+}
+
+/// Lenient on input, strict on output: a required nullable field that is missing reads as None, and None is
+/// written as null.
+#[test]
+fn a_missing_required_nullable_field_is_none() {
+    let holder: Holder = serde_json::from_value(json!({"nulls_req": []})).expect("decodes");
+    assert_eq!(holder.any_req, None);
+    assert_eq!(holder.null_req, None);
+    assert_eq!(
+        serde_json::to_value(&holder).unwrap(),
+        json!({"any_req": null, "nulls_req": [], "null_req": null})
+    );
+    // a required field that cannot be null must still be there
+    let error = serde_json::from_value::<Holder>(json!({"any_req": null})).unwrap_err();
+    assert!(error.to_string().contains("nulls_req"), "{error}");
+
+    // a reference to a model, or null
+    let choice: Choice = serde_json::from_value(json!({"index": 0})).expect("decodes without logprobs");
+    assert_eq!(choice.logprobs, None);
+    assert_eq!(serde_json::to_value(&choice).unwrap(), json!({"index": 0, "logprobs": null}));
+    let choice: Choice = serde_json::from_value(json!({"index": 0, "logprobs": {"a": "x"}})).expect("decodes");
+    assert_eq!(choice.logprobs.map(|logprobs| logprobs.a), Some(Some("x".to_string())));
+    let error = serde_json::from_value::<Choice>(json!({"logprobs": null})).unwrap_err();
+    assert!(error.to_string().contains("index"), "{error}");
 }
 
 #[test]

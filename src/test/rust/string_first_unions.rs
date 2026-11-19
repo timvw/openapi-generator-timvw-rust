@@ -39,6 +39,14 @@ fn a_required_nullable_union_decodes_null_and_either_branch() {
         list.instructions,
         Some(ReplyAllOfInstructions::InputItemList(vec![Item { text: "a".to_string() }]))
     );
-    // required: a missing field is an error, not None
-    assert!(serde_json::from_value::<Reply>(serde_json::json!({"id": "r", "note": null})).is_err());
+    // required and nullable: a missing field reads as None, and is written as null
+    let missing: Reply = serde_json::from_value(serde_json::json!({"id": "r", "note": null}))
+        .expect("a missing required nullable field is None");
+    assert_eq!(missing.instructions, None);
+    assert_eq!(
+        serde_json::to_value(&missing).unwrap(),
+        serde_json::json!({"id": "r", "instructions": null, "note": null})
+    );
+    // a required field that cannot be null must still be there
+    assert!(serde_json::from_value::<Reply>(serde_json::json!({"instructions": null, "note": null})).is_err());
 }

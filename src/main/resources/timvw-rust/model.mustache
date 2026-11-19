@@ -362,7 +362,7 @@ pub struct {{{classname}}} {
     {{{.}}}
     {{/vendorExtensions.x-rust-unix-time-serde}}
     {{^vendorExtensions.x-rust-unix-time-serde}}
-    #[serde(rename = "{{{baseName}}}"{{#isDiscriminator}}{{#required}}, default{{#isNullable}}, skip_serializing_if = "Option::is_none"{{/isNullable}}{{^isNullable}}{{#isString}}{{^isEnum}}, skip_serializing_if = "String::is_empty"{{/isEnum}}{{/isString}}{{/isNullable}}{{/required}}{{/isDiscriminator}}{{^required}}{{#isNullable}}, default{{^isByteArray}}, with = "::serde_with::rust::double_option"{{/isByteArray}}{{/isNullable}}{{/required}}{{^required}}, skip_serializing_if = "Option::is_none"{{/required}}{{#required}}{{#isNullable}}{{^isDiscriminator}}, deserialize_with = "Option::deserialize"{{/isDiscriminator}}{{/isNullable}}{{/required}})]
+    #[serde(rename = "{{{baseName}}}"{{#isDiscriminator}}{{#required}}, default{{#isNullable}}, skip_serializing_if = "Option::is_none"{{/isNullable}}{{^isNullable}}{{#isString}}{{^isEnum}}, skip_serializing_if = "String::is_empty"{{/isEnum}}{{/isString}}{{/isNullable}}{{/required}}{{/isDiscriminator}}{{^required}}{{#isNullable}}, default{{^isByteArray}}, with = "::serde_with::rust::double_option"{{/isByteArray}}{{/isNullable}}{{/required}}{{^required}}, skip_serializing_if = "Option::is_none"{{/required}}{{#required}}{{#isNullable}}{{^isDiscriminator}}, default{{/isDiscriminator}}{{/isNullable}}{{/required}})]
     {{/vendorExtensions.x-rust-unix-time-serde}}
     {{/vendorExtensions.x-rust-upload-serde}}
     pub {{{name}}}: {{!

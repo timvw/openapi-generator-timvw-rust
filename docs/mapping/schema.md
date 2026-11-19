@@ -152,9 +152,9 @@ user needs it: `dateLibrary=string`. `email`, `uri` and `decimal` stay `String`.
 | | |
 | --- | --- |
 | OpenAPI | `nullable: true` (OpenAPI 3.1: `type: [T, "null"]`) |
-| Rust | optional: `Option<Option<T>>` through `serde_with::rust::double_option`. Required: `Option<T>`, which must be present. A nullable union follows [`schema.oneOf.null-branch`](#schemaoneofnull-branch) |
-| Wire | optional: `None` leaves the field out, `Some(None)` sends `null`. Required: `None` sends `null` |
-| Tests | [`SchemaMappingTest#anOptionalNullablePropertyCanSendNull`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`DefaultOnlyWhereValidTest#aRequiredNullableFieldCountsAsRequired`](../../src/test/java/be/timvw/openapi/rust/DefaultOnlyWhereValidTest.java#L72), [`ModelUnionsTest#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103) |
+| Rust | optional: `Option<Option<T>>` through `serde_with::rust::double_option`. Required: `Option<T>` with `#[serde(default)]`. A nullable union follows [`schema.oneOf.null-branch`](#schemaoneofnull-branch) |
+| Wire | optional: `None` leaves the field out, `Some(None)` sends `null`. Required: `None` sends `null`, and a missing field decodes as `None`, like `null` (strict on output, lenient on input: servers leave out fields their spec requires as nullable, such as OpenAI's `logprobs` of a chat completion choice). A required field that cannot be null must be there |
+| Tests | [`SchemaMappingTest#anOptionalNullablePropertyCanSendNull`](../../src/test/java/be/timvw/openapi/rust/SchemaMappingTest.java#L147), [`DefaultOnlyWhereValidTest#aRequiredNullableFieldCountsAsRequired`](../../src/test/java/be/timvw/openapi/rust/DefaultOnlyWhereValidTest.java#L72), [`ModelUnionsTest#aNullableReferenceDoesNotRewriteItsTarget`](../../src/test/java/be/timvw/openapi/rust/ModelUnionsTest.java#L103), [`NullShapesTest#nullAndValuesRoundTrip`](../../src/test/java/be/timvw/openapi/rust/NullShapesTest.java#L216) |
 
 ### `schema.nullable.items`
 

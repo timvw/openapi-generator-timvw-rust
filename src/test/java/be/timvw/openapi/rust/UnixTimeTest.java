@@ -56,7 +56,7 @@ class UnixTimeTest {
         String event = read(out.resolve("src/models/event.rs"));
         assertContains(event, "#[serde(rename = \"created_at\", with = \"super::unix_time\")] "
                 + "pub created_at: jiff::Timestamp,");
-        assertContains(event, "#[serde(rename = \"expires_at\", with = \"super::unix_time::option\")] "
+        assertContains(event, "#[serde(rename = \"expires_at\", default, with = \"super::unix_time::option\")] "
                 + "pub expires_at: Option<jiff::Timestamp>,");
         assertContains(event, "#[serde(rename = \"updated_at\", default, skip_serializing_if = \"Option::is_none\", "
                 + "with = \"super::unix_time::option\")] pub updated_at: Option<jiff::Timestamp>,");

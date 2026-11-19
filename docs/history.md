@@ -19,9 +19,24 @@ well (`targets`); 0.32 serves event streams, files, text and multipart forms; 0.
 models of another crate (`modelsCrate`) and default methods that answer `501` (`serverDefaultMethods`); 0.36 replaces `useChrono` and `dateTimeLibrary` with
 `dateLibrary`, jiff by default; 0.37 serves
 deepObject query parameters, multipart file unions and paths with a fixed query; 0.37.1 sends a collapsed string
-union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s. The
+union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s; 0.39 decodes a missing required nullable field as `None`. The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
+
+## 0.39.0
+
+- **A required nullable field that is missing decodes as `None`.** A model property that is required and nullable is
+  an `Option<T>` that is written as `null` when `None`, as before, and now also reads as `None` when the body leaves it
+  out, as it reads `null` (`#[serde(default)]`; it was `deserialize_with = "Option::deserialize"`, which made the field
+  mandatory). Strict on output, lenient on input: servers leave out fields that their spec requires as nullable, as
+  OpenAI's `gpt-5-mini` does with the `logprobs` of a chat completion choice, and the whole body failed to decode
+  (`` missing field `logprobs` ``). Unix timestamps (`with = "super::unix_time::option"`) and the fields of inline
+  variants (which already read a missing field as `None`) follow the same rule. A required field that cannot be null
+  still has to be there. The types and `new()` do not change; the axum server reads such a field of a request the same
+  way. OpenAI's Python SDK (`Optional[T] = None`) and async-openai (a plain `Option<T>`) accept a missing field too; stock `-g rust` makes them
+  mandatory as 0.38 did. [`optionalProperties`](options.md#optionalproperties) is no longer needed to decode a body
+  without a required nullable property, only to leave it out of a request.
+  See [`schema.nullable`](mapping/schema.md#schemanullable).
 
 ## 0.38.1
 

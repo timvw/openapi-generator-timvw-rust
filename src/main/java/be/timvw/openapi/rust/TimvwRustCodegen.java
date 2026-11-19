@@ -225,6 +225,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
     public static final String API_FEATURES = "apiFeatures";
     /** A YAML or JSON file of feature groups selecting operations by tag and path prefix; implies {@link #API_FEATURES}. */
     public static final String API_FEATURES_FILE = "apiFeaturesFile";
+    /**
+     * The crate is written as a workspace: a crate of shared models, one per crate of {@link #API_FEATURES_FILE}, one
+     * of the models no operation uses, and the facade re-exporting them (see {@link CrateSplit}). Implies
+     * {@link #API_FEATURES}.
+     */
+    public static final String SPLIT_CRATES = "splitCrates";
     /** Set on an operation with {@link #RESPONSE_FUNCTIONS}: the context its {@code _response} twin renders with. */
     static final String RESPONSE_FUNCTION = "x-rust-response-function";
     /** Set when an API module has a {@code <Operation>ResponseHeaders} struct: {@code api_response.rs} has its helpers. */
@@ -487,6 +493,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private boolean ungatedApi;
     /** With {@link #API_FEATURES}: the features of the operations and models, planned once the spec is final. */
     private ApiFeatures.Plan apiFeaturesPlan;
+    /** With {@link #SPLIT_CRATES}. */
+    private boolean splitCrates;
+    private CrateSplit crateSplit;
+    /** With {@link #SPLIT_CRATES}: the data the supporting files were rendered with, and the features' own deps. */
+    private Map<String, Object> splitBundle;
+    private final Map<String, String> splitOrigin = new HashMap<>();
     /** The methods per API module ({@code tag#operationId}), to fail on a suffixed name another operation has. */
     private final Map<String, String> methodNames = new HashMap<>();
 
@@ -605,6 +617,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
         cliOptions.add(CliOption.newString(API_FEATURES_FILE,
                 "With apiFeatures (implied): a YAML or JSON file mapping a feature name to the 'tags' and/or 'paths' "
                         + "(path prefixes) of its operations; operations no group selects keep their tag's feature"));
+        cliOptions.add(CliOption.newBoolean(SPLIT_CRATES,
+                "With apiFeatures (implied), for the client target: write a Cargo workspace instead of one crate, so "
+                        + "that each crate compiles in less memory: <packageName>-common (the models several crates "
+                        + "use, configuration, errors), a crate per feature group (or per 'crate' of "
+                        + "apiFeaturesFile), <packageName>-untagged (the models of `types` alone) under crates/, and "
+                        + "the facade <packageName>, with the paths and features of the single crate", false));
         cliOptions.add(CliOption.newString(TARGETS,
                 "What the crate holds, a list from models, client and server (client and server imply models): "
                         + "[\"client\"] (the default) renders the models and the client, [\"server\"] the models and "
@@ -1068,6 +1086,22 @@ public class TimvwRustCodegen extends RustCodegenBase {
                     GENERATOR_NAME, API_FEATURES_FILE, API_FEATURES));
         }
         apiFeatures |= withFile;
+        splitCrates = additionalProperties.containsKey(SPLIT_CRATES) && convertPropertyToBooleanAndWriteBack(SPLIT_CRATES);
+        if (splitCrates) {
+            if (additionalProperties.containsKey(API_FEATURES) && !apiFeatures) {
+                throw new IllegalArgumentException(String.format("%s: %s needs %s, which is false; drop one of them",
+                        GENERATOR_NAME, SPLIT_CRATES, API_FEATURES));
+            }
+            if (!targets.client() || targets.server() || externalModels) {
+                throw new IllegalArgumentException(String.format("%s: %s splits a client: it needs %s [\"client\"] "
+                        + "(it is %s), without %s", GENERATOR_NAME, SPLIT_CRATES, TARGETS, targets.names(),
+                        MODELS_CRATE));
+            }
+            apiFeatures = true;
+            // the doctests of api_response.rs run in the crate that defines it
+            additionalProperties.put("x-rust-crate", (packageName + "-" + CrateSplit.COMMON).replace('-', '_'));
+        }
+        additionalProperties.put(SPLIT_CRATES, splitCrates);
         if (withFile) {
             apiFeatureGroups = ApiFeatures.read(java.nio.file.Paths.get(String.valueOf(featuresFile)));
         }
@@ -1454,6 +1488,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
         objs.put(RUNTIME_FEATURES, runtimeFeatures(objs, targets.client()));
         describeTargets(objs);
+        if (splitCrates) {
+            recordModuleFiles(objs);
+            splitBundle = objs;
+        }
         return objs;
     }
 
@@ -1649,6 +1687,13 @@ public class TimvwRustCodegen extends RustCodegenBase {
         return apiFeaturesPlan;
     }
 
+    private CrateSplit crateSplit() {
+        if (crateSplit == null) {
+            crateSplit = new CrateSplit(packageName, apiFeaturesPlan());
+        }
+        return crateSplit;
+    }
+
     /** With {@code apiFeatures}: the cfg of an API module's items and of its operations' items. */
     private void markApiFeatures(Map<String, Object> module, String classname, List<CodegenOperation> operations) {
         ApiFeatures.Plan plan = apiFeaturesPlan();
@@ -1659,6 +1704,30 @@ public class TimvwRustCodegen extends RustCodegenBase {
             ungatedApi = true;
             LOGGER.warn("{}: {}: API module {} has no operation the spec lists; it is not gated", GENERATOR_NAME,
                     API_FEATURES, classname);
+        }
+        if (splitCrates) {
+            for (CodegenOperation op : operations) {
+                SortedSet<String> features = plan.operations.get(ApiFeatures.opKey(classname, op.path, op.httpMethod));
+                if (features == null) {
+                    // a webhook is keyed by its name: its module's features, as its items have no cfg of their own
+                    features = plan.modules.get(classname);
+                }
+                if (features == null || features.isEmpty()) {
+                    throw new IllegalStateException(String.format("%s: %s: operation %s %s of %s has no feature",
+                            GENERATOR_NAME, SPLIT_CRATES, op.httpMethod, op.path, classname));
+                }
+                String crate = crateSplit().operationCrate(classname + " " + op.httpMethod + " " + op.path, features);
+                op.vendorExtensions.put(CrateSplit.OPERATION_CRATE, crate);
+                crateSplit().addOperation(classname, crate, features);
+            }
+            if (module.get(WEBHOOK_REEXPORT_KEY) != null) {
+                SortedSet<String> features = plan.modules.get(toApiName(sanitizeTag(webhookModule)));
+                if (features != null && !features.isEmpty()) {
+                    String crate = crateSplit().operationCrate("re-export of " + webhookModule, features);
+                    module.put("webhookReexportCrate", crate);
+                    crateSplit().addOperation(classname, crate, features);
+                }
+            }
         }
         for (CodegenOperation op : operations) {
             String own = plan.operationCfg(classname, op.path, op.httpMethod);
@@ -1777,6 +1846,14 @@ public class TimvwRustCodegen extends RustCodegenBase {
             types.add("dep:serde_with");
         }
         objs.put("apiFeaturesTypes", types);
+        if (splitCrates) {
+            splitOrigin.put("", String.valueOf(objs.get("apiDeps")));
+            for (Map<String, Object> g : groups) {
+                splitOrigin.put(String.valueOf(g.get("name")), String.valueOf(g.get("typesDeps")));
+            }
+            splitOrigin.put(ApiFeatures.TYPES, types.stream().filter(t -> t.startsWith("dep:")).map(t -> "\"" + t + "\"")
+                    .collect(java.util.stream.Collectors.joining(", ")));
+        }
         if (webhookModule != null) {
             String cfg = plan.moduleCfg(toApiName(sanitizeTag(webhookModule)));
             if (cfg != null) {
@@ -1793,10 +1870,39 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         cm.vendorExtensions.put(ApiFeatures.MODEL_CFG, cfg);
                         gated++;
                     }
+                    if (splitCrates) {
+                        String crate = crateSplit().modelCrate(plan.models.get(cm.name));
+                        crateSplit().addModel(cm.classFilename, cm.classname, cfg, crate);
+                        if (!CrateSplit.COMMON.equals(crate)) {
+                            cm.vendorExtensions.put(CrateSplit.ELSEWHERE, true);
+                        }
+                    }
                 }
             }
             LOGGER.info("{}: {}: {} of {} models are gated", GENERATOR_NAME, API_FEATURES, gated,
                     ((List<?>) objs.get("models")).size());
+        }
+        if (splitCrates) {
+            crateSplit().describeFacade(objs, groups);
+        }
+    }
+
+    /** With {@link #SPLIT_CRATES}: the file of every API module, the webhook modules' too. */
+    @SuppressWarnings("unchecked")
+    private void recordModuleFiles(Map<String, Object> objs) {
+        List<Object> all = new ArrayList<>();
+        if (objs.get("apiInfo") instanceof Map && ((Map<String, Object>) objs.get("apiInfo")).get("apis") instanceof List) {
+            all.addAll((List<Object>) ((Map<String, Object>) objs.get("apiInfo")).get("apis"));
+        }
+        if (objs.get("webhooks") instanceof List) {
+            all.addAll((List<Object>) objs.get("webhooks"));
+        }
+        for (Object api : all) {
+            if (api instanceof Map && ((Map<?, ?>) api).get("classname") != null
+                    && ((Map<?, ?>) api).get("classFilename") != null) {
+                crateSplit().moduleFile(String.valueOf(((Map<?, ?>) api).get("classname")),
+                        String.valueOf(((Map<?, ?>) api).get("classFilename")));
+            }
         }
     }
 
@@ -1901,10 +2007,30 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 java.nio.file.Files.writeString(mod, java.nio.file.Files.readString(mod).replace(declaration,
                         "#[allow(dead_code)]\n" + declaration));
             }
+            if (splitCrates) {
+                writeSplitCrates();
+            }
         } catch (java.io.IOException e) {
             throw new IllegalStateException(GENERATOR_NAME + ": cannot process " + models, e);
         }
         super.postProcess();
+    }
+
+    /** With {@link #SPLIT_CRATES}: moves the written crate into the crates of the workspace. */
+    private void writeSplitCrates() throws java.io.IOException {
+        // the engine the generator rendered the other files with, its compiler already configured
+        org.openapitools.codegen.api.TemplatingEngineAdapter engine = getTemplatingEngine();
+        org.openapitools.codegen.TemplateManager templates = new org.openapitools.codegen.TemplateManager(
+                new org.openapitools.codegen.templating.TemplateManagerOptions(false, false), engine,
+                new org.openapitools.codegen.api.TemplatePathLocator[]{
+                    new org.openapitools.codegen.templating.GeneratorTemplateContentLocator(this),
+                    new org.openapitools.codegen.templating.CommonTemplateContentLocator()});
+        crateSplit().write(java.nio.file.Paths.get(outputFolder), splitBundle, splitOrigin,
+                (data, template, target) -> {
+                    java.nio.file.Files.createDirectories(target.getParent());
+                    templates.write(data, template, target.toFile());
+                },
+                (crate, what) -> LOGGER.info("{}: {}: {}: {}", GENERATOR_NAME, SPLIT_CRATES, crate, what));
     }
 
     /** The file of every model by its Rust type name: {@code classname} to {@code classFilename}. */

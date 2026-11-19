@@ -1,0 +1,44 @@
+[lints]
+workspace = true
+
+# splitCrates: this crate is the facade of a workspace; the models and API functions are in the crates below,
+# which it re-exports under its own paths.
+[workspace]
+members = [
+{{#splitMembers}}
+    "{{{.}}}",
+{{/splitMembers}}
+]
+
+[workspace.package]
+version = "{{#lambdaVersion}}{{{packageVersion}}}{{/lambdaVersion}}"
+{{#infoEmail}}
+authors = ["{{{.}}}"]
+{{/infoEmail}}
+{{^infoEmail}}
+authors = ["OpenAPI Generator team and contributors"]
+{{/infoEmail}}
+{{#licenseInfo}}
+license = "{{.}}"
+{{/licenseInfo}}
+{{^licenseInfo}}
+license = "Unlicense"
+{{/licenseInfo}}
+edition = "2021"
+rust-version = "{{{rustVersion}}}"
+{{#repositoryUrl}}
+repository = "{{.}}"
+{{/repositoryUrl}}
+{{#homePageUrl}}
+homepage = "{{.}}"
+{{/homePageUrl}}
+
+[workspace.dependencies]
+# The crates are released together, with one version: each one requires exactly that version of the others.
+{{#splitWorkspaceDependencies}}
+{{{.}}}
+{{/splitWorkspaceDependencies}}
+
+# The lints of every crate of the workspace, which inherit them (`[lints] workspace = true`): add
+# `[workspace.lints.clippy]` or `[workspace.lints.rust]` entries here to change them everywhere.
+[workspace.lints]

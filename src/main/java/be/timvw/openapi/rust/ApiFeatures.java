@@ -75,8 +75,23 @@ final class ApiFeatures {
     private ApiFeatures() {
     }
 
-    /** A group of {@code apiFeaturesFile}: the feature name, the tags and the path prefixes it selects. */
-    record Group(String name, List<String> tags, List<String> paths) {
+    /** A name a crate of {@code splitCrates} may have: lower case, digits and {@code -}. */
+    private static final Pattern CRATE = Pattern.compile("[a-z0-9][a-z0-9-]*");
+
+    /**
+     * A group of {@code apiFeaturesFile}: the feature name, the tags and the path prefixes it selects, and with
+     * {@code splitCrates} the crate it goes into ({@code null}: a crate named after the feature). A group that selects
+     * nothing and only names a crate assigns the crate of a feature the generator names after a tag.
+     */
+    record Group(String name, List<String> tags, List<String> paths, String crate) {
+        Group(String name, List<String> tags, List<String> paths) {
+            this(name, tags, paths, null);
+        }
+
+        /** Whether the group selects operations, rather than only naming the crate of a tag's feature. */
+        boolean selects() {
+            return !tags.isEmpty() || !paths.isEmpty();
+        }
     }
 
     // ---------------------------------------------------------------- the file
@@ -91,6 +106,9 @@ final class ApiFeatures {
      *   paths: [/organization]
      * audio: { tags: [Audio] }
      * </pre>
+     *
+     * <p>With {@code splitCrates}, a group may name the crate it goes into ({@code crate: speech}); a group with only
+     * {@code crate} names the crate of a feature the generator derives from a tag.</p>
      */
     static List<Group> read(Path file) {
         JsonNode root;
@@ -127,13 +145,23 @@ final class ApiFeatures {
             }
             for (Iterator<String> keys = body.fieldNames(); keys.hasNext(); ) {
                 String key = keys.next();
-                if (!key.equals("tags") && !key.equals("paths")) {
-                    throw invalid(source, name + ": unknown key '" + key + "' (use 'tags' and/or 'paths')");
+                if (!key.equals("tags") && !key.equals("paths") && !key.equals("crate")) {
+                    throw invalid(source, name + ": unknown key '" + key + "' (use 'tags' and/or 'paths', and "
+                            + "'crate' with splitCrates)");
                 }
             }
             List<String> tags = strings(body.get("tags"), source, name + ".tags");
             List<String> paths = strings(body.get("paths"), source, name + ".paths");
-            if (tags.isEmpty() && paths.isEmpty()) {
+            String crate = null;
+            if (body.has("crate")) {
+                JsonNode c = body.get("crate");
+                if (c == null || !c.isTextual() || !CRATE.matcher(c.asText()).matches()) {
+                    throw invalid(source, name + ".crate: expected a crate name suffix: lower-case letters, digits "
+                            + "and '-', starting with a letter or digit, got " + c);
+                }
+                crate = c.asText();
+            }
+            if (tags.isEmpty() && paths.isEmpty() && crate == null) {
                 throw invalid(source, name + ": selects nothing; give it 'tags' and/or 'paths'");
             }
             for (String p : paths) {
@@ -141,7 +169,7 @@ final class ApiFeatures {
                     throw invalid(source, name + ": path prefix '" + p + "' does not start with '/'");
                 }
             }
-            groups.add(new Group(name, tags, paths));
+            groups.add(new Group(name, tags, paths, crate));
         }
         return groups;
     }
@@ -200,6 +228,8 @@ final class ApiFeatures {
         final Map<String, SortedSet<String>> models = new HashMap<>();
         /** What each feature selects, for the README: tags and path prefixes, by feature. */
         final Map<String, String> selects = new TreeMap<>();
+        /** With {@code splitCrates}: the crate of every feature (its group's {@code crate}, or its own name). */
+        final Map<String, String> crates = new TreeMap<>();
 
         /** The cfg predicate of an API module, or {@code null} when the plan does not know it. */
         String moduleCfg(String module) {
@@ -354,8 +384,10 @@ final class ApiFeatures {
             names.put(r, "a feature the generated Cargo.toml already has");
         }
         for (Group g : groups) {
-            claim(names, g.name(), "feature '" + g.name() + "' of apiFeaturesFile");
-            plan.selects.put(g.name(), describe(g));
+            if (g.selects()) {
+                claim(names, g.name(), "feature '" + g.name() + "' of apiFeaturesFile");
+                plan.selects.put(g.name(), describe(g));
+            }
         }
         Map<String, String> defaultModules = new HashMap<>();
         for (Op op : ops) {
@@ -376,6 +408,21 @@ final class ApiFeatures {
                     ? " (operations no group selects)" : ""));
         }
         plan.features.addAll(plan.selects.keySet());
+        for (Group g : groups) {
+            if (!g.selects() && !defaultTags.containsKey(g.name())) {
+                throw new IllegalArgumentException(String.format("%s: apiFeaturesFile: '%s' only names a crate, but "
+                        + "no tag has a feature of that name (the features named after tags: %s); give it 'tags' "
+                        + "and/or 'paths'", TimvwRustCodegen.GENERATOR_NAME, g.name(), defaultTags.keySet()));
+            }
+        }
+        for (String f : plan.features) {
+            plan.crates.put(f, f);
+        }
+        for (Group g : groups) {
+            if (g.crate() != null) {
+                plan.crates.put(g.name(), g.crate());
+            }
+        }
 
         Refs refs = new Refs(openAPI);
         Map<String, Set<String>> featureModels = new HashMap<>();

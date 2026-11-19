@@ -60,6 +60,9 @@ container: { paths: [/containers] }
 - An operation several groups select is in each of them; so is an operation with several tags, once per tag module.
 - Untagged operations are tag `default`: `tags: [default]` selects them.
 - Webhooks have no path: a group selects them by tag (`webhookModule` gives them one).
+- With [`splitCrates`](split-crates.md), a group may name the crate it goes into (`crate: chat`), and an entry with
+  only `crate` names the crate of a feature the generator names after a tag (`open-ai-client-base-webhooks: { crate:
+  platform }`).
 
 Generation fails, rather than writing a feature that compiles nothing or means two things, when:
 
@@ -67,7 +70,7 @@ Generation fails, rather than writing a feature that compiles nothing or means t
 - two features would have the same name, with their `-types` twins: a group named like the feature of a tag whose
   operations it does not all take (the tag's other operations keep that name), a group `x` next to a group `x-types`,
   or a group named `default`, `full`, `types`, `native-tls`, `rustls`, `retry` or `tracing`;
-- a name is not a lower-case Cargo feature name, or a group has a key other than `tags` and `paths`.
+- a name is not a lower-case Cargo feature name, or a group has a key other than `tags`, `paths` and `crate`.
 
 ## What is gated
 

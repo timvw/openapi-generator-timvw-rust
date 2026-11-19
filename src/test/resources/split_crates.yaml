@@ -1,0 +1,283 @@
+openapi: 3.1.0
+info:
+  title: Split crates
+  description: splitCrates. Tags and untagged operations under two path prefixes; models shared by several groups, used
+    by one group, and used by none (Archive, which uses an admin model); a discriminated union in a group crate; enums;
+    a multipart upload; an event stream; typed headers; and an untagged webhook re-exported from default_api.
+  version: 1.0.0
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://api.example.com
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      tags: [Pets]
+      responses:
+        "200":
+          description: the pets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pet'
+        default:
+          description: an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      operationId: createPet
+      tags: [Pets]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                photo:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+  /pets/events:
+    get:
+      operationId: watchPets
+      tags: [Pets]
+      responses:
+        "200":
+          description: the pets' events
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/PetEvent'
+  /store/orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [Store]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        "404":
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /admin/users:
+    get:
+      operationId: listUsers
+      responses:
+        "200":
+          description: the users
+          headers:
+            X-Total-Count:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        "429":
+          description: too many requests
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+  /admin/audit:
+    get:
+      operationId: getAudit
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            $ref: '#/components/schemas/AuditKind'
+      responses:
+        "200":
+          description: the audit log
+          content:
+            text/plain:
+              schema:
+                type: string
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        default:
+          description: an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+webhooks:
+  petAdopted:
+    post:
+      operationId: petAdopted
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Adoption'
+      responses:
+        "200":
+          description: received
+components:
+  schemas:
+    Problem:
+      type: object
+      properties:
+        message:
+          type: string
+    Pet:
+      oneOf:
+        - $ref: '#/components/schemas/Cat'
+        - $ref: '#/components/schemas/Dog'
+      discriminator:
+        propertyName: kind
+        mapping:
+          cat: '#/components/schemas/Cat'
+          dog: '#/components/schemas/Dog'
+    PetBase:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+          minLength: 1
+    Cat:
+      allOf:
+        - $ref: '#/components/schemas/PetBase'
+        - type: object
+          properties:
+            lives:
+              type: integer
+    Dog:
+      allOf:
+        - $ref: '#/components/schemas/PetBase'
+        - type: object
+          properties:
+            toy:
+              $ref: '#/components/schemas/Toy'
+    Toy:
+      type: object
+      properties:
+        name:
+          type: string
+    PetEvent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+        pet:
+          $ref: '#/components/schemas/Pet'
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        pets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pet'
+    User:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        contact:
+          $ref: '#/components/schemas/Contact'
+    Contact:
+      oneOf:
+        - $ref: '#/components/schemas/EmailContact'
+        - $ref: '#/components/schemas/PhoneContact'
+      discriminator:
+        propertyName: type
+        mapping:
+          email: '#/components/schemas/EmailContact'
+          phone: '#/components/schemas/PhoneContact'
+    EmailContact:
+      type: object
+      required: [type, address]
+      properties:
+        type:
+          type: string
+          enum: [email]
+        address:
+          type: string
+    PhoneContact:
+      type: object
+      required: [type, number]
+      properties:
+        type:
+          type: string
+          enum: [phone]
+        number:
+          type: string
+    Role:
+      type: string
+      enum: [admin, member]
+    AuditKind:
+      type: string
+      enum: [login, logout]
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+    Adoption:
+      type: object
+      properties:
+        pet:
+          $ref: '#/components/schemas/Pet'
+        adopter:
+          type: string
+    Archive:
+      type: object
+      description: no operation uses it; it uses a model of the admin crate
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        problem:
+          $ref: '#/components/schemas/Problem'

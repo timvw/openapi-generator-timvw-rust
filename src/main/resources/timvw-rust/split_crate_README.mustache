@@ -1,0 +1,11 @@
+# {{{splitCratePackage}}}
+
+An internal part of [`{{{packageName}}}`](https://crates.io/crates/{{{packageName}}}). Depend on `{{{packageName}}}`
+instead: it re-exports this crate under its own paths (`{{{splitFacadeIdent}}}::models`, `{{{splitFacadeIdent}}}::apis`),
+behind the same Cargo features.
+
+This crate holds {{{splitCrateWhat}}}.
+
+`{{{packageName}}}` is generated as several crates so that each one compiles in less memory. Which crate holds a model
+or an API module follows from the API specification and changes with it: the paths of this crate are not a stable
+API. Its version is always that of `{{{packageName}}}`, which requires exactly that version.

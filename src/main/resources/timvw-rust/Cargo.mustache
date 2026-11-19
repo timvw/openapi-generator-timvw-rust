@@ -1,6 +1,11 @@
 [package]
 name = "{{{packageName}}}"
+{{^splitCrates}}
 version = "{{#lambdaVersion}}{{{packageVersion}}}{{/lambdaVersion}}"
+{{/splitCrates}}
+{{#splitCrates}}
+version.workspace = true
+{{/splitCrates}}
 {{#infoEmail}}
 authors = ["{{{.}}}"]
 {{/infoEmail}}
@@ -35,83 +40,23 @@ homepage = "{{.}}"
 {{/homePageUrl}}
 
 [dependencies]
-{{#modelsCrate}}
-# The models: {{{modelsCrate}}}'s, generated from the same spec with the same model options.
-{{{modelsCrate}}} = { {{#modelsCrateVersion}}version = "{{{.}}}"{{/modelsCrateVersion}}{{#modelsCrateVersion}}{{#modelsCratePath}}, {{/modelsCratePath}}{{/modelsCrateVersion}}{{#modelsCratePath}}path = "{{{.}}}"{{/modelsCratePath}}{{#apiFeatures}}, {{/apiFeatures}}{{#apiFeatures}}default-features = false{{/apiFeatures}} }
-{{/modelsCrate}}
-{{^modelsCrate}}
-{{#bonBuilders}}
-{{^bonOptional}}
-bon = "^3"
-{{/bonOptional}}
-{{#bonOptional}}
-bon = { version = "^3", optional = true }
-{{/bonOptional}}
-{{/bonBuilders}}
-{{/modelsCrate}}
-serde = { version = "^1.0", features = ["derive"] }
-{{^modelsCrate}}
-{{#serdeWith}}
-serde_with = { version = "^3.8", default-features = false, features = ["base64", "std", "macros"]{{#serdeWithOptional}}, optional = true{{/serdeWithOptional}} }
-{{/serdeWith}}
-{{/modelsCrate}}
-serde_json = "^1.0"
-{{#typedEventStreams}}
-{{^targetFeatures}}
-futures-core = "^0.3"
-{{/targetFeatures}}
-{{#targetFeatures}}
-futures-core = { version = "^0.3", optional = true }
-{{/targetFeatures}}
-{{/typedEventStreams}}
-{{^modelsCrate}}
-serde_repr = "^0.1"
-{{/modelsCrate}}
-{{#useSerdePathToError}}
-serde_path_to_error = "^0.1"
-{{/useSerdePathToError}}
-url = "^2.5"
-{{^modelsCrate}}
-{{#validationRegex}}
-regex = "^1.10"
-{{/validationRegex}}
-{{/modelsCrate}}
-{{#serverRegex}}
-regex = { version = "^1.10"{{#targetFeatures}}, optional = true{{/targetFeatures}} }
-{{/serverRegex}}
-{{#hasUUIDs}}
-uuid = { version = "^1.8", features = ["serde", "v4"]{{#uuidOptional}}, optional = true{{/uuidOptional}} }
-{{/hasUUIDs}}
-{{#dateTimeChrono}}
-chrono = { version = "^0.4",  features = ["serde"]{{#dateTypesOptional}}, optional = true{{/dateTypesOptional}} }
-{{/dateTimeChrono}}
-{{#dateTimeJiff}}
-jiff = { version = "^1", default-features = false, features = ["std", "serde"]{{#dateTypesOptional}}, optional = true{{/dateTypesOptional}} }
-{{/dateTimeJiff}}
-{{#runtimeDependency}}
-timvw-rust-runtime = { version = "^{{{runtimeVersion}}}", default-features = false{{#runtimeFeatures}}, features = [{{{runtimeFeatures}}}]{{/runtimeFeatures}}{{#runtimePath}}, path = "{{{.}}}"{{/runtimePath}}{{#runtimeOptional}}, optional = true{{/runtimeOptional}} }
-{{/runtimeDependency}}
-{{#serverTarget}}
-axum = { version = "^0.8", default-features = false{{#serverMultipart}}, features = ["multipart"]{{/serverMultipart}}{{#targetFeatures}}, optional = true{{/targetFeatures}} }
-{{#serverStreams}}
-futures-util = { version = "^0.3", default-features = false, features = ["std"]{{#targetFeatures}}, optional = true{{/targetFeatures}} }
-{{/serverStreams}}
-http = { version = "^1"{{#targetFeatures}}, optional = true{{/targetFeatures}} }
-{{/serverTarget}}
-{{#hasUUIDs}}
-
-# WebAssembly in a JavaScript host (wasm32-unknown-unknown): uuid's `v4` draws from `crypto.getRandomValues`.
-[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-uuid = { version = "^1.8", features = ["js"]{{#uuidOptional}}, optional = true{{/uuidOptional}} }
-{{/hasUUIDs}}
+{{^splitCrates}}
+{{>cargo_dependencies}}
+{{/splitCrates}}
+{{#splitCrates}}
+# The crates of the workspace (splitCrates): this crate re-exports them.
+{{#splitFacadeDependencies}}
+{{{.}}}
+{{/splitFacadeDependencies}}
+{{/splitCrates}}
 
 [features]
 {{#clientTarget}}
 default = [{{#reqwestDefaultFeatures}}"{{.}}", {{/reqwestDefaultFeatures}}"retry"{{#apiFeatures}}, "full"{{/apiFeatures}}{{#targetFeatures}}, "client", "server"{{/targetFeatures}}]
-native-tls = ["timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/native-tls"]
-rustls = ["timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/rustls"]
-retry = ["timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/retry"]
-tracing = ["timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/tracing"]
+native-tls = [{{^splitCrates}}"timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/native-tls"{{/splitCrates}}{{#splitCrates}}"{{{splitCommonPackage}}}/native-tls"{{/splitCrates}}]
+rustls = [{{^splitCrates}}"timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/rustls"{{/splitCrates}}{{#splitCrates}}"{{{splitCommonPackage}}}/rustls"{{/splitCrates}}]
+retry = [{{^splitCrates}}"timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/retry"{{/splitCrates}}{{#splitCrates}}"{{{splitCommonPackage}}}/retry"{{/splitCrates}}]
+tracing = [{{^splitCrates}}"timvw-rust-runtime{{#runtimeOptional}}?{{/runtimeOptional}}/tracing"{{/splitCrates}}{{#splitCrates}}"{{{splitCommonPackage}}}/tracing"{{/splitCrates}}]
 {{/clientTarget}}
 {{^clientTarget}}
 default = [{{#apiFeatures}}"full"{{/apiFeatures}}]
@@ -155,7 +100,11 @@ types = [
 _api = [{{{apiDeps}}}]
 {{#apiFeatureGroups}}
 # {{{selects}}}
-{{{name}}} = ["{{{name}}}-types", "_api"]
+{{{name}}} = ["{{{name}}}-types", "_api"{{{apiFeatureDeps}}}]
 {{{name}}}-types = [{{{typesDeps}}}]
 {{/apiFeatureGroups}}
 {{/apiFeatures}}
+{{#splitCrates}}
+
+{{>split_workspace}}
+{{/splitCrates}}

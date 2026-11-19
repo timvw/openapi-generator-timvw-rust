@@ -16,6 +16,9 @@ use super::{Error, configuration{{#x-rust-import-content-type}}, ContentType{{/x
 {{#supportMultipleResponses}}
 {{#operations}}
 {{#operation}}
+{{#vendorExtensions.x-rust-split-crate}}
+// @timvw-rust-split-crate {{{.}}}
+{{/vendorExtensions.x-rust-split-crate}}
 {{#vendorExtensions.x-rust-operation-cfg}}
 #[cfg({{{.}}})]
 {{/vendorExtensions.x-rust-operation-cfg}}
@@ -39,6 +42,9 @@ pub enum {{{operationIdCamelCase}}}Success {
 {{/supportMultipleResponses}}
 {{#operations}}
 {{#operation}}
+{{#vendorExtensions.x-rust-split-crate}}
+// @timvw-rust-split-crate {{{.}}}
+{{/vendorExtensions.x-rust-split-crate}}
 {{^vendorExtensions.x-rust-content-variant}}
 {{#vendorExtensions.x-rust-operation-cfg}}
 #[cfg({{{.}}})]
@@ -78,6 +84,9 @@ pub enum {{{operationIdCamelCase}}}Error {
 
 {{#operations}}
 {{#operation}}
+{{#vendorExtensions.x-rust-split-crate}}
+// @timvw-rust-split-crate {{{.}}}
+{{/vendorExtensions.x-rust-split-crate}}
 {{#vendorExtensions.x-rust-operation-cfg}}
 #[cfg({{{.}}})]
 {{/vendorExtensions.x-rust-operation-cfg}}
@@ -91,6 +100,9 @@ pub enum {{{operationIdCamelCase}}}Error {
 {{/operation}}
 {{/operations}}
 {{#webhookReexport}}
+{{#webhookReexportCrate}}
+// @timvw-rust-split-crate {{{.}}}
+{{/webhookReexportCrate}}
 {{#webhookReexportCfg}}
 #[cfg({{{.}}})]
 {{/webhookReexportCfg}}

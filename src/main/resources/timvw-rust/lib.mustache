@@ -4,12 +4,14 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
+{{^splitCrates}}
 {{^modelsCrate}}
 extern crate serde_repr;
 {{/modelsCrate}}
 extern crate serde;
 extern crate serde_json;
 extern crate url;
+{{/splitCrates}}
 
 {{#clientTarget}}
 {{#clientCfg}}

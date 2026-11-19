@@ -3,7 +3,9 @@
 `timvw-rust` renders a client by default. The `targets` option renders the models alone, a server on
 [axum](https://docs.rs/axum), or a client and a server in one crate. Both sides use the same models, so a server
 generated from a spec writes the JSON its client reads. The design is in
-[targets and a server](../design/targets-and-server.md); this guide covers what is implemented (its slices 1 and 2).
+[targets and a server](../design/targets-and-server.md); this guide covers what is implemented (its slices 1 to 3).
+[openai-mock-server](https://github.com/genai-rs/openai-mock-server) is a server generated this way: a mock of the
+OpenAI API, generated from OpenAI's spec, whose router serves every operation of that spec.
 
 ## Choosing the targets
 
@@ -348,3 +350,7 @@ and the server share their types and Cargo features.
   "apiFeaturesFile": "scripts/api-features.yaml"
 }
 ```
+
+A server crate can also generate its own models from the same spec, without `modelsCrate`: the spec is then what the
+client and the server share. [openai-mock-server](https://github.com/genai-rs/openai-mock-server) does this, with the
+server and its models as modules of one crate, in a repository of its own.

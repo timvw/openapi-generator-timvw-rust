@@ -3,7 +3,7 @@
 `timvw-rust` renders a client by default. The `targets` option renders the models alone, a server on
 [axum](https://docs.rs/axum), or a client and a server in one crate. Both sides use the same models, so a server
 generated from a spec writes the JSON its client reads. The design is in
-[targets and a server](../design/targets-and-server.md); this guide covers what is implemented (its slices 1 to 3, and validation and authentication of slice 4).
+[targets and a server](../design/targets-and-server.md); this guide covers what is implemented (its slices 1 to 4).
 [openai-mock-server](https://github.com/genai-rs/openai-mock-server) is a server generated this way: a mock of the
 OpenAI API, generated from OpenAI's spec, whose router serves every operation of that spec.
 
@@ -39,13 +39,14 @@ option or add 'client' to targets
 
 | Applies to | Options |
 | --- | --- |
-| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `validateMethods`, `apiFeatures`, `apiFeaturesFile`, `pruneAllHelpers`, `unionPlanFile`, `preprocessedSpecFile`, the crate options |
-| The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `multipartHelper`, `userAgentFromPackage`, `apiLintAllows`, `webhookModuleReexport` |
-| The server | `serverFramework` (only `axum`), `serverDefaultMethods`, `serverValidation`, `serverAuthentication`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
+| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `validateMethods`, `apiFeatures`, `apiFeaturesFile`, `pruneAllHelpers`, `unionPlanFile`, `preprocessedSpecFile`, `runtimeVersion`, `runtimePath`, the crate options |
+| The client | `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `multipartHelper`, `userAgentFromPackage`, `apiLintAllows`, `webhookModuleReexport` |
+| The server | `serverFramework` (only `axum`), `serverDefaultMethods`, `serverValidation`, `serverAuthentication`, `serverWebhooks`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
 
 `validateMethods` generates the models' `Validate`, which a server's validation calls, so it belongs to the
 models. `webhookModule` names the group (and Cargo feature) of the webhook payload models, so it belongs to the models
-too; `webhookModuleReexport` places the client's webhook functions. The server does not send webhooks yet.
+too; `webhookModuleReexport` places the client's webhook functions. The server sends webhooks with
+[`serverWebhooks`](#webhooks-serverwebhooks).
 `deepObjectQueryParameters` and `resetQueryParameterStyle` decide how query parameters go on the wire, so a server
 takes the client's values to read what that client sends.
 
@@ -370,6 +371,41 @@ scheme. Implement it to answer as the real API does. The credentials of `mutualT
 The design, and what LiteLLM, Bifrost and openapi-generator's `rust-axum` do, is in
 [authentication for the server](../design/server-authentication.md).
 
+### Webhooks (`serverWebhooks`)
+
+With [`serverWebhooks`](../options.md#serverwebhooks), `server::webhooks` sends the webhooks of the spec (its
+`webhooks`, OpenAPI 3.1) to the endpoints receivers registered.
+
+- **`Webhook`** has a variant per webhook, holding its payload model: `itemCreated` is `Webhook::ItemCreated(Item)`.
+  `Webhook::name()` gives the spec's name.
+- **`WebhookEndpoint::new(url, client)`** is a receiver: its URL and the `timvw_rust_runtime::Client` to send with.
+  `.events([...])` names the webhooks it wants; without it, it wants all of them.
+- **`send(&endpoint, &webhook)`** writes the payload's JSON once and `POST`s it through the endpoint's client. It
+  returns `Delivery::Delivered(status)` for a `2xx` and `Delivery::NotWanted` for a webhook the endpoint does not
+  want. A `SendError` says why not: the JSON, the request, or a status that is not `2xx`.
+
+The client's layers do the rest:
+
+- **Signing:** `StandardWebhooksLayer`, re-exported in `server::webhooks`, signs as Standard Webhooks, as OpenAI does
+  (`webhook-id`, `webhook-timestamp`, `webhook-signature`). A client without it sends unsigned. Another scheme is
+  another layer.
+- **Retries:** the client's retries resend the same signed request (`429`, `5xx`, failed connections).
+- **Later:** sending again over hours or days needs a queue, and is the application's.
+
+<!-- not compiled: a sketch for a crate generated from OpenAI's spec -->
+```rust
+use server::webhooks::{send, Client, StandardWebhooksLayer, Webhook, WebhookEndpoint, WebhookSecret};
+
+let secret = WebhookSecret::new(&std::env::var("WEBHOOK_SECRET")?)?;
+let client = Client::default().layer(StandardWebhooksLayer::new(secret));
+let endpoint = WebhookEndpoint::new("https://receiver.example.com/hooks", client).events(["response_completed"]);
+send(&endpoint, &Webhook::ResponseCompleted(payload)).await?;
+```
+
+A receiver checks a webhook with `server::webhooks::verify` (from `timvw_rust_runtime::webhooks`) against the raw
+body, before decoding it. The [design](../design/server-webhooks.md) says why sending is one delivery and signing is
+a layer.
+
 ### Validation (`serverValidation`)
 
 With [`serverValidation`](../options.md#servervalidation), a request that decodes is checked against the spec's
@@ -422,7 +458,7 @@ Left out for now: a request body that is both a multipart and an urlencoded form
 text form (an object that is not deepObject; [`deepObjectQueryParameters`](../options.md#deepobjectqueryparameters)
 makes it one), and a path parameter that is not a whole path segment (`/files/{name}.json`). Two operations with the
 same path, method and fixed query cannot be told apart: the second is left out. Every operation of the OpenAI spec is
-served. Webhooks are the client's: the server does not send them yet, the last part of the design's slice 4.
+served. The server sends webhooks with [`serverWebhooks`](#webhooks-serverwebhooks); it does not receive them.
 
 ## Cargo features
 

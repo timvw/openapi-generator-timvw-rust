@@ -25,6 +25,9 @@ mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed i
   OpenAI spec is served.
 - **Bodies are read whole.** A request body, a multipart form included, is held in memory before the implementation
   is called, within axum's body limit; a response can stream (`EventStream`, `Binary::stream`).
+- **Webhooks are sent once.** `serverWebhooks` sends a webhook through the endpoint's client, with its short
+  retries; sending again over hours or days, as OpenAI does, needs a queue and is the application's. The server does
+  not receive webhooks.
 - **Not every security scheme is read.** With `serverAuthentication`, the credentials of `mutualTLS` and of `http`
   schemes other than `bearer` and `basic` are not read; their requirements still reach the `Authenticator`
   ([guide](guides/server.md#authentication-serverauthentication)).

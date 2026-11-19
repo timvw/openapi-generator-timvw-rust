@@ -1,5 +1,6 @@
 # Guide: migrating
 
+- [Webhook functions send to `base_path`](#webhook-functions-send-to-base_path) (0.40): a client's webhook functions `POST` to the endpoint's whole URL.
 - [Unix timestamps are `jiff::Timestamp`s](#unix-timestamps-are-jifftimestamps) (0.38): properties of `format: unixtime`, with `dateLibrary=jiff`.
 - [From chrono to jiff](#from-chrono-to-jiff): `dateLibrary` (0.36) replaces `useChrono` and `dateTimeLibrary`, and jiff is the default.
 - [From 0.29 to 0.30](#from-029-to-030): a required nullable `stringProperties` property is an `Option<String>`; unknown `stringProperties`/`fileProperties` entries fail generation; the new option `optionalProperties`.
@@ -16,6 +17,25 @@
 
 The "after" examples use [`docs_examples.yaml`](../../src/test/resources/docs_examples.yaml), generated as
 `my_client`, and are compiled by the tests. The "before" examples are code of the previous release and are not.
+
+## Webhook functions send to `base_path`
+
+A webhook of the spec (`webhooks`, OpenAPI 3.1) is a client function, such as `item_created`. It sent to
+`{base_path}/{webhook name}` (`https://receiver.example.com/hooks/itemCreated`). It now sends to `base_path` itself,
+because a receiver registers one whole URL for its webhooks, as OpenAI's dashboard does.
+
+- **Before:** with `base_path` set to the receiver's base, the function appended the webhook's name.
+- **After:** set `base_path` to the endpoint's URL. A receiver that relied on the name in the path gets it in the
+  payload instead, or the URL names it:
+
+<!-- not compiled: a sketch -->
+```rust
+configuration.base_path = "https://receiver.example.com/hooks/itemCreated".to_owned(); // the whole endpoint
+```
+
+To sign what they send as Standard Webhooks, give `configuration.client` a layer:
+`Client::default().layer(timvw_rust_runtime::webhooks::StandardWebhooksLayer::new(secret))`. The runtime needs its
+`webhooks` feature for that (`timvw-rust-runtime` 0.4.2).
 
 ## Unix timestamps are `jiff::Timestamp`s
 

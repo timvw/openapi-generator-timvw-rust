@@ -2,9 +2,9 @@
 
 Status: slices 1 and 2 are implemented (`targets`, the Cargo features `client` and `server`, and an axum server for
 JSON, text, binary and multipart bodies and server-sent events; see the [server guide](../guides/server.md)).
-Slice 3 is implemented too, as [openai-mock-server](https://github.com/genai-rs/openai-mock-server). Of slice 4,
-validation (`serverValidation`) and [authentication](server-authentication.md) (`serverAuthentication`) are
-implemented; [webhooks sent by the server](server-webhooks.md) are proposed.
+Slice 3 is implemented too, as [openai-mock-server](https://github.com/genai-rs/openai-mock-server). Slice 4 is
+implemented too: validation (`serverValidation`), [authentication](server-authentication.md)
+(`serverAuthentication`) and [webhooks sent by the server](server-webhooks.md) (`serverWebhooks`).
 
 `timvw-rust` renders an HTTP client and its models. This page proposes a `targets` option that picks what the
 generator renders: the models, a client, a server, or more than one of them in one crate. It also describes the
@@ -198,8 +198,8 @@ let app: axum::Router = server::router(MyImpl::new());
    - authentication (implemented): `serverAuthentication` reads the credentials of the spec's security schemes and
      gives them to an `Authenticator`, whose claims an operation with security gets as a parameter; designed in
      [authentication for the server](server-authentication.md);
-   - proposed: webhooks sent by the server, [designed](server-webhooks.md) as `serverWebhooks`: typed events, signed
-     by a Standard Webhooks layer of `timvw-rust-runtime`, which the client's webhook functions use too.
+   - webhooks (implemented): `serverWebhooks` sends typed events through a `timvw-rust-runtime` client, signed by its
+     Standard Webhooks layer, which the client's webhook functions use too ([design](server-webhooks.md)).
 
 ## Open questions
 

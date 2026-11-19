@@ -16,6 +16,10 @@
 //! [`ErrorHandler::invalid_request`] (a `400` with a JSON error body by default, a `415` for a body of a media type
 //! the operation does not take) without calling the implementation; an implementation's error by
 //! [`ErrorHandler::server_error`] (a `500`).
+{{#serverSendsWebhooks}}
+//!
+//! With `serverWebhooks`, [`webhooks`] sends the spec's webhooks to the endpoints receivers registered.
+{{/serverSendsWebhooks}}
 {{#serverAuthentication}}
 //!
 //! With `serverAuthentication`, an operation with security reads the credentials of its schemes and gives them to
@@ -493,6 +497,8 @@ fn basic(credentials: &str) -> Option<(String, String)> {
 {{#-first}}
 /// `pattern` (`serverValidation`): the string contains a match. A pattern `regex` could not compile is `None` and not
 /// checked.
+// with API features, the groups that check a pattern may all be off
+#[allow(dead_code)]
 fn pattern(
     value: &str,
     regex: &std::sync::LazyLock<Option<regex::Regex>>,
@@ -513,6 +519,7 @@ fn pattern(
 }
 
 {{/-first}}
+#[allow(dead_code)]
 static {{{name}}}: std::sync::LazyLock<Option<regex::Regex>> = std::sync::LazyLock::new(|| regex::Regex::new({{{literal}}}).ok());
 {{#-last}}
 
@@ -1687,3 +1694,160 @@ pub mod {{{module}}} {
     {{/operations}}
 }
 {{/serverModules}}
+{{#serverSendsWebhooks}}
+
+/// The webhooks of the spec, sent to the endpoints receivers registered (`serverWebhooks`).
+///
+/// ```ignore
+/// use server::webhooks::{send, Client, StandardWebhooksLayer, Webhook, WebhookEndpoint, WebhookSecret};
+///
+/// // the layer signs as Standard Webhooks; a client without it sends unsigned
+/// let client = Client::default().layer(StandardWebhooksLayer::new(WebhookSecret::new("whsec_...")?));
+/// let endpoint = WebhookEndpoint::new("https://receiver.example.com/hooks", client);
+/// send(&endpoint, &Webhook::...(payload)).await?;
+/// ```
+///
+/// A delivery is one `POST` of the payload's JSON through the endpoint's client, whose layers sign it and retry it
+/// (`429`, `5xx`, failed connections). Sending again later, over hours or days, is the application's.
+pub mod webhooks {
+    #![allow(clippy::large_enum_variant)]
+
+    #[allow(unused_imports)]
+    use crate::models;
+
+    pub use timvw_rust_runtime::webhooks::{verify, StandardWebhooksLayer, WebhookError, WebhookSecret};
+    pub use timvw_rust_runtime::Client;
+
+    /// A webhook of the spec, with its payload. It is sent as the payload's JSON.
+    #[derive(Clone, Debug, serde::Serialize)]
+    #[serde(untagged)]
+    pub enum Webhook {
+        {{#serverWebhookEvents}}
+        /// `{{{name}}}`{{#doc}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/doc}}
+        {{#cfg}}
+        #[cfg({{{.}}})]
+        {{/cfg}}
+        {{{variant}}}({{{type}}}),
+        {{/serverWebhookEvents}}
+    }
+
+    impl Webhook {
+        /// The webhook's name in the spec.
+        pub fn name(&self) -> &'static str {
+            match *self {
+                {{#serverWebhookEvents}}
+                {{#cfg}}
+                #[cfg({{{.}}})]
+                {{/cfg}}
+                Webhook::{{{variant}}}(_) => "{{{name}}}",
+                {{/serverWebhookEvents}}
+            }
+        }
+    }
+
+    /// Where a receiver wants webhooks: its URL, the client to send with (with the layers that sign and retry), and
+    /// the webhooks it wants (every one when none are named).
+    #[derive(Clone)]
+    pub struct WebhookEndpoint {
+        url: String,
+        client: Client,
+        events: Vec<String>,
+    }
+
+    impl WebhookEndpoint {
+        /// The endpoint at `url`, sent to with `client`, for every webhook.
+        pub fn new(url: impl Into<String>, client: Client) -> Self {
+            WebhookEndpoint { url: url.into(), client, events: Vec::new() }
+        }
+
+        /// Only the webhooks of these names (as [`Webhook::name`] gives them).
+        pub fn events<I, S>(mut self, events: I) -> Self
+        where
+            I: IntoIterator<Item = S>,
+            S: Into<String>,
+        {
+            self.events = events.into_iter().map(Into::into).collect();
+            self
+        }
+
+        /// Its URL.
+        pub fn url(&self) -> &str {
+            &self.url
+        }
+
+        /// Whether it wants `webhook`.
+        pub fn wants(&self, webhook: &Webhook) -> bool {
+            self.events.is_empty() || self.events.iter().any(|event| event == webhook.name())
+        }
+    }
+
+    impl std::fmt::Debug for WebhookEndpoint {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("WebhookEndpoint").field("url", &self.url).field("events", &self.events).finish_non_exhaustive()
+        }
+    }
+
+    /// What became of a webhook sent to an endpoint.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Delivery {
+        /// The endpoint answered with this `2xx`.
+        Delivered(http::StatusCode),
+        /// The endpoint does not want this webhook: nothing was sent.
+        NotWanted,
+    }
+
+    /// Why a webhook was not delivered.
+    #[derive(Debug)]
+    #[non_exhaustive]
+    pub enum SendError {
+        /// The payload could not be written as JSON.
+        Json(serde_json::Error),
+        /// The request failed (after the client's retries): no answer, or a layer refused it.
+        Request(timvw_rust_runtime::Error),
+        /// The endpoint answered with a status that is not `2xx` (after the client's retries).
+        Status(http::StatusCode),
+    }
+
+    impl std::fmt::Display for SendError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                SendError::Json(error) => write!(f, "the webhook could not be written as JSON: {error}"),
+                SendError::Request(error) => write!(f, "the webhook could not be sent: {error}"),
+                SendError::Status(status) => write!(f, "the endpoint answered the webhook with {status}"),
+            }
+        }
+    }
+
+    impl std::error::Error for SendError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            match self {
+                SendError::Json(error) => Some(error),
+                SendError::Request(error) => Some(error),
+                SendError::Status(_) => None,
+            }
+        }
+    }
+
+    /// Sends `webhook` to `endpoint`, unless it does not want it: one `POST` of its JSON through the endpoint's client.
+    pub async fn send(endpoint: &WebhookEndpoint, webhook: &Webhook) -> Result<Delivery, SendError> {
+        if !endpoint.wants(webhook) {
+            return Ok(Delivery::NotWanted);
+        }
+        let body = serde_json::to_vec(webhook).map_err(SendError::Json)?;
+        let response = endpoint
+            .client
+            .request(timvw_rust_runtime::Method::POST, &endpoint.url)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(timvw_rust_runtime::Body::from(body))
+            .send()
+            .await
+            .map_err(SendError::Request)?;
+        let status = response.status();
+        if status.is_success() {
+            Ok(Delivery::Delivered(status))
+        } else {
+            Err(SendError::Status(status))
+        }
+    }
+}
+{{/serverSendsWebhooks}}

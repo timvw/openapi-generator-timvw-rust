@@ -205,6 +205,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String RUST_VERSION = "1.88";
     /** The {@code timvw-rust-runtime} release this generator renders for: the default of {@link #RUNTIME_VERSION}. */
     public static final String DEFAULT_RUNTIME_VERSION = "0.4";
+    /** The first {@code timvw-rust-runtime} release with the {@code webhooks} feature, which serverWebhooks needs. */
+    static final String WEBHOOKS_RUNTIME_VERSION = "0.4.2";
     /**
      * A path dependency on {@code timvw-rust-runtime} next to the version, for testing
      * against an unreleased runtime; defaults to the system property {@code timvw-rust.runtimePath}.
@@ -311,6 +313,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     static final String WEBHOOK_REEXPORT_KEY = "webhookReexport";
     /** Key under which the api mod template finds the webhook module files to declare. */
     static final String WEBHOOK_MODULES_KEY = "webhookModules";
+    /** Marks a webhook operation: its function sends to {@code base_path} itself, the receiver's endpoint. */
+    static final String WEBHOOK_EXTENSION = "x-rust-webhook";
 
     /** What the generator renders: a list from {@code models}, {@code client} and {@code server} (see {@link Targets}). */
     public static final String TARGETS = "targets";
@@ -328,6 +332,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * {@code Authenticator} before decoding it; an operation with security gets the claims.
      */
     public static final String SERVER_AUTHENTICATION = "serverAuthentication";
+    /**
+     * The server sends the spec's webhooks: {@code server::webhooks}, a {@code Webhook} per webhook with its payload,
+     * sent to a {@code WebhookEndpoint} through a {@code timvw-rust-runtime} client.
+     */
+    public static final String SERVER_WEBHOOKS = "serverWebhooks";
     /**
      * With the server target: the crate whose models the server uses, instead of rendering its own (the client crate
      * generated from the same spec with the same model options).
@@ -456,6 +465,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private ValidateRules.RequestChecks requestChecks;
     /** With the server target: requests are authenticated with the spec's security schemes. */
     private boolean serverAuthentication;
+    /** With the server target: the server sends the spec's webhooks. */
+    private boolean serverWebhooks;
     /** With {@code serverAuthentication}: the security schemes, by name. */
     private Map<String, ServerAuth.Scheme> authSchemes;
     /** With the server target: an operation takes a multipart form. */
@@ -616,6 +627,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 "With the server target: every trait method has a default that answers 501 Not Implemented, so an "
                         + "implementation (a mock, a partial server) implements only the operations it serves",
                 false));
+        cliOptions.add(CliOption.newBoolean(SERVER_WEBHOOKS,
+                "With the server target: send the spec's webhooks (server::webhooks), through a timvw-rust-runtime "
+                        + "client, signed by its layers (Standard Webhooks)", false));
         cliOptions.add(CliOption.newBoolean(SERVER_AUTHENTICATION,
                 "With the server target: read the credentials of the spec's security schemes and authenticate each "
                         + "request with an Authenticator before decoding it; an operation with security gets the claims",
@@ -958,6 +972,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
         serverAuthentication = additionalProperties.containsKey(SERVER_AUTHENTICATION)
                 && convertPropertyToBooleanAndWriteBack(SERVER_AUTHENTICATION);
         additionalProperties.put(SERVER_AUTHENTICATION, serverAuthentication);
+        serverWebhooks = additionalProperties.containsKey(SERVER_WEBHOOKS)
+                && convertPropertyToBooleanAndWriteBack(SERVER_WEBHOOKS);
 
         modelsCrate();
         additionalProperties.put(SERVER_DEFAULT_METHODS, additionalProperties.containsKey(SERVER_DEFAULT_METHODS)
@@ -1405,6 +1421,27 @@ public class TimvwRustCodegen extends RustCodegenBase {
             // features (with apiFeatures, the groups whose models hold an upload enable it)
             objs.put(UploadParams.RUNTIME_REQUIRED, true);
         }
+        if (serverWebhooks) {
+            List<Map<String, Object>> events = ServerWebhooks.plan(openAPI, this::getTypeDeclaration,
+                    apiFeatures ? apiFeaturesPlan()::modelCfg : null,
+                    msg -> LOGGER.warn("{}: server: {}", GENERATOR_NAME, msg));
+            if (events.isEmpty()) {
+                LOGGER.warn("{}: {}: the spec has no webhook to send; server::webhooks is not generated",
+                        GENERATOR_NAME, SERVER_WEBHOOKS);
+            } else {
+                objs.put("serverWebhookEvents", events);
+                objs.put("serverSendsWebhooks", true);
+                // a path dependency is whatever the path holds: its version may not be released yet
+                if (DEFAULT_RUNTIME_VERSION.equals(String.valueOf(additionalProperties.get(RUNTIME_VERSION)))
+                        && additionalProperties.get(RUNTIME_PATH) == null) {
+                    objs.put(RUNTIME_VERSION, WEBHOOKS_RUNTIME_VERSION);
+                }
+                if (!targets.features()) {
+                    // the server sends through the runtime whatever the features: no group enables it
+                    objs.put(UploadParams.RUNTIME_REQUIRED, true);
+                }
+            }
+        }
         if (apiFeatures) {
             describeApiFeatures(objs);
         }
@@ -1415,7 +1452,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
             LOGGER.info("{}: {}: no operation has a text/event-stream response, so sse.rs is not written",
                     GENERATOR_NAME, TYPED_EVENT_STREAMS);
         }
-        objs.put(RUNTIME_FEATURES, runtimeFeatures(objs));
+        objs.put(RUNTIME_FEATURES, runtimeFeatures(objs, targets.client()));
         describeTargets(objs);
         return objs;
     }
@@ -1428,7 +1465,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
         boolean runtimeRequired = objs.containsKey(UploadParams.RUNTIME_REQUIRED)
                 || (!apiFeatures && modelsUseRuntime);
         // the client's runtime: optional with apiFeatures or the target features, unless an ungated model needs it
-        objs.put("runtimeDependency", targets.client() || (modelsUseRuntime && !externalModels));
+        // a server that sends webhooks needs the runtime: required alone, the `server` feature enables it with both
+        // targets
+        boolean sends = Boolean.TRUE.equals(objs.get("serverSendsWebhooks"));
+        objs.put("runtimeDependency", targets.client() || (modelsUseRuntime && !externalModels) || sends);
         objs.put("runtimeOptional", (targets.client() ? apiFeatures || targets.features() : apiFeatures)
                 && !runtimeRequired);
         // `_api` (apiFeatures) enables the runtime when it is the client's alone; the `client` feature does otherwise
@@ -1579,8 +1619,16 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * for none: {@code fs} when a file parameter takes a path ({@code Upload::path}; the runtime leaves it out on
      * WebAssembly), {@code time} for the idle timeout of typed event streams.
      */
-    private static String runtimeFeatures(Map<String, Object> objs) {
+    private static String runtimeFeatures(Map<String, Object> objs, boolean client) {
         List<String> features = new ArrayList<>();
+        if (Boolean.TRUE.equals(objs.get("serverSendsWebhooks"))) {
+            features.add("\"webhooks\"");
+            if (!client) {
+                // a server alone has no crate features for the client's TLS and retries: the runtime's defaults
+                features.add("\"rustls\"");
+                features.add("\"retry\"");
+            }
+        }
         if (Boolean.TRUE.equals(objs.get(UploadParams.RUNTIME_FS))) {
             features.add("\"fs\"");
         }
@@ -2414,6 +2462,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
     @Override
     public WebhooksMap postProcessWebhooksWithModels(WebhooksMap objs, List<ModelMap> allModels) {
         objs = super.postProcessWebhooksWithModels(objs, allModels);
+        if (objs.getWebhooks() != null && objs.getWebhooks().getOperation() != null) {
+            // a webhook goes to the endpoint the receiver registered: base_path is that whole URL
+            for (CodegenOperation op : objs.getWebhooks().getOperation()) {
+                op.vendorExtensions.put(WEBHOOK_EXTENSION, true);
+            }
+        }
         if (objs.getWebhooks() != null && objs.getWebhooks().getOperation() != null) {
             Set<String> documented = new HashSet<>(documentedModels);
             documented.addAll(DocLinks.documented(allModels));

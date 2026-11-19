@@ -1,6 +1,6 @@
 # Design: webhooks sent by the server
 
-Status: proposed. This is the last part of slice 4 of [targets and a server](targets-and-server.md), after validation
+Status: implemented (`serverWebhooks`, and the runtime's `webhooks` feature). This is the last part of slice 4 of [targets and a server](targets-and-server.md), after validation
 (`serverValidation`) and [authentication](server-authentication.md) (`serverAuthentication`).
 
 An OpenAPI 3.1 spec lists the webhooks an API sends under `webhooks`: a name, a method, and the payload as a request

@@ -56,6 +56,7 @@ record Targets(boolean client, boolean server) {
         // client sends them so and the server reads them so, so they belong to every target.
         m.put(TimvwRustCodegen.SERVER_FRAMEWORK, SERVER);
         m.put(TimvwRustCodegen.SERVER_VALIDATION, SERVER);
+        m.put(TimvwRustCodegen.SERVER_AUTHENTICATION, SERVER);
         m.put(TimvwRustCodegen.SERVER_DEFAULT_METHODS, SERVER);
         m.put(TimvwRustCodegen.MODELS_CRATE, SERVER);
         m.put(TimvwRustCodegen.MODELS_CRATE_VERSION, SERVER);

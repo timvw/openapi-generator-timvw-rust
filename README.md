@@ -93,8 +93,9 @@ built and tested against the openapi-generator version in its image tag (`-og<ve
   [guide](docs/guides/api-features.md)).
 - A crate that builds for WebAssembly (`wasm32-unknown-unknown`) as it is
   ([guide](docs/guides/http-stack.md#webassembly)).
-- Optionally an [axum](https://docs.rs/axum) server with the same models, which can check requests against the spec's
-  validation keywords (`serverValidation`), or the models alone (`targets`, [guide](docs/guides/server.md)). [openai-mock-server](https://github.com/genai-rs/openai-mock-server) is one,
+- Optionally an [axum](https://docs.rs/axum) server with the same models, which can authenticate requests with the spec's
+  security schemes (`serverAuthentication`) and check them against its validation keywords (`serverValidation`), or
+  the models alone (`targets`, [guide](docs/guides/server.md)). [openai-mock-server](https://github.com/genai-rs/openai-mock-server) is one,
   generated from OpenAI's spec.
 
 ## Documentation
@@ -114,7 +115,7 @@ built and tested against the openapi-generator version in its image tag (`-og<ve
 | [Type mapping](docs/type-mapping.md), [mapping rules](docs/mapping/README.md) | what each OpenAPI construct becomes: one overview table, and the rules per specification object, each with its tests |
 | [Known limitations](docs/limitations.md) | what the generator and the runtime do not do yet |
 | [Comparison](docs/comparison/README.md) | stock `-g rust`, timvw-rust and progenitor side by side on one spec |
-| [Decisions](docs/decisions.md), design notes: [decoding and ownership](docs/design/partial-decoding-and-ownership.md), [targets and a server](docs/design/targets-and-server.md) (slices 1 to 3 implemented), [a mock OpenAI server](docs/design/openai-mock-server.md) (implemented, as [openai-mock-server](https://github.com/genai-rs/openai-mock-server)) | the mapping changes of 0.21, each with what others do; design notes with measurements, proposals and what was built |
+| [Decisions](docs/decisions.md), design notes: [decoding and ownership](docs/design/partial-decoding-and-ownership.md), [targets and a server](docs/design/targets-and-server.md) (slices 1 to 3 implemented, and of slice 4 validation and authentication), [a mock OpenAI server](docs/design/openai-mock-server.md) (implemented, as [openai-mock-server](https://github.com/genai-rs/openai-mock-server)), [authentication for the server](docs/design/server-authentication.md) | the mapping changes of 0.21, each with what others do; design notes with measurements, proposals and what was built |
 | [History](docs/history.md) | how the generator got here, release by release |
 | [Development](docs/development.md), [releasing](docs/releasing.md) | building and testing, CI, the layout; releasing the generator and the runtime |
 

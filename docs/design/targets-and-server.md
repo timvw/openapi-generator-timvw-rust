@@ -3,7 +3,8 @@
 Status: slices 1 and 2 are implemented (`targets`, the Cargo features `client` and `server`, and an axum server for
 JSON, text, binary and multipart bodies and server-sent events; see the [server guide](../guides/server.md)).
 Slice 3 is implemented too, as [openai-mock-server](https://github.com/genai-rs/openai-mock-server). Of slice 4,
-validation is implemented (`serverValidation`); authentication and webhooks sent by the server are proposed.
+validation (`serverValidation`) and [authentication](server-authentication.md) (`serverAuthentication`) are
+implemented; webhooks sent by the server are proposed.
 
 `timvw-rust` renders an HTTP client and its models. This page proposes a `targets` option that picks what the
 generator renders: the models, a client, a server, or more than one of them in one crate. It also describes the
@@ -148,7 +149,7 @@ let app: axum::Router = server::router(MyImpl::new());
 | `server-mod.mustache`, `server-route.mustache`: `new(api_impl) -> Router` | keep; one `router` for the crate, routes gated per group |
 | `server-operation-validate.mustache`: `validator`, on `spawn_blocking` by default | the models' own `Validate` (`validateMethods`), inline, behind `serverValidation` |
 | `models.mustache`, `types.mustache` | dropped: our models, or `modelsCrate` |
-| `authorization.mustache`: `Claims` per scheme | later: slice 1 passes the headers and leaves authentication to axum middleware |
+| `authorization.mustache`: `Claims` per scheme | one `Authenticator` with `type Claims` (`serverAuthentication`, [design](server-authentication.md)); without it, the headers are passed on for axum middleware |
 | `method`, `host`, `cookies` on every method | dropped (extractors) |
 | `frunk` conversion feature, analytics events | dropped |
 
@@ -194,7 +195,10 @@ let app: axum::Router = server::router(MyImpl::new());
    - validation (implemented): `serverValidation` checks a request that decodes with the models' `Validate`, and
      the parameters' and form fields' own keywords with the same checks, before the implementation is called; a
      request that breaks one is a `400` listing every error;
-   - later: authentication schemes, and webhooks sent by the server.
+   - authentication (implemented): `serverAuthentication` reads the credentials of the spec's security schemes and
+     gives them to an `Authenticator`, whose claims an operation with security gets as a parameter; designed in
+     [authentication for the server](server-authentication.md);
+   - later: webhooks sent by the server.
 
 ## Open questions
 

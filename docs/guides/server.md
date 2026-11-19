@@ -3,7 +3,7 @@
 `timvw-rust` renders a client by default. The `targets` option renders the models alone, a server on
 [axum](https://docs.rs/axum), or a client and a server in one crate. Both sides use the same models, so a server
 generated from a spec writes the JSON its client reads. The design is in
-[targets and a server](../design/targets-and-server.md); this guide covers what is implemented (its slices 1 to 3).
+[targets and a server](../design/targets-and-server.md); this guide covers what is implemented (its slices 1 to 3, and validation and authentication of slice 4).
 [openai-mock-server](https://github.com/genai-rs/openai-mock-server) is a server generated this way: a mock of the
 OpenAI API, generated from OpenAI's spec, whose router serves every operation of that spec.
 
@@ -41,7 +41,7 @@ option or add 'client' to targets
 | --- | --- |
 | The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `validateMethods`, `apiFeatures`, `apiFeaturesFile`, `pruneAllHelpers`, `unionPlanFile`, `preprocessedSpecFile`, the crate options |
 | The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `multipartHelper`, `userAgentFromPackage`, `apiLintAllows`, `webhookModuleReexport` |
-| The server | `serverFramework` (only `axum`), `serverDefaultMethods`, `serverValidation`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
+| The server | `serverFramework` (only `axum`), `serverDefaultMethods`, `serverValidation`, `serverAuthentication`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
 
 `validateMethods` generates the models' `Validate`, which a server's validation calls, so it belongs to the
 models. `webhookModule` names the group (and Cargo feature) of the webhook payload models, so it belongs to the models
@@ -297,6 +297,79 @@ impl server::ChatApi for Mock {
 impl server::FilesApi for Mock {} // every operation: 501
 ```
 
+### Authentication (`serverAuthentication`)
+
+With [`serverAuthentication`](../options.md#serverauthentication), the server reads the credentials of the spec's
+security schemes and asks an `Authenticator` of yours who the caller is, before it decodes anything else. The traits of
+the API modules require `Authenticator`, and an operation gets what it returns, its `Claims`, where the spec gives it
+security:
+
+| `security` of the operation | Its trait method |
+| --- | --- |
+| none, or `[]` | `fn op(&self, request)`, as without the option |
+| required | `fn op(&self, claims: Self::Claims, request)` |
+| optional (`{}` among the requirements) | `fn op(&self, claims: Option<Self::Claims>, request)` |
+
+The credentials are a `Credential` per scheme of the spec, the secret in a `Secret` whose `Debug` does not show it:
+
+| Scheme | Read from | `Credential` |
+| --- | --- | --- |
+| `http` `bearer`, `oauth2`, `openIdConnect` | `Authorization: Bearer <token>` | `<Scheme>(Secret)` |
+| `http` `basic` | `Authorization: Basic <base64>` | `<Scheme> { username, password }` |
+| `apiKey` | its header, query parameter or cookie | `<Scheme>(Secret)` |
+
+`authenticate` gets the operation's name, the credentials the request has of the schemes the operation names, and its
+requirements as the spec gives them: alternatives (any one will do), each with its schemes (all of them) and their
+scopes. It returns the claims, or an `AuthError`: `unauthenticated` (`401`) or `forbidden` (`403`). For OpenAI's spec,
+whose one scheme `ApiKeyAuth` is a bearer token every operation requires:
+
+<!-- not compiled: a sketch for a crate generated from OpenAI's spec -->
+```rust
+#[derive(Clone)]
+struct Caller {
+    project: String,
+}
+
+impl server::Authenticator for Mock {
+    type Claims = Caller;
+
+    async fn authenticate(
+        &self,
+        _operation: &'static str,
+        credentials: Vec<server::Credential>,
+        _requirements: &'static [&'static [server::Requirement]],
+    ) -> Result<Caller, server::AuthError> {
+        match credentials.first() {
+            Some(server::Credential::ApiKeyAuth(key)) if key.expose_secret().starts_with("sk-") => {
+                Ok(Caller { project: "test".to_owned() })
+            }
+            _ => Err(server::AuthError::unauthenticated("Incorrect API key provided")),
+        }
+    }
+}
+
+impl server::ChatApi for Mock {
+    async fn create_chat_completion(
+        &self,
+        caller: Caller,
+        request: server::chat_api::CreateChatCompletionRequest,
+    ) -> Result<server::chat_api::CreateChatCompletionResponse, server::ServerError> {
+        todo!("answer for {}", caller.project)
+    }
+}
+```
+
+A request without any credential for an operation that requires one is a `401` without calling `authenticate`; for an
+operation whose security is optional it gets `None`, and bad credentials are a `401` there too. Authentication comes
+first: a request that is not authenticated is a `401` or `403` even when its parameters or body would not decode. The
+answer is `Authenticator::unauthorized`'s: by default the error's status, the JSON body
+`{"error": {"message": "..."}}`, and on a `401` `WWW-Authenticate: Bearer` (or `Basic`) when the spec has such a
+scheme. Implement it to answer as the real API does. The credentials of `mutualTLS` and `http` schemes other than
+`bearer` and `basic` are not read (a warning says so); their requirements are still passed on.
+
+The design, and what LiteLLM, Bifrost and openapi-generator's `rust-axum` do, is in
+[authentication for the server](../design/server-authentication.md).
+
 ### Validation (`serverValidation`)
 
 With [`serverValidation`](../options.md#servervalidation), a request that decodes is checked against the spec's
@@ -349,7 +422,7 @@ Left out for now: a request body that is both a multipart and an urlencoded form
 text form (an object that is not deepObject; [`deepObjectQueryParameters`](../options.md#deepobjectqueryparameters)
 makes it one), and a path parameter that is not a whole path segment (`/files/{name}.json`). Two operations with the
 same path, method and fixed query cannot be told apart: the second is left out. Every operation of the OpenAI spec is
-served. Webhooks are the client's: the server does not send them. Authentication is the next slice of the design.
+served. Webhooks are the client's: the server does not send them yet, the last part of the design's slice 4.
 
 ## Cargo features
 

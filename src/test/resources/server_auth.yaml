@@ -1,0 +1,155 @@
+openapi: 3.0.3
+info:
+  title: Server authentication
+  description: >-
+    serverAuthentication: the server reads the credentials of the spec's security schemes and authenticates a request
+    before decoding it; an operation with security gets the claims.
+  version: 1.0.0
+security:
+  - bearerAuth: []
+paths:
+  /me:
+    get:
+      operationId: getMe
+      summary: The global security, bearerAuth, required.
+      tags: [Auth]
+      responses:
+        '200':
+          description: Who the caller is.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /health:
+    get:
+      operationId: health
+      summary: No security.
+      tags: [Auth]
+      security: []
+      responses:
+        '200':
+          description: Up.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /feed:
+    get:
+      operationId: getFeed
+      summary: Optional security.
+      tags: [Auth]
+      security:
+        - {}
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The feed, for whom.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /keys/{id}:
+    get:
+      operationId: getKey
+      summary: An API key in a header or in the query (OR).
+      tags: [Auth]
+      security:
+        - headerKey: []
+        - queryKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The key.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /session:
+    get:
+      operationId: getSession
+      summary: An API key in a header and a cookie (AND).
+      tags: [Auth]
+      security:
+        - headerKey: []
+          cookieKey: []
+      responses:
+        '200':
+          description: The session.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /admin:
+    post:
+      operationId: postAdmin
+      summary: An OAuth2 scope.
+      tags: [Auth]
+      security:
+        - oauth: [admin:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Note'
+      responses:
+        '200':
+          description: Done.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /basic:
+    get:
+      operationId: getBasic
+      summary: HTTP basic.
+      tags: [Auth]
+      security:
+        - basicAuth: []
+      responses:
+        '200':
+          description: Who.
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    basicAuth:
+      type: http
+      scheme: basic
+    headerKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    queryKey:
+      type: apiKey
+      in: query
+      name: api_key
+    cookieKey:
+      type: apiKey
+      in: cookie
+      name: session
+    oauth:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://example.com/token
+          scopes:
+            admin:write: Write as an administrator.
+  schemas:
+    Note:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string

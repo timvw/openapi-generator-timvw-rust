@@ -16,6 +16,13 @@
 //! [`ErrorHandler::invalid_request`] (a `400` with a JSON error body by default, a `415` for a body of a media type
 //! the operation does not take) without calling the implementation; an implementation's error by
 //! [`ErrorHandler::server_error`] (a `500`).
+{{#serverAuthentication}}
+//!
+//! With `serverAuthentication`, an operation with security reads the credentials of its schemes and gives them to
+//! [`Authenticator::authenticate`], before anything else; its trait method gets the claims (an `Option` of them when
+//! its security is optional). A request without credentials for an operation that requires them, and one that
+//! `authenticate` turns down, is answered by [`Authenticator::unauthorized`].
+{{/serverAuthentication}}
 {{#serverValidation}}
 //!
 //! With `serverValidation`, a request that decodes is validated before the implementation is called: the spec's
@@ -250,6 +257,238 @@ pub trait ErrorHandler {
     }
 }
 
+{{#serverAuthentication}}
+/// A credential's secret: its `Debug` does not show it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Secret(String);
+
+impl Secret {
+    /// The secret `value`.
+    pub fn new(value: impl Into<String>) -> Self {
+        Secret(value.into())
+    }
+
+    /// The secret itself.
+    pub fn expose_secret(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret([redacted])")
+    }
+}
+
+/// A credential of a request, a variant per security scheme of the spec.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Credential {
+    {{#serverCredentials}}
+    /// `{{{name}}}`: {{{doc}}}.
+    {{#basic}}
+    {{{variant}}} {
+        /// The user name.
+        username: String,
+        /// The password.
+        password: Secret,
+    },
+    {{/basic}}
+    {{^basic}}
+    {{{variant}}}(Secret),
+    {{/basic}}
+    {{/serverCredentials}}
+}
+
+impl Credential {
+    /// The name of its security scheme in the spec.
+    pub fn scheme(&self) -> &'static str {
+        match *self {
+            {{#serverCredentials}}
+            Credential::{{{variant}}}{{#basic}} { .. }{{/basic}}{{^basic}}(_){{/basic}} => "{{{name}}}",
+            {{/serverCredentials}}
+        }
+    }
+}
+
+/// A security scheme an operation requires, with the scopes it requires of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Requirement {
+    /// The name of the security scheme in the spec.
+    pub scheme: &'static str,
+    /// The scopes (OAuth2, OpenID Connect) or roles it requires; empty for none.
+    pub scopes: &'static [&'static str],
+}
+
+/// Why a request is not authenticated: a `401` (no or bad credentials) or a `403` (not allowed).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthError {
+    status: http::StatusCode,
+    message: String,
+}
+
+impl AuthError {
+    /// No credentials, or credentials that are not valid: a `401`.
+    pub fn unauthenticated(message: impl Into<String>) -> Self {
+        AuthError { status: http::StatusCode::UNAUTHORIZED, message: message.into() }
+    }
+
+    /// Valid credentials that may not do this (a scope they lack): a `403`.
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        AuthError { status: http::StatusCode::FORBIDDEN, message: message.into() }
+    }
+
+    /// The status: `401` or `403`.
+    pub fn status(&self) -> http::StatusCode {
+        self.status
+    }
+
+    /// What is wrong.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for AuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for AuthError {}
+
+/// Who a request comes from: called with the credentials of every operation with security, before its parameters and
+/// body are decoded. The traits of the API modules require it, so that their methods can take [`Self::Claims`].
+pub trait Authenticator: Send + Sync {
+    /// What `authenticate` knows of the caller, given to the operation.
+    type Claims: Send + 'static;
+
+    /// The claims of the caller of `operation`, from its `credentials` (of the schemes its `requirements` name, those
+    /// the request has). The requirements are the spec's: one of the alternatives (OR) must be met, with every scheme
+    /// of it (AND) and its scopes; an empty alternative makes the operation's security optional. It is called only
+    /// with at least one credential.
+    fn authenticate(
+        &self,
+        operation: &'static str,
+        credentials: Vec<Credential>,
+        requirements: &'static [&'static [Requirement]],
+    ) -> impl std::future::Future<Output = Result<Self::Claims, AuthError>> + Send;
+
+    /// The response to a request that is not authenticated. By default the error's status with the JSON body
+    /// `{"error": {"message": "..."}}`{{#serverChallenge}}, and on a `401` the header `WWW-Authenticate: {{{.}}}`{{/serverChallenge}}.
+    fn unauthorized(&self, error: AuthError) -> axum::response::Response {
+        let mut body = serde_json::Map::new();
+        body.insert("message".to_owned(), serde_json::Value::String(error.message().to_owned()));
+        let mut response = error_response(error.status(), body);
+        {{#serverChallenge}}
+        if error.status() == http::StatusCode::UNAUTHORIZED {
+            response
+                .headers_mut()
+                .insert(http::header::WWW_AUTHENTICATE, http::HeaderValue::from_static("{{{.}}}"));
+        }
+        {{/serverChallenge}}
+        response
+    }
+}
+
+/// The credentials of the request of the security schemes named in `schemes`.
+#[allow(dead_code, unused_variables, unused_mut)]
+fn credentials(headers: &http::HeaderMap, query: Option<&str>, schemes: &[&str]) -> Vec<Credential> {
+    let mut credentials = Vec::new();
+    {{#serverQueryAuth}}
+    let query = query_pairs(query);
+    {{/serverQueryAuth}}
+    {{#serverCredentials}}
+    {{#readable}}
+    if schemes.contains(&"{{{name}}}") {
+        {{{read}}}
+    }
+    {{/readable}}
+    {{/serverCredentials}}
+    credentials
+}
+
+/// The claims of a caller of an operation that requires credentials: a `401` without any.
+#[allow(dead_code)]
+async fn required_claims<A: Authenticator + ?Sized>(
+    api: &A,
+    operation: &'static str,
+    credentials: Vec<Credential>,
+    requirements: &'static [&'static [Requirement]],
+) -> Result<A::Claims, AuthError> {
+    if credentials.is_empty() {
+        return Err(AuthError::unauthenticated("this operation requires credentials, and the request has none"));
+    }
+    api.authenticate(operation, credentials, requirements).await
+}
+
+/// The claims of a caller of an operation whose security is optional: `None` without credentials.
+#[allow(dead_code)]
+async fn optional_claims<A: Authenticator + ?Sized>(
+    api: &A,
+    operation: &'static str,
+    credentials: Vec<Credential>,
+    requirements: &'static [&'static [Requirement]],
+) -> Result<Option<A::Claims>, AuthError> {
+    if credentials.is_empty() {
+        return Ok(None);
+    }
+    api.authenticate(operation, credentials, requirements).await.map(Some)
+}
+
+/// The credentials of `Authorization: <scheme> <credentials>`, the scheme in any case.
+#[allow(dead_code)]
+fn authorization<'a>(headers: &'a http::HeaderMap, scheme: &str) -> Option<&'a str> {
+    let value = headers.get(http::header::AUTHORIZATION)?.to_str().ok()?.trim();
+    let (name, credentials) = value.split_once(' ')?;
+    let credentials = credentials.trim();
+    (name.eq_ignore_ascii_case(scheme) && !credentials.is_empty()).then_some(credentials)
+}
+{{#serverCookieAuth}}
+
+/// The value of the cookie `name`.
+fn cookie<'a>(headers: &'a http::HeaderMap, name: &str) -> Option<&'a str> {
+    headers
+        .get_all(http::header::COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .find(|(key, _)| *key == name)
+        .map(|(_, value)| value)
+}
+{{/serverCookieAuth}}
+{{#serverBasicAuth}}
+
+/// The user name and password of Basic credentials (`base64(user:password)`).
+fn basic(credentials: &str) -> Option<(String, String)> {
+    let mut bytes = Vec::with_capacity(credentials.len() * 3 / 4);
+    let mut buffer = 0u32;
+    let mut bits = 0;
+    for c in credentials.bytes().filter(|c| *c != b'=') {
+        let value = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        };
+        buffer = (buffer << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            bytes.push((buffer >> bits) as u8);
+            buffer &= (1 << bits) - 1;
+        }
+    }
+    let text = String::from_utf8(bytes).ok()?;
+    let (username, password) = text.split_once(':')?;
+    Some((username.to_owned(), password.to_owned()))
+}
+{{/serverBasicAuth}}
+
+{{/serverAuthentication}}
 {{#serverPatterns}}
 {{#-first}}
 /// `pattern` (`serverValidation`): the string contains a match. A pattern `regex` could not compile is `None` and not
@@ -1114,7 +1353,7 @@ pub mod {{{module}}} {
 
     /// The operations of the `{{{module}}}` API module the server serves. Implement it, with
     /// [`ErrorHandler`](super::ErrorHandler), and serve the implementation with [`router`](super::router).
-    pub trait {{{trait}}}: Send + Sync {
+    pub trait {{{trait}}}: {{#serverAuthentication}}super::Authenticator + {{/serverAuthentication}}Send + Sync {
         {{#operations}}
         /// `{{{httpMethod}}} {{{path}}}`{{#summary}}: {{#rustdoc}}{{{.}}}{{/rustdoc}}{{/summary}}
         {{#cfg}}
@@ -1122,9 +1361,12 @@ pub mod {{{module}}} {
         {{/cfg}}
         fn {{{name}}}(
             &self,
+            {{#auth}}
+            claims: {{{claims}}},
+            {{/auth}}
             request: {{{camel}}}Request,
         ) -> impl std::future::Future<Output = Result<{{{camel}}}Response, super::ServerError>> + Send{{^serverDefaultMethods}};{{/serverDefaultMethods}}{{#serverDefaultMethods}} {
-            let _ = request;
+            let _ = {{#auth}}(claims, request){{/auth}}{{^auth}}request{{/auth}};
             std::future::ready(Err(super::ServerError::not_implemented("{{{name}}}")))
         }{{/serverDefaultMethods}}
         {{/operations}}
@@ -1341,6 +1583,9 @@ pub mod {{{module}}} {
         {{#hasQuery}}
         axum::extract::RawQuery(query): axum::extract::RawQuery,
         {{/hasQuery}}
+        {{#authQuery}}
+        axum::extract::RawQuery(credentials_query): axum::extract::RawQuery,
+        {{/authQuery}}
         headers: http::HeaderMap,
         {{#body}}
         {{#bytes}}
@@ -1357,6 +1602,14 @@ pub mod {{{module}}} {
     where
         I: {{{trait}}} + super::ErrorHandler + 'static,
     {
+        {{#auth}}
+        const REQUIREMENTS: &[&[super::Requirement]] = {{{requirements}}};
+        let credentials = super::credentials(&headers, {{#authQuery}}credentials_query.as_deref(){{/authQuery}}{{^authQuery}}None{{/authQuery}}, {{{authSchemes}}});
+        let claims = match super::{{#authOptional}}optional{{/authOptional}}{{^authOptional}}required{{/authOptional}}_claims(&*api, "{{{name}}}", credentials, REQUIREMENTS).await {
+            Ok(claims) => claims,
+            Err(error) => return api.unauthorized(error),
+        };
+        {{/auth}}
         {{#hasPath}}
         let path = match path {
             Ok(axum::extract::Path(path)) => path,
@@ -1389,7 +1642,7 @@ pub mod {{{module}}} {
             return api.invalid_request(super::RequestError::invalid(errors));
         }
         {{/validates}}
-        match api.{{{name}}}(request).await {
+        match api.{{{name}}}({{#auth}}claims, {{/auth}}request).await {
             Ok(response) => axum::response::IntoResponse::into_response(response),
             Err(error) => api.server_error(error),
         }

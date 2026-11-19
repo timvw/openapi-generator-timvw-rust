@@ -29,7 +29,7 @@ Value types:
 
 | Group | Options |
 | --- | --- |
-| [Targets](#targets) | `targets`, `serverFramework`, `serverDefaultMethods`, `serverValidation`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
+| [Targets](#targets) | `targets`, `serverFramework`, `serverDefaultMethods`, `serverValidation`, `serverAuthentication`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
 | [The crate](#the-crate) | `packageName`, `packageVersion`, `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, `userAgentFromPackage`, `apiLintAllows` |
 | [HTTP stack and runtime](#http-stack-and-runtime) | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
 | [Cargo features](#cargo-features) | `apiFeatures`, `apiFeaturesFile` |
@@ -122,6 +122,23 @@ string, unset by default; needs `modelsCrate`. The version requirement of the mo
 string, unset by default; needs `modelsCrate`. The path of the models crate relative to the generated crate, for a
 workspace that holds both. With `modelsCrateVersion` as well, the path is used in the workspace and the version when
 the server is published.
+
+### `serverAuthentication`
+
+boolean, default `false`, server only. The server reads the credentials of the spec's security schemes (a bearer
+token, HTTP basic, an API key in a header, query parameter or cookie) and gives them, with the operation's
+requirements, to `Authenticator::authenticate` before decoding the request. An operation with security gets the
+claims it returns as a parameter of its trait method (an `Option` of them when its security is optional), and a
+request it turns down is a `401` or `403` (`Authenticator::unauthorized`). An operation without security is not
+authenticated, and keeps its signature ([guide](guides/server.md#authentication-serverauthentication),
+[design](design/server-authentication.md)).
+
+```bash
+--additional-properties=targets=server,serverAuthentication=true
+```
+
+Tests: [`ServerAuthTest`](../src/test/java/be/timvw/openapi/rust/ServerAuthTest.java),
+[server_auth.rs](../src/test/rust/server_auth.rs).
 
 ### `serverValidation`
 

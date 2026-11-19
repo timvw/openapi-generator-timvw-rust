@@ -18,6 +18,7 @@ crate ships, any layer from the tower ecosystem, or write your own.
 - [Uploads and downloads](#uploads-and-downloads)
 - [Credentials](#credentials)
 - [Headers and query parameters for one call](#headers-and-query-parameters-for-one-call)
+- [Webhooks: signing and verifying](#webhooks)
 - [Errors](#errors)
 - [WebAssembly](#webassembly)
 - [Features](#features)
@@ -673,6 +674,51 @@ async fn run(client: &Client) -> Result<(), timvw_rust_runtime::Error> {
 - They win over a [`ProviderLayer`](#providers).
 - A header value marked with `HeaderValue::set_sensitive` stays sensitive (hidden from `Debug` output).
 
+## Webhooks
+
+With the `webhooks` feature, `webhooks::StandardWebhooksLayer` signs what a client sends as
+[Standard Webhooks](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md), as
+OpenAI sends its webhooks:
+
+- `webhook-id`: kept when the request has one, else a new `msg_...`;
+- `webhook-timestamp`: kept when the request has one, else now;
+- `webhook-signature`: `v1,<base64 HMAC-SHA256 of id.timestamp.body>`, once per secret.
+
+`webhooks::verify` checks them on the receiving side, against the raw body:
+
+```rust
+# #[cfg(feature = "webhooks")]
+# async fn demo() -> Result<(), Box<dyn std::error::Error>> {
+use std::time::Duration;
+use timvw_rust_runtime::webhooks::{verify, StandardWebhooksLayer, WebhookSecret};
+use timvw_rust_runtime::{Body, Client, Method};
+
+let secret = WebhookSecret::new("whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw")?;
+
+// Sending: added last, the layer signs once, and a retry sends the same headers.
+let client = Client::default().layer(StandardWebhooksLayer::new(secret.clone()));
+let request = client
+    .request(Method::POST, "https://receiver.example.com/hooks")
+    .body(Body::from(r#"{"type":"response.completed"}"#));
+
+// Receiving: the headers and the raw body as they arrived, before decoding.
+fn receive(headers: &http::HeaderMap, body: &[u8], secret: &WebhookSecret) -> Result<(), Box<dyn std::error::Error>> {
+    verify(headers, body, std::slice::from_ref(secret), Duration::from_secs(5 * 60))?;
+    let event: serde_json::Value = serde_json::from_slice(body)?;
+    Ok(())
+}
+# let _ = (request, receive);
+# Ok(())
+# }
+```
+
+- **Secrets:** a secret is `whsec_` followed by base64.
+  - `StandardWebhooksLayer::with_secrets` signs with several secrets, while one is rotated;
+  - `verify` accepts a request when any of its signatures matches any of the secrets.
+- **Bodies:** a body that streams cannot be signed, so it fails with `WebhookError::StreamingBody` instead of being
+  sent unsigned.
+- **Other schemes:** another signature scheme is another layer, written as in [Middleware](#middleware).
+
 ## Errors
 
 A request that fails to send is an `Error`:
@@ -744,6 +790,7 @@ timvw-rust-runtime = { version = "<version>", default-features = false, features
 | `time` | via `retry` | [`timeout::TimeoutLayer`](#timeouts), `sse::Events::idle_timeout` and the sleeps of retries: tokio's timer, the host's `setTimeout` on [WebAssembly](#webassembly) |
 | `fs` | yes | file and reader [uploads](#uploads-and-downloads) (`Upload::path`, `Upload::file`, `Upload::reader`), `Response::save_to` and `Response::into_async_read` (tokio); on WebAssembly only `Upload::path` and `From<PathBuf>`, which fail when sent |
 | `tracing` | no | `trace::TraceLayer`, and a log event per retry |
+| `webhooks` | no | [`webhooks::StandardWebhooksLayer` and `webhooks::verify`](#webhooks): Standard Webhooks signatures (`hmac`, `sha2`) |
 
 A generated crate forwards `native-tls`, `rustls`, `retry` and `tracing` under the same names, turns on `fs` when it
 has a file parameter and `time` when it has typed event streams (their `idle_timeout`), and builds for WebAssembly as

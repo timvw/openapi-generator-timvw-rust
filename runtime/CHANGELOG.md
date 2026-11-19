@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/timvw/openapi-generator-timvw-rust/compare/timvw-rust-runtime-v0.4.1...timvw-rust-runtime-v0.4.2) - 2026-11-19
+
+### Added
+
+- *(runtime)* sign webhooks as Standard Webhooks, and verify them ([#146](https://github.com/timvw/openapi-generator-timvw-rust/pull/146))
+
+### Fixed
+
+- *(runtime)* no whsec_ literal in the webhooks docs and tests ([#149](https://github.com/timvw/openapi-generator-timvw-rust/pull/149))
+
 ## [0.4.1](https://github.com/timvw/openapi-generator-timvw-rust/compare/timvw-rust-runtime-v0.4.0...timvw-rust-runtime-v0.4.1) - 2026-11-14
 
 ### Fixed

@@ -693,7 +693,7 @@ use std::time::Duration;
 use timvw_rust_runtime::webhooks::{verify, StandardWebhooksLayer, WebhookSecret};
 use timvw_rust_runtime::{Body, Client, Method};
 
-let secret = WebhookSecret::new("whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw")?;
+let secret = WebhookSecret::new(&std::env::var("WEBHOOK_SECRET")?)?;
 
 // Sending: added last, the layer signs once, and a retry sends the same headers.
 let client = Client::default().layer(StandardWebhooksLayer::new(secret.clone()));

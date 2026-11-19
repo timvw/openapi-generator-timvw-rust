@@ -146,8 +146,8 @@ class ApiFeaturesTest {
                 module);
         assertTrue(module.contains("#[cfg(feature = \"default-api\")]\n/// struct for typed errors of method [`health`]"),
                 module);
-        assertTrue(module.contains("#[cfg(feature = \"admin\")]\n#[bon::builder]\npub async fn get_audit("), module);
-        assertTrue(module.contains("#[cfg(feature = \"default-api\")]\n#[bon::builder]\npub async fn health("), module);
+        assertTrue(module.contains("#[cfg(feature = \"admin\")]\n#[bon::builder(state_mod = get_audit_builder, finish_fn(vis = \"\", name = call_internal))]\npub async fn get_audit("), module);
+        assertTrue(module.contains("#[cfg(feature = \"default-api\")]\n#[bon::builder(state_mod = health_builder, finish_fn(vis = \"\", name = call_internal))]\npub async fn health("), module);
 
         String models = read(out, "src/models/mod.rs");
         assertEquals("#[cfg(any(feature = \"animals-types\", feature = \"default-api-types\", feature = \"store-types\"))]",

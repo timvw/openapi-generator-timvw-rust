@@ -135,7 +135,7 @@ class SchemaMappingTest {
     @Test
     void propertiesAreAStructWithAConstructorOfTheRequiredFields() throws IOException {
         String thing = model(out, "thing");
-        assertContains(thing, "#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]\npub struct Thing {");
+        assertContains(thing, "#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, bon::Builder)]\n#[builder(state_mod = thing_builder, finish_fn(vis = \"\", name = build_internal))]\npub struct Thing {");
         assertContains(thing, "#[serde(rename = \"name\")]\n    pub name: String,");
         assertContains(thing, "#[serde(rename = \"tags\", skip_serializing_if = \"Option::is_none\")]");
         assertContains(thing,

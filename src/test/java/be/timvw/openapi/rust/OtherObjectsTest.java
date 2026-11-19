@@ -67,7 +67,7 @@ class OtherObjectsTest {
     @Test
     void anOperationsDescriptionDocumentsItsFunctionAndItsSummaryOnlyTheMarkdown() throws IOException {
         String api = Files.readString(out.resolve("src/apis/hooks_api.rs"));
-        assertTrue(api.contains("/// OPDESC Registers a callback.\n#[bon::builder]\npub async fn subscribe("), api);
+        assertTrue(api.contains("/// OPDESC Registers a callback.\n#[bon::builder(state_mod = subscribe_builder, finish_fn(vis = \"\", name = call_internal))]\npub async fn subscribe("), api);
         assertFalse(rust.contains("SUMMARYTEXT"));
         assertTrue(Files.readString(out.resolve("docs/HooksApi.md")).contains("SUMMARYTEXT Subscribe."));
     }

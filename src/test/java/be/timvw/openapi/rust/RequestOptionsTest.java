@@ -79,10 +79,11 @@ class RequestOptionsTest {
                 "create_chat_stream", "create_chat_response"}) {
             assertContains(api, "pub async fn " + method + "(");
         }
-        // every method, the twins and the content type and stream methods included
-        assertEquals(count(api, "pub async fn "), count(api, "RequestOptions>) -> Result<"), api);
-        assertEquals(count(api, "pub async fn "),
-                count(api, "req_builder = req_builder.base(&configuration.base_path).options(options);"), api);
+        // every method, the twins and the content type and stream methods included (not the call() of their builders)
+        int methods = count(api, "pub async fn ") - count(api, "pub async fn call(self)");
+        assertEquals(methods, count(api, "RequestOptions>) -> Result<"), api);
+        assertEquals(methods, count(api, "req_builder = req_builder.base(&configuration.base_path).options(options);"),
+                api);
     }
 
     @Test

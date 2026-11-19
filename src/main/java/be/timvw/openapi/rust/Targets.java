@@ -33,9 +33,9 @@ record Targets(boolean client, boolean server) {
 
     private static Map<String, String> optionTargets() {
         Map<String, String> m = new LinkedHashMap<>();
+        // runtimeVersion and runtimePath belong to every target: the client sends with the runtime, a model that
+        // holds a file holds an Upload, and a server with serverWebhooks sends through a runtime client.
         for (String option : List.of(
-                TimvwRustCodegen.RUNTIME_VERSION,
-                TimvwRustCodegen.RUNTIME_PATH,
                 RustCodegenBase.REQWEST_DEFAULT_FEATURES,
                 TimvwRustCodegen.RESPONSE_FUNCTIONS,
                 RustCodegenBase.SUPPORT_MULTIPLE_RESPONSES,
@@ -46,9 +46,9 @@ record Targets(boolean client, boolean server) {
                 TimvwRustCodegen.MULTIPART_HELPER,
                 TimvwRustCodegen.USER_AGENT_FROM_PACKAGE,
                 TimvwRustCodegen.API_LINT_ALLOWS,
-                // The webhooks are client functions (the client receives and verifies them); a server sending them
-                // is later work. webhookModule itself belongs to the models: it names the API group, and so the
-                // Cargo feature, of the webhook payloads, which a server with modelsCrate must name the same way.
+                // The client's webhook functions; a server sends webhooks with serverWebhooks. webhookModule itself
+                // belongs to the models: it names the API group, and so the Cargo feature, of the webhook payloads,
+                // which a server with modelsCrate must name the same way.
                 TimvwRustCodegen.WEBHOOK_MODULE_REEXPORT)) {
             m.put(option, CLIENT);
         }
@@ -57,6 +57,7 @@ record Targets(boolean client, boolean server) {
         m.put(TimvwRustCodegen.SERVER_FRAMEWORK, SERVER);
         m.put(TimvwRustCodegen.SERVER_VALIDATION, SERVER);
         m.put(TimvwRustCodegen.SERVER_AUTHENTICATION, SERVER);
+        m.put(TimvwRustCodegen.SERVER_WEBHOOKS, SERVER);
         m.put(TimvwRustCodegen.SERVER_DEFAULT_METHODS, SERVER);
         m.put(TimvwRustCodegen.MODELS_CRATE, SERVER);
         m.put(TimvwRustCodegen.MODELS_CRATE_VERSION, SERVER);

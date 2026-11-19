@@ -119,7 +119,7 @@ default = [{{#apiFeatures}}"full"{{/apiFeatures}}]
 {{#targetFeatures}}
 # Targets: `client` compiles the HTTP client (`apis`), `server` the axum server (`server`).
 client = [{{#runtimeOptional}}"dep:timvw-rust-runtime", {{/runtimeOptional}}"dep:http"{{#typedEventStreams}}, "dep:futures-core"{{/typedEventStreams}}{{{targetDeps}}}]
-server = ["dep:axum", "dep:http"{{#serverStreams}}, "dep:futures-util"{{/serverStreams}}{{#serverRegex}}, "dep:regex"{{/serverRegex}}{{{targetDeps}}}]
+server = ["dep:axum", "dep:http"{{#serverStreams}}, "dep:futures-util"{{/serverStreams}}{{#serverRegex}}, "dep:regex"{{/serverRegex}}{{#serverSendsWebhooks}}{{#runtimeOptional}}, "dep:timvw-rust-runtime"{{/runtimeOptional}}{{/serverSendsWebhooks}}{{{targetDeps}}}]
 {{/targetFeatures}}
 {{#apiFeatures}}
 {{#clientTarget}}

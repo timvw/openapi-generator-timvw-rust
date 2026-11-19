@@ -29,7 +29,7 @@ Value types:
 
 | Group | Options |
 | --- | --- |
-| [Targets](#targets) | `targets`, `serverFramework`, `serverDefaultMethods`, `serverValidation`, `serverAuthentication`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
+| [Targets](#targets) | `targets`, `serverFramework`, `serverDefaultMethods`, `serverValidation`, `serverAuthentication`, `serverWebhooks`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
 | [The crate](#the-crate) | `packageName`, `packageVersion`, `publishRustRegistry`, `repositoryUrl`, `documentationUrl`, `homePageUrl`, `userAgentFromPackage`, `apiLintAllows` |
 | [HTTP stack and runtime](#http-stack-and-runtime) | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures` |
 | [Cargo features](#cargo-features) | `apiFeatures`, `apiFeaturesFile` |
@@ -140,6 +140,26 @@ authenticated, and keeps its signature ([guide](guides/server.md#authentication-
 Tests: [`ServerAuthTest`](../src/test/java/be/timvw/openapi/rust/ServerAuthTest.java),
 [server_auth.rs](../src/test/rust/server_auth.rs).
 
+### `serverWebhooks`
+
+boolean, default `false`, server only. Generates `server::webhooks`, which sends the spec's webhooks:
+- a `Webhook` enum with a variant per webhook, holding its payload model;
+- `WebhookEndpoint` (a receiver's URL, the `timvw_rust_runtime::Client` to send with, and the webhooks it wants);
+- `send`.
+
+The client's layers sign and retry what it sends: `StandardWebhooksLayer` (re-exported, with `verify`) signs as
+Standard Webhooks ([guide](guides/server.md#webhooks-serverwebhooks), [design](design/server-webhooks.md)).
+
+The crate depends on `timvw-rust-runtime` with its `webhooks` feature, at least `0.4.2` unless `runtimeVersion` or
+`runtimePath` says otherwise. With both targets, the `server` feature enables it.
+
+```bash
+--additional-properties=targets=server,serverWebhooks=true
+```
+
+Tests: [`ServerWebhooksTest`](../src/test/java/be/timvw/openapi/rust/ServerWebhooksTest.java),
+[server_webhooks.rs](../src/test/rust/server_webhooks.rs).
+
 ### `serverValidation`
 
 boolean, default `false`, server only. Checks every request that decodes against the spec's validation keywords
@@ -235,7 +255,8 @@ Tests: [`ErrorsAndLintsTest`](../src/test/java/be/timvw/openapi/rust/ErrorsAndLi
 string, default: the runtime release this generator was built for (`DEFAULT_RUNTIME_VERSION` in
 [`TimvwRustCodegen.java`](../src/main/java/be/timvw/openapi/rust/TimvwRustCodegen.java); the
 [crates.io badge](https://crates.io/crates/timvw-rust-runtime) shows the current release). The version
-requirement of `timvw-rust-runtime` in `Cargo.toml`, written as `^<value>`. Every generated client sends through
+requirement of `timvw-rust-runtime` in `Cargo.toml`, written as `^<value>`; it applies to every target that depends
+on the runtime (the client, models with files, a server with `serverWebhooks`). Every generated client sends through
 `timvw_rust_runtime::Client`, a tower service (reqwest unless replaced) from
 [`timvw-rust-runtime`](../runtime/README.md), with retries by default, `SecretString` credentials, per-call
 `RequestOptions`, `Upload` files and WebAssembly support ([guide](guides/http-stack.md)). A runtime fix reaches a

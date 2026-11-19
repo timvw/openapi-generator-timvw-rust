@@ -199,7 +199,7 @@ let app: axum::Router = server::router(MyImpl::new());
      gives them to an `Authenticator`, whose claims an operation with security gets as a parameter; designed in
      [authentication for the server](server-authentication.md);
    - proposed: webhooks sent by the server, [designed](server-webhooks.md) as `serverWebhooks`: typed events, signed
-     as Standard Webhooks, sent through `timvw-rust-runtime`.
+     by a Standard Webhooks layer of `timvw-rust-runtime`, which the client's webhook functions use too.
 
 ## Open questions
 

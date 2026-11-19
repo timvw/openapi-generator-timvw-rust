@@ -44,10 +44,56 @@ So a sender needs configuration that the spec cannot give: endpoints, with a URL
 
 ## The proposal
 
-`serverWebhooks` (boolean, server only) generates `server::webhooks`, which sends the spec's webhooks.
+Signing goes into the runtime, as a tower layer: the extension point for any scheme. Both the client's webhook
+functions and the server send through the runtime with that layer. The generator adds typed events for the server, and
+fixes where the client's functions send.
+
+### 1. The runtime: a signing layer, and `verify` (feature `webhooks`)
+
+- **`StandardWebhooksLayer::new(secret)`** signs every request it sends:
+  - it writes `webhook-id` (kept if the request has one, else a new `msg_<uuid>`), `webhook-timestamp` and
+    `webhook-signature` (`v1,<base64 HMAC-SHA256 of id.timestamp.body>`);
+  - the key is the base64 after the secret's `whsec_` prefix;
+  - it signs the bytes that are sent: a JSON body is whole (`Body::as_bytes`), and a body that streams is refused
+    with an error rather than sent unsigned.
+
+  The layer is the extension point. A scheme other than Standard Webhooks is another layer: the runtime's, when one
+  is needed, or one of the user's own. Without the layer, nothing is signed. So there is no generator option for the
+  scheme, and Standard Webhooks is the one the runtime ships.
+- **`webhooks::verify(headers, body, secrets, tolerance) -> Result<(), WebhookError>`** is the receiving side:
+  - it accepts the request when one of its signatures matches one of the secrets (rotation), compared in constant
+    time;
+  - it checks the timestamp within the tolerance;
+  - the caller then decodes the body as the event type it expects.
+
+  It belongs with whoever receives webhooks, not with the server that sends them. That includes the tests of a mock
+  and an application that uses openai-client-base: OpenAI's SDKs have it on the client (`client.webhooks.unwrap`).
+- **Dependencies:** `hmac` and `sha2`, behind the feature; `base64` is a dependency already. The sending side uses the
+  runtime's `Client`, so retries (`RetryLayer`), timeouts and tracing work as for any call.
+
+### 2. The client's webhook functions send to the endpoint (breaking)
+
+A webhook function `POST`s to `configuration.base_path` itself, the endpoint's whole URL, no longer to
+`{base_path}/{webhook name}`. A receiver registers one URL, which `base_path` now is. With a `Client` that has the
+signing layer, the function's request is signed:
+
+```rust
+let mut configuration = Configuration::new();
+configuration.base_path = "http://127.0.0.1:8090/hooks".to_owned(); // the endpoint
+configuration.client = Client::default().layer(StandardWebhooksLayer::new(Secret::new("whsec_...")));
+webhooks_api::response_completed(&configuration, Some(&payload), None).await?;
+```
+
+This is the breaking part: a client that relied on `{base_path}/{name}` adds the name to `base_path` itself. The
+migration guide says so.
+
+### 3. The server: `serverWebhooks` (boolean, server only)
+
+The server target gets `server::webhooks`:
 
 - **Typed events.** `Webhook` has a variant per webhook of the spec, holding its payload model, so that a value cannot
-  be sent as the wrong event:
+  be sent as the wrong event. The variant is named after the webhook (`response.completed` as
+  `ResponseCompleted`), and `Webhook::name()` gives the spec's name:
 
   ```rust
   pub enum Webhook {
@@ -56,51 +102,33 @@ So a sender needs configuration that the spec cannot give: endpoints, with a URL
       // ...
   }
   ```
-
-  The variant is named after the webhook: `response.completed` becomes `ResponseCompleted`.
-  `Webhook::name()` gives the spec's name.
-- **Endpoints are configuration.** `WebhookEndpoint { url, secret, events }` is what a receiver registers. A `secret`
-  of `None` sends without a signature. `events` lists the names the endpoint wants, all of them when empty. A mock
-  takes its endpoints from the test. A real server takes them from wherever it keeps registrations.
-- **Signed as Standard Webhooks.** `send` writes `webhook-id` (given, or a new `msg_<uuid>`), `webhook-timestamp`
-  and `webhook-signature` (`v1` with the endpoint's secret). It writes the JSON body once, and that same text is what
-  it signs.
-- **One delivery, through the runtime.** `WebhookSender` sends with a `timvw_rust_runtime::Client`, the client's HTTP
-  stack: reqwest by default, or any tower service. Its `RetryLayer` gives a delivery its short retries: `429`, `5xx`,
-  failed connections, honouring `Retry-After`. Sending over three days needs a queue and storage, so it stays the
-  application's: `send` returns a `Delivery` (status, attempts) or a `WebhookError`, and the caller decides what
-  comes next.
+- **Endpoints are configuration.** `WebhookEndpoint { url, client, events }` is what a receiver registers: its URL,
+  the runtime `Client` to send with (with the signing layer and its secret, or without), and the event names it wants
+  (all of them when empty). A mock takes its endpoints from the test, and a real server from wherever it keeps
+  registrations.
+- **One delivery.** `send(&endpoint, &Webhook)` writes the JSON once and `POST`s it through the endpoint's client,
+  whose layers sign and retry it (`429`, `5xx`, failed connections, honouring `Retry-After`). It returns the status,
+  or an error when no attempt got a `2xx`. Delivery over days needs a queue and storage, so it stays the
+  application's.
 
   ```rust
-  let sender = server::webhooks::WebhookSender::new(timvw_rust_runtime::Client::default());
-  let endpoint = WebhookEndpoint::new("http://127.0.0.1:8090/hooks").secret(Secret::new("whsec_..."));
-  let delivery = sender
-      .send(&endpoint, &Webhook::ResponseCompleted(payload), None) // None: a new webhook-id
-      .await?;
+  let client = Client::default().layer(StandardWebhooksLayer::new(Secret::new("whsec_...")));
+  let endpoint = WebhookEndpoint::new("http://127.0.0.1:8090/hooks", client);
+  server::webhooks::send(&endpoint, &Webhook::ResponseCompleted(payload)).await?;
   ```
-- **Verification, for the tests and for receivers.** The same module gets
-  `verify(headers, body, secrets, tolerance) -> Result<Webhook, WebhookError>`. It checks a signature in constant
-  time and the timestamp within the tolerance, then decodes the event by its type. This is what a test's receiver
-  needs to check what the server sent. It is also `unwrap` for an application that receives the API's webhooks.
-  Where it belongs is open question 2.
-- **Dependencies.** A crate with webhooks needs `timvw-rust-runtime` (sending), `hmac`, `sha2` and `base64`
-  (signing), and `uuid` (ids). They are optional, behind a `webhooks` Cargo feature, so a server that does not send
-  stays as it is.
+- **Dependencies.** The server depends on `timvw-rust-runtime` (feature `webhooks`), optionally behind a `webhooks`
+  Cargo feature of the crate, so a server that does not send stays as it is.
 
-## Open questions
+A test of the mock sends with `server::webhooks::send` to an axum receiver of its own, which checks the request with
+`timvw_rust_runtime::webhooks::verify`.
 
-1. **The signature scheme.** Standard Webhooks only, or a `serverWebhookSignature` option (`standard-webhooks`,
-   `none`) that leaves room for another one later (Stripe's `Stripe-Signature: t=...,v1=...`)? Proposal: Standard
-   Webhooks only, with `secret: None` for unsigned.
-2. **Where `verify` lives.** In `server::webhooks`, as above, or with the models (every target), so that a
-   client-only crate such as openai-client-base gets `unwrap` without the server? Proposal: with the models, behind
-   the `webhooks` feature, so that both sides use the same code.
-3. **The client's webhook functions.** They `POST` to `{base_path}/{name}`. That is not where a webhook goes, and they
-   do not sign. Leave them as they are for compatibility, or replace them with `webhooks::send`? Proposal: leave them,
-   and document `webhooks::send` as the way to send.
+## Order
+
+1. The runtime: the layer and `verify`, released on their own.
+2. The generator: the client's webhook functions send to `base_path` (breaking), and `serverWebhooks`.
 
 ## What is left out
 
 - Delivery over hours or days (a queue, storage, disabling a failing endpoint): the application's.
-- Asymmetric signatures (Standard Webhooks' `v2a`).
+- Asymmetric signatures (Standard Webhooks' `v2a`), and schemes other than Standard Webhooks, until one is needed.
 - An endpoint registry API: OpenAI's spec has none, and a mock is configured by its tests.

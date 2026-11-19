@@ -25,8 +25,9 @@ mapping itself (headers, `readOnly`/`writeOnly`, number enums, ...) are listed i
   OpenAI spec is served.
 - **Bodies are read whole.** A request body, a multipart form included, is held in memory before the implementation
   is called, within axum's body limit; a response can stream (`EventStream`, `Binary::stream`).
-- **No authentication, no validation.** Credentials are in the request's `HeaderMap` for axum middleware to check;
-  `serverValidation` only takes `false`.
+- **No authentication.** Credentials are in the request's `HeaderMap` for axum middleware to check.
+- **Validation leaves headers out.** `serverValidation` checks path and query parameters and bodies; header and cookie
+  parameters are not decoded, so not checked ([guide](guides/server.md#validation-servervalidation)).
 - **One trait per API module (tag).** With an `apiFeaturesFile` group that takes part of a module, the module's trait
   keeps the methods of the enabled groups, gated one by one.
 

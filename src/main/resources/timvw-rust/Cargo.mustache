@@ -76,6 +76,9 @@ url = "^2.5"
 regex = "^1.10"
 {{/validationRegex}}
 {{/modelsCrate}}
+{{#serverRegex}}
+regex = { version = "^1.10"{{#targetFeatures}}, optional = true{{/targetFeatures}} }
+{{/serverRegex}}
 {{#hasUUIDs}}
 uuid = { version = "^1.8", features = ["serde", "v4"]{{#uuidOptional}}, optional = true{{/uuidOptional}} }
 {{/hasUUIDs}}
@@ -116,7 +119,7 @@ default = [{{#apiFeatures}}"full"{{/apiFeatures}}]
 {{#targetFeatures}}
 # Targets: `client` compiles the HTTP client (`apis`), `server` the axum server (`server`).
 client = [{{#runtimeOptional}}"dep:timvw-rust-runtime", {{/runtimeOptional}}"dep:http"{{#typedEventStreams}}, "dep:futures-core"{{/typedEventStreams}}{{{targetDeps}}}]
-server = ["dep:axum", "dep:http"{{#serverStreams}}, "dep:futures-util"{{/serverStreams}}{{{targetDeps}}}]
+server = ["dep:axum", "dep:http"{{#serverStreams}}, "dep:futures-util"{{/serverStreams}}{{#serverRegex}}, "dep:regex"{{/serverRegex}}{{{targetDeps}}}]
 {{/targetFeatures}}
 {{#apiFeatures}}
 {{#clientTarget}}

@@ -16,6 +16,13 @@
 //! [`ErrorHandler::invalid_request`] (a `400` with a JSON error body by default, a `415` for a body of a media type
 //! the operation does not take) without calling the implementation; an implementation's error by
 //! [`ErrorHandler::server_error`] (a `500`).
+{{#serverValidation}}
+//!
+//! With `serverValidation`, a request that decodes is validated before the implementation is called: the spec's
+//! validation keywords of its path and query parameters, of a form's fields, and of the models of its body (their
+//! `validate()`). A request that breaks one is answered by [`ErrorHandler::invalid_request`] with
+//! [`RequestError::invalid`]: a `400` listing every error.
+{{/serverValidation}}
 //!
 //! A request body is its model for JSON, a `String` for text, the bytes for anything else, and a form struct for
 //! `multipart/form-data` (with a `FilePart` per file) and `application/x-www-form-urlencoded`. A body the spec gives
@@ -89,6 +96,9 @@ pub struct RequestError {
     location: &'static str,
     name: Option<String>,
     message: String,
+    {{#serverValidation}}
+    validation: Option<crate::models::validation::ValidationErrors>,
+    {{/serverValidation}}
 }
 
 impl RequestError {
@@ -99,8 +109,42 @@ impl RequestError {
             location,
             name: name.map(str::to_owned),
             message: message.into(),
+            {{#serverValidation}}
+            validation: None,
+            {{/serverValidation}}
         }
     }
+{{#serverValidation}}
+
+    /// A request that decodes but breaks validation keywords of the spec: a `400`, at the location of the first
+    /// error (`path`, `query` or `body`; the parameter as its `name`), whose message lists every error. The errors
+    /// are paths below `path.<name>`, `query.<name>` and `body` (`body.messages[0].content`).
+    pub fn invalid(errors: crate::models::validation::ValidationErrors) -> Self {
+        let first = errors.iter().next().map(|error| error.path.as_str()).unwrap_or("");
+        let (head, rest) = match first.split_once('.') {
+            Some((head, rest)) => (head, Some(rest)),
+            None => (first, None),
+        };
+        let location = match head {
+            "path" => "path",
+            "query" => "query",
+            _ => "body",
+        };
+        let name = match location {
+            "body" => None,
+            _ => rest.and_then(|rest| rest.split(['.', '[']).next()),
+        };
+        let message = errors.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ");
+        let mut error = RequestError::new(location, name, message);
+        error.validation = Some(errors);
+        error
+    }
+
+    /// Every error, for a request that breaks validation keywords ([`RequestError::invalid`]).
+    pub fn validation_errors(&self) -> Option<&crate::models::validation::ValidationErrors> {
+        self.validation.as_ref()
+    }
+{{/serverValidation}}
 
     /// A body of a media type the operation does not take (`None`: the request has no `Content-Type`): a `415`.
     pub fn unsupported_media_type(media_type: Option<&str>) -> Self {
@@ -141,6 +185,12 @@ impl RequestError {
 
 impl std::fmt::Display for RequestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        {{#serverValidation}}
+        if self.validation.is_some() {
+            // every error names its own path
+            return f.write_str(&self.message);
+        }
+        {{/serverValidation}}
         match &self.name {
             Some(name) => write!(f, "{} parameter `{}`: {}", self.location, name, self.message),
             None => write!(f, "{}: {}", self.location, self.message),
@@ -156,6 +206,10 @@ pub trait ErrorHandler {
     /// The response to a request that does not decode. By default the error's [`status`](RequestError::status) (a
     /// `400`, or a `415` for a body of a media type the operation does not take) with the JSON body
     /// `{"error": {"message": "...", "location": "query", "name": "limit"}}` (`name` only for a parameter).
+    {{#serverValidation}}
+    /// A request that breaks validation keywords adds `"errors"`, one `{"path": ..., "rule": ..., "message": ...}`
+    /// per error.
+    {{/serverValidation}}
     fn invalid_request(&self, error: RequestError) -> axum::response::Response {
         let mut body = serde_json::Map::new();
         body.insert("message".to_owned(), serde_json::Value::String(error.to_string()));
@@ -163,6 +217,21 @@ pub trait ErrorHandler {
         if let Some(name) = error.name() {
             body.insert("name".to_owned(), serde_json::Value::String(name.to_owned()));
         }
+        {{#serverValidation}}
+        if let Some(errors) = error.validation_errors() {
+            let errors = errors
+                .iter()
+                .map(|error| {
+                    let mut entry = serde_json::Map::new();
+                    entry.insert("path".to_owned(), serde_json::Value::String(error.path.clone()));
+                    entry.insert("rule".to_owned(), serde_json::Value::String(error.rule.to_string()));
+                    entry.insert("message".to_owned(), serde_json::Value::String(error.to_string()));
+                    serde_json::Value::Object(entry)
+                })
+                .collect();
+            body.insert("errors".to_owned(), serde_json::Value::Array(errors));
+        }
+        {{/serverValidation}}
         error_response(error.status(), body)
     }
 
@@ -181,6 +250,35 @@ pub trait ErrorHandler {
     }
 }
 
+{{#serverPatterns}}
+{{#-first}}
+/// `pattern` (`serverValidation`): the string contains a match. A pattern `regex` could not compile is `None` and not
+/// checked.
+fn pattern(
+    value: &str,
+    regex: &std::sync::LazyLock<Option<regex::Regex>>,
+    source: &'static str,
+    path: &crate::models::validation::Path<'_>,
+    errors: &mut Vec<crate::models::validation::ValidationError>,
+) {
+    if let Some(regex) = &**regex {
+        if !regex.is_match(value) {
+            let mut error = crate::models::validation::ValidationError::new(
+                crate::models::validation::Rule::Pattern(source),
+                format!("{value:?}"),
+            );
+            error.path = path.to_string();
+            errors.push(error);
+        }
+    }
+}
+
+{{/-first}}
+static {{{name}}}: std::sync::LazyLock<Option<regex::Regex>> = std::sync::LazyLock::new(|| regex::Regex::new({{{literal}}}).ok());
+{{#-last}}
+
+{{/-last}}
+{{/serverPatterns}}
 /// Serves `api`, an implementation of every trait of the server, with its error handler: a route per operation.
 pub fn router<I>(api: I) -> axum::Router
 where
@@ -1075,6 +1173,22 @@ pub mod {{{module}}} {
         /// The request's headers, with its header and cookie parameters and credentials.
         pub headers: http::HeaderMap,
     }
+    {{#validates}}
+
+    /// The spec's validation keywords of the parameters, at `path.<name>` and `query.<name>`, and of the body, at
+    /// `body`.
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    impl crate::models::validation::Validate for {{{camel}}}Request {
+        fn validate_into(
+            &self,
+            path: &crate::models::validation::Path<'_>,
+            errors: &mut Vec<crate::models::validation::ValidationError>,
+        ) {
+{{{validate}}}        }
+    }
+    {{/validates}}
     {{#body}}
     {{#enum}}
 
@@ -1090,6 +1204,20 @@ pub mod {{{module}}} {
         {{{variant}}}({{{type}}}),
         {{/variants}}
     }
+    {{#enumValidates}}
+
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    impl crate::models::validation::Validate for {{{enum}}} {
+        fn validate_into(
+            &self,
+            path: &crate::models::validation::Path<'_>,
+            errors: &mut Vec<crate::models::validation::ValidationError>,
+        ) {
+{{{enumValidate}}}        }
+    }
+    {{/enumValidates}}
 
     {{#cfg}}
     #[cfg({{{.}}})]
@@ -1122,6 +1250,20 @@ pub mod {{{module}}} {
         pub {{{field}}}: {{{type}}},
         {{/form}}
     }
+    {{#formValidates}}
+
+    {{#cfg}}
+    #[cfg({{{.}}})]
+    {{/cfg}}
+    impl crate::models::validation::Validate for {{{camel}}}Form {
+        fn validate_into(
+            &self,
+            path: &crate::models::validation::Path<'_>,
+            errors: &mut Vec<crate::models::validation::ValidationError>,
+        ) {
+{{{formValidate}}}        }
+    }
+    {{/formValidates}}
 
     {{#cfg}}
     #[cfg({{{.}}})]
@@ -1242,6 +1384,11 @@ pub mod {{{module}}} {
             Ok(request) => request,
             Err(error) => return api.invalid_request(error),
         };
+        {{#validates}}
+        if let Err(errors) = crate::models::validation::Validate::validate(&request) {
+            return api.invalid_request(super::RequestError::invalid(errors));
+        }
+        {{/validates}}
         match api.{{{name}}}(request).await {
             Ok(response) => axum::response::IntoResponse::into_response(response),
             Err(error) => api.server_error(error),

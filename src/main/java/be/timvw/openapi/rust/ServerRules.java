@@ -161,11 +161,13 @@ final class ServerRules {
      * @param errors  its error headers struct, or {@code null}
      * @param cfg     the cfg predicate of the operation's items, or {@code null}
      * @param typeOf  the Rust type of a schema, as the models name it
+     * @param checks  with {@code serverValidation}, the checks of the requests; {@code null} without
      * @throws Unsupported when the server cannot serve it yet, with the reason
      */
     static Map<String, Object> plan(OpenAPI openAPI, CodegenOperation op, Operation spec,
             Map<String, CodegenModel> models, Map<String, Object> success, Map<String, Object> errors, String cfg,
-            Function<Schema<?>, String> typeOf, Function<String, CodegenOperation> forMedia) throws Unsupported {
+            Function<Schema<?>, String> typeOf, Function<String, CodegenOperation> forMedia,
+            ValidateRules.RequestChecks checks) throws Unsupported {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", op.operationId);
         m.put("bare", bare(op.operationId));
@@ -287,6 +289,9 @@ final class ServerRules {
         if (body != null && body.getContent() != null && !body.getContent().isEmpty()) {
             m.put("body", body(openAPI, op, body, models, forMedia));
         }
+        if (checks != null) {
+            validation(m, checks);
+        }
 
         List<Map<String, Object>> responses = new ArrayList<>();
         if (spec.getResponses() != null) {
@@ -308,6 +313,102 @@ final class ServerRules {
             m.put("errorHeaders", errors.get("name"));
         }
         return m;
+    }
+
+    /** {@code crate::models::validation::}, where the generated {@code Validate} is. */
+    private static final String VALIDATION = "crate::models::validation::";
+
+    /**
+     * The checks of the request ({@code serverValidation}), as the body of {@code validate_into} of its request struct
+     * ({@code validate}), and of its form struct ({@code formValidate}) and body enum ({@code enumValidate}): the
+     * constraints of each path and query parameter at {@code path.<name>} and {@code query.<name>}, and the body's at
+     * {@code body}: its models' own {@code validate()}, a form's fields' constraints. Nothing to check, no impl.
+     */
+    @SuppressWarnings("unchecked")
+    private static void validation(Map<String, Object> m, ValidateRules.RequestChecks checks) {
+        List<String> lines = new ArrayList<>();
+        for (String where : List.of("path", "query")) {
+            for (Map<String, Object> f : (List<Map<String, Object>>) m.get(where + "Params")) {
+                lines.addAll(checks.parameter((CodegenParameter) f.get("param"), (String) f.get("field"),
+                        (String) f.get("type"), "path.field(\"" + where + "\").field(\"" + f.get("name") + "\")"));
+            }
+        }
+        Map<String, Object> b = (Map<String, Object>) m.get("body");
+        if (b != null && bodyChecks(b, (String) m.get("camel") + "Form", checks)) {
+            lines.add(VALIDATION + "Validate::validate_into(&self.body, &path.field(\"body\"), errors);");
+        }
+        if (!lines.isEmpty()) {
+            m.put("validate", indent(lines, 12));
+            m.put("validates", true);
+        }
+    }
+
+    /** Whether the body has something to check; the checks of its form struct and body enum go into {@code b}. */
+    @SuppressWarnings("unchecked")
+    private static boolean bodyChecks(Map<String, Object> b, String formType,
+            ValidateRules.RequestChecks checks) {
+        boolean form = false;
+        if (b.get("form") != null) {
+            List<String> lines = new ArrayList<>();
+            for (Map<String, Object> f : (List<Map<String, Object>>) b.get("form")) {
+                CodegenParameter p = (CodegenParameter) f.get("param");
+                if (p != null) {
+                    lines.addAll(checks.parameter(p, (String) f.get("field"), (String) f.get("type"),
+                            "path.field(\"" + f.get("name") + "\")"));
+                }
+            }
+            if (!lines.isEmpty()) {
+                b.put("formValidate", indent(lines, 12));
+                b.put("formValidates", true);
+                form = true;
+            }
+        }
+        if (b.get("enum") == null) {
+            if (b.get("form") != null) {
+                return form;
+            }
+            return !checks.value("body", (String) b.get("type"), "path").isEmpty();
+        }
+        List<String> arms = new ArrayList<>();
+        int variants = 0;
+        for (Map<String, Object> v : (List<Map<String, Object>>) b.get("variants")) {
+            variants++;
+            String type = (String) v.get("type");
+            List<String> lines = type.equals(formType)
+                    ? (form ? List.of(VALIDATION + "Validate::validate_into(value, path, errors);") : List.of())
+                    : checks.binding("value", type);
+            if (!lines.isEmpty()) {
+                StringBuilder arm = new StringBuilder(b.get("enum") + "::" + v.get("variant") + "(value) => {\n");
+                lines.forEach(l -> arm.append("    ").append(l).append('\n'));
+                arms.add(arm.append("}").toString());
+            }
+        }
+        if (arms.isEmpty()) {
+            return false;
+        }
+        List<String> match = new ArrayList<>();
+        match.add("match self {");
+        for (String arm : arms) {
+            for (String l : arm.split("\n")) {
+                match.add("    " + l);
+            }
+        }
+        if (arms.size() < variants) {
+            match.add("    _ => {}");
+        }
+        match.add("}");
+        b.put("enumValidate", indent(match, 12));
+        b.put("enumValidates", true);
+        return true;
+    }
+
+    /** The lines, each indented by {@code spaces} and ended by a newline. */
+    private static String indent(List<String> lines, int spaces) {
+        StringBuilder out = new StringBuilder();
+        for (String line : lines) {
+            out.append(" ".repeat(spaces)).append(line).append('\n');
+        }
+        return out.toString();
     }
 
     /**
@@ -565,6 +666,7 @@ final class ServerRules {
             f.put("doc", docLine(p.unescapedDescription));
             f.put("type", required ? type : "Option<" + type + ">");
             f.put("decode", required ? "super::required(\"body\", \"" + name + "\", " + read + ")?" : read);
+            f.put("param", p);
             fields.add(f);
         }
         return fields;
@@ -673,6 +775,7 @@ final class ServerRules {
         f.put("name", literal(p.baseName));
         f.put("where", p.isPathParam ? "path" : "query");
         f.put("doc", docLine(p.unescapedDescription));
+        f.put("param", p);
         return f;
     }
 

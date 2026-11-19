@@ -125,10 +125,18 @@ the server is published.
 
 ### `serverValidation`
 
-boolean, default `false`, server only. Reserved for validating requests with the models' `Validate` before the
-implementation is called; that is not implemented yet, so only `false` is accepted.
+boolean, default `false`, server only. Checks every request that decodes against the spec's validation keywords
+before the implementation is called: its path and query parameters, the fields of a form body and the models of a JSON
+body (their `validate()`). A request that breaks one is answered by `ErrorHandler::invalid_request` with a `400` that
+lists every error ([guide](guides/server.md#validation-servervalidation)). Needs `validateMethods`; with a `pattern` on
+a parameter or form field, the crate depends on `regex`.
 
-Tests: [`ServerTest`](../src/test/java/be/timvw/openapi/rust/ServerTest.java) (`theServerOptionsTakeTheirOneValue`).
+```bash
+--additional-properties=targets=server,serverValidation=true
+```
+
+Tests: [`ServerValidationTest`](../src/test/java/be/timvw/openapi/rust/ServerValidationTest.java),
+[server_validation.rs](../src/test/rust/server_validation.rs).
 
 ## The crate
 

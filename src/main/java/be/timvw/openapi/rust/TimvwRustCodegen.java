@@ -321,7 +321,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
      * an implementation implements the operations it serves, e.g. a mock.
      */
     public static final String SERVER_DEFAULT_METHODS = "serverDefaultMethods";
-    /** The server validates requests with the models' {@code Validate}: not supported yet, only {@code false}. */
+    /** The server checks requests against the spec's validation keywords before calling the implementation. */
     public static final String SERVER_VALIDATION = "serverValidation";
     /**
      * With the server target: the crate whose models the server uses, instead of rendering its own (the client crate
@@ -443,6 +443,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private final Map<String, Map<String, Object>> serverModules = new LinkedHashMap<>();
     /** With the server target: an operation streams a response (an event stream or a binary body). */
     private boolean serverStreams;
+    /** With the server target: requests are validated before the implementation is called. */
+    private boolean serverValidation;
+    /** The models whose {@code validate()} can fail, from {@link ValidateRules#apply}. */
+    private Set<String> validationChecking = Set.of();
+    /** With {@code serverValidation}: the checks of every served request, and the regexes they use. */
+    private ValidateRules.RequestChecks requestChecks;
     /** With the server target: an operation takes a multipart form. */
     private boolean serverMultipart;
     /** With the server target: an operation reads a form (multipart or urlencoded). */
@@ -602,7 +608,8 @@ public class TimvwRustCodegen extends RustCodegenBase {
                         + "implementation (a mock, a partial server) implements only the operations it serves",
                 false));
         cliOptions.add(CliOption.newBoolean(SERVER_VALIDATION,
-                "With the server target: validate requests with the models' Validate. Not supported yet: only false",
+                "With the server target: check requests against the spec's validation keywords (a 400 listing every "
+                        + "error) before calling the implementation; needs validateMethods",
                 false));
         cliOptions.add(CliOption.newString(DEEP_OBJECT_QUERY_PARAMETERS,
                 "<path>?<name> query parameters kept as objects and sent in deepObject style; every other "
@@ -736,6 +743,7 @@ public class TimvwRustCodegen extends RustCodegenBase {
         }
         ValidateRules.Result validation = ValidateRules.apply(objs, validateMethods,
                 msg -> LOGGER.warn("{}: validate: {}", GENERATOR_NAME, msg));
+        validationChecking = validation.checkingModels();
         if (validateMethods) {
             additionalProperties.put(VALIDATION_REGEX, validation.patterns() > 0);
             LOGGER.info("{}: validate: {} models, {} of them check something; {} patterns, {} skipped",
@@ -931,11 +939,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
             throw new IllegalArgumentException(String.format("%s: option '%s' is '%s'; the server is only rendered "
                     + "for '%s'", GENERATOR_NAME, SERVER_FRAMEWORK, framework, AXUM));
         }
-        if (additionalProperties.containsKey(SERVER_VALIDATION)
-                && convertPropertyToBoolean(SERVER_VALIDATION)) {
-            throw new IllegalArgumentException(String.format("%s: option '%s' is not supported yet: the server does "
-                    + "not validate requests; set it to false or remove it", GENERATOR_NAME, SERVER_VALIDATION));
-        }
+        serverValidation = additionalProperties.containsKey(SERVER_VALIDATION)
+                && convertPropertyToBooleanAndWriteBack(SERVER_VALIDATION);
+        additionalProperties.put(SERVER_VALIDATION, serverValidation);
 
         modelsCrate();
         additionalProperties.put(SERVER_DEFAULT_METHODS, additionalProperties.containsKey(SERVER_DEFAULT_METHODS)
@@ -951,6 +957,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
         validateMethods = !additionalProperties.containsKey(VALIDATE_METHODS)
                 || convertPropertyToBooleanAndWriteBack(VALIDATE_METHODS);
         additionalProperties.put(VALIDATE_METHODS, validateMethods);
+        if (serverValidation && !validateMethods) {
+            throw new IllegalArgumentException(String.format("%s: option '%s' validates requests with the models' "
+                    + "Validate, which '%s=false' does not generate; remove one of them", GENERATOR_NAME,
+                    SERVER_VALIDATION, VALIDATE_METHODS));
+        }
         if (validateMethods) {
             supportingFiles.add(new SupportingFile("validation.mustache", modelFolder, "validation.rs"));
         }
@@ -1445,6 +1456,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 }
             }
             objs.put("serverDeepObject", deepObject);
+            List<Map<String, String>> patterns = requestChecks == null ? List.of() : requestChecks.patterns();
+            objs.put("serverPatterns", patterns);
+            // the models crate's regex is not ours; our own models' is there already
+            objs.put("serverRegex", !patterns.isEmpty()
+                    && (stringOption(MODELS_CRATE) != null
+                            || !Boolean.TRUE.equals(additionalProperties.get(VALIDATION_REGEX))));
             int served = 0;
             List<Object> left = new ArrayList<>();
             for (Map<String, Object> m : modules) {
@@ -2614,8 +2631,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 }
             }
             try {
+                if (serverValidation && requestChecks == null) {
+                    requestChecks = new ValidateRules.RequestChecks(validationChecking);
+                }
                 Map<String, Object> plan = ServerRules.plan(openAPI, op, spec, models, success, errors, cfg,
-                        this::getTypeDeclaration, media -> serverOperationFor(op, spec, media));
+                        this::getTypeDeclaration, media -> serverOperationFor(op, spec, media), requestChecks);
                 for (Object r : (List<?>) plan.get("responses")) {
                     if (Boolean.TRUE.equals(((Map<?, ?>) r).get("once"))) {
                         serverStreams = true;

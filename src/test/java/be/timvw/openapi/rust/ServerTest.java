@@ -123,9 +123,8 @@ class ServerTest {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> generate(out,
                 Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.SERVER_FRAMEWORK, "actix")));
         assertContains(e.getMessage(), "the server is only rendered for 'axum'");
-        e = assertThrows(IllegalArgumentException.class, () -> generate(out,
-                Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.SERVER_VALIDATION, "true")));
-        assertContains(e.getMessage(), "option 'serverValidation' is not supported yet");
+        // serverValidation: ServerValidationTest
+        generate(out, Map.of(TimvwRustCodegen.TARGETS, "server", TimvwRustCodegen.SERVER_VALIDATION, "true"));
     }
 
     // ---------------------------------------------------------------- what each target renders

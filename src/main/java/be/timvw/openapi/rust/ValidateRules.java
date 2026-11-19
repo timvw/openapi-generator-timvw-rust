@@ -2,6 +2,7 @@ package be.timvw.openapi.rust;
 
 import org.openapitools.codegen.CodegenDiscriminator;
 import org.openapitools.codegen.CodegenModel;
+import org.openapitools.codegen.CodegenParameter;
 import org.openapitools.codegen.CodegenProperty;
 import org.openapitools.codegen.model.ModelMap;
 import org.openapitools.codegen.model.ModelsMap;
@@ -79,7 +80,7 @@ final class ValidateRules {
     }
 
     /** What {@link #apply} did. */
-    record Result(int models, int checking, int patterns, List<String> skippedPatterns) {
+    record Result(int models, int checking, int patterns, List<String> skippedPatterns, Set<String> checkingModels) {
     }
 
     /**
@@ -102,7 +103,7 @@ final class ValidateRules {
             }
         }
         if (!generate) {
-            return new Result(models.size(), 0, 0, List.of());
+            return new Result(models.size(), 0, 0, List.of(), Set.of());
         }
         List<String> skipped = new ArrayList<>();
         for (CodegenModel cm : models) {
@@ -140,7 +141,7 @@ final class ValidateRules {
             cm.vendorExtensions.put(PATTERNS, statics);
             patterns += statics.size();
         }
-        return new Result(models.size(), checking.size(), patterns, skipped);
+        return new Result(models.size(), checking.size(), patterns, skipped, Set.copyOf(checking));
     }
 
     /** Reports every {@code pattern} of {@code cp} and its items that {@link RustRegex} does not accept. */
@@ -298,11 +299,21 @@ final class ValidateRules {
         /** The model written, or {@code null} for a dry run that only asks whether there is something to check. */
         private final String model;
         final Map<String, String> patterns = new LinkedHashMap<>();
+        /**
+         * Where a check finds its regex static and the {@code pattern} function: nothing (the static) and the validation
+         * module in a model, {@code super::} (both of {@code src/server.rs}) in the server.
+         */
+        private final String patternPrefix;
         private String where = "";
 
         Writer(Set<String> checking, String model) {
+            this(checking, model, "");
+        }
+
+        Writer(Set<String> checking, String model, String patternPrefix) {
             this.checking = checking;
             this.model = model;
+            this.patternPrefix = patternPrefix;
         }
 
         String body(CodegenModel cm) {
@@ -519,7 +530,8 @@ final class ValidateRules {
                     String pattern = cp.getPattern();
                     if (RustRegex.unsupported(pattern) == null) {
                         String name = patterns.computeIfAbsent(pattern, p -> "PATTERN_" + patterns.size());
-                        lines.add(V + "pattern(" + expr.ref() + ", &" + name + ", " + rawString(pattern)
+                        String function = (patternPrefix.isEmpty() ? V : patternPrefix) + "pattern(";
+                        lines.add(function + expr.ref() + ", &" + patternPrefix + name + ", " + rawString(pattern)
                                 + tail(chain));
                     }
                 }
@@ -666,6 +678,68 @@ final class ValidateRules {
         /** {@code path} itself, or a reference to the path built from it ({@code &path.field("name").index(i)}). */
         private static String arg(String chain) {
             return chain.equals("path") ? "path" : "&" + chain;
+        }
+    }
+
+    /**
+     * The checks of the server's requests ({@code serverValidation}): the body of {@code validate_into} for a request
+     * struct, a form struct or a body enum, from the constraints of the parameters and form fields and the models'
+     * own {@code Validate}. The regexes of every request are statics of {@code src/server.rs}, named by
+     * {@link #patterns()}; the impls, in the modules of {@code src/server.rs}, reach them through {@code super::}.
+     */
+    static final class RequestChecks {
+
+        private final Writer writer;
+
+        /** @param checking the models whose {@code validate()} can fail ({@link Result#checkingModels()}) */
+        RequestChecks(Set<String> checking) {
+            this.writer = new Writer(checking, "request", "super::");
+        }
+
+        /**
+         * The checks of the field {@code field} of type {@code type} (as the request or form struct types it), holding
+         * parameter {@code p}, at the path {@code chain} builds ({@code path.field("query").field("limit")}).
+         */
+        List<String> parameter(CodegenParameter p, String field, String type, String chain) {
+            writer.where = p.baseName;
+            return writer.value(Type.parse(type), constraints(p), Expr.field(field), chain, 0);
+        }
+
+        /** The checks of the field {@code field} of type {@code type} with no constraints of its own. */
+        List<String> value(String field, String type, String chain) {
+            return writer.value(Type.parse(type), null, Expr.field(field), chain, 0);
+        }
+
+        /** The checks of a value bound to {@code name} (a variant's), of type {@code type}, at {@code path}. */
+        List<String> binding(String name, String type) {
+            return writer.value(Type.parse(type), null, Expr.binding(name), "path", 0);
+        }
+
+        /** The regex statics the checks use, as {@code name} and {@code literal}. */
+        List<Map<String, String>> patterns() {
+            List<Map<String, String>> statics = new ArrayList<>();
+            writer.patterns.forEach((pattern, name) -> statics.add(Map.of("name", name, "literal", rawString(pattern))));
+            return statics;
+        }
+
+        /** A parameter's constraints, as {@link Writer} reads them from a property. */
+        private static CodegenProperty constraints(CodegenParameter p) {
+            CodegenProperty cp = new CodegenProperty();
+            cp.baseName = p.baseName;
+            cp.dataType = p.dataType;
+            cp.setMinimum(p.getMinimum());
+            cp.setMaximum(p.getMaximum());
+            cp.setExclusiveMinimum(p.getExclusiveMinimum());
+            cp.setExclusiveMaximum(p.getExclusiveMaximum());
+            cp.setMinLength(p.getMinLength());
+            cp.setMaxLength(p.getMaxLength());
+            cp.setPattern(p.getPattern());
+            cp.setMinItems(p.getMinItems());
+            cp.setMaxItems(p.getMaxItems());
+            cp.setUniqueItems(p.getUniqueItems());
+            cp.setMultipleOf(p.getMultipleOf());
+            cp.items = p.items;
+            return cp;
         }
     }
 

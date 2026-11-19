@@ -2,8 +2,8 @@
 
 Status: slices 1 and 2 are implemented (`targets`, the Cargo features `client` and `server`, and an axum server for
 JSON, text, binary and multipart bodies and server-sent events; see the [server guide](../guides/server.md)).
-Slice 3 is implemented too, as [openai-mock-server](https://github.com/genai-rs/openai-mock-server). Slice 4 is
-proposed.
+Slice 3 is implemented too, as [openai-mock-server](https://github.com/genai-rs/openai-mock-server). Of slice 4,
+validation is implemented (`serverValidation`); authentication and webhooks sent by the server are proposed.
 
 `timvw-rust` renders an HTTP client and its models. This page proposes a `targets` option that picks what the
 generator renders: the models, a client, a server, or more than one of them in one crate. It also describes the
@@ -190,7 +190,11 @@ let app: axum::Router = server::router(MyImpl::new());
    `serverDefaultMethods`, a default per trait method that answers `501`, so a mock implements only what it scripts.
    `webhookModule` moved to the model options: it names the Cargo feature of the webhook payloads, which the server
    must name as its models crate does. On the OpenAI spec, all 388 operations are served.
-4. **Later:** authentication schemes, validation, and webhooks sent by the server.
+4. **Validation, authentication, webhooks:**
+   - validation (implemented): `serverValidation` checks a request that decodes with the models' `Validate`, and
+     the parameters' and form fields' own keywords with the same checks, before the implementation is called; a
+     request that breaks one is a `400` listing every error;
+   - later: authentication schemes, and webhooks sent by the server.
 
 ## Open questions
 

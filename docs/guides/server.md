@@ -41,9 +41,9 @@ option or add 'client' to targets
 | --- | --- |
 | The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `validateMethods`, `apiFeatures`, `apiFeaturesFile`, `pruneAllHelpers`, `unionPlanFile`, `preprocessedSpecFile`, the crate options |
 | The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `multipartHelper`, `userAgentFromPackage`, `apiLintAllows`, `webhookModuleReexport` |
-| The server | `serverFramework` (only `axum`), `serverDefaultMethods`, `serverValidation` (only `false` for now), `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
+| The server | `serverFramework` (only `axum`), `serverDefaultMethods`, `serverValidation`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
 
-`validateMethods` generates the models' `Validate`, which a server's validation will call, so it belongs to the
+`validateMethods` generates the models' `Validate`, which a server's validation calls, so it belongs to the
 models. `webhookModule` names the group (and Cargo feature) of the webhook payload models, so it belongs to the models
 too; `webhookModuleReexport` places the client's webhook functions. The server does not send webhooks yet.
 `deepObjectQueryParameters` and `resetQueryParameterStyle` decide how query parameters go on the wire, so a server
@@ -297,6 +297,45 @@ impl server::ChatApi for Mock {
 impl server::FilesApi for Mock {} // every operation: 501
 ```
 
+### Validation (`serverValidation`)
+
+With [`serverValidation`](../options.md#servervalidation), a request that decodes is checked against the spec's
+validation keywords before the implementation is called: `minimum`, `maxLength`, `pattern`, `maxItems` and the others
+[validation](validation.md) lists, of
+
+- its path and query parameters, at `path.<name>` and `query.<name>`;
+- the fields of a form body (multipart or urlencoded), at `body.<field>`;
+- the models of a JSON body, with their own `validate()`, at `body` (`body.messages[0].content`); a body of several
+  media types checks the one it was sent as.
+
+A request that breaks one or more is answered by `ErrorHandler::invalid_request` with `RequestError::invalid`: a
+`400`, at the location and parameter of the first error, that lists every error. The default body adds them as
+`errors`:
+
+```json
+{
+  "error": {
+    "message": "query.limit: 101 breaks maximum 100; query.tag[0]: length 1 breaks minLength 2",
+    "location": "query",
+    "name": "limit",
+    "errors": [
+      { "path": "query.limit", "rule": "maximum 100", "message": "query.limit: 101 breaks maximum 100" },
+      { "path": "query.tag[0]", "rule": "minLength 2", "message": "query.tag[0]: length 1 breaks minLength 2" }
+    ]
+  }
+}
+```
+
+An `invalid_request` of your own reads them from `RequestError::validation_errors()`. The request structs, form
+structs and body enums that have something to check implement the models' `Validate`, so an implementation can call
+`request.validate()` itself; an operation with nothing to check is not checked. Header and cookie parameters are not
+decoded, so not checked either.
+
+The option needs `validateMethods` (the default). A `pattern` of a parameter or form field is a regex static of
+`src/server.rs`, so the crate depends on `regex` (behind the `server` feature with both targets). A server with
+[`modelsCrate`](#one-crate-or-two) checks its bodies with the models crate's `Validate`: generate that crate with
+`validateMethods` too.
+
 ### What the server does not serve yet
 
 An operation the server cannot serve is left out of the trait and the router, with a comment in `src/server.rs`, a
@@ -310,8 +349,7 @@ Left out for now: a request body that is both a multipart and an urlencoded form
 text form (an object that is not deepObject; [`deepObjectQueryParameters`](../options.md#deepobjectqueryparameters)
 makes it one), and a path parameter that is not a whole path segment (`/files/{name}.json`). Two operations with the
 same path, method and fixed query cannot be told apart: the second is left out. Every operation of the OpenAI spec is
-served. Webhooks are the client's: the server does not send them. Authentication and validation are the next slice of
-the design.
+served. Webhooks are the client's: the server does not send them. Authentication is the next slice of the design.
 
 ## Cargo features
 

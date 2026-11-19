@@ -93,8 +93,8 @@ built and tested against the openapi-generator version in its image tag (`-og<ve
   [guide](docs/guides/api-features.md)).
 - A crate that builds for WebAssembly (`wasm32-unknown-unknown`) as it is
   ([guide](docs/guides/http-stack.md#webassembly)).
-- Optionally an [axum](https://docs.rs/axum) server with the same models, or the models alone (`targets`,
-  [guide](docs/guides/server.md)). [openai-mock-server](https://github.com/genai-rs/openai-mock-server) is one,
+- Optionally an [axum](https://docs.rs/axum) server with the same models, which can check requests against the spec's
+  validation keywords (`serverValidation`), or the models alone (`targets`, [guide](docs/guides/server.md)). [openai-mock-server](https://github.com/genai-rs/openai-mock-server) is one,
   generated from OpenAI's spec.
 
 ## Documentation

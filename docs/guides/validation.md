@@ -159,7 +159,8 @@ WARN o.o.codegen.timvw.TimvwRustCodegen - timvw-rust: validate: Patterns.skip_bi
 `validateMethods` is on by default. With `--additional-properties=validateMethods=false` there is no
 `models/validation.rs`, no `Validate` impl and no `regex` dependency. The field documentation stays. Turn it off for a
 crate whose size or compile time matters more than the checks. openai-client-base's spec gives about 1,300 checks, which
-make its generated code 9% longer. Nothing else changes, since no generated code calls it.
+make its generated code 9% longer. Nothing else changes, since no generated client code calls it; a server with
+[`serverValidation`](server.md#validation-servervalidation) does, and needs it.
 
 ### Implementing `Validate` yourself
 

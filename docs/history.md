@@ -19,7 +19,8 @@ well (`targets`); 0.32 serves event streams, files, text and multipart forms; 0.
 models of another crate (`modelsCrate`) and default methods that answer `501` (`serverDefaultMethods`); 0.36 replaces `useChrono` and `dateTimeLibrary` with
 `dateLibrary`, jiff by default; 0.37 serves
 deepObject query parameters, multipart file unions and paths with a fixed query; 0.37.1 sends a collapsed string
-union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s; 0.39 decodes a missing required nullable field as `None`. The
+union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s; 0.39 decodes a missing required nullable
+field as `None` and validates the server's requests (`serverValidation`). The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
@@ -37,6 +38,15 @@ client repositories' scripts.
   mandatory as 0.38 did. [`optionalProperties`](options.md#optionalproperties) is no longer needed to decode a body
   without a required nullable property, only to leave it out of a request.
   See [`schema.nullable`](mapping/schema.md#schemanullable).
+
+- **The server validates requests (`serverValidation`).** The option, reserved until now, checks every request that
+  decodes against the spec's validation keywords before the implementation is called: its path and query parameters
+  (`query.limit`), the fields of a form body and the models of a JSON body (`body.messages[0].content`), with the
+  models' own `validate()` and the same checks for the parameters. A request that breaks one is answered by
+  `ErrorHandler::invalid_request` with `RequestError::invalid`: a `400` whose default body lists every error under
+  `errors`. The request structs, form structs and body enums with something to check implement `Validate`. It needs
+  `validateMethods`; a `pattern` on a parameter makes the crate depend on `regex`. Without the option nothing changes.
+  See the [server guide](guides/server.md#validation-servervalidation).
 
 ## 0.38.1
 

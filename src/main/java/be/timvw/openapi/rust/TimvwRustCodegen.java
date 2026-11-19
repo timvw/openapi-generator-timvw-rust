@@ -324,6 +324,11 @@ public class TimvwRustCodegen extends RustCodegenBase {
     /** The server checks requests against the spec's validation keywords before calling the implementation. */
     public static final String SERVER_VALIDATION = "serverValidation";
     /**
+     * The server reads the credentials of the spec's security schemes and authenticates a request with an
+     * {@code Authenticator} before decoding it; an operation with security gets the claims.
+     */
+    public static final String SERVER_AUTHENTICATION = "serverAuthentication";
+    /**
      * With the server target: the crate whose models the server uses, instead of rendering its own (the client crate
      * generated from the same spec with the same model options).
      */
@@ -449,6 +454,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
     private Set<String> validationChecking = Set.of();
     /** With {@code serverValidation}: the checks of every served request, and the regexes they use. */
     private ValidateRules.RequestChecks requestChecks;
+    /** With the server target: requests are authenticated with the spec's security schemes. */
+    private boolean serverAuthentication;
+    /** With {@code serverAuthentication}: the security schemes, by name. */
+    private Map<String, ServerAuth.Scheme> authSchemes;
     /** With the server target: an operation takes a multipart form. */
     private boolean serverMultipart;
     /** With the server target: an operation reads a form (multipart or urlencoded). */
@@ -606,6 +615,10 @@ public class TimvwRustCodegen extends RustCodegenBase {
         cliOptions.add(CliOption.newBoolean(SERVER_DEFAULT_METHODS,
                 "With the server target: every trait method has a default that answers 501 Not Implemented, so an "
                         + "implementation (a mock, a partial server) implements only the operations it serves",
+                false));
+        cliOptions.add(CliOption.newBoolean(SERVER_AUTHENTICATION,
+                "With the server target: read the credentials of the spec's security schemes and authenticate each "
+                        + "request with an Authenticator before decoding it; an operation with security gets the claims",
                 false));
         cliOptions.add(CliOption.newBoolean(SERVER_VALIDATION,
                 "With the server target: check requests against the spec's validation keywords (a 400 listing every "
@@ -942,6 +955,9 @@ public class TimvwRustCodegen extends RustCodegenBase {
         serverValidation = additionalProperties.containsKey(SERVER_VALIDATION)
                 && convertPropertyToBooleanAndWriteBack(SERVER_VALIDATION);
         additionalProperties.put(SERVER_VALIDATION, serverValidation);
+        serverAuthentication = additionalProperties.containsKey(SERVER_AUTHENTICATION)
+                && convertPropertyToBooleanAndWriteBack(SERVER_AUTHENTICATION);
+        additionalProperties.put(SERVER_AUTHENTICATION, serverAuthentication);
 
         modelsCrate();
         additionalProperties.put(SERVER_DEFAULT_METHODS, additionalProperties.containsKey(SERVER_DEFAULT_METHODS)
@@ -1456,6 +1472,16 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 }
             }
             objs.put("serverDeepObject", deepObject);
+            if (serverAuthentication) {
+                objs.put("serverCredentials", ServerAuth.credentials(authSchemes()));
+                objs.put("serverChallenge", ServerAuth.challenge(authSchemes()));
+                objs.put("serverBasicAuth", authSchemes().values().stream()
+                        .anyMatch(s -> s.kind() == ServerAuth.Kind.BASIC));
+                objs.put("serverCookieAuth", authSchemes().values().stream()
+                        .anyMatch(s -> s.kind() == ServerAuth.Kind.COOKIE));
+                objs.put("serverQueryAuth", authSchemes().values().stream()
+                        .anyMatch(s -> s.kind() == ServerAuth.Kind.QUERY));
+            }
             List<Map<String, String>> patterns = requestChecks == null ? List.of() : requestChecks.patterns();
             objs.put("serverPatterns", patterns);
             // the models crate's regex is not ours; our own models' is there already
@@ -2636,6 +2662,12 @@ public class TimvwRustCodegen extends RustCodegenBase {
                 }
                 Map<String, Object> plan = ServerRules.plan(openAPI, op, spec, models, success, errors, cfg,
                         this::getTypeDeclaration, media -> serverOperationFor(op, spec, media), requestChecks);
+                if (serverAuthentication) {
+                    Map<String, Object> auth = ServerAuth.operation(openAPI, spec, authSchemes());
+                    if (auth != null) {
+                        plan.putAll(auth);
+                    }
+                }
                 for (Object r : (List<?>) plan.get("responses")) {
                     if (Boolean.TRUE.equals(((Map<?, ?>) r).get("once"))) {
                         serverStreams = true;
@@ -2671,6 +2703,14 @@ public class TimvwRustCodegen extends RustCodegenBase {
         module.put("operations", served);
         module.put("left", left);
         serverModules.put(classname, module);
+    }
+
+    /** With {@code serverAuthentication}: the spec's security schemes, read once (warning about unread ones). */
+    private Map<String, ServerAuth.Scheme> authSchemes() {
+        if (authSchemes == null) {
+            authSchemes = ServerAuth.schemes(openAPI, msg -> LOGGER.warn("{}: server: {}", GENERATOR_NAME, msg));
+        }
+        return authSchemes;
     }
 
     /**

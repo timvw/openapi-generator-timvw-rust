@@ -20,7 +20,7 @@ models of another crate (`modelsCrate`) and default methods that answer `501` (`
 `dateLibrary`, jiff by default; 0.37 serves
 deepObject query parameters, multipart file unions and paths with a fixed query; 0.37.1 sends a collapsed string
 union parameter as its text; 0.38 types Unix timestamps as `jiff::Timestamp`s; 0.39 decodes a missing required nullable
-field as `None` and validates the server's requests (`serverValidation`). The
+field as `None`, and validates and authenticates the server's requests (`serverValidation`, `serverAuthentication`). The
 table [below](#what-the-generator-renders-differently-from--g-rust) records what each rendering replaced in the
 client repositories' scripts.
 
@@ -47,6 +47,15 @@ client repositories' scripts.
   `errors`. The request structs, form structs and body enums with something to check implement `Validate`. It needs
   `validateMethods`; a `pattern` on a parameter makes the crate depend on `regex`. Without the option nothing changes.
   See the [server guide](guides/server.md#validation-servervalidation).
+- **The server authenticates requests (`serverAuthentication`).** The server reads the credentials of the spec's
+  security schemes (bearer tokens, HTTP basic, API keys in a header, query parameter or cookie) and gives them, with
+  the operation's requirements (alternatives of schemes with their scopes), to an `Authenticator` of yours before it
+  decodes the request. An operation with security gets the `Claims` it returns as a parameter of its trait method, an
+  `Option` of them when its security is optional; an operation without security keeps its signature. A request
+  without credentials, or one `authenticate` turns down, is a `401` or `403` (`Authenticator::unauthorized`, with a
+  `WWW-Authenticate` challenge by default). Without the option nothing changes. See the
+  [server guide](guides/server.md#authentication-serverauthentication) and the
+  [design](design/server-authentication.md), which compares LiteLLM, Bifrost and `rust-axum`.
 
 ## 0.38.1
 

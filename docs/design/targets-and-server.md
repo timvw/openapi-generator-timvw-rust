@@ -70,10 +70,14 @@ in `targets` fails the generation with an error naming the option and its target
 
 | Applies to | Options |
 | --- | --- |
-| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `apiFeatures`, `apiFeaturesFile`, the crate options |
-| The client | `runtimeVersion`, `runtimePath`, `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `multipartHelper`, `userAgentFromPackage` |
-| The server | `serverFramework` (only `axum`), `serverValidation` |
-| To decide | `webhookModule` (the client verifies webhooks; a server could also send them), `validateMethods` (the models' `Validate`, which the server's validation would call) |
+| The models (every target) | `stringIdSchemas`, `stringIdProperties`, `stringProperties`, `optionalProperties`, `fileProperties`, `deepObjectQueryParameters`, `resetQueryParameterStyle`, `dateLibrary`, `bonBuilders`, `titleNaming`, `deprecatedAttributes`, `validateMethods`, `webhookModule`, `runtimeVersion`, `runtimePath`, `apiFeatures`, `apiFeaturesFile`, the crate options |
+| The client | `reqwestDefaultFeatures`, `responseFunctions`, `supportMultipleResponses`, `useSerdePathToError`, `contentTypeMethods`, `typedEventStreams`, `typedEnumParameters`, `multipartHelper`, `userAgentFromPackage`, `apiLintAllows`, `webhookModuleReexport` |
+| The server | `serverFramework` (only `axum`), `serverValidation`, `serverAuthentication`, `serverWebhooks`, `serverDefaultMethods`, `modelsCrate`, `modelsCrateVersion`, `modelsCratePath` |
+
+`validateMethods` renders the models' `Validate`, which `serverValidation` calls. `webhookModule` names the Cargo
+feature of the webhook payloads, which a server with `modelsCrate` must name as its models crate does.
+`runtimeVersion` and `runtimePath` belong to every target: the client sends with the runtime, a model that holds a
+file holds an `Upload`, and a server with `serverWebhooks` sends through a runtime client.
 
 ### `modelsCrate`
 
@@ -206,8 +210,10 @@ let app: axum::Router = server::router(MyImpl::new());
 - **Names:** where the server's runtime pieces go (the decoding error type, the event-stream encoder, `Binary`,
   `FilePart`). Decided for now: they are generated into `src/server.rs`, as slice 1's `RequestError` and
   `ServerError` are, so a server-only crate depends on axum, `http` and (when it streams) `futures-util`, not on
-  `timvw-rust-runtime`. They can move to a runtime crate behind a `server` feature once the runtime and the generator
-  move to genai-rs; the generated names would stay re-exported from `server`.
+  `timvw-rust-runtime`. The exception is `serverWebhooks`: sending a webhook is a client call, so a server that
+  sends them depends on `timvw-rust-runtime` (feature `webhooks`), as a client does. The other pieces stay generated:
+  if they ever move, it is to a server runtime crate of their own, not a feature of the client's runtime; the
+  generated names would stay re-exported from `server`.
 - **`Send`:** an `impl Future + Send` trait cannot be implemented with non-`Send` state. axum needs `Send`, so the
   server requires it. WebAssembly is client-only.
 - **One crate or two:** `["client", "server"]` in one crate is convenient for small APIs. For a large spec, a
